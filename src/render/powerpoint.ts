@@ -10075,6 +10075,19 @@ async function attemptDeckStyleRead(): Promise<{ style: DeckStyle | null; unread
       // null) and now does not depend on it: the count settles it here.
       const count = scoped.getCount();
       await boundedSync(context, "counting the deck's style parts", deckStyleTimeoutMs());
+      // SUCCESS IS RECORDED TOO, and it has to be. The probe writes only when
+      // the read FAILS, so an empty `deck-style` scope in a round file could mean
+      // the read answered — or that it never ran at all. Round 106 landed exactly
+      // there: zero entries, the staked claim `held`, and no way to tell a cure
+      // from silence.
+      //
+      // That is this project's own house defect pointed the other way: absence
+      // of a failure line read as evidence of success. So the read says when it
+      // worked, and the round carries a positive statement instead of a gap.
+      deckStyleVerdict = {
+        message: "the deck-style read answered",
+        data: { parts: count.value, at: "counting the deck's style parts" },
+      };
       if (count.value !== 1) return { style: null, unreadable: false };
       const part = scoped.getOnlyItemOrNullObject();
       part.load("id");

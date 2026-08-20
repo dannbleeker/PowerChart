@@ -180,6 +180,21 @@
       "insteadOf": "round starting",
       "absent": true
     },
+    "outcome": "held",
+    "judgedOn": "106-fa6448a",
+    "what-happened": "HELD ON ITS OWN TERMS AND WEAKER THAN IT LOOKS. Round 106 carries ZERO `deck-style` entries, which is what the claim asked for, and it is the first round in this archive where the deck-style read did not record a failure. BUT SILENCE IS NOT EVIDENCE OF SUCCESS. The probe writes only when the read FAILS and the warm-up traces nothing, so an empty scope is equally consistent with the read never having run — and the pane-load window sits before the round's trace mark, so nothing in the file can settle it. That is this project's own house defect pointed the other way: an absent failure line read as a cure. Claiming an ABSENCE was the mistake; round 102 pushed me there after a message-shaped claim misfired, and the answer was a positive claim, not a broader negative one. So the read now RECORDS SUCCESS (`the deck-style read answered`, with the part count and the call it got past), and the next round can hold a positive claim instead of an absence. The warm-up is kept: it is cheap, it cannot throw, and nothing here argues against it — but it is not yet shown to be the reason 106 was quiet."
+  },
+  {
+    "id": "the-read-answers-and-says-so",
+    "madeIn": "#605",
+    "afterBuild": "fa6448a",
+    "madeOn": "2026-08-20",
+    "because": "A POSITIVE CLAIM, replacing an absence that could not distinguish a cure from a silence. Round 106 went quiet — zero deck-style entries, first time in the archive — and neither the round file nor the ledger could say whether the read had answered or simply never run, because the probe writes only on failure and the pane-load window is sliced off before the round's trace mark. The read now records success as well as failure and the verdict is replayed at round start, so this claim is judged on a line that only exists if the read actually completed: `the deck-style read answered`, carrying the part count and the call it got past. HELD means the warm-up works and the read is genuinely cured on this host — the first time that could be SAID rather than inferred. FAILED, with `round starting` present and the success line absent, means the read is not running at all in the pane-load chain, which would make round 106's quiet a different and worse story than a cure.",
+    "claim": {
+      "kind": "trace-line-present",
+      "message": "the deck-style read answered",
+      "insteadOf": "round starting"
+    },
     "outcome": "open"
   }
 ]
