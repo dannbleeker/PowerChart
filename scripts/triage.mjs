@@ -808,6 +808,71 @@ export function poolGroupingOutcome(logs) {
   return { now, refusedMedian, rounds: priors.length };
 }
 
+/**
+ * The host-cost meter every scenario verdict has carried since round 023, which
+ * no script has ever read.
+ *
+ * Four counters — `errors`, `idRefusals`, `generalExceptions`, `emptyReReads` —
+ * are recorded per scenario, per round, as a delta across that scenario. 86 of
+ * 86 archived rounds carry them. `grep friction scripts/` returned nothing.
+ *
+ * It answers per scenario what `poolScenarioPopulations` can only ask per round:
+ * whether a scenario passed on an easier host than it used to.
+ *
+ * TWO COUNTERS ARE NOT SIGNALS AND THE REPORT MUST SAY SO, or this becomes one
+ * more number read as meaning something:
+ *
+ *   - `generalExceptions` has never been non-zero. Not once, in any scenario, in
+ *     any round.
+ *   - `stop a run part-way` reports exactly one `error` every round — the
+ *     deliberate abort, counted as an error. A constant is not a measurement.
+ *
+ * Both are DERIVED here rather than written down, because a hardcoded conclusion
+ * keeps printing after it stops being true — which is exactly how the deck-style
+ * probe lied for three rounds.
+ */
+export function poolScenarioFriction(logs) {
+  const KEYS = ["errors", "idRefusals", "generalExceptions", "emptyReReads"];
+  const per = new Map();
+  let rounds = 0;
+  for (const log of logs) {
+    const entries = log?.trace?.entries;
+    if (!Array.isArray(entries)) continue;
+    let any = false;
+    for (const e of entries) {
+      const f = e?.data?.friction;
+      const name = e?.data?.name;
+      if (!f || !name) continue;
+      any = true;
+      if (!per.has(name)) per.set(name, { name, n: 0, seen: new Map(), sum: {} });
+      const row = per.get(name);
+      row.n += 1;
+      for (const k of KEYS) {
+        const v = Number(f[k]) || 0;
+        row.sum[k] = (row.sum[k] ?? 0) + v;
+        // Every distinct per-round value, so a CONSTANT can be told from a
+        // number that merely happens to be large.
+        if (!row.seen.has(k)) row.seen.set(k, new Set());
+        row.seen.get(k).add(v);
+      }
+    }
+    if (any) rounds += 1;
+  }
+  const rows = [...per.values()].sort((a, b) => b.sum.errors + b.sum.idRefusals - (a.sum.errors + a.sum.idRefusals));
+  // A counter that has never once been non-zero anywhere carries no information.
+  const dead = KEYS.filter((k) => rows.every((r) => r.sum[k] === 0));
+  // A scenario/counter pair with exactly one distinct value across every round
+  // is a constant — true of the deliberate abort, and worth naming as such.
+  const constant = [];
+  for (const r of rows)
+    for (const k of KEYS) {
+      const vals = r.seen.get(k);
+      if (r.n > 2 && vals && vals.size === 1 && [...vals][0] !== 0)
+        constant.push({ name: r.name, key: k, value: [...vals][0] });
+    }
+  return { rounds, rows, dead, constant };
+}
+
 /** Open predictions, judged against the newest round given. */
 function reportPredictions(logs, load = readFileSync) {
   let ledger;
@@ -1162,6 +1227,35 @@ export function poolOriginTagLosses(logs) {
     out.worst = Math.max(out.worst, here);
   }
   return out;
+}
+
+/** What each scenario cost the host — the meter nothing read for 63 rounds. */
+function reportScenarioFriction(logs) {
+  const o = poolScenarioFriction(logs);
+  if (!o.rounds) return;
+  console.log(`
+  WHAT EACH SCENARIO COST THE HOST — pooled over ${o.rounds} round(s)`);
+  console.log("    scenario                                    n    errors  idRefusals  emptyReReads");
+  for (const r of o.rows.slice(0, 8))
+    console.log(
+      "    " +
+        r.name.slice(0, 40).padEnd(42) +
+        String(r.n).padStart(3) +
+        String(r.sum.errors).padStart(9) +
+        String(r.sum.idRefusals).padStart(12) +
+        String(r.sum.emptyReReads).padStart(14),
+    );
+  // DERIVED, NOT DECLARED. A counter that has never moved and a counter that
+  // never varies are both worthless, and printing them beside real numbers is
+  // how a reader comes to trust one of them.
+  if (o.dead.length)
+    console.log(`    ${o.dead.join(", ")} has NEVER been non-zero in any scenario in any round — it measures nothing.`);
+  for (const c of o.constant)
+    console.log(
+      `    \`${c.name}\` reports ${c.key}=${c.value} EVERY round — a constant, not a signal (its deliberate abort).`,
+    );
+  console.log('    This is the per-scenario answer to "did it pass on an easier host", and it has');
+  console.log("    been recorded since round 023 without anything reading it.");
 }
 
 /** Charts that would not follow a drag, which no scenario counts. */
@@ -2343,6 +2437,7 @@ if (invokedDirectly) {
     reportBatchSpanVsGroup(pooled);
     reportOriginTagLosses(pooled);
     reportUpdateShortfalls(pooled);
+    reportScenarioFriction(pooled);
     reportStarvedQuestions(pooled);
     reportTagFaults(pooled);
     reportPool(pooled);
