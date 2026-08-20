@@ -27,6 +27,7 @@ import {
   traceNovelty,
   poolScenarioPopulations,
   poolGroupingOutcome,
+  poolProfileDisagreements,
 } from "./triage.mjs";
 
 /**
@@ -150,6 +151,21 @@ if (isMain(import.meta.url, process.argv[1])) {
   // NEVER A REGRESSION, and the pair above is exactly why: 0 and 4 on the same
   // build is inside this project's own noise floor (1 vs 5, nothing changed). It
   // is a reason to read the round, which is all this line claims.
+  // TWO READINGS OF THE SAME FACT, COMPARED. Everything below groups rounds by
+  // profile, so a round filed under the wrong one silently contaminates every
+  // comparison it appears in — and rounds 115 and 116 did exactly that while
+  // `PW_EXPECT_SIZE` reported a match, because the guard read the live host and
+  // the archive recorded the pane. Loud, because a wrongly-filed round is worse
+  // than a missing one: it answers.
+  const disagreed = poolProfileDisagreements(rounds);
+  if (disagreed.length) {
+    console.log(`
+  SLIDE SIZE DISAGREES — ${disagreed.length} round(s) filed under a profile the driver did not measure`);
+    for (const d of disagreed)
+      console.log(`    ${d.build}  archive says ${d.pane} (from ${d.source}), the driver measured ${d.driver}`);
+    console.log("    Every profile comparison below groups by the ARCHIVE's value. Treat these rounds as unfiled.");
+  }
+
   const grouping = poolGroupingOutcome(rounds);
   if (grouping) {
     const { now, refusedMedian, rounds: priorRounds } = grouping;

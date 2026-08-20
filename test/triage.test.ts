@@ -43,7 +43,7 @@ const {
 // covers only the NEXT line — so the directive stopped reaching the `from`
 // clause. Suite stayed green, `tsc` went red, exactly as predicted here.
 // @ts-expect-error — as above.
-import { poolEveryDraw } from "../scripts/triage.mjs";
+import { poolEveryDraw, poolProfileDisagreements } from "../scripts/triage.mjs";
 // Its own line: adding it above pushes that import over the print width, and a
 // reflowed import moves this directive off the statement it is annotating.
 // @ts-expect-error — as above.
@@ -548,6 +548,29 @@ describe("triage — logs that are not inserts", () => {
     expect(roundProfile({}), "an old round must not become its own profile").toBe("16:9");
     // Anything else is visibly itself rather than folded into the nearest named.
     expect(roundProfile(at(1000, 500, []))).toBe("1000x500");
+
+    // TWO READINGS, COMPARED — rounds 115 and 116 in miniature. They recorded
+    // 720x540 from the pane while the driver had measured 960x540 off live
+    // PageSetup, twice, and printed it before each round. Every comparison in
+    // this file groups by the archive's value, so both landed in the wrong arm
+    // while `PW_EXPECT_SIZE` reported a match.
+    const disagreeing = { ...std([]), build: "a46a2d3 x", driverSlideSize: "16:9" };
+    const found = poolProfileDisagreements([disagreeing]);
+    expect(found, "a round filed under a profile the driver did not measure went unreported").toHaveLength(1);
+    expect(found[0]).toMatchObject({ pane: "4:3", driver: "16:9" });
+
+    // Agreement is silence — otherwise the check cries wolf on every round.
+    expect(poolProfileDisagreements([{ ...std([]), driverSlideSize: "4:3" }])).toEqual([]);
+
+    // AND THE HALF THAT MATTERS MOST. A round with only ONE reading has not
+    // agreed with anything; it is unverifiable. Counting it as consistent would
+    // report every round archived before the field existed as checked — the
+    // house defect, told by a denominator.
+    expect(poolProfileDisagreements([std([])]), "a round with no second opinion must not read as agreement").toEqual(
+      [],
+    );
+    const onlyDriver = poolProfileDisagreements([{ build: "x y", driverSlideSize: "16:9" }]);
+    expect(onlyDriver, "a round with no pane reading is not a disagreement either").toEqual([]);
 
     // THE GATE: a 4:3 round after three passing 16:9 rounds is not a regression.
     const ok: [string, boolean][] = [["same scale", true]];

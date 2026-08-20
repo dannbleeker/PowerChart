@@ -1354,7 +1354,7 @@ async function attempt(argv, deps, sh, healed = false) {
   // point — its evidence is in the pane either way, and a driver that turned a
   // good round into a non-zero exit over housekeeping would be worse than the
   // housekeeping.
-  const roundFile = await collectRound(sh, stamp, sleep);
+  const roundFile = await collectRound(sh, stamp, sleep, size);
   return { code: 0, reason: "finished", roundFile, build: stamp, size };
 }
 
@@ -1371,7 +1371,7 @@ async function attempt(argv, deps, sh, healed = false) {
  * way to name WHICH round, and guessing "the newest file in rounds/" is the
  * assumption that already produced one wrong overwrite diagnosis in this repo.
  */
-async function collectRound(sh, stamp, sleep) {
+async function collectRound(sh, stamp, sleep, driverSize = null) {
   let filed = null;
   try {
     const dl = refFor(sh, "Download run log", /button "Download run log"/);
@@ -1383,7 +1383,7 @@ async function collectRound(sh, stamp, sleep) {
       console.error("  the run log did not arrive — archive it by hand once it does");
       return null;
     }
-    filed = archive(logPath, "rounds", readFileSync, writeFileSync, everyRoundEverFiled, stamp);
+    filed = archive(logPath, "rounds", readFileSync, writeFileSync, everyRoundEverFiled, stamp, driverSize);
     console.log(`  archived as rounds/${filed}`);
   } catch (err) {
     // Named, never swallowed. A round whose log was not filed is a round that
@@ -1847,6 +1847,22 @@ export function archive(
   // the same omission. Tests pass their own lister and are unaffected.
   list = everyRoundEverFiled,
   expectBuild = null,
+  /**
+   * WHAT THE DRIVER MEASURED, from outside the pane.
+   *
+   * Rounds 115 and 116 filed themselves as `720x540` while running on a 960x540
+   * deck. The driver had read live `PageSetup` twice and printed `slide size
+   * 16:9 (want 16:9)` before each round; the pane, asked at an unlucky moment,
+   * fell to its last rung and read a saved file PowerPoint had not updated yet.
+   * BOTH NUMBERS EXISTED. Nothing compared them, so the round filed under a
+   * profile it was not measured at and the guard that exists to prevent exactly
+   * that passed.
+   *
+   * Recording the driver's reading beside the pane's is what makes the
+   * comparison possible at all. Null when the driver could not read it — an
+   * absent second opinion must never read as agreement.
+   */
+  driverSize = null,
 ) {
   const round = stripImages(JSON.parse(read(logPath, "utf8")));
   const build = buildOf(round.build);
@@ -1928,6 +1944,11 @@ export function archive(
   const name = `${nextRoundNumber(list(dir))}-${build}.json`;
   // TWO spaces, because prettier checks this directory and every round archived
   // at one space failed the gate until someone reformatted it by hand.
+  // STAMPED, NOT MERGED. It goes in its own field so the pane's own reading is
+  // left exactly as the pane reported it — an archive that quietly corrected
+  // itself would destroy the evidence that the two ever disagreed, which is the
+  // only thing that makes the disagreement findable.
+  if (driverSize) round.driverSlideSize = driverSize;
   write(`${dir}/${name}`, JSON.stringify(round, null, 2) + "\n");
   return name;
 }

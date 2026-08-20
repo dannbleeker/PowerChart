@@ -2699,3 +2699,35 @@ third condition, not a clean 16:9 arm — and it happens to be a useful control:
 the pane's BELIEF was 720 across all four P67 rounds while the actual geometry
 varied, and the counters tracked the geometry. So the conclusion survives, but
 the clean re-run belongs on a build that records what it measured.
+
+### CORRECTION to the 115/116 entry above, same day, before anyone builds on it
+
+Two claims in that entry are wrong. Both were mine, both were confident, and
+neither was measured before I wrote it.
+
+**1. The causal chain is backwards.** I wrote that more shapes on a slide means a
+re-read with more to match, which comes back short, which leaves the chart
+ungrouped. The arrow points the other way. Refused charts and dense slides are
+the SAME EVENT counted twice — an ungrouped chart simply leaves its shapes loose:
+
+    round  refused  slides holding >=10 shapes
+    113       3          3
+    115       0          0
+    116       2          2
+    112       1          2
+
+The deck total is a CONSEQUENCE of refused grouping, not a cause of the re-read
+failing. So the observation stands — 4:3 refuses more and the retry repairs less
+— but **the mechanism remains unexplained**, and the entry above claimed to have
+explained it.
+
+**2. `selftest.ts:1032` did not predict this.** I quoted it as having said "720pt
+across leaves nothing" before the data did. That comment is a HISTORY of the
+first placement fix — a fixed right-hand column — explaining why it was replaced
+by a band computed from the occupied box, which works on both deck shapes. It
+describes a bug that was already fixed. I read a repaired defect as a standing
+prediction, which is the most flattering possible misreading and should have
+been checked against the code before it went into a commit message.
+
+What is actually true: the 4:3 arm refuses more charts and repairs fewer
+re-reads, replicated across a pair, with the deck exonerated. Why, is open.
