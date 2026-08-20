@@ -1067,7 +1067,29 @@ describe("triage — logs that are not inserts", () => {
       round("ddd", 0),
       round("ddd", 5), // worse
     ]);
-    expect(out).toEqual({ pairs: 4, worse: 2, better: 1, tied: 1 });
+    // `secondFresh` is 0 here because this fixture's entries carry no `ms`
+    // offsets at all, so the pane's age is UNREADABLE — and unreadable must not
+    // count as fresh, or every pair in the archive would be reported as already
+    // mitigated.
+    expect(out).toEqual({ pairs: 4, worse: 2, better: 1, tied: 1, secondFresh: 0 });
+
+    // WHICH PAIRS PREDATE THE FIX. The asymmetry above is caused by the second
+    // round inheriting the first round's pane; `collectRound` reloads it now, so
+    // the count has to distinguish pairs from before that shipped or the gate
+    // announces a fixed problem forever. A second round that started fresh is a
+    // pair the mitigation reached.
+    const withAge = (build: string, firstMs: number) => ({
+      build: `${build} 2026-08-20`,
+      deck: { inventory: [{ slideId: "s1", count: 1 }] },
+      trace: { entries: [{ ms: firstMs }, { ms: firstMs + 700_000 }] },
+    });
+    const mitigated = poolPairPosition([withAge("zzz", 67_000), withAge("zzz", 119_000)]);
+    expect(mitigated, "a fresh second round was not recognised as mitigated").toMatchObject({
+      pairs: 1,
+      secondFresh: 1,
+    });
+    const notMitigated = poolPairPosition([withAge("yyy", 67_000), withAge("yyy", 962_000)]);
+    expect(notMitigated, "a 962s-old pane counted as fresh").toMatchObject({ pairs: 1, secondFresh: 0 });
 
     // A build run ONCE is not a pair and must not be counted — it has no second
     // round to be worse than anything.

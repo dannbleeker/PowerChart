@@ -1579,6 +1579,9 @@ export function paneAgeAtStartSeconds(log) {
   return ms.length ? Math.round(Math.min(...ms) / 1000) : null;
 }
 
+/** Under this many seconds old at a round's start, a pane counts as fresh. */
+export const FRESH_PANE_SECONDS = 200;
+
 export function poolPairPosition(logs) {
   const KIND = (m, d) => {
     const k = String(d.kind ?? "");
@@ -1599,12 +1602,13 @@ export function poolPairPosition(logs) {
     }
     const deck = (log?.deck?.inventory ?? []).map((s) => s.count ?? s.shapes?.length ?? 0);
     if (!byBuild.has(build)) byBuild.set(build, []);
-    byBuild.get(build).push({ post, deck: deck.reduce((a, b) => a + b, 0) });
+    byBuild.get(build).push({ post, age: paneAgeAtStartSeconds(log), deck: deck.reduce((a, b) => a + b, 0) });
   }
   let pairs = 0,
     worse = 0,
     better = 0,
-    tied = 0;
+    tied = 0,
+    secondFresh = 0;
   for (const rounds of byBuild.values()) {
     if (rounds.length < 2) continue;
     const [a, b] = rounds;
@@ -1612,8 +1616,13 @@ export function poolPairPosition(logs) {
     if (b.post > a.post) worse++;
     else if (b.post < a.post) better++;
     else tied++;
+    // WHETHER THE SECOND ROUND STARTED ON A FRESH PANE, which is the whole
+    // reason this asymmetry exists. Counted so the report can distinguish
+    // pairs that PREDATE the between-rounds reload from ones that do not,
+    // instead of announcing a fixed problem forever from historical data.
+    if (typeof b.age === "number" && b.age < FRESH_PANE_SECONDS) secondFresh++;
   }
-  return { pairs, worse, better, tied };
+  return { pairs, worse, better, tied, secondFresh };
 }
 
 export function poolProfileDisagreements(logs) {

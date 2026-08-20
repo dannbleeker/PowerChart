@@ -146,9 +146,19 @@ This is what "the second round of a pair is worse" always was — the second rou
 is the one that inherits a pane. Position, profile and observer load were all
 stand-ins for it, and each was published as a cause before being refuted.
 
-Doing heavy work on this machine during a round is still worth avoiding — the
-one idle reused-pane round is the mildest of them — but it is a modifier, not
-the cause. See the journal's "It was the PANE'S AGE all along" entry.
+**AND IT IS FIXED, as of `1867e12`.** `collectRound` reloads the tab and reopens
+the pane after the sweep, so every round starts fresh. Round 126 is the first
+SECOND round in this archive to score a first round's numbers — post-retry 0, 20
+grouped / 0 refused, a 16-shape deck, 13 of 13.
+
+Read the gate's pane-age line anyway. A recovery, a crash or a hand-run round can
+still leave a reused pane, and a reused-pane round is a degraded sample whatever
+the code says.
+
+Doing heavy work on this machine during a round is still worth avoiding — the one
+idle reused-pane round was the mildest of them — but it is a modifier, not the
+cause. See the journal's "It was the PANE'S AGE all along" and "the fix works"
+entries.
 
 ## Where this stands — read before adding a round
 

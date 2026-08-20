@@ -2986,3 +2986,46 @@ printed by the gate above the counters, because it is the single best predictor
 of what those counters will say. Null when unreadable, never 0 — the gate treats
 under 200s as fresh, so a 0 for "unknown" would mark every unreadable round
 clean, which is the same defect in a third costume.
+
+## Rounds 124-126 — the fix works: a second round that scored a first round's numbers
+
+    round  pane age   span   post  grp/ref  deck  verdict
+    120      889s     942s     7    16/4     91   12/13   reused
+    123      962s    1114s     2    18/2     62   13/13   reused
+    124       68s     719s     0    20/0     16   13/13   FRESH
+    125       68s     691s     0    20/0     16   13/13   FRESH
+    126      119s     802s     0    20/0     16   13/13   FRESH
+
+**126 is a SECOND round, and it is the first second round in this archive to
+score a first round's numbers.** post-retry 0, 20 grouped and 0 refused, a
+16-shape deck, 13 of 13. Every previous second round scored 2, 3, 7, 7 or 8 with
+decks of 45 to 95.
+
+Reloading the pane between rounds removes the effect. **Pane age was the cause**,
+and the intervention that follows from it works on the first attempt.
+
+Worth stating what that closes: the same observation was published as a property
+of the SLIDE PROFILE, then of POSITION IN THE PAIR, then of the OBSERVER'S LOAD,
+before anyone measured the pane's age — and the measurement only happened
+because the metric that hid it (`max(ms)` read as duration) was itself wrong.
+Four wrong answers, each internally consistent, from one unexamined number.
+
+### Shipping the fix cost three defects, all of them mine
+
+1. **A reload raises a beforeunload modal**, and a modal makes every
+   playwright-cli command fail in a way that impersonates a dead browser. Only
+   `screenshot` names the real state.
+2. **`refreshPane` looked once after a fixed sleep** — the third instance of that
+   exact shape in one day, in the function written to make the next round clean.
+3. **The wiring was untested.** Deleting the call from `collectRound` left the
+   suite green; mutation testing caught it and forced a real guard.
+
+### And an instrument that would have kept announcing a fixed problem
+
+The gate's PAIR POSITION line pools all history, so it will report "the second
+round was worse 17x" for as long as the archive exists. That is true and it is
+no longer ADVICE — it now names the cause, says the reload shipped, and counts
+how many pairs had a fresh second round (14 of 34 today, rising).
+
+A statistic about a fixed problem is exactly the kind of instrument this project
+keeps having to correct: it goes on being true and stops being useful.
