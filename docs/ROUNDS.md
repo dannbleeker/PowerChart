@@ -630,3 +630,32 @@ Both halves of that setup are owner-only: creating the deck, and sideloading int
 it. `sideloadAddIn` exists but has never once succeeded on a real host — its only
 live outing was against a disconnected document, where every ribbon button was
 disabled.
+
+### The cycle runner already drives the 4:3 leg
+
+`cyclePlan` has run 16:9 x2 then 4:3 x1 since it was written, passing `PW_DECK`
+and `PW_EXPECT_SIZE` per leg:
+
+    { leg: 3, deck: tall, size: "4:3", why: "validation" }
+
+`PW_DECK_16_9` and `PW_DECK_4_3` name the two decks. So the automation was never
+the missing piece — the DECK was.
+
+### `PW_SET_SIZE=1` — the last manual step, made optional
+
+The driver used to refuse `wrong-size` and tell a person to use Design ▸ Slide
+Size. `PageSetup.slideWidth` and `slideHeight` are writable at PowerPointApi
+1.10 — which round 096's `environment` line shows this host advertising — so with
+`PW_SET_SIZE=1` the driver sets the size itself, reads it back, and says what it
+did.
+
+**Off by default, and that is the important half.** Resizing the wrong deck is a
+quiet disaster: one 16:9 deck sits behind almost the whole archive, `roundProfile`
+defaults to 16:9 for the 53 rounds carrying no size, and `scenarioRegressions`
+compares within one profile. A misaimed `PW_DECK` plus an automatic resize would
+split every comparison built on it, silently, on somebody's real presentation.
+
+Turn it on for a deck that EXISTS to be 4:3, where the write is idempotent and
+makes the deck what its name claims:
+
+    PW_DECK_4_3="<the 4:3 deck>" PW_SET_SIZE=1 node scripts/cycle.mjs
