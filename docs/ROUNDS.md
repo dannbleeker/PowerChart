@@ -597,3 +597,36 @@ passes says nothing about it either way.
 Fifty-three of them, and none carries a slide size because the field did not
 exist. **Anything reading a round must default to 16:9 rather than guess**;
 `roundProfile` does, and this sentence is why it is allowed to.
+
+## Running a 4:3 round — what actually blocks it
+
+**Not the API.** `PowerPoint.PageSetup.slideWidth` and `slideHeight` are writable
+at PowerPointApi **1.10**, and round 096's `environment` line records this host
+advertising sets 1.1 through 1.10. A pane could set the deck to 4:3 in one call.
+
+**It is blocked on purpose, and the reason is the archive:**
+
+- **There is one deck.** Changing its size changes it for every round after,
+  until something changes it back. A crash mid-round leaves it 4:3 silently.
+- **`roundProfile` defaults to 16:9 when a round carries no size**, and the 53
+  rounds before 2026-08-16 carry none. The whole archive's comparability rests on
+  that deck having been 16:9.
+- **`scenarioRegressions` compares within ONE profile.** Flipping the shared deck
+  mid-series splits the comparison, and the gate can read a profile change as a
+  regression.
+
+So the driver only ever ASSERTS the size — `PW_EXPECT_SIZE=4:3` — and refuses
+with "set it in Design ▸ Slide Size and CHECK IT TOOK". A round filed under the
+wrong profile is worse than no round.
+
+**The clean way to make 4:3 runnable unattended** is a SECOND deck, not a resized
+one: `DECK_NAME = process.env.PW_DECK ?? "Presentation64"`, and `selectDeck`
+fronts a tab by name. Open a 4:3 deck once, sideload the add-in into it, leave it
+as a tab, and a leg runs with:
+
+    PW_DECK="<the 4:3 deck>" PW_EXPECT_SIZE=4:3 node scripts/round.mjs --dir .pw-session --retry 6
+
+Both halves of that setup are owner-only: creating the deck, and sideloading into
+it. `sideloadAddIn` exists but has never once succeeded on a real host — its only
+live outing was against a disconnected document, where every ribbon button was
+disabled.

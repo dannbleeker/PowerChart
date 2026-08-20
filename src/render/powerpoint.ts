@@ -6439,9 +6439,25 @@ export async function slideImageBase64(slideId: string, width?: number): Promise
       // it had no deadline and no stop check. A self-test that wedges here
       // cannot be cancelled and cannot be timed out — which is exactly what a
       // real host did at 1819 seconds.
+      // HOW LONG A SUCCESSFUL ONE TAKES, which this archive has never recorded.
+      //
+      // 35 rasterise STALLS are on record across 86 rounds, every one burning the
+      // full 20s budget, and not a single successful duration — so the budget
+      // cannot be sized from evidence, only from harm. That is the same position
+      // the deck-style timeout was in, and the answer there was to measure first
+      // and tune second.
+      //
+      // It matters because the visibility gate is blind in more than half of all
+      // rounds waiting on a call that never answers. Knowing whether a good
+      // rasterise costs 200ms or 8s is the difference between "cut the budget"
+      // and "leave it alone".
+      const rasterFrom = Date.now();
       await step("rasterising a slide", () => withTimeout(context.sync(), rasteriseTimeoutMs(), "rasterising a slide"));
       const v = loadedValue(() => img.value);
-      if (typeof v === "string" && v.length) return v;
+      if (typeof v === "string" && v.length) {
+        trace("host", "rasterised a slide", { slideId, ms: Date.now() - rasterFrom, bytes: v.length, width });
+        return v;
+      }
       // Took the call, raised nothing, produced nothing.
       //
       // The quietest of the four ways this returns undefined, and the one that

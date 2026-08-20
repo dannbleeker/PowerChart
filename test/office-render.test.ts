@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   readDeckStyle,
   readDeckStyleWithReason,
+  slideImageBase64,
   warmCustomXmlSurface,
   replayDeckStyleVerdict,
   _resetDeckStyleVerdictForTest,
@@ -5178,6 +5179,31 @@ describe("telling a wedged host from a wedged call", () => {
 
   it("says so when the host has never answered at all", () => {
     expect(stallShape(Infinity)).toMatch(/nothing at all yet/);
+  });
+});
+
+describe("how long a rasterise actually takes", () => {
+  it("times a SUCCESSFUL rasterise — 86 rounds recorded only the failures", () => {
+    // 35 rasterise stalls on record, every one burning the full 20s budget, and
+    // not one successful duration. So the budget can only be sized from harm,
+    // which is exactly where the deck-style timeout started before it was
+    // measured. The visibility gate is blind in more than half of all rounds
+    // waiting on this call; whether a good one costs 200ms or 8s decides whether
+    // the budget should move at all.
+    const slide = makeSlide("s1");
+    installHost([slide]);
+    const seen: { message: string; data?: Record<string, unknown> }[] = [];
+    setTracing(true);
+    onTrace((e) => seen.push(e));
+    return slideImageBase64("s1", 640).then((png) => {
+      onTrace(undefined);
+      setTracing(false);
+      expect(png, "the fake did not rasterise at all").toBeTruthy();
+      const timed = seen.filter((e) => e.message === "rasterised a slide");
+      expect(timed.length, "a successful rasterise left no duration behind").toBe(1);
+      expect(typeof timed[0].data?.ms, "the duration is not a number").toBe("number");
+      expect(timed[0].data?.bytes, "the size is what says a rasterise produced anything").toBeGreaterThan(0);
+    });
   });
 });
 
