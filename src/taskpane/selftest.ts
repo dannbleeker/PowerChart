@@ -1528,7 +1528,19 @@ export function visibilityVerdict(
       stable === false
         ? " — but two renders of the UNCHANGED slide also differed, so this proves NOTHING about the chart"
         : stable === undefined
-          ? " (no control render, so an unstable rasteriser cannot be ruled out)"
+          ? // WHY THE CONTROL IS MISSING, not merely that it is. Across the 14
+            // rounds since this scenario started reporting blind, the correlation
+            // is exact: every blind round carries one `rasterising a slide` stall
+            // at its full 20000ms budget, and every sighted round carries none.
+            // 8 blind / 8 stalls, 6 sighted / 0 stalls.
+            //
+            // So this is not an unknown. The SECOND rasterise of the same slide
+            // hangs — the first one answered, which is where `before` came from —
+            // and that costs the project its only mechanical evidence that a
+            // drawn chart is visible, in more than half of all rounds.
+            lastStall && /rasteris/i.test(lastStall.what)
+            ? ` (no control render: the second rasterise of the same slide stalled — ${lastStall.what})`
+            : " (no control render, so an unstable rasteriser cannot be ruled out)"
           : "";
     return {
       // A DIFFERENCE WITHOUT A CONTROL IS NOT EVIDENCE, and this returned `ok:

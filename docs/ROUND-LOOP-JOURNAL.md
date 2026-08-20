@@ -2374,3 +2374,39 @@ and the failure returns — that is what the guard pins and what 089-105 record.
 Grouping, eighth pair: 20/0 then 18/2. Both rounds skipped `the chart is actually
 visible`; the control render has been unavailable on this build across four
 rounds now, which is worth watching but is exactly what the skip is for.
+
+## Round 110 — 48cd380 — the cure holds, and the visibility gate's blindness has one cause
+
+`the deck-style read answered` for the third consecutive round. The cure is not a
+two-round coincidence.
+
+**And the visibility gate's blindness is fully determined.** Across 15 rounds the
+correlation is exact:
+
+    blind rounds    8 (now 9)  — each with exactly ONE `rasterising a slide`
+                                 stall at its full 20000ms budget
+    sighted rounds  6          — zero stalls
+    rasteriser actually unstable: 0 times in 85 rounds
+
+The chart draws visibly in every one of them — the render moves ~1000 bytes each
+time. What is lost is the CONTROL: the SECOND `getImageAsBase64` of the same
+slide hangs. The first answered, which is where `before` came from.
+
+Note the shape. The deck-style fault was the FIRST call failing and the second
+working; this is the mirror — the first works and the second hangs. Two different
+host surfaces, opposite orders, same class of fault.
+
+- **Instrument.** The blind verdict names the stall now instead of shrugging "an
+  unstable rasteriser cannot be ruled out" — true, but unhelpful when the archive
+  has pinned the cause fifteen times. It says nothing when there is no stall to
+  point at, which is the guard.
+
+- **NO FIX SHIPPED, deliberately.** A retry is the obvious move and there is no
+  pair behind it. The last obvious retry this session made things worse and the
+  rounds took it back within two rounds — and this one would sit on the very
+  call whose second attempt is the thing failing. It wants its own pair, not a
+  05:00 guess.
+
+  What that costs: the project's only mechanical evidence that a drawn chart is
+  visible is unavailable in more than half of all rounds. Worth someone's next
+  session.

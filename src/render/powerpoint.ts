@@ -742,6 +742,11 @@ export interface StallContext {
 
 export let lastStall: StallContext | null = null;
 
+/** Test-only: set what the host last stalled on, so a verdict that reads it can be driven. */
+export function _setLastStallForTest(v: StallContext | null): void {
+  lastStall = v;
+}
+
 /**
  * The two stalls this project keeps confusing, told apart by the sign of a number.
  *
