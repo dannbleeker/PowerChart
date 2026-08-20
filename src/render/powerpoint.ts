@@ -9947,6 +9947,45 @@ async function probeWhyDeckStyleFailed(failedAt: string): Promise<void> {
   }
 }
 
+/**
+ * Spend the bad first custom-XML call, on purpose, before anything needs one.
+ *
+ * SEVEN ROUNDS SAY THE FIRST `customXmlParts` CALL AFTER A PANE LOADS FAILS AND
+ * THE SECOND WORKS. The diagnostic probe is the proof and always has been: it is
+ * the SECOND call, in a fresh context, and it has answered on every round it ran
+ * — including round 104, where the read failed at `counting the deck's style
+ * parts` and the probe counted the same namespace successfully moments later.
+ *
+ * The obvious fix — retry inside the read — was tried in #602 and the rounds
+ * took it back in #603: two rounds either side of that commit, and the probe
+ * went from answering every time to failing. The read's own retry SPENT the good
+ * second call and left the probe third.
+ *
+ * So the bad call is spent here instead, where nothing is waiting on the answer
+ * and nothing else is measuring it. One cheap `getCount` whose result is thrown
+ * away, before the real read is issued — which makes the real read the second
+ * call, the one this host answers.
+ *
+ * It cannot throw: failing is what it is FOR. On a host without the bug it costs
+ * one cheap count at pane load and changes nothing else.
+ */
+export async function warmCustomXmlSurface(): Promise<void> {
+  if (!supports("1.7")) return;
+  try {
+    await PowerPoint.run(async (context) => {
+      const parts = (
+        context.presentation as unknown as {
+          customXmlParts: { getByNamespace(ns: string): { getCount(): { value: number } } };
+        }
+      ).customXmlParts;
+      parts.getByNamespace(DECK_STYLE_NS).getCount();
+      await boundedSync(context, "warming the custom XML surface", deckStyleTimeoutMs());
+    });
+  } catch {
+    /* EXPECTED. This call exists to be the one that fails. */
+  }
+}
+
 export async function readDeckStyleWithReason(): Promise<{ style: DeckStyle | null; unreadable: boolean }> {
   if (!supports("1.7")) return { style: null, unreadable: false };
   // TWICE, BECAUSE THE FIRST CUSTOM-XML CALL AFTER A PANE LOADS DOES NOT WORK.

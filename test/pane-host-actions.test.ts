@@ -413,6 +413,10 @@ vi.mock("../src/render/powerpoint", () => ({
   // The same read, saying why it came back empty. The button awaits THIS one,
   // because "the read failed" and "the deck carries none" send the person at
   // the pane to opposite conclusions about their own document.
+  // The pane warms the custom-XML surface before reading it — a call whose
+  // failure is the point. Absent from this mock, app.ts throws at boot and every
+  // test in this file dies, which is how 110 of them went red at once.
+  warmCustomXmlSurface: vi.fn(async () => {}),
   readDeckStyleWithReason: vi.fn(async () => ({
     style: host.deckStyleUnreadable ? null : host.deckStyle,
     unreadable: host.deckStyleUnreadable,

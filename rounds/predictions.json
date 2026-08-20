@@ -163,6 +163,23 @@
       "message": "the namespace IS reachable — the fault is further in",
       "insteadOf": "the namespace is unreachable too"
     },
+    "outcome": "held",
+    "judgedOn": "104-9b6a78f",
+    "what-happened": "HELD, and replicated by its pair. Rounds 104 and 105 both report `the namespace IS reachable` at `counting the deck's style parts` — the probe answering again, on both rounds, with the retry gone. Two pairs now bracket that one commit: 102/103 WITH the retry, probe fails; 104/105 without, probe answers. So the read's retry was starving the probe of the good second call, exactly as read, and the revert was not wasted motion. It also sharpens the diagnosis rather than just undoing a mistake: the read fails on its FIRST call (at counting) and the probe's SECOND call succeeds, on both rounds. That is the cleanest statement of 'first call fails, second works' the archive has produced, and it is what the warm-up in #604 is built on."
+  },
+  {
+    "id": "warming-the-surface-cures-the-read",
+    "madeIn": "#604",
+    "afterBuild": "9b6a78f",
+    "madeOn": "2026-08-20",
+    "because": "THE THIRD ATTEMPT AT THIS, and the first with the evidence lined up. Seven rounds say the FIRST customXmlParts call after a pane loads fails and the second works: 104 and 105 both have the read failing at `counting the deck's style parts` while the probe counts the same namespace successfully moments later. Retrying INSIDE the read was tried (#602) and reverted (#603) because the read is what the probe measures — the retry spent the good second call and the probe went third and got nothing. So #604 spends the bad call BEFORE the read, in `warmCustomXmlSurface`, where nothing waits on the answer and nothing else is measuring it. The real read becomes the second call. HELD means no `deck-style` entry at all: the probe only writes when the read has already failed, so silence there is the read succeeding — the first time in this archive. FAILED means the second call is not reliably good either, and 'first call only' is too simple a story for whatever this host is doing. Claimed by SCOPE, not by message, because round 102 taught me a claim naming one of two failure lines reads the other one as a cure.",
+    "claim": {
+      "kind": "trace-line-present",
+      "message": "the namespace IS reachable — the fault is further in",
+      "scope": "deck-style",
+      "insteadOf": "round starting",
+      "absent": true
+    },
     "outcome": "open"
   }
 ]
