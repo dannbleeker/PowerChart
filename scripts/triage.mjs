@@ -1518,6 +1518,31 @@ function reportOriginTagLosses(logs) {
  * vote twice — and if it is ever run three times deliberately, that is the
  * experiment this finding asks for.
  */
+/**
+ * How long a round's own trace says it took, in seconds — or null.
+ *
+ * ALREADY IN EVERY ROUND FILE AND SURFACED BY NOTHING. Every entry carries an
+ * `ms` offset, so the last one is the round's span; no reader has ever printed
+ * it, and it turns out to be the strongest single predictor of a bad round in
+ * this archive. The slower half of the rounds whose instruments existed average
+ * 5.1 post-retry failures against 2.8, and 80 deck shapes against 48.
+ *
+ * It matters because the second round of a pair is 2.0-2.4x slower than the
+ * first in all four pairs measured, and the likeliest reason is that the first
+ * round gets mined WHILE THE SECOND RUNS. A reader who cannot see the span
+ * cannot tell a degraded round from a clean one, and will read the difference
+ * as evidence about the code.
+ *
+ * Null when the trace carries no usable offsets — an unreadable span must not
+ * become a fast one.
+ */
+export function roundSpanSeconds(log) {
+  const es = log?.trace?.entries;
+  if (!Array.isArray(es) || !es.length) return null;
+  const span = Math.max(...es.map((e) => Number(e.ms) || 0));
+  return span > 0 ? Math.round(span / 1000) : null;
+}
+
 export function poolPairPosition(logs) {
   const KIND = (m, d) => {
     const k = String(d.kind ?? "");

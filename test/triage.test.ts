@@ -43,7 +43,7 @@ const {
 // covers only the NEXT line — so the directive stopped reaching the `from`
 // clause. Suite stayed green, `tsc` went red, exactly as predicted here.
 // @ts-expect-error — as above.
-import { poolEveryDraw, poolProfileDisagreements, poolPairPosition } from "../scripts/triage.mjs";
+import { poolEveryDraw, poolProfileDisagreements, poolPairPosition, roundSpanSeconds } from "../scripts/triage.mjs";
 // Its own line: adding it above pushes that import over the print width, and a
 // reflowed import moves this directive off the statement it is annotating.
 // @ts-expect-error — as above.
@@ -976,6 +976,24 @@ describe("triage — logs that are not inserts", () => {
     expect(after.rasterise, "the untagged stall after a rasterise was not counted").toEqual({ ok: 0, stall: 1 });
     expect(after["anything else"].ok).toBeGreaterThanOrEqual(2);
     expect(after["anything else"].stall).toBe(0);
+  });
+
+  it("reports a round's span, and refuses to invent one", () => {
+    // THE STRONGEST PREDICTOR IN THIS ARCHIVE, SURFACED BY NOTHING UNTIL NOW.
+    // Every trace entry carries an `ms` offset, so the last one is the round's
+    // span — and the slower half of the rounds whose instruments existed average
+    // 5.1 post-retry failures against 2.8. The second round of a pair runs
+    // 2.0-2.4x slower than the first in all four pairs measured, most likely
+    // because the first is being mined while the second runs.
+    expect(roundSpanSeconds({ trace: { entries: [{ ms: 1000 }, { ms: 758_000 }, { ms: 12 }] } })).toBe(758);
+
+    // AN UNREADABLE SPAN MUST NOT BECOME A FAST ONE. Returning 0 here would put
+    // every old round in the "fast" half and reproduce, exactly, the confounded
+    // comparison this instrument was built to replace — where the ten fastest
+    // rounds were all old ones whose counters could not fire.
+    expect(roundSpanSeconds({ trace: { entries: [] } }), "an empty trace is not a 0s round").toBeNull();
+    expect(roundSpanSeconds({}), "a round with no trace is not a 0s round").toBeNull();
+    expect(roundSpanSeconds({ trace: { entries: [{ ms: 0 }, {}] } }), "no usable offsets").toBeNull();
   });
 
   it("counts pair position without letting ties vote", () => {
