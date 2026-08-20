@@ -1648,7 +1648,9 @@ const chartIsVisible: Scenario = async (prefix) => {
   // crash log says `rasterising a slide that already existed` and that is the
   // remaining reading — this host cannot rasterise AT ALL — rather than another
   // repeat of the one now settled.
-  const before = await attempt("rasterising a slide that already existed", () => slideImageBase64(slideId, 640));
+  const before = await attempt("rasterising a slide that already existed", () =>
+    slideImageBase64(slideId, 640, "the visibility BEFORE render"),
+  );
   if (!before) return { ok: false, skipped: true, detail: "host will not rasterise a slide (PowerPointApi 1.8)" };
   // The SAME slide, rasterised again, with nothing drawn in between.
   //
@@ -1669,7 +1671,11 @@ const chartIsVisible: Scenario = async (prefix) => {
   //
   // Costs one call on a slide the run has already rasterised safely, which is
   // the operation this scenario exists to have proven.
-  const again = await attempt("rasterising the same slide a second time", () => slideImageBase64(slideId, 640));
+  // THE ONE THAT STALLS. Named so the next stall can say so instead of leaving
+  // it to be inferred from where the line sits in the trace.
+  const again = await attempt("rasterising the same slide a second time", () =>
+    slideImageBase64(slideId, 640, "the visibility CONTROL render (same slide, back to back)"),
+  );
   const control = again === undefined ? undefined : again === before;
   // Small, and tucked into the bottom-right corner.
   //
@@ -1716,7 +1722,9 @@ const chartIsVisible: Scenario = async (prefix) => {
   // way — see `visibilityVerdict`, which is where that used to be decided
   // wrongly. The measurement is the IMAGE, and the slide id came from the
   // caller rather than from the draw.
-  const after = await attempt("rasterising the slide with the chart", () => slideImageBase64(slideId, 640));
+  const after = await attempt("rasterising the slide with the chart", () =>
+    slideImageBase64(slideId, 640, "the visibility AFTER render"),
+  );
   if (!after) return { ok: false, detail: "the host rasterised the slide before the chart but not after it" };
   // No cleanup. Every other scenario leaves its slides in the deck, and this
   // one only cleaned up because a scratch slide is a control surface nobody
@@ -1822,7 +1830,7 @@ const rasteriseThenDraw: Scenario = async (prefix) => {
   //
   // Rasterise, cheap, cheap, rasterise: each call type runs once early and once
   // late, so position is held across the pair instead of confounded with it.
-  const raster = () => slideImageBase64(slideId, 640);
+  const raster = () => slideImageBase64(slideId, 640, "the rasterise-poisons-the-next-draw arm");
   const cheap = () => slideCount();
   const rasterEarly = await arm("after a rasterise", 0, raster);
   const cheapEarly = await arm("after a cheap read", 1, cheap);

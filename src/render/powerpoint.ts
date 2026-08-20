@@ -6404,7 +6404,24 @@ export async function dropShapeSelection(budgetMs?: number): Promise<boolean> {
  * Undefined rather than throwing on any host that will not do it — the caller
  * reports that as skipped, which is a different answer from a failure.
  */
-export async function slideImageBase64(slideId: string, width?: number): Promise<string | undefined> {
+export async function slideImageBase64(
+  slideId: string,
+  width?: number,
+  /**
+   * WHICH RASTERISE THIS IS, because every stall in the archive says the same
+   * thing and it is not enough.
+   *
+   * All 34 rasterise stalls across 86 rounds trace `what: "rasterising a slide"`
+   * — one generic label for five different call sites. The strong claim that
+   * every stall lands on the visibility control (the same slide rendered twice,
+   * back to back) is an INFERENCE from ordering, and the trace cannot confirm
+   * or refute it. That is the whole diagnosis resting on something no round file
+   * can be asked about.
+   *
+   * A caller that names itself makes the next stall say where it happened.
+   */
+  label = "rasterising a slide",
+): Promise<string | undefined> {
   if (!supports("1.8")) {
     trace("host", "no rasteriser on this host", { slideId, need: "PowerPointApi 1.8" });
     return undefined;
@@ -6452,10 +6469,10 @@ export async function slideImageBase64(slideId: string, width?: number): Promise
       // rasterise costs 200ms or 8s is the difference between "cut the budget"
       // and "leave it alone".
       const rasterFrom = Date.now();
-      await step("rasterising a slide", () => withTimeout(context.sync(), rasteriseTimeoutMs(), "rasterising a slide"));
+      await step(label, () => withTimeout(context.sync(), rasteriseTimeoutMs(), label));
       const v = loadedValue(() => img.value);
       if (typeof v === "string" && v.length) {
-        trace("host", "rasterised a slide", { slideId, ms: Date.now() - rasterFrom, bytes: v.length, width });
+        trace("host", "rasterised a slide", { slideId, label, ms: Date.now() - rasterFrom, bytes: v.length, width });
         return v;
       }
       // Took the call, raised nothing, produced nothing.
@@ -6536,7 +6553,7 @@ export async function slideShots(
       out.push({ slideId });
       continue;
     }
-    const png = await slideImageBase64(slideId, opts.width ?? 480);
+    const png = await slideImageBase64(slideId, opts.width ?? 480, "an end-of-round slide shot");
     if (!png) out.push({ slideId });
     else out.push({ slideId, png });
   }

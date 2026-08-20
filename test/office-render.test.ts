@@ -5183,6 +5183,58 @@ describe("telling a wedged host from a wedged call", () => {
 });
 
 describe("how long a rasterise actually takes", () => {
+  it("names its call site in the STALL, which is the half that matters", async () => {
+    // The success line was easy; the stall is the point. All 34 rasterise stalls
+    // on record say `what: "rasterising a slide"` — one label for five call
+    // sites — so "every stall is the visibility control" could only ever be
+    // inferred from where the line sat in the trace.
+    //
+    // The first version of this guard tested only the success path, and a
+    // mutation that put the generic label back on the STALL left it green.
+    const slide = makeSlide("s1");
+    installHost([slide]);
+    _setReadbackTimeoutForTest(30);
+    // The SECOND sync only. `slideImageBase64` syncs once for the null check —
+    // which is unbounded — and again for the rasterise, which is the bounded one
+    // this test is about. Wedging from zero hangs the first and proves nothing.
+    faults.wedgeAfterSyncs = 1;
+    const seen: { message: string; data?: Record<string, unknown> }[] = [];
+    setTracing(true);
+    onTrace((e) => seen.push(e));
+    const png = await slideImageBase64("s1", 640, "the visibility CONTROL render");
+    onTrace(undefined);
+    setTracing(false);
+    faults.wedgeAfterSyncs = null;
+    _setReadbackTimeoutForTest(90_000);
+
+    expect(png, "the wedge did not take").toBeUndefined();
+    const gaveUp = seen.filter((e) => e.message === "gave up waiting");
+    expect(gaveUp.length, "no stall was recorded at all").toBeGreaterThanOrEqual(1);
+    expect(gaveUp[0].data?.what, "the stall could not say which rasterise it was").toBe(
+      "the visibility CONTROL render",
+    );
+  });
+
+  it("says WHICH rasterise it was, so a stall names its own call site", () => {
+    // All 34 rasterise stalls across 86 rounds trace `what: "rasterising a
+    // slide"` — one generic label for five different call sites. The claim that
+    // every stall lands on the visibility control is therefore an INFERENCE from
+    // where the line sits in the trace, and no round file can be asked to
+    // confirm it. The diagnosis rested on something unreadable.
+    const slide = makeSlide("s1");
+    installHost([slide]);
+    const seen: { message: string; data?: Record<string, unknown> }[] = [];
+    setTracing(true);
+    onTrace((e) => seen.push(e));
+    return slideImageBase64("s1", 640, "the visibility CONTROL render").then(() => {
+      onTrace(undefined);
+      setTracing(false);
+      const timed = seen.filter((e) => e.message === "rasterised a slide");
+      expect(timed.length).toBe(1);
+      expect(timed[0].data?.label, "the rasterise did not name its call site").toBe("the visibility CONTROL render");
+    });
+  });
+
   it("times a SUCCESSFUL rasterise — 86 rounds recorded only the failures", () => {
     // 35 rasterise stalls on record, every one burning the full 20s budget, and
     // not one successful duration. So the budget can only be sized from harm,
