@@ -335,6 +335,17 @@ describe("talking to the browser at all", () => {
       calls.some((c) => c[0] === "reload"),
       "never reloaded the tab",
     ).toBe(true);
+    // AND IT MUST ANSWER THE BEFOREUNLOAD MODAL. PowerPoint asks "changes you
+    // made may not be saved" when a tab with unsaved work is reloaded, and until
+    // that is answered EVERY command fails — `find` returns nothing at all, not
+    // even its miss message, `tab-list` shows an empty title, and `screenshot`
+    // refuses with "does not handle the modal state". The browser looks dead and
+    // is not. Calling this straight after `sweepDeck` GUARANTEES unsaved changes,
+    // and round 124 wedged exactly there until a human accepted the dialog.
+    expect(
+      calls.some((c) => c[0] === "dialog-accept"),
+      "left a modal blocking every later call",
+    ).toBe(true);
     // Reopened AND put on Automation: a pane always reopens on Chart, where
     // `Verbose trace` and the run button are not in the DOM at all, so a round
     // starting there reads `verbose trace ?` and cannot find its own button.

@@ -1865,9 +1865,36 @@ export async function recover(sh, sleep, profile = PROFILE_DIR) {
  */
 export async function refreshPane(sh, sleep, { reloaded = false } = {}) {
   if (!reloaded) sh("reload");
+
+  // A RELOAD RAISES A BEFOREUNLOAD MODAL, AND A MODAL BLOCKS EVERYTHING.
+  //
+  // PowerPoint asks "changes you made may not be saved" when a tab with unsaved
+  // work is reloaded, and until that dialog is answered EVERY playwright-cli
+  // command fails — `find` returns nothing at all (not even its miss message),
+  // `tab-list` shows the tab with an empty title, and `screenshot` refuses with
+  // "does not handle the modal state". The browser looks dead and is not.
+  //
+  // Calling this straight after `sweepDeck` is the worst possible moment: the
+  // sweep just deleted slides, so there are ALWAYS unsaved changes. Round 124
+  // wedged exactly there — reloaded, prompted, and sat behind the modal until a
+  // human accepted it.
+  //
+  // `recover` has issued the same reload for months without hitting this,
+  // because it runs when the page has usually already crashed and has no
+  // beforeunload handler left to fire. That is luck, so the accept lives here,
+  // on the shared path, and covers both callers.
+  //
+  // Unconditional and best-effort: accepting a dialog that is not there costs
+  // one no-op call, and checking first would need a call that the modal blocks.
+  sh("dialog-accept");
   await sleep(55000);
 
-  const pane = refFor(sh, "Insert chart", /button "Insert chart"/);
+  // POLLED, NOT A SINGLE LOOK AFTER A FIXED SLEEP. Third time today this exact
+  // shape has been wrong — `sideloadAddIn` after its upload, `commandPresent`
+  // before deciding to sideload, and now here, in the function written to make
+  // the NEXT round clean. A reloading Office tab does not repopulate its ribbon
+  // on a schedule.
+  const pane = await waitForRef(sh, sleep, "Insert chart", /button "Insert chart"/, RIBBON_WAKE_BUDGET_MS, 4000);
   if (pane) clickRef(sh, pane);
   await sleep(20000);
 
