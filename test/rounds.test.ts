@@ -95,7 +95,16 @@ describe("the round archive", () => {
         encoding: "utf8",
       }).stdout ?? "";
     expect(named.split("\n").find((l) => l.trimStart().startsWith("build ")) ?? "").toContain(firstBuild);
-  });
+    // A BUDGET THAT SHRINKS EVERY ROUND. This test spawns triage TWICE, and the
+    // directory case parses the WHOLE archive — 116 rounds on 2026-08-20 and one
+    // more after every run. It took ~6.5s against vitest's 5s default and began
+    // failing in the full suite while passing alone, which reads as a code
+    // regression and is not one: the test is doing exactly what it should, and
+    // its allowance was set when the archive was a fraction of this size.
+    //
+    // Named explicitly rather than raised globally, because a suite-wide bump
+    // would hide the next test that is slow for a REAL reason.
+  }, 30_000);
 
   it("does not carry the slide images, which are half the bytes", () => {
     for (const f of files) {

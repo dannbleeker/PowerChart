@@ -275,9 +275,16 @@ export function readiness({
     // document into a stop only the owner could clear.
     refuse(
       "addin-missing",
-      "this document has no PowerChart command in its ribbon — the add-in is not loaded here, " +
-        "and a reload will not bring it back. Sideload it into this deck (Add-ins ▸ Upload My Add-in), " +
-        "or run against a deck that already has it.",
+      "this document has no PowerChart command in its ribbon — the add-in is not loaded here. " +
+        // "A reload will not bring it back" stood here until 2026-08-20 and was
+        // FALSE. Round 117 said it; the owner touched nothing; `Insert chart`
+        // and `Insert element` were both in the ribbon minutes later, because
+        // the sideload this driver had already performed simply had not
+        // surfaced yet. Telling someone a machine cannot fix something it has
+        // in fact just fixed is the worst thing this file can print.
+        "If the driver has just uploaded it, LOOK AGAIN before doing anything — the ribbon can take a " +
+        "minute to show a freshly sideloaded command. Otherwise sideload it into this deck " +
+        "(Add-ins ▸ Upload My Add-in), or run against a deck that already has it.",
     );
   else if (!stamp) refuse("pane-closed", "could not read the pane's build stamp — is the add-in open?");
   else if (deployed && stamp !== deployed)
@@ -520,10 +527,15 @@ export async function sideloadAddIn(sh, sleep, manifest = MANIFEST_PATH) {
   const go = refFor(sh, "Upload", /button "Upload"(?! \[disabled\])/);
   if (!go) return giveUp("the manifest was not accepted — Upload stayed disabled");
   click(go);
-  await sleep(12000);
-
-  const open = step("Insert chart", /button "Insert chart"/);
-  if (!open) return giveUp("uploaded, but no PowerChart command appeared");
+  // POLLED, NOT SLEPT THROUGH. The ribbon does not repopulate on a schedule,
+  // and a single look after a fixed sleep turns "not yet" into "never" — see
+  // `SIDELOAD_COMMAND_BUDGET_MS` for the round that proved it.
+  const open = await waitForRef(sh, sleep, "Insert chart", /button "Insert chart"/, SIDELOAD_COMMAND_BUDGET_MS);
+  if (!open)
+    return giveUp(
+      `uploaded, but no PowerChart command appeared within ${SIDELOAD_COMMAND_BUDGET_MS / 1000}s — ` +
+        "the upload may still land, so re-check the ribbon before sideloading by hand",
+    );
   click(open);
   await sleep(25000);
   return true;
@@ -749,15 +761,105 @@ export function cli(run, dir, entry = cliEntry()) {
  *
  * So: presence and usability are two questions, and the driver has to ask both.
  */
-export function namePresent(sh, query, pattern) {
+/**
+ * `find`'s answer with its MISS MESSAGE removed.
+ *
+ * THE TRAP THIS CLOSES HAS CAUGHT ME TWICE IN ONE DAY. `playwright-cli find`
+ * answers a miss with:
+ *
+ *     No matches found for "Insert chart".
+ *
+ * — which CONTAINS the query. So any pattern built from the bare name matches
+ * the miss, and a probe for a control reports it present precisely when it is
+ * absent. It is the worst possible polarity: the failure mode is a false
+ * POSITIVE, on the exact reading a caller uses to decide something is fine.
+ *
+ * On 2026-08-20 it said a crash dialog was up when none was (harmless, caught
+ * in minutes), and then said the add-in was back in the ribbon when it was not
+ * — which I reported to the owner as confirmation of something they had told
+ * me, so the bad reading did not even look like a machine's mistake.
+ *
+ * Stripped centrally rather than patched at each call site, because the two
+ * call sites that got it right did so by accident of wording (`button "..."`
+ * happens not to appear in the miss line), and the next caller has no reason
+ * to know.
+ */
+export function findLines(sh, query) {
   return sh("find", query)
     .split("\n")
-    .some((l) => pattern.test(l));
+    .filter((l) => !/^\s*No matches found for /.test(l));
+}
+
+export function namePresent(sh, query, pattern) {
+  return findLines(sh, query).some((l) => pattern.test(l));
+}
+
+/**
+ * How long the ribbon may take to show a freshly sideloaded command.
+ *
+ * ONE SLEEP AND ONE LOOK IS NOT A WAIT, and on 2026-08-20 that cost a pair.
+ * `sideloadAddIn` uploaded the manifest, slept 12s, checked for `Insert chart`
+ * once, found nothing and returned "uploaded, but no PowerChart command
+ * appeared" — a permanent-sounding verdict. Round 117 refused, reporting that
+ * only a person could put the add-in back. THE OWNER TOUCHED NOTHING AND THE
+ * COMMAND APPEARED ANYWAY: `Insert chart` and `Insert element` were both in the
+ * ribbon minutes later. The sideload had worked; the check was early.
+ *
+ * That is this project's house defect again — a NOT-YET reported as a NEVER —
+ * and it is the most expensive version of it so far, because the verdict sends
+ * a person to do a job the machine had already done.
+ */
+export const SIDELOAD_COMMAND_BUDGET_MS = 90_000;
+
+/**
+ * How long the ribbon may take to WAKE before its absence means anything.
+ *
+ * Different question from `SIDELOAD_COMMAND_BUDGET_MS`, hence a different
+ * number. That one asks "did an upload land"; this one asks "is this tab awake
+ * yet". An idle Office tab does not keep its ribbon in the accessibility tree,
+ * and the first read after it wakes can arrive before the controls do.
+ *
+ * Short, because the answer is usually immediate and a genuinely missing add-in
+ * should still be reported quickly.
+ */
+export const RIBBON_WAKE_BUDGET_MS = 20_000;
+
+/**
+ * Poll for a ref until it appears or the budget runs out.
+ *
+ * Returns the ref, or null once the budget is spent — and null here means
+ * "still not there after N seconds", which is a different and weaker claim than
+ * the single-look version it replaces. Callers must word it that way.
+ *
+ * `now` is injectable so a test can spend a budget without spending the time.
+ */
+export async function waitForRef(sh, sleep, query, pattern, budgetMs, every = 3000, now = Date.now) {
+  const started = now();
+  // BOUNDED TWO WAYS, and the second bound is not belt-and-braces.
+  //
+  // A wait bounded only by a clock assumes the clock moves, which assumes the
+  // sleep really sleeps. Inject a stub that returns immediately — every test in
+  // this file does — and `now()` never advances, so the loop spins as fast as
+  // the process can allocate. It does not hang politely: it took Vitest to
+  // `FATAL ERROR: JavaScript heap out of memory` in 80 seconds.
+  //
+  // Counting the attempts costs one variable and cannot be defeated by a clock
+  // that stands still, which is exactly the condition under which a runaway
+  // loop is hardest to notice.
+  const maxAttempts = Math.max(1, Math.ceil(budgetMs / Math.max(1, every)) + 1);
+  for (let attempt = 1; ; attempt++) {
+    const ref = refFor(sh, query, pattern);
+    if (ref) return ref;
+    if (attempt >= maxAttempts || now() - started >= budgetMs) return null;
+    await sleep(every);
+  }
 }
 
 export function refFor(sh, query, pattern) {
-  const out = sh("find", query);
-  const line = out.split("\n").find((l) => pattern.test(l));
+  // Through `findLines`, so the miss message can never be matched as a hit —
+  // see the note there. `refFor` was safe only because a ref-bearing pattern
+  // has no ref to extract from the miss line, which is luck, not design.
+  const line = findLines(sh, query).find((l) => pattern.test(l));
   // The ref on the MATCHING LINE, never the first ref in the output. `find`
   // prints the whole frame hierarchy above the hit, so the first ref belongs to
   // the outer iframe — evaluating against it lands in the OneDrive document
@@ -1108,7 +1210,31 @@ async function attempt(argv, deps, sh, healed = false) {
   // ribbon, so the first is false and the second is true — and reading only the
   // first turned a transient network state into `addin-missing`, which recovery
   // is forbidden to retry. Cost the round on 2026-08-19.
-  const commandPresent = Boolean(paneRef) || canOpenPane || namePresent(sh, "Insert chart", /button "Insert chart"/);
+  // PATIENT, BECAUSE THIS DECIDES WHETHER TO SIDELOAD.
+  //
+  // A single look here is the same shape as the defect inside `sideloadAddIn`,
+  // one layer up: this reading decides whether to walk the sideload dialog at
+  // all, so a premature miss costs a round.
+  //
+  // AN EARLIER VERSION OF THIS COMMENT CLAIMED THE RIBBON HAD BEEN FINE AND
+  // THE DRIVER IMPATIENT. That was wrong, and it was wrong because of the trap
+  // documented on `findLines`: the probe I checked it with matched `find`'s own
+  // miss message, so it reported `Insert chart` present at the very moment it
+  // was absent. The driver had been right the whole time. Corrected before the
+  // false version could be read as history.
+  //
+  // The patience is KEPT, on its own merits rather than that story: an idle
+  // Office tab does not keep its ribbon in the accessibility tree, one look
+  // cannot tell "not there" from "not there YET", and the asymmetry favours
+  // waiting — a few seconds lost against a genuinely missing add-in, versus a
+  // wasted sideload walk and a refused round.
+  //
+  // Short budget on purpose: this is "is the ribbon awake yet", not "did an
+  // upload land", and the latter has its own, much longer wait.
+  const commandPresent =
+    Boolean(paneRef) ||
+    canOpenPane ||
+    Boolean(await waitForRef(sh, sleep, "Insert chart", /button "Insert chart"/, RIBBON_WAKE_BUDGET_MS, 4000));
   // PUT IT BACK, ONCE, rather than refuse a night over it. This is the state a
   // browser death leaves: the deck is up and readable and there is no add-in in
   // it, because a web sideload does not survive the process. `recover` restores
@@ -1462,8 +1588,20 @@ async function collectRound(sh, stamp, sleep, driverSize = null) {
  * way. `recover` reopens the pane from the ribbon's `Insert chart` control, so a
  * document that does not carry that control has nothing for recovery to click;
  * on 2026-08-16 the driver spent seven attempts and about fifteen minutes
- * proving that twice in one night. It is not transient either — a browser death
- * takes the sideload with it, and only a person can put it back.
+ * proving that twice in one night.
+ *
+ * "AND ONLY A PERSON CAN PUT IT BACK" STOOD HERE AND IS NO LONGER TRUE.
+ * On 2026-08-20 a browser reopen took the sideload with it, `sideloadAddIn`
+ * uploaded the manifest, and the ribbon carried `Insert chart` and `Insert
+ * element` again with the owner touching nothing. The machine restored it. What
+ * it got wrong was the WAIT: it checked once after a fixed sleep, called the
+ * absence permanent, and sent a person to redo work already done.
+ *
+ * The stop stays out of `RECOVERABLE_STOPS` all the same, and for the ORIGINAL
+ * reason only — recovery clicks `Insert chart` to reopen the pane, so a document
+ * without that control gives recovery nothing to click, and looping on it burns
+ * a night. The sideload path is where the patience belongs, and that is where it
+ * now is (`SIDELOAD_COMMAND_BUDGET_MS`).
  *
  * Deliberately absent, and each for its own reason: `site-behind` and `no-build`
  * are waiting for Pages and a reload does not make it deploy faster;
