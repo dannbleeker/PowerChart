@@ -59,6 +59,8 @@ import { batchPopulations } from "../scripts/triage.mjs";
 import { poolScenarioPopulations } from "../scripts/triage.mjs";
 // @ts-expect-error — as above. One directive per import, one import per line.
 import { poolGroupingOutcome } from "../scripts/triage.mjs";
+// @ts-expect-error — as above. One directive per import, one import per line.
+import { poolScenarioFriction } from "../scripts/triage.mjs";
 import { buildDeckBase64 } from "../src/render/pptx-deck";
 import { buildChart } from "../src/core/chart";
 import { sampleConfig } from "../src/core/samples";
@@ -1712,5 +1714,63 @@ describe("grouping, which no scenario verdict reports", () => {
 
   it("survives a round with no trace and no deck", () => {
     expect(() => poolGroupingOutcome([{ build: "a" }, round("a", 1, 0, [1])])).not.toThrow();
+  });
+});
+
+describe("what each scenario cost the host", () => {
+  const round = (...rows: { name: string; f: Record<string, number> }[]) => ({
+    trace: { entries: rows.map((r) => ({ message: "scenario passed", data: { name: r.name, friction: r.f } })) },
+  });
+  const F = (errors = 0, idRefusals = 0, generalExceptions = 0, emptyReReads = 0) => ({
+    errors,
+    idRefusals,
+    generalExceptions,
+    emptyReReads,
+  });
+
+  it("sums the meter every verdict has carried since round 023", () => {
+    const o = poolScenarioFriction([
+      round({ name: "same scale", f: F(4, 4, 0, 2) }, { name: "visible", f: F(1, 0, 0, 0) }),
+      round({ name: "same scale", f: F(2, 2, 0, 1) }),
+    ]);
+    expect(o.rounds).toBe(2);
+    expect(o.rows[0]).toMatchObject({ name: "same scale", n: 2, sum: { errors: 6, idRefusals: 6, emptyReReads: 3 } });
+  });
+
+  it("names a counter that has NEVER moved, instead of printing it as a number", () => {
+    // `generalExceptions` is 0 in every scenario in every one of 86 archived
+    // rounds. Printed beside real counts it reads as "no general exceptions
+    // happened", when what it means is "this counter measures nothing".
+    const o = poolScenarioFriction([round({ name: "a", f: F(3, 1, 0, 0) }), round({ name: "a", f: F(2, 1, 0, 0) })]);
+    expect(o.dead).toContain("generalExceptions");
+    expect(o.dead, "a counter that DID move must not be called dead").not.toContain("errors");
+  });
+
+  it("names a constant, because a number that never varies is not a measurement", () => {
+    // `stop a run part-way` reports exactly one error every round — its own
+    // deliberate abort, counted as an error.
+    const o = poolScenarioFriction([
+      round({ name: "stop a run part-way", f: F(1) }),
+      round({ name: "stop a run part-way", f: F(1) }),
+      round({ name: "stop a run part-way", f: F(1) }),
+    ]);
+    expect(o.constant).toContainEqual({ name: "stop a run part-way", key: "errors", value: 1 });
+  });
+
+  it("does not call a VARYING counter constant, nor a zero one", () => {
+    const varying = poolScenarioFriction([
+      round({ name: "a", f: F(1) }),
+      round({ name: "a", f: F(2) }),
+      round({ name: "a", f: F(3) }),
+    ]);
+    expect(varying.constant, "a counter that moved was called constant").toEqual([]);
+    // An all-zero counter is DEAD, not constant — the two want different words.
+    const zero = poolScenarioFriction([
+      round({ name: "a", f: F(0, 1) }),
+      round({ name: "a", f: F(0, 2) }),
+      round({ name: "a", f: F(0, 3) }),
+    ]);
+    expect(zero.constant.filter((c: { key: string }) => c.key === "errors")).toEqual([]);
+    expect(zero.dead).toContain("errors");
   });
 });

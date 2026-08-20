@@ -465,6 +465,34 @@ type Probe = {
 export const NOT_ASKED = new Set(["no-scratch-slide", "no-scratch-shape", "not-asked"]);
 
 /**
+ * Answers that mean "the question was put and produced nothing to name".
+ *
+ * `other` is every probe's catch-all: it is what a question returns when the
+ * outcome was none of the ones it knows how to recognise. This file says so
+ * itself about the tag-key question — "this host answered `other —
+ * value=undefined`: not an opinion about tag keys at all, just the stale handle
+ * refusing both writes."
+ *
+ * IT IS NOT IN `NOT_ASKED`, AND THAT COST A REAL ANSWER TWICE. The row keeps its
+ * FIRST real answer and `other` counts as real, so a pass-1 `other` locked the
+ * row and a later named answer could not replace it. Across 86 archived rounds
+ * `tags-add-same-key-twice` reads `other` in EIGHTY-THREE of them — while the
+ * samples of rounds 074 and 091, on two different builds, both carry
+ * `overwrites`. The host answered the question twice and the sheet said UNKNOWN.
+ *
+ * So a NAMED answer now outranks `other`, and nothing outranks a named answer.
+ * The original rule's intent is kept — a sheet means today what it meant
+ * yesterday, and disagreement is `stable`'s job to report — because `other` was
+ * never a meaning to be stable about.
+ */
+export const UNINFORMATIVE = new Set(["other"]);
+
+/** Weak enough to be replaced by a named answer: never asked, or asked and unnameable. */
+export function weakAnswer(a: string): boolean {
+  return NOT_ASKED.has(a) || UNINFORMATIVE.has(a);
+}
+
+/**
  * How many times a run asks each question.
  *
  * Three, and the number is the whole point of the exercise: one sample cannot
@@ -2713,11 +2741,15 @@ export async function runHostProbes(source: string, build: string): Promise<Host
       return created;
     }
     seen.samples = [...(seen.samples ?? []), sample];
-    // A real answer replaces a never-asked, and nothing replaces a real one:
-    // the FIRST real answer is the row's answer, so a sheet means today what it
-    // meant yesterday. Disagreement between samples is `stable`'s job to report,
-    // not `answer`'s to hide.
-    if (NOT_ASKED.has(seen.answer) && !NOT_ASKED.has(row.answer)) {
+    // A NAMED answer replaces a never-asked or an unnameable one, and nothing
+    // replaces a named one: the first NAMED answer is the row's answer, so a
+    // sheet means today what it meant yesterday. Disagreement between samples is
+    // `stable`'s job to report, not `answer`'s to hide.
+    //
+    // `other` used to count as real and lock the row — see `UNINFORMATIVE`. That
+    // is how `tags-add-same-key-twice` read `other` in 83 of 86 rounds while two
+    // of them had `overwrites` sitting in their samples.
+    if (weakAnswer(seen.answer) && !weakAnswer(row.answer)) {
       seen.answer = row.answer;
       seen.ms = row.ms;
       seen.detail = row.detail;

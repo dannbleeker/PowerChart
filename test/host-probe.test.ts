@@ -14,6 +14,7 @@ import {
   summariseHostSheet,
   _setProbeBudgetForTest,
   NOT_ASKED,
+  weakAnswer,
   PROBE_PASSES,
   RESAMPLE_IDS,
   stabilityOf,
@@ -59,6 +60,37 @@ afterEach(() => vi.unstubAllGlobals());
 
 /** The probe's own "this was never put" vocabulary — never a host answer. */
 const NOT_ASKED_WORDS = ["no-scratch-slide", "no-scratch-shape"];
+
+describe("a named answer outranks the catch-all", () => {
+  it("treats `other` as weak, and a named answer as strong", () => {
+    // `other` is every probe's catch-all — the outcome was none of the ones the
+    // question knows how to name. host-probe.ts says so about the tag-key
+    // question in as many words: "not an opinion about tag keys at all, just the
+    // stale handle refusing both writes."
+    expect(weakAnswer("other"), "the catch-all locked the row").toBe(true);
+    expect(weakAnswer("no-scratch-slide"), "never-asked was already weak").toBe(true);
+    expect(weakAnswer("overwrites"), "a named answer must be strong").toBe(false);
+    expect(weakAnswer("keeps-first")).toBe(false);
+  });
+
+  it("is what `tags-add-same-key-twice` needed: 83 of 86 rounds said UNKNOWN", () => {
+    // The row keeps its FIRST real answer, and `other` counted as real — so a
+    // pass-1 `other` locked it and a later named answer could not replace it.
+    // Rounds 074 and 091, on two different builds, both carry `overwrites` in
+    // their samples while the rolled-up answer reads `other`.
+    //
+    // Modelled as the promotion rule sees it: a weak answer already on the row,
+    // then a named one arriving from a later pass.
+    const promote = (seen: string, arriving: string) => (weakAnswer(seen) && !weakAnswer(arriving) ? arriving : seen);
+    expect(promote("other", "overwrites"), "the host answered and the sheet hid it").toBe("overwrites");
+    expect(promote("no-scratch-slide", "overwrites")).toBe("overwrites");
+    // AND NOTHING OUTRANKS A NAMED ANSWER. That half is the original rule and it
+    // stays: a sheet must mean today what it meant yesterday, and disagreement
+    // between samples is `stable`'s job to report rather than `answer`'s to hide.
+    expect(promote("overwrites", "keeps-first"), "a named answer was overwritten").toBe("overwrites");
+    expect(promote("overwrites", "other"), "the catch-all displaced a real answer").toBe("overwrites");
+  });
+});
 
 const probeSheet = async () => {
   const answers = await runHostProbes("fake", "test");

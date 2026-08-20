@@ -416,6 +416,10 @@ vi.mock("../src/render/powerpoint", () => ({
   // The pane warms the custom-XML surface before reading it — a call whose
   // failure is the point. Absent from this mock, app.ts throws at boot and every
   // test in this file dies, which is how 110 of them went red at once.
+  // Found by `pane-mock-covers-the-renderer` on its first run: app.ts:2864 calls
+  // this and the mock had no such key, so any pane test reaching that line would
+  // have taken all 110 down with it. A landmine, not yet a crater.
+  enrichSnapshots: vi.fn(async () => {}),
   warmCustomXmlSurface: vi.fn(async () => {}),
   readDeckStyleWithReason: vi.fn(async () => ({
     style: host.deckStyleUnreadable ? null : host.deckStyle,
