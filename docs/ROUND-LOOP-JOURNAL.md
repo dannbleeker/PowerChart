@@ -2457,3 +2457,49 @@ from every time. Keeping it is right; staking a prediction on it firing is not.
   silence.
 
 Every one of those four numbers was unmeasurable yesterday.
+
+## Round 112 — 55562e1 — the pair, and the cold read replicates
+
+    round  cold re-reads          retries  post-retry short/empty/zero  grouped/refused
+    111    11 (3 short, 4 empty, 4 zero)  11       0 / 0 / 0                20 / 0
+    112     8 (2 short, 3 empty, 3 zero)   8       0 / 1 / 1                18 / 1
+
+**The cold read fails eight to eleven times a round, and that replicates.** The
+correction stands: every "no short re-read since the retry shipped" was measuring
+the retry's success rate, on a fault that never went away.
+
+**And the pair sharpens it.** The retry does NOT repair everything — two of
+round 112's eight survived it. But `short` is repaired **five times out of five**
+across the pair, and `short` is exactly what #586's subset branch needs. So the
+branch is starved by the ONE case the retry is best at, while the cases that do
+survive (empty, zero-match) are the ones it cannot use.
+
+That is a better answer than "the retry never fails", which is what one round
+suggested. Two rounds say: the retry never fails *at the short read*.
+
+**Trace and deck agree, again.** 112's trace reports one chart refused and its
+deck reads `2,4,2,11,24,1,1` — one slide holding 24 loose shapes. 111 reports
+none and its deck is all ones. The authority confirms the instrument.
+
+**A rasterise is always under two seconds.** Pooled over the pair, n=22:
+
+    min 492ms   p50 694ms   p90 1647ms   max 1835ms
+
+The budget is 20000ms — eleven times the slowest ever observed. **Not cutting
+it.** The measurement says the budget is generous, but cutting it buys time and
+not correctness: a stall leaves the gate blind either way, and a heavier deck
+than this seven-slide one could legitimately render slower than anything here.
+The number is recorded so the next person decides from evidence rather than from
+the absence of it, which is where this started.
+
+### The gate found a flaw in one of my own instruments
+
+    insert onto a slide that already has content — 2 this round, usually 16
+    over 1 prior round(s)
+
+**A "usual" computed from one prior round is not a baseline.** That scenario's
+verdict had only just started carrying an "N of M" count, so its entire history
+was a single round. `poolScenarioPopulations` needs three priors now. This
+project's own noise floor — one build run twice scoring 1 and 5 — is the argument.
+
+Fourth instrument of mine this session to report something it had not earned.

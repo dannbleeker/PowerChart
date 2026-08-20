@@ -147,12 +147,32 @@ describe("the Automation tab holds everything the driver needs", () => {
 });
 
 describe("a sign-in TAB is not a sign-in PROMPT", () => {
-  it("refuses when the host is silent — the real prompt still stops the round", () => {
-    // Unchanged behaviour, and it has to be: a genuine credential prompt makes
-    // everything after it unmeasurable, and only a person can clear it.
-    const r = readiness({ ...READY, loggedOut: true, authPopup: true, ping: null });
+  it("refuses when the host is silent AND the document never rendered", () => {
+    // A genuine signed-out browser: no deck, no slide list, nothing to measure.
+    // Only a person can clear it, and the message says so.
+    const r = readiness({ ...READY, loggedOut: true, authPopup: true, ping: null, slides: null });
     expect(r.ok).toBe(false);
     expect(r.stop.join(" ")).toMatch(/needs a password/);
+  });
+
+  it("does NOT blame a sign-in when the deck's slide list still reads", () => {
+    // The hard case, and the one that would have cost a night. Chrome's crash
+    // restore leaves a `login.live.com` tab open PERMANENTLY — it never goes
+    // away on its own — so this refusal would fire on every future round the
+    // moment the host went briefly quiet, which on this machine is the commonest
+    // transient state there is.
+    //
+    // A readable slide list does not PROVE the session is fine: Office can raise
+    // a re-auth prompt beside a loaded deck, which is exactly what this refusal
+    // was written for. The two are indistinguishable from the tab list — so the
+    // honest move is to report the silent host that was actually observed, let
+    // the reload behind it run, and mention the tab rather than blaming it.
+    // A silent host reports `{ answered: false }`, not null — null means the ping
+    // was never readable, which is a different state and does not refuse.
+    const r = readiness({ ...READY, loggedOut: true, authPopup: true, ping: { answered: false, ms: 8009 }, slides: 1 });
+    expect(r.ok).toBe(false);
+    expect(r.stop.join(" "), "claimed a sign-in it could not distinguish").not.toMatch(/needs a password/);
+    expect(r.codes, "a silent host is recoverable; a sign-in is not").toContain("host-silent");
   });
 
   it("carries on when the host is ANSWERING, because that proves the session is signed in", () => {

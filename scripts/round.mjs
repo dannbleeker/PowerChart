@@ -177,7 +177,30 @@ export function readiness({
       "  a Microsoft sign-in tab is open, but the host is answering — treating it as leftover from a " +
         "browser restore rather than a live prompt",
     );
-  if (loggedOut && !hostAnswering)
+  // AND WHEN THE HOST IS SILENT BUT THE DOCUMENT IS UP, SAY SO INSTEAD OF
+  // GUESSING. `slides !== null` means the deck rendered its slide list, which a
+  // signed-out browser cannot do — but it does NOT prove the session is fine,
+  // because Office can raise a re-auth prompt beside a loaded deck, which is the
+  // case this refusal was written for.
+  //
+  // So the two are genuinely indistinguishable from the tab list, and claiming
+  // "sign in" is a guess that costs the owner a trip to the machine. A stale
+  // `login.live.com` tab restored by Chrome after a crash is PERMANENT debris:
+  // it never goes away on its own, so this refusal would fire on every future
+  // round the moment the host went briefly quiet — which on this machine is the
+  // commonest transient state there is.
+  //
+  // A silent host is already a recoverable stop with a reload behind it. Let
+  // that run, and mention the tab rather than blaming it. If the host is still
+  // silent after recovery, the round fails as `host-silent`, which is what was
+  // actually observed.
+  if (loggedOut && !hostAnswering && slides !== null)
+    console.log(
+      "  a Microsoft sign-in tab is open and the host is silent, but the deck's slide list still reads — " +
+        "treating this as a silent host (recoverable) rather than a sign-in prompt. If a reload does not " +
+        "fix it, the tab may be a real prompt after all.",
+    );
+  if (loggedOut && !hostAnswering && slides === null)
     return {
       ok: false,
       stop: [
