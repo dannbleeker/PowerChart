@@ -1662,7 +1662,9 @@ describe("a scenario that passes on a smaller population than it usually runs", 
   });
 
   it("flags a shrunken population even when the scenario FAILED, and says which", () => {
-    const rounds = [round("a", 8), round("b", 8), round("c", 4, false)];
+    // Four rounds, because "usually" now needs three priors — see the baseline
+    // test below. Two observations are not a norm.
+    const rounds = [round("a", 8), round("b", 8), round("c", 8), round("d", 4, false)];
     expect(poolScenarioPopulations(rounds)[0]).toMatchObject({ now: 4, usual: 8, ok: false });
   });
 });
@@ -1772,5 +1774,25 @@ describe("what each scenario cost the host", () => {
     ]);
     expect(zero.constant.filter((c: { key: string }) => c.key === "errors")).toEqual([]);
     expect(zero.dead).toContain("errors");
+  });
+});
+
+describe("a population baseline needs more than one observation", () => {
+  const round = (build: string, of: number) => ({
+    build,
+    selftest: [{ name: "insert onto a slide", ok: true, detail: `${of} of ${of} charts` }],
+  });
+
+  it("says nothing when the history is one or two rounds", () => {
+    // Round 112 fired on `2 this round, usually 16 over 1 prior round(s)` — a
+    // scenario whose verdict had only just started carrying a count, so its
+    // whole history was a single round. One number is not a norm.
+    expect(poolScenarioPopulations([round("a", 16), round("b", 2)])).toEqual([]);
+    expect(poolScenarioPopulations([round("a", 16), round("b", 16), round("c", 2)])).toEqual([]);
+  });
+
+  it("still reports once there is a history to compare against", () => {
+    const out = poolScenarioPopulations([round("a", 16), round("b", 16), round("c", 16), round("d", 2)]);
+    expect(out).toEqual([{ name: "insert onto a slide", now: 2, usual: 16, ok: true, rounds: 3 }]);
   });
 });

@@ -747,7 +747,13 @@ export function poolScenarioPopulations(logs) {
   }
   const shrunk = [];
   for (const [name, hist] of seen) {
-    if (hist.length < 2) continue;
+    // THREE PRIORS MINIMUM, because "usually" needs more than one observation.
+    // Round 112 fired this on `insert onto a slide that already has content —
+    // 2 this round, usually 16 over 1 prior round(s)`: a scenario whose verdict
+    // only recently started carrying an "N of M" count, so its entire history
+    // was a single round. One number is not a norm, and this project's own noise
+    // floor — one build run twice scoring 1 and 5 — is the reason to say so.
+    if (hist.length < 4) continue;
     const now = hist[hist.length - 1];
     const priors = hist.slice(0, -1).map((h) => h.of);
     // The population it has USUALLY had. Not the mean: a single small round
