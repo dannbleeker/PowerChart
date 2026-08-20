@@ -2798,3 +2798,71 @@ THREE times. If the third is worse again, something accumulates across rounds
 within a browser session — the proxy-memory exhaustion this project already
 knows about is the obvious suspect. If the third matches the first, the sweep
 between rounds is leaving something behind that one more sweep clears.
+
+## Rounds 119-121 — b7c4196 — one build three times, and the observer is the variable
+
+**The three-run experiment killed the accumulation theory, and then killed the
+position theory that replaced it.**
+
+    round  span    post-retry  grp/ref  deck
+    119     758s        0        20/0     16
+    120    1830s        7        16/4     91
+    121     800s        1        19/0     22
+
+**Not cumulative.** 121 ran on a pane that had been through two rounds, with no
+recovery or reload between them, and came back at first-round speed and
+first-round counters. Anything that "builds up over a session" is refuted.
+
+**And position does not determine it either.** The archive's two earlier
+three-run builds go the other way — 070/071/072 scored 1, 0, 6 and 079/080/081
+scored 0, 0, 4, both spiking on the THIRD. Ours spiked on the second and
+recovered. Same build, same deck, same driver: the position is not the cause.
+
+### What actually tracks it is DURATION, and the pairs are unanimous
+
+    pair          1st      2nd      ratio   post-retry
+    113 -> 114   1249s -> 2488s     2.0x     5 -> 7
+    115 -> 116    877s -> 2115s     2.4x     0 -> 3
+    117 -> 118    912s -> 1991s     2.2x     0 -> 8
+    119 -> 120    758s -> 1830s     2.4x     0 -> 7
+
+Four pairs, four times slower, every time by roughly the same factor. Pooled
+over the 30 rounds whose instruments existed, the slower half averages 5.1
+post-retry failures against 2.8, and 80 deck shapes against 48.
+
+### THE VARIABLE IS PROBABLY ME, AND THAT IS NOT A JOKE
+
+There is one thing that reliably differs between the first and second round of a
+pair on this machine, and it is not the host. **I launch round one and wait. I
+mine round one WHILE ROUND TWO IS RUNNING** — parsing every file in a 120-round
+archive, spawning triage, and during round 118 running the full 3,195-test suite
+repeatedly to chase a flake. 118 is the worst round in the set. 121 ran while I
+was writing a short script and doing nothing heavy, and it came back clean.
+
+This is a hypothesis, not a proof: the load was never recorded, so it cannot be
+recovered from the archive. But it explains every observation the other two
+theories could not, it predicts the earlier three-run builds spiking on
+whichever round happened to coincide with work, and the mitigation costs
+nothing.
+
+**`docs/ROUND-LOOP-BRIEF.md` has one rule about not disturbing a running round:
+do not touch `playwright-cli` while the driver polls. That rule is too narrow.**
+It protects the CLI's single-command channel and says nothing about the machine
+the browser is running on. A 16-worker Vitest run is not "touching
+playwright-cli" and is far more disruptive than a `find` would be.
+
+### What this costs, and what to do
+
+Every pair in this archive may be a fast round and a loaded round rather than
+two samples of one condition — which is exactly the objection I raised against
+position yesterday, one level deeper. The "second round is worse, 15 of 17"
+finding stands as a STATISTIC and its causal story is now the third candidate in
+two days.
+
+- **Do nothing heavy while a round polls.** Mine the previous round before
+  starting the next one, or after both land.
+- **Record the round's own span in the receipt** so a future reader can tell a
+  slow round from a fast one without recomputing it. It is already in the
+  trace; nothing surfaces it.
+- **Stop treating a pair as two samples of one condition** until a pair has been
+  run with the machine deliberately idle for both halves.

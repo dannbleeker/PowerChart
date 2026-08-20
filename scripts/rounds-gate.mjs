@@ -29,6 +29,7 @@ import {
   poolGroupingOutcome,
   poolProfileDisagreements,
   poolPairPosition,
+  roundSpanSeconds,
 } from "./triage.mjs";
 
 /**
@@ -160,6 +161,28 @@ if (isMain(import.meta.url, process.argv[1])) {
   // than a missing one: it answers.
   // THE PAIR IS NOT TWO SAMPLES OF ONE CONDITION. Printed above everything that
   // compares rounds, because every such comparison assumes it is.
+  // HOW LONG THIS ROUND TOOK, printed before anything that reads its counters.
+  // A slow round is a degraded round in this archive, and the reader has never
+  // been able to see which kind they were looking at.
+  const newest = rounds[rounds.length - 1];
+  const span = roundSpanSeconds(newest);
+  const priorSpans = rounds
+    .slice(0, -1)
+    .map(roundSpanSeconds)
+    .filter((n) => typeof n === "number");
+  if (span !== null && priorSpans.length >= 3) {
+    const sorted = [...priorSpans].sort((a, b) => a - b);
+    const median = sorted[Math.floor(sorted.length / 2)];
+    const ratio = median ? span / median : 1;
+    console.log(`
+  THIS ROUND TOOK ${span}s (median of ${priorSpans.length} prior round(s): ${median}s)`);
+    if (ratio >= 1.5)
+      console.log(
+        `    ${ratio.toFixed(1)}x the usual. Slow rounds in this archive average roughly twice the post-retry
+` + `    failures of fast ones — read this round's counters as a degraded sample, not as a change.`,
+      );
+  }
+
   const pos = poolPairPosition(rounds);
   if (pos.pairs >= 4) {
     const moved = pos.worse + pos.better;

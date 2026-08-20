@@ -131,6 +131,27 @@ before believing any difference.
 is polling.** The CLI serves one command per session; a concurrent call makes the
 poll exit non-zero. That killed a healthy round that went on to pass 10 of 12.
 
+**AND A SECOND RULE, WHICH THAT ONE IS TOO NARROW TO COVER — do not do anything
+HEAVY on this machine while a round polls.** The rule above protects the CLI's
+single-command channel and says nothing about the box the browser runs on. A
+16-worker Vitest run is not "touching playwright-cli" and disturbs a round far
+more than a `find` ever could.
+
+The second round of a pair is **2.0-2.4x slower than the first, in all four
+pairs measured** (113/114, 115/116, 117/118, 119/120), and slower rounds score
+roughly twice the post-retry failures. There is one thing that reliably differs
+between the two halves on this machine, and it is not the host: **round one is
+mined while round two runs.** Round 118, the worst in the set, ran while the
+full 3,195-test suite was being run repeatedly to chase a flake; round 121 ran
+during light work and came back clean on a pane that had already served two
+rounds.
+
+That is a hypothesis — the load was never recorded and cannot be recovered from
+the archive — but it explains what neither "damage accumulates" nor "position in
+the pair" could, and it costs nothing to obey. **Mine the previous round before
+starting the next one, or after both have landed.** See the 119-121 entry in the
+journal.
+
 ## Where this stands — read before adding a round
 
 **The mechanism is settled.** A chart drawn onto a slide this run has just added
