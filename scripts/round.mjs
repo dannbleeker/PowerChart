@@ -40,6 +40,7 @@
 import { spawnSync } from "child_process";
 import { readFileSync, writeFileSync, existsSync, readdirSync, realpathSync } from "fs";
 import { join, dirname } from "path";
+import { fileURLToPath } from "url";
 import { isMain } from "./is-main.mjs";
 import { collectCrashEvidence } from "./crash-forensics.mjs";
 
@@ -589,6 +590,46 @@ export function selectDeck(sh, deckName) {
  * edit a script to get past it.
  */
 export const CLI_TIMEOUT_MS = Number(process.env.PW_CLI_TIMEOUT_MS) || 180_000;
+
+/**
+ * The round browser's own playwright-cli config, or nothing.
+ *
+ * WHAT IT FIXES. The round browser was opened with no config at all, which left
+ * it on a FIXED 2880x1800 page viewport inside a 1280x752 window — the page laid
+ * out more than twice as wide as the window could show, so the right-hand strip
+ * of PowerPoint, which is exactly where the task pane lives, fell outside the
+ * visible area. The owner could not watch a round; maximising did nothing,
+ * because the window was never the constraint. Measured, both ways:
+ *
+ *     no config      innerWidth 2880   outerWidth 1280   (2.25x mismatch)
+ *     viewport null  innerWidth 1036   outerWidth 1050   (matches)
+ *
+ * `viewport: null` makes the page follow the window, which is what a headed
+ * browser someone is meant to look at should always have done. Verified in a
+ * throwaway session first, so the round browser was never at risk.
+ *
+ * NOT `.playwright/cli.config.json`. That one is 512x900 on purpose — the task
+ * pane at its real width, for judging how the pane LOOKS (see CLAUDE.md). It has
+ * nothing to do with a round, and pointing a round at it would be worse than the
+ * bug: 512px is narrower than PowerPoint's own chrome.
+ *
+ * Absent file means no flag, rather than a flag to a path that is not there:
+ * every CLI call carries this, and a bad path would fail all of them at once.
+ *
+ * TAKES EFFECT AT THE NEXT BROWSER OPEN. A context's viewport is fixed when it
+ * is created, so a browser already running keeps whatever it started with.
+ *
+ * ONLY ON `open`. The first version of this passed the flag on EVERY CLI call,
+ * which reads as harmless and is not: `--config` is an option of `open` alone,
+ * so every other command answered `Unknown option: --config` and the driver
+ * reported a healthy browser as `pane ?`, `deck ?`, "the pane is closed". A
+ * config flag that breaks the readiness check would have looked exactly like
+ * the crash it is meant to help someone watch.
+ */
+export function roundConfigArg(exists = existsSync) {
+  const p = fileURLToPath(new URL("../.playwright/round.config.json", import.meta.url));
+  return exists(p) ? [`--config=${p}`] : [];
+}
 
 export function cli(run, dir, entry = cliEntry()) {
   const state = { unreachable: false };
@@ -1605,7 +1646,7 @@ export async function recover(sh, sleep, profile = PROFILE_DIR) {
   // holds the sign-in — a dead browser is not a lost sign-in — so it needs no
   // password, and the alternative is a ten-hour run ending in its first hour.
   if (noBrowser(sh("list"))) {
-    sh("open", "--persistent", `--profile=${profile}`, "--headed", "https://onedrive.live.com/");
+    sh("open", ...roundConfigArg(), "--persistent", `--profile=${profile}`, "--headed", "https://onedrive.live.com/");
     await sleep(15000);
     // The deck, and then ITS tab. Clicking the file opens a NEW tab while the
     // CLI stays on the old one, and skipping that is how a healthy setup reads

@@ -18,6 +18,7 @@ const {
   readPing,
   refFor,
   frontedDeck,
+  roundConfigArg,
   namePresent,
   setSlideSizeScript,
   readSlideSize,
@@ -308,6 +309,46 @@ describe("talking to the browser at all", () => {
     expect(selectDeck(shWith('0: https://x/ "Presentation64"'), "Presentation66")).toBe(false);
     // No deck asked for is the behaviour this has always had.
     expect(selectDeck(shWith(""), null)).toBe(true);
+  });
+
+  it("passes the round config to `open` and to nothing else", () => {
+    // THE VIEWPORT FIX, AND THE REGRESSION IT SHIPPED WITH FOR ONE MINUTE.
+    //
+    // The round browser was opened with no config, leaving it on a fixed
+    // 2880x1800 page viewport inside a 1280x752 window — the page laid out more
+    // than twice as wide as the window could show, so the strip holding the task
+    // pane fell outside the visible area and the owner could not watch a round.
+    // `viewport: null` makes the page follow the window (measured: 1036 inner
+    // against 1050 outer, versus 2880 against 1280).
+    //
+    // The first version passed the flag on EVERY CLI call, which reads as
+    // harmless and is not: `--config` is an option of `open` alone, so every
+    // other command answered `Unknown option: --config` and the driver reported
+    // a healthy browser as `pane ?`, `deck ?`, "the pane is closed" — a config
+    // flag whose failure mode impersonates the crash it exists to help someone
+    // watch.
+    const args: string[][] = [];
+    const run = (_exe: string, a: string[]) => {
+      args.push(a);
+      return { status: 0, stdout: "" };
+    };
+    const sh = cli(run, ".", "some-cli.js");
+    sh("tab-list");
+    sh("find", "Chart");
+    expect(
+      args.every((a) => !a.some((x) => x.startsWith("--config"))),
+      "an ordinary command carried --config, which playwright-cli rejects outright",
+    ).toBe(true);
+
+    // And the flag itself: present when the file is there, ABSENT when it is
+    // not. A flag pointing at a path that does not exist would fail the one
+    // call that matters most — the reopen after a browser death.
+    expect(roundConfigArg(() => true)).toHaveLength(1);
+    expect(roundConfigArg(() => true)[0].startsWith("--config=")).toBe(true);
+    expect(
+      roundConfigArg(() => false),
+      "pointed at a config that is not there",
+    ).toEqual([]);
   });
 
   it("names the document the check is actually about", () => {
