@@ -1539,8 +1539,44 @@ function reportOriginTagLosses(logs) {
 export function roundSpanSeconds(log) {
   const es = log?.trace?.entries;
   if (!Array.isArray(es) || !es.length) return null;
-  const span = Math.max(...es.map((e) => Number(e.ms) || 0));
+  const ms = es.map((e) => Number(e.ms) || 0);
+  // LAST MINUS FIRST, NOT THE LAST. `ms` counts from the PANE'S load, not the
+  // round's start, and the pane is not reloaded between rounds — so a round that
+  // inherits its pane starts its clock wherever the previous round left off.
+  //
+  // The first version of this took `Math.max(...)` and therefore reported every
+  // reused-pane round's duration as ITS OWN plus the previous round's. That
+  // produced "the second round of a pair is 2.0-2.4x slower", which was
+  // published twice before the arithmetic was checked. The real figure is about
+  // 1.35x. See `paneAgeAtStartSeconds` for the fact the inflated number was
+  // accidentally encoding.
+  const span = Math.max(...ms) - Math.min(...ms);
   return span > 0 ? Math.round(span / 1000) : null;
+}
+
+/**
+ * How long the pane had already been alive when this round started, in seconds.
+ *
+ * THE VARIABLE THAT ACTUALLY PREDICTS A BAD ROUND, and it was hiding inside a
+ * metric that had been reported as duration. `ms` counts from the pane's load,
+ * so the FIRST entry's offset is the pane's age at the moment the round began.
+ *
+ * Rounds 110-123, split on it:
+ *
+ *     fresh pane (< 200s)   post-retry 0, 2, 0, 0, 0, 1, 0   deck 14-45, mostly 16
+ *     reused pane           post-retry 0, 5, 7, 3, 8, 7, 2   deck 16-97, mostly 60+
+ *
+ * Mean post-retry 0.43 against 4.57. This is what "the second round of a pair is
+ * worse" always was: the second round is the one that inherits a pane. Position,
+ * profile and observer load were all stand-ins for it.
+ *
+ * Null when unreadable — an unknown pane age must not read as a fresh one.
+ */
+export function paneAgeAtStartSeconds(log) {
+  const es = log?.trace?.entries;
+  if (!Array.isArray(es) || !es.length) return null;
+  const ms = es.map((e) => Number(e.ms)).filter((n) => Number.isFinite(n));
+  return ms.length ? Math.round(Math.min(...ms) / 1000) : null;
 }
 
 export function poolPairPosition(logs) {

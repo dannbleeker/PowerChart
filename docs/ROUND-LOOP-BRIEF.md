@@ -131,34 +131,24 @@ before believing any difference.
 is polling.** The CLI serves one command per session; a concurrent call makes the
 poll exit non-zero. That killed a healthy round that went on to pass 10 of 12.
 
-**AND A SECOND RULE, WHICH THAT ONE IS TOO NARROW TO COVER — do not do anything
-HEAVY on this machine while a round polls.** The rule above protects the CLI's
-single-command channel and says nothing about the box the browser runs on. A
-16-worker Vitest run is not "touching playwright-cli" and disturbs a round far
-more than a `find` ever could.
+**AND A SECOND RULE — reload the pane between rounds, or know that you did not.**
 
-The second round of a pair is **2.0-2.4x slower than the first, in all four
-pairs measured** (113/114, 115/116, 117/118, 119/120), and slower rounds score
-roughly twice the post-retry failures. There is one thing that reliably differs
-between the two halves on this machine, and it is not the host: **round one is
-mined while round two runs.** Round 118, the worst in the set, ran while the
-full 3,195-test suite was being run repeatedly to chase a flake; round 121 ran
-during light work and came back clean on a pane that had already served two
-rounds.
+**The pane's age when a round STARTS is the best predictor of what that round
+will report.** Rounds 110-123, split on it:
 
-**THAT HYPOTHESIS WAS TESTED AND REFUTED THE SAME DAY.** Rounds 122 and 123 ran
-with the machine deliberately idle — no mining between them, no triage, no test
-suite — and the second round was still **2.4x slower** (862s -> 2076s), the same
-ratio as every loaded pair. The slowdown is a fact about the HOST, not about the
-observer.
+    fresh pane (<200s)   post-retry 0, 2, 0, 0, 0, 1, 0    deck mostly 16
+    reused pane          post-retry 0, 5, 7, 3, 8, 7, 2    deck 45-97
 
-**Keep the rule anyway, for the reason that survived.** The idle second round
-scored 2 post-retry failures where loaded ones scored 7, 8, 3 and 7, and left 62
-deck shapes against 45, 72, 91 and 95. Load looks like it makes a real effect
-WORSE rather than causing it — one observation, so treat it as a lead. **Mine
-the previous round before starting the next one, or after both have landed.** It
-is cheap and it cannot hurt; just do not expect it to make the second round
-fast. See the 119-121 and 122-123 entries in the journal.
+Mean 0.43 against 4.57. The gate prints the pane's age above the counters; read
+it first. A reused-pane round is a degraded sample, not a change in the code.
+
+This is what "the second round of a pair is worse" always was — the second round
+is the one that inherits a pane. Position, profile and observer load were all
+stand-ins for it, and each was published as a cause before being refuted.
+
+Doing heavy work on this machine during a round is still worth avoiding — the
+one idle reused-pane round is the mildest of them — but it is a modifier, not
+the cause. See the journal's "It was the PANE'S AGE all along" entry.
 
 ## Where this stands — read before adding a round
 
