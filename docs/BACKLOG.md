@@ -1680,7 +1680,14 @@ size mid-run would change what the round measures.
 #### 4. THE DECK IS SET UP BY HAND, AND THIS ONE HAS A HISTORY
 
 Slide size is a ribbon click the driver cannot make, and a sideload is
-per-document. That is a one-time cost per deck and is fine — but the deck used
+per-document.
+
+**HALF OF THAT IS NO LONGER TRUE — corrected 2026-08-20.** `PageSetup.slideWidth`
+and `slideHeight` are writable at PowerPointApi 1.10, so the driver CAN set a
+deck's size, behind `PW_SET_SIZE=1` and only for a deck that exists to be that
+profile. It was used for the first time on 2026-08-20 to take `Presentation67`
+from 960x540 to 720x540, verified by a read-back in a separate call. Only the
+sideload is still owner-only. That is a one-time cost per deck and is fine — but the deck used
 for round 077 is not.
 
 `Presentation65` was created during a browser crash, and has now gone into a

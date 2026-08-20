@@ -17,6 +17,7 @@ const {
   pingScript,
   readPing,
   refFor,
+  frontedDeck,
   namePresent,
   setSlideSizeScript,
   readSlideSize,
@@ -307,6 +308,34 @@ describe("talking to the browser at all", () => {
     expect(selectDeck(shWith('0: https://x/ "Presentation64"'), "Presentation66")).toBe(false);
     // No deck asked for is the behaviour this has always had.
     expect(selectDeck(shWith(""), null)).toBe(true);
+  });
+
+  it("names the document the check is actually about", () => {
+    // THE CHECK NEVER SAID WHICH DECK IT CHECKED. Build stamps, slide counts,
+    // host latency — every line described the round without naming the
+    // document, so a check against the wrong deck read exactly like a check
+    // against the right one. On 2026-08-20 the dedicated 4:3 deck was still
+    // 960x540 and nothing in any output contradicted the note that called the
+    // 4:3 leg "blocked on owner setup".
+    const shWith = (tabs: string) =>
+      ((...args: string[]) => (args[0] === "tab-list" ? tabs : "")) as never as {
+        (...a: string[]): string;
+        state: unknown;
+      };
+    const real =
+      "- 0: [Home - OneDrive](https://onedrive.live.com/)\n" +
+      "- 1: [Presentation64.pptx](https://onedrive.live.com/x)\n" +
+      "- 3: (current) [Presentation67.pptx](https://onedrive.live.com/y)";
+    expect(frontedDeck(shWith(real)), "took a name from the wrong line").toBe("Presentation67.pptx");
+
+    // UNREADABLE IS NOT A NAME. Both of these used to be indistinguishable from
+    // a successful read of a deck called nothing, which is this project's house
+    // defect; the caller prints `?` for null and must be given the chance.
+    expect(frontedDeck(shWith("")), "an empty tab list is not a deck").toBeNull();
+    expect(
+      frontedDeck(shWith("- 0: (current) [Home - OneDrive](https://onedrive.live.com/)")),
+      "not a document",
+    ).toBeNull();
   });
 
   /**

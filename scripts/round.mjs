@@ -308,7 +308,8 @@ export function readiness({
   if (expectSize && size && size !== expectSize)
     refuse(
       "wrong-size",
-      `the deck is ${size} and this round was asked for ${expectSize} — set it in Design ▸ Slide Size and ` +
+      `the deck is ${size} and this round was asked for ${expectSize} — rerun with \`PW_SET_SIZE=1\` to have ` +
+        "the driver set it (a deck that EXISTS to be that profile only), or set it in Design ▸ Slide Size and " +
         "CHECK IT TOOK, because a click made while the document is loading is accepted and does nothing. " +
         "Filing a round under the wrong profile is worse than not running it.",
     );
@@ -544,6 +545,30 @@ export async function sideloadAddIn(sh, sleep, manifest = MANIFEST_PATH) {
  * taken, and `readiness` has its own, better-worded refusals for a browser that
  * is not answering.
  */
+/**
+ * The name of the document currently in front, or null.
+ *
+ * WHY A CHECK MUST SAY WHICH DECK IT CHECKED. Every line the readiness block
+ * printed described the round — build stamps, slide counts, the host's latency —
+ * without once naming the document it was describing. So a check run against
+ * the wrong deck read exactly like a check run against the right one, and on
+ * 2026-08-20 that is precisely what happened: the dedicated 4:3 deck was still
+ * 960x540, the notes recorded the 4:3 leg as "blocked on owner setup", and no
+ * output anywhere contradicted either belief.
+ *
+ * Null when the tab list could not be read or carries no document — a reading
+ * not taken, printed as `?` rather than guessed at. `readiness` has its own,
+ * better-worded refusals for a browser that is not answering.
+ */
+export function frontedDeck(sh) {
+  const line = sh("tab-list")
+    .split("\n")
+    .find((l) => l.includes("(current)"));
+  if (!line) return null;
+  const m = /\[([^\]]+\.pptx)\]/i.exec(line);
+  return m ? m[1] : null;
+}
+
 export function selectDeck(sh, deckName) {
   if (!deckName) return true;
   const line = sh("tab-list")
@@ -1072,15 +1097,31 @@ async function attempt(argv, deps, sh, healed = false) {
       console.log(`  the add-in is back — pane ${stamp ?? "still not readable"}`);
     }
   }
+  // WHICH DOCUMENT this check is about. Read from the tab list, so it costs
+  // nothing and works even when the host is silent — the case where knowing
+  // what you are looking at matters most.
+  const fronted = frontedDeck(sh);
   const ping = pane ? readPing(sh("eval", pingScript(8000), pane)) : null;
   // Only when the host is already answering: a slide resolve on a host that did
   // not survive `getCount` tells us nothing the ping has not, and costs 20s.
   const slideOk = pane && ping?.answered ? readSlideResolve(sh("eval", slideResolveScript(20000), pane)) : null;
-  // Only when a profile was asked for — an unasked question costs a round trip
-  // and answers nothing. `PW_EXPECT_SIZE=4:3` is how a nightly cycle says which
-  // arm this round belongs to.
+  // `PW_EXPECT_SIZE=4:3` is how a nightly cycle says which arm this round
+  // belongs to.
   const expectSize = process.env.PW_EXPECT_SIZE || null;
-  let size = expectSize && pane && ping?.answered ? readSlideSize(sh("eval", slideSizeScript(15000), pane)) : null;
+  // MEASURED EVERY CHECK, not only when a profile was asked for.
+  //
+  // This used to read the size ONLY when `PW_EXPECT_SIZE` was set, on the
+  // reasoning that an unasked question costs a round trip and answers nothing.
+  // That reasoning was wrong in the way that matters: AN INSTRUMENT THAT ONLY
+  // ANSWERS WHEN YOU TELL IT THE ANSWER CAN NEVER SURPRISE YOU. The dedicated
+  // 4:3 deck sat at 960x540 — a second 16:9 deck — from the day it was made
+  // until 2026-08-20, and every `--check` in between was silent about it,
+  // because nobody had run one with `PW_EXPECT_SIZE` set. The docs recorded the
+  // 4:3 leg as "blocked on owner setup" the whole time. It was not blocked; it
+  // was unmeasured, and the two are indistinguishable from the outside.
+  //
+  // The expectation now controls the COMPARISON only. The read is unconditional.
+  let size = pane && ping?.answered ? readSlideSize(sh("eval", slideSizeScript(15000), pane)) : null;
   // MAKE THE DECK WHAT THE LEG ASKED FOR, when the owner has opted in. See
   // `setSlideSizeScript` for why this is off by default: resizing the wrong deck
   // splits every comparison the archive rests on, and a misaimed `PW_DECK` would
@@ -1156,13 +1197,20 @@ async function attempt(argv, deps, sh, healed = false) {
   };
   const { ok, stop, codes } = readiness(state);
   console.log(
-    `  HEAD ${head ?? "?"} · site ${deployed ?? "?"} · pane ${stamp ?? "?"} · deck ${slides ?? "?"} slide(s)`,
+    `  HEAD ${head ?? "?"} · site ${deployed ?? "?"} · pane ${stamp ?? "?"} · deck ${slides ?? "?"} slide(s)` +
+      // WHICH DOCUMENT. Every line above described the round without ever
+      // saying what it was running against, so a check against the wrong deck
+      // read exactly like a check against the right one.
+      (fronted ? ` · ${fronted}` : ""),
   );
   console.log(
     `  verbose trace ${verbose ?? "?"} · picture every slide ${pictures ?? "?"}` +
-      // Printed only when asked for, so an ordinary 16:9 round reads exactly as
-      // it always has.
-      (expectSize ? ` · slide size ${size ?? "?"} (want ${expectSize})` : ""),
+      // PRINTED EVERY CHECK. It used to appear only when `PW_EXPECT_SIZE` was
+      // set, which meant the one state worth catching — a deck that is not the
+      // profile you believe it is — was invisible unless you already suspected
+      // it. `?` when the host did not answer: unreadable is not a size.
+      ` · slide size ${size ?? "?"}` +
+      (expectSize ? ` (want ${expectSize})` : ""),
   );
   console.log(
     `  host ${ping ? (ping.answered ? `answered in ${ping.ms}ms` : `SILENT for ${ping.ms}ms`) : "not asked — the pane is closed"}` +
