@@ -1502,6 +1502,59 @@ function reportOriginTagLosses(logs) {
  * archived before `driverSlideSize` existed is in that state, and reporting 116
  * of them as "consistent" would be a lie told by a denominator.
  */
+/**
+ * Is the SECOND round of a pair systematically worse than the first?
+ *
+ * The pair exists to separate a real fault from the host's mood, and both halves
+ * have been read as two samples of ONE condition. They are not. Pooled over
+ * every build this archive has run twice — 31 pairs on 2026-08-20 — the second
+ * round had more post-retry failures in 15, fewer in 2, and tied in 14.
+ *
+ * TIES ARE NOT COIN FLIPS. Most are older rounds whose counters sat at zero
+ * both times, so counting them as evidence of symmetry is how this nearly got
+ * waved away as noise: 15 against 2 among the pairs that moved is not a mood.
+ *
+ * Only the first two rounds of a build count, so a build run three times cannot
+ * vote twice — and if it is ever run three times deliberately, that is the
+ * experiment this finding asks for.
+ */
+export function poolPairPosition(logs) {
+  const KIND = (m, d) => {
+    const k = String(d.kind ?? "");
+    if (k) return k;
+    if (/came back empty/.test(m)) return "empty";
+    if (/named none/.test(m)) return "zero-match";
+    if (/matched only some/.test(m)) return "short";
+    return null;
+  };
+  const byBuild = new Map();
+  for (const log of logs ?? []) {
+    const build = String(log?.build ?? "").split(" ")[0];
+    if (!build) continue;
+    let post = 0;
+    for (const e of log?.trace?.entries ?? []) {
+      const d = e.data ?? {};
+      if (d.afterRetry === true && KIND(String(e.message ?? ""), d)) post++;
+    }
+    const deck = (log?.deck?.inventory ?? []).map((s) => s.count ?? s.shapes?.length ?? 0);
+    if (!byBuild.has(build)) byBuild.set(build, []);
+    byBuild.get(build).push({ post, deck: deck.reduce((a, b) => a + b, 0) });
+  }
+  let pairs = 0,
+    worse = 0,
+    better = 0,
+    tied = 0;
+  for (const rounds of byBuild.values()) {
+    if (rounds.length < 2) continue;
+    const [a, b] = rounds;
+    pairs++;
+    if (b.post > a.post) worse++;
+    else if (b.post < a.post) better++;
+    else tied++;
+  }
+  return { pairs, worse, better, tied };
+}
+
 export function poolProfileDisagreements(logs) {
   const out = [];
   for (const log of logs ?? []) {
@@ -1943,8 +1996,16 @@ function reportTagFaults(logs) {
     console.log(
       `    NOISE FLOOR, from one build run ${byBuild.get(worst.build).length}× : ${worst.build} scored ` +
         `${worst.lo} and ${worst.hi} for ${worst.k}\n` +
-        `    with NOTHING changed between them. A difference smaller than that is the host's mood.\n` +
-        `    Judge a change on a count that did NOT move, or on a trace line that appears where none did.`,
+        `    with NOTHING changed between them. A difference smaller than that is not evidence of a change.\n` +
+        `    Judge a change on a count that did NOT move, or on a trace line that appears where none did.\n` +
+        // CORRECTED 2026-08-20. This line said the spread WAS "the host's mood",
+        // which is a claim about its CAUSE and it is wrong. The spread has a
+        // direction: pooled over all 31 pairs this archive holds, the SECOND
+        // round of a build is worse than the first in 15 of the 17 pairs that
+        // moved at all. Mood is symmetric; this is not. Calling a directional
+        // effect noise is how it stayed invisible through nineteen pairs.
+        `    NOT symmetric: see PAIR POSITION below — the second run is usually the worse one,\n` +
+        `    so a floor measured this way includes an effect as well as noise.`,
     );
   else
     console.log(

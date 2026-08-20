@@ -28,6 +28,7 @@ import {
   poolScenarioPopulations,
   poolGroupingOutcome,
   poolProfileDisagreements,
+  poolPairPosition,
 } from "./triage.mjs";
 
 /**
@@ -157,6 +158,23 @@ if (isMain(import.meta.url, process.argv[1])) {
   // `PW_EXPECT_SIZE` reported a match, because the guard read the live host and
   // the archive recorded the pane. Loud, because a wrongly-filed round is worse
   // than a missing one: it answers.
+  // THE PAIR IS NOT TWO SAMPLES OF ONE CONDITION. Printed above everything that
+  // compares rounds, because every such comparison assumes it is.
+  const pos = poolPairPosition(rounds);
+  if (pos.pairs >= 4) {
+    const moved = pos.worse + pos.better;
+    console.log(
+      `
+  PAIR POSITION — over ${pos.pairs} build(s) run twice: the SECOND round was worse ` +
+        `${pos.worse}x, better ${pos.better}x, unchanged ${pos.tied}x`,
+    );
+    if (moved > 0 && pos.worse > pos.better * 2)
+      console.log(
+        `    ${pos.worse} of the ${moved} pairs that moved went the same way. That is a direction, not a mood —
+` + `    do not read a 1st-round number against a 2nd-round one, and do not average the two.`,
+      );
+  }
+
   const disagreed = poolProfileDisagreements(rounds);
   if (disagreed.length) {
     console.log(`
