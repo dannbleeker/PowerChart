@@ -1531,7 +1531,7 @@ describe("updateChartInSlide", () => {
       }
     });
 
-    it("refuses to report growth the host has not settled on", async () => {
+    it("keeps the second read and marks it unsettled, rather than dropping both", async () => {
       // ROUND 084, AND THE ONLY NON-ZERO NUMBER THIS INSTRUMENT HAS EVER
       // PRODUCED. Four slides reported growing by 23 shapes each. The deck
       // inventory taken at the end of that same round showed each of them
@@ -1561,12 +1561,22 @@ describe("updateChartInSlide", () => {
         faults.shapeCountLag = 2;
         faults.shapeCountLagBy = 23;
         await updateChartsInSlides([{ scene, target: found[0].target, opts: { tagData: "cfg" } }]);
+        // KEPT AND FLAGGED, not dropped. This test used to assert the reading
+        // vanished — and dropping it threw away the only half that is ever
+        // right. Measured across the archive: of 76 discarded readings the deck
+        // can adjudicate all 76, the SECOND read matched its final count 48
+        // times, and the FIRST matched it ZERO times. The first read is the
+        // known-stale one, taken before the host has caught up with an addGroup
+        // it has already committed — which is why it reads 24 where the slide
+        // holds 1.
         const line = orphanLine();
-        expect(line, "reported a number the two reads never agreed on").toBeFalsy();
-        // And it must SAY it could not measure, or a dropped reading is
-        // indistinguishable from a round that never ran an update.
+        expect(line, "threw away the second read, which is the one the deck backs").toBeTruthy();
+        const d = line?.data as { settled: boolean };
+        // The flag has to be a MEASUREMENT. It was hardcoded `true`, which was
+        // only ever correct because a disagreeing slide never got this far.
+        expect(d.settled, "asserted agreement about a reading that had none").toBe(false);
         const unsettled = traceLog().entries.find((e) => /would not settle/.test(e.message));
-        expect(unsettled, "dropped the reading silently").toBeTruthy();
+        expect(unsettled, "took the second read silently").toBeTruthy();
       } finally {
         setTracing(false);
         faults.shapeCountLag = 0;

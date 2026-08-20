@@ -1287,9 +1287,25 @@ function reportUpdateShortfalls(logs) {
     console.log(
       `    #586's subset branch has not run in this pool: 0 partially-grouped chart(s). It is
 ` +
-        `    reached only by a re-read still SHORT after the settled retry, which has not
+        `    reached only by a re-read still SHORT after the settled retry, which no round
 ` +
-        `    happened once since that retry shipped — so nothing here tests it either way.`,
+        `    has recorded. Read that as a FLOOR, not a count: until 2026-08-20 the COLD
+` +
+        `    read's outcome was never traced at all, so "none since the retry" compared a
+` +
+        `    post-settle read against 42 archived COLD ones. Different units. The cold read
+` +
+        `    is traced now, and the next rounds can say whether the fault went or is hidden.`,
+    );
+  if (o.unsettledKept)
+    console.log(
+      `    ${o.unsettledKept} reading(s) the two host reads DISAGREED on, kept and flagged rather than
+` +
+        `    dropped (${o.unsettledGrowth} shape(s) of growth between them, not pooled above). The second
+` +
+        `    read is taken: across the archive the deck adjudicates every one of these and backs the
+` +
+        `    second 48 times against the first's zero. A fifth of this instrument used to vanish here.`,
     );
   // THE INSTRUMENT'S OWN ERROR RATE, which is a number worth printing: this
   // reading has produced four false positives in two days, every one of them a
@@ -2048,6 +2064,9 @@ export function poolUpdateShortfalls(logs) {
     unitMismatch: 0,
     ungroupedCharts: 0,
     atRisk: 0,
+    /** Readings whose two host reads disagreed — kept, flagged, never pooled. */
+    unsettledKept: 0,
+    unsettledGrowth: 0,
     /** Shapes #586 left loose ON PURPOSE, and the charts that left them. */
     strandedByDesign: 0,
     subsetGroups: 0,
@@ -2123,8 +2142,23 @@ export function poolUpdateShortfalls(logs) {
       // mismatched-unit language; round 084 speaks `growth` but from a single
       // host read, and every non-zero number it produced was the host lagging a
       // group it had already committed.
-      if (d.growth === undefined || d.settled !== true) {
+      // ABSENT and FALSE are different now, and lumping them lost the
+      // distinction. Absent means a pre-2026-08-16 build whose numbers are in
+      // mismatched units and cannot be read at all. FALSE means a reading the
+      // instrument deliberately kept: the two host reads disagreed, and the
+      // SECOND one was taken because across the archive the deck adjudicates all
+      // 76 such readings and backs the second 48 times against the first's zero.
+      //
+      // Still not pooled with settled readings — an unsettled number is weaker
+      // evidence and mixing them would hide that. Counted and reported, because
+      // a fifth of this instrument's output used to vanish in silence.
+      if (d.growth === undefined || d.settled === undefined) {
         out.unitMismatch++;
+        continue;
+      }
+      if (d.settled === false) {
+        out.unsettledKept++;
+        if (Number(d.growth) > 0) out.unsettledGrowth += Number(d.growth);
         continue;
       }
       // Checked BEFORE the reading is pooled, and counted rather than dropped

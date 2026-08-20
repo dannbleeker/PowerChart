@@ -550,9 +550,17 @@ saying this here:
 2. **The re-read WAS fixed, which is why neither harm is being chosen.** The
    settled retry (`REREAD_RETRY_MS`) repairs it: rounds 079-087 report
    `repaired=5, re-editable=8` every time, `same scale across the deck` passes,
-   and there have been 0 short re-reads since the retry shipped (42 in the whole
-   archive, `afterRetry: true` on none of them). "Fix the re-read and neither
-   harm has to be chosen" was the right instruction and it has been carried out.
+   and no round records a short re-read since the retry shipped (42 in the whole
+   archive, the `afterRetry` field ABSENT on every one — it postdates them all).
+   "Fix the re-read and neither harm has to be chosen" was the right instruction
+   and it has been carried out.
+
+   **CORRECTED 2026-08-20 — that zero is a floor, not a count.** Until then the
+   COLD read's outcome was never traced: attempt 0 pushed the entry onto the
+   retry list and returned in silence. So "0 since the retry" compared a
+   post-settle read against 42 COLD ones — different units, and the archive
+   could not distinguish "the fault stopped happening" from "the retry hides
+   it". The cold read is traced now; a few rounds will say which.
 
 So chart 4 does NOT match 20 of 24 any more — 084-087 group every chart with
 `partial:0`. #586's subset branch is presently unreachable on this host, which is

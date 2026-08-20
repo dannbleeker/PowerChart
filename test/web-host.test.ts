@@ -1714,12 +1714,25 @@ describe("what a group that SUCCEEDS leaves behind", () => {
       expect(short[0].data?.contextSyncs, "the re-read named no sync, so the decay curve loses its x-axis").toEqual(
         expect.any(Number),
       );
-      // AND THAT A SETTLE DELAY DID NOT SAVE IT. `readsMissing` is permanent, so
-      // this chart was asked twice and answered short both times — which is what
-      // makes the trade a real trade rather than an impatient one. Without this
-      // the line could not be told apart from a first answer nobody waited on,
-      // and that is the reading a round log needs most.
-      expect(short[0].data?.afterRetry, "a short read was declared final without a second ask").toBe(true);
+      // AND THAT A SETTLE DELAY DID NOT SAVE IT — asserted on the RETRY LINE,
+      // not on `afterRetry`.
+      //
+      // `afterRetry: true` is a hardcoded literal at three sites in
+      // powerpoint.ts. It cannot read false while the line exists, so asserting
+      // it only re-checks that the line is there, which the length assertion
+      // above already does. The comment here used to claim it proved the chart
+      // "was asked twice and answered short both times". It proved no such
+      // thing.
+      //
+      // The settle-delay line is the evidence, because it is emitted by the
+      // retry actually running — the sibling test above already asserts it this
+      // way. And the cold-read line now says what the FIRST answer was, which is
+      // the half the archive could never see.
+      const settled = said.filter((e) => /after a settle delay/.test(e.message));
+      expect(settled.length, "nothing shows the retry ever ran").toBeGreaterThanOrEqual(1);
+      const cold = said.filter((e) => /the cold re-read fell short/.test(e.message));
+      expect(cold.length, "the first answer went unrecorded, which is the units bug").toBeGreaterThanOrEqual(1);
+      expect(cold[0].data?.kind).toBe("short");
       // THE GROUP FORMED, and says how much of the chart it holds. `left=0:4` is
       // the cost of the trade, reported rather than inferred from a deck.
       const groups = said.filter((e) => e.message === "grouped the chart's shapes");

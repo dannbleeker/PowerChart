@@ -585,12 +585,23 @@ The counter now also requires the chart to have drawn more than one shape, which
 takes the archive's count to 0. **So the stranding question has never had a
 single sample**, and a round that groups everything still cannot answer it.
 
-**And the subset branch has not run yet.** Across 63 rounds there are 42 short
-re-reads and `afterRetry: true` on exactly none of them: every one predates the
-settled retry, and since the retry no re-read has come back short at all
-(0 in rounds 079-087, whose verdict line reads `repaired=5, re-editable=8` in all
-nine). So #586's branch is presently unreachable on this host, and a round that
-passes says nothing about it either way.
+**And the subset branch has not run yet — but read that as a FLOOR.** Across 86
+rounds there are 42 short re-reads, all in rounds 023-063, and the `afterRetry`
+field is ABSENT on every one of them (not false — absent; the field postdates
+them all). Five of the 42 matched only 10 of 24, a minority, so even in that
+regime they would have taken `grouping: "nothing"` rather than the subset path.
+
+**The comparison was in different units until 2026-08-20.** "No re-read has come
+back short since the retry" measured a POST-SETTLE read against 42 archived COLD
+ones — and the cold read's outcome was never traced: attempt 0 pushed the entry
+onto the retry list and returned in silence. So the archive could not say whether
+the cold read still comes back short, which is the difference between "the fault
+went away" and "the retry hides it". Those want opposite responses.
+
+The cold read is traced now (`the cold re-read fell short — asking again after
+the settle`, with `kind`). Until a few rounds carry it, #586's branch is best
+described as **starved** rather than unreachable, and a round that passes still
+says nothing about it either way.
 
 ### Every round before 2026-08-16 was 16:9
 
