@@ -2214,3 +2214,46 @@ timeout to tune.
 - **The visibility skip is now in both rounds** where 096/097 split one-each. The
   control render's availability moves; the verdict reports which, which is all it
   was ever supposed to do.
+
+## Rounds 102 + 103 — f3e3941 — the retry is taken back by the rounds that tested it
+
+Both 12/13. The two scenario problems did not replicate — 102's
+`insert onto a slide that already has content` and 103's visibility skip are one
+each, which is weather. **The deck-style regime replicated exactly**, and it is
+worse than the one before it.
+
+    rounds     build      probe says
+    096-099    pre-retry  the namespace IS reachable
+    100, 101   504033c    the namespace IS reachable   (count-first, NO retry)
+    102, 103   f3e3941    the namespace is UNREACHABLE too, at `counting the
+                          deck's style parts`
+
+**Two rounds on each side of one commit, and that commit is mine.** The probe had
+answered on every round it ever ran — that was the whole evidence for "the second
+call works" — and it stopped the moment the read began making two calls of its own
+ahead of it.
+
+The plain reading: the read's retry **spends the good second call**. The probe,
+now third, gets the same nothing the first one got. A trace line appearing where
+none did is one of the two readings this project treats as real, and this one has
+a pair on each side.
+
+**So the retry is reverted.** I wrote, one round earlier, "the retry stays; it is
+simply not the whole cure" — that was too generous to my own change. It is not
+merely not a cure: on this host it moved the failure from one call to the whole
+surface, and on the interactive path it made a person wait two budgets instead of
+one before being told.
+
+What survives is the diagnosis it was built on — the first customXmlParts call
+after a pane loads is the one that fails — and the instrument honest enough to
+show the retry backfiring. Spending the bad call is still the right shape; doing
+it INSIDE this read is not, because this read is what the probe measures.
+Somewhere earlier in pane start, once, is the version worth trying next.
+
+**And the ledger said HELD for round 102 before I read the round.** The claim
+named one of the probe's two failure lines and the round produced the other, so
+the named line was genuinely absent and the entry read as a cure while the read
+had failed both attempts. A false HELD, in my own claim, of exactly the kind this
+file spends its time finding elsewhere. `trace-line-present` takes a `scope` now,
+so an absence claim can name the whole family, and the verdict says which of the
+two it matched rather than quoting the one it did not use.

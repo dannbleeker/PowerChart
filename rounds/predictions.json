@@ -145,7 +145,23 @@
       "kind": "trace-line-present",
       "message": "the namespace IS reachable — the fault is further in",
       "insteadOf": "round starting",
-      "absent": true
+      "absent": true,
+      "scope": "deck-style"
+    },
+    "outcome": "failed",
+    "judgedOn": "102-f3e3941",
+    "what-happened": "FAILED — and the ledger first said HELD, which was a false positive in MY OWN CLAIM. The claim named one of the probe's two failure lines. Round 102 produced the OTHER one — `the namespace is unreachable too`, `failedAt: counting the deck's style parts`, a 10s timeout — so the named line was genuinely absent and the entry read as a cure while the read had in fact failed BOTH attempts and the probe's own getCount had timed out too. A claim is only as good as the number of messages the thing it watches can produce. `trace-line-present` now accepts a `scope`, so an absence claim can name the whole family instead of one sentence, and the verdict says which of the two it matched rather than quoting the message it did not use. This entry carries `scope: deck-style` and re-judges as FAILED. WHAT IT MEANS FOR THE DIAGNOSIS: 'the first call fails, the second works' is REFUTED as a complete account. Round 102 had the whole customXmlParts surface unresponsive — first call AND retry AND the probe. Rounds 100/101 remain real, so there are at least two regimes: a bad first call, and whole stretches where the surface answers nothing. The retry is still worth keeping for the first, and it is not a cure for the second. Needs the pair in 103 before going further."
+  },
+  {
+    "id": "removing-the-retry-gives-the-probe-its-answer-back",
+    "madeIn": "#603",
+    "afterBuild": "f3e3941",
+    "madeOn": "2026-08-20",
+    "because": "MY OWN CHANGE, ON TRIAL. The retry shipped in #602 and the very next pair took it back. Two rounds either side of that one commit and nothing else different: 096-099 and 100/101 all report `the namespace IS reachable`; 102 and 103, the first two rounds WITH the retry, both report `the namespace is unreachable too` at `counting the deck's style parts`. The probe had answered on every round it ever ran — that was the entire evidence for 'the second call works' — and it stopped answering the moment the read began making two calls of its own ahead of it. The plain reading is that the read's retry SPENDS the good second call, leaving the probe third and getting the same nothing the first call got. HELD means the probe answers again with the retry gone, which would confirm the read was starving it and that spending the bad call has to happen somewhere other than inside this read. FAILED means the regime changed for a reason that is not mine, the revert is wasted motion, and the two builds differ for something nobody has found — which is worth knowing before any more is built on top.",
+    "claim": {
+      "kind": "trace-line-present",
+      "message": "the namespace IS reachable — the fault is further in",
+      "insteadOf": "the namespace is unreachable too"
     },
     "outcome": "open"
   }
