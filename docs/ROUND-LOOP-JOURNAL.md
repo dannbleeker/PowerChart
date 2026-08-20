@@ -2331,3 +2331,46 @@ opposite directions, three rounds apart.
 Grouping, seventh pair: 20/0 then 17/2. 106 skipped `the chart is actually
 visible` and 107 passed it — the control render moving again, which is what the
 skip exists to report.
+
+## Rounds 108 + 109 — f47a6d4 — the deck-style read is cured, and the round SAYS so
+
+Both rounds carry `the deck-style read answered`, `parts: 0`, at `counting the
+deck's style parts` — the call that had failed on every measured round since 089.
+Positive evidence, twice, on one build.
+
+**The whole arc, from the archive:**
+
+    089, 090   —          hung 90s, no probe existed yet
+    096-101    5 builds   probe: namespace reachable, read still failing
+    102, 103   my retry   probe: UNREACHABLE too
+    104, 105   reverted   probe: reachable again
+    106, 107   warm-up    silent — cure or silence, indistinguishable
+    108, 109   + success  THE READ ANSWERED
+
+Twenty rounds. The fault was one sentence long the whole time: **the first
+`customXmlParts` call after a pane loads does not work, and the second does.**
+
+### What it cost to find, and why
+
+Three wrong turns, each caught by a round:
+
+1. **A retry inside the read** (#602), reverted by the next pair (#603). The read
+   is what the probe measures, so a retry there spends the very call the
+   measurement depends on. Two pairs bracketing one commit said so.
+2. **A false HELD** — the claim named one of the probe's two failure lines and
+   the round produced the other, so a genuine failure read as a cure.
+3. **An absence claim** that could not tell a cure from a read that never ran,
+   which is the same defect as (2) pointed the other way.
+
+And the instrument only became useful when it stopped asserting: its `meaning`
+field was a hardcoded sentence naming `getOnlyItemOrNullObject`, and it kept
+printing that on builds where the count ran first. The moment it reported the
+operation it had actually observed, the diagnosis fell out in one round.
+
+**Nothing here fixes the host.** The bad first call is still bad; the warm-up
+makes it the throwaway rather than the one a person waits on. Remove the warm-up
+and the failure returns — that is what the guard pins and what 089-105 record.
+
+Grouping, eighth pair: 20/0 then 18/2. Both rounds skipped `the chart is actually
+visible`; the control render has been unavailable on this build across four
+rounds now, which is worth watching but is exactly what the skip is for.
