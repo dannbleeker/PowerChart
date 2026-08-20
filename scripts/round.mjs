@@ -1565,6 +1565,20 @@ async function collectRound(sh, stamp, sleep, driverSize = null) {
   // line used to claim the opposite whatever happened.
   if (sweepDeck(sh)) console.log("  deck swept — the next round starts clean");
   else console.error("  the deck was NOT swept — the next round will refuse until it is");
+
+  // A CLEAN DECK IS NOT A CLEAN PANE, and until 2026-08-20 this line was the
+  // only thing standing between one round and the next. The pane's age at a
+  // round's start separates post-retry 0.43 from 4.57 and a 16-shape deck from
+  // a 60+ one; sweeping clears the slides and leaves the pane exactly as the
+  // last round left it. Every second round in this archive is a degraded
+  // sample because of it.
+  //
+  // AFTER the sweep, because `sweepDeck` needs the pane it is about to replace.
+  // Best-effort like everything else here: the round is already archived, and a
+  // driver that turned a good round into a non-zero exit over housekeeping
+  // would be worse than the housekeeping.
+  if (await refreshPane(sh, sleep)) console.log("  pane reloaded — the next round starts on a fresh one");
+  else console.error("  the pane did NOT reopen — the next round will recover before it can run");
   return filed;
 }
 
@@ -1816,17 +1830,53 @@ export async function recover(sh, sleep, profile = PROFILE_DIR) {
       dialog,
     );
   else sh("reload");
+
+  const pane = await refreshPane(sh, sleep, { reloaded: true });
+
+  sweepDeck(sh);
+  return pane;
+}
+
+/**
+ * Give the deck a FRESH PANE: reload the tab, reopen the pane, select Automation.
+ *
+ * WHY A ROUND NEEDS THIS AND A DECK SWEEP IS NOT ENOUGH. The pane's age when a
+ * round starts is the best predictor of what that round reports. Rounds 110-123,
+ * split on it:
+ *
+ *     fresh pane (<200s)   post-retry 0, 2, 0, 0, 0, 1, 0   deck mostly 16
+ *     reused pane          post-retry 0, 5, 7, 3, 8, 7, 2   deck 45-97
+ *
+ * Mean 0.43 against 4.57. Sweeping the deck clears the SLIDES and leaves
+ * whatever the pane itself accumulated, so the second round of every pair in
+ * this archive has been a degraded sample — and that degradation was published
+ * three times as a property of the profile, of the position, and of the
+ * observer before anyone measured the pane's age.
+ *
+ * ONE IMPLEMENTATION, extracted from `recover` rather than copied beside it.
+ * This repo has already paid for a second copy of a sweep: `recover` grew a
+ * hardcoded deck name that went stale, and the fix was to have exactly one of
+ * everything. `recover` still owns the browser-death and crash-dialog handling
+ * that must happen BEFORE the reload; it hands the rest here.
+ *
+ * `reloaded` says whether the caller has already issued the reload — `recover`
+ * has, because it must choose between a crash dialog's Refresh button and a
+ * plain reload. Anyone else has not.
+ */
+export async function refreshPane(sh, sleep, { reloaded = false } = {}) {
+  if (!reloaded) sh("reload");
   await sleep(55000);
 
   const pane = refFor(sh, "Insert chart", /button "Insert chart"/);
   if (pane) clickRef(sh, pane);
   await sleep(20000);
 
+  // AUTOMATION, or the next round's readiness reads `verbose trace ?` and the
+  // run button is not in the DOM. A pane always reopens on Chart.
   const automation = refFor(sh, "Automation", /tab "Automation"/);
   if (automation) clickRef(sh, automation);
   await sleep(5000);
 
-  sweepDeck(sh);
   return Boolean(pane);
 }
 
