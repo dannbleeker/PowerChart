@@ -195,6 +195,8 @@
       "message": "the deck-style read answered",
       "insteadOf": "round starting"
     },
-    "outcome": "open"
+    "outcome": "held",
+    "judgedOn": "108-f47a6d4",
+    "what-happened": "HELD, on positive evidence for the first time in this investigation. Round 108 carries `the deck-style read answered` with `parts: 0`, `at: counting the deck's style parts` and `observedBeforeTheRound: true` — so the read RAN, got past the call that had failed on every measured round since 089, and the replay carried the verdict across the trace mark. That closes the ambiguity rounds 106 and 107 left: their quiet was a cure and not a read that never ran, and the warm-up is now credited rather than merely kept. Three rounds since it landed, none with a failure, and one that says why. WHAT IS STILL TRUE: the first customXmlParts call after a pane loads is still the bad one. Nothing here fixes the host; the warm-up simply makes that call the throwaway instead of the one a person is waiting on. If the next build ever removes the warm-up, the failure returns — that is what the guard in office-render.test.ts pins, and what the archive from 089 to 105 records."
   }
 ]
