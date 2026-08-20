@@ -1382,33 +1382,78 @@ async function countSlideShapesOnce(ids: string[]): Promise<Map<string, number>>
  * is not there — which is what this instrument did on its first outing, in the
  * one round it has ever produced a non-zero number.
  *
- * Two reads a settle-delay apart, and a slide whose reads disagree is reported
- * as UNMEASURABLE rather than as a number. `REREAD_RETRY_MS` is the same delay
- * `groupAndTagAll` already uses against this same class of host lag.
+ * Two reads a settle-delay apart. A slide whose reads disagree used to be
+ * dropped entirely — and that threw away the only half that is ever right.
+ *
+ * MEASURED ACROSS THE ARCHIVE: 76 readings were discarded this way, the deck can
+ * adjudicate ALL 76, and
+ *
+ *     the SECOND read matched the deck's final count   48 times
+ *     the FIRST read matched it                         0 times, never once
+ *
+ * (the other 28 are slides whose count changed again afterwards, where neither
+ * read can be checked — not cases where the first was right). The first read is
+ * the known-stale one: it is taken before the host has caught up with an
+ * `addGroup` it has already committed, which is why it reads 24 where the slide
+ * holds 1.
+ *
+ * So the second read is kept and MARKED as unsettled, rather than thrown away.
+ * The pool decides what an unsettled reading is worth; discarding a fifth of the
+ * instrument's output — concentrated on exactly the freshly-added slides it
+ * exists to measure — was deciding that for it.
  */
-async function slideShapeCounts(slideIds: string[], settle = false): Promise<Map<string, number>> {
+/**
+ * What the COLD re-read said, before the settled retry got its turn.
+ *
+ * THE HOLE THIS FILLS MADE A SENTENCE UNREADABLE. Every claim of the form "no
+ * re-read has come back short since the retry shipped" compares a POST-SETTLE
+ * read against the 42 archived short reads, which were all COLD — different
+ * units, and the archive cannot tell you whether the cold read still comes back
+ * short, because attempt 0 pushed to `retry` and returned in silence.
+ *
+ * So #586's subset branch being unexercised may mean the fault has gone, or may
+ * mean the retry hides it. Those want opposite responses and nothing could
+ * separate them.
+ *
+ * TRACED, NOT COUNTED. `hostFriction` deliberately ignores a first answer that a
+ * settled re-read then fills in — reporting the host as failing on a chart that
+ * came out fine would be the opposite error. Recording what happened is a
+ * different thing from blaming the host for it.
+ */
+function traceColdReRead(kind: "empty" | "zero-match" | "short", data: Record<string, unknown>): void {
+  trace("group", "the cold re-read fell short — asking again after the settle", { kind, ...data });
+}
+
+async function slideShapeCounts(
+  slideIds: string[],
+  settle = false,
+): Promise<{ counts: Map<string, number>; unsettled: Set<string> }> {
   const ids = [...new Set(slideIds)].filter(Boolean);
-  if (!ids.length) return new Map();
+  if (!ids.length) return { counts: new Map(), unsettled: new Set() };
   // The BEFORE reading needs no second opinion: nothing has just been committed
   // for the host to be behind on. Only the after-reading follows an addGroup,
   // and only it pays the delay.
-  if (!settle) return countSlideShapesOnce(ids);
+  if (!settle) return { counts: await countSlideShapesOnce(ids), unsettled: new Set() };
   const first = await countSlideShapesOnce(ids);
   await new Promise((r) => setTimeout(r, COUNT_SETTLE_MS));
   const second = await countSlideShapesOnce(ids);
-  const out = new Map<string, number>();
+  const counts = new Map<string, number>();
+  const unsettled = new Set<string>();
   for (const [id, n] of second) {
-    // Both ends, and agreeing. A slide only one read answered for has not
-    // settled either — there is no second opinion to hold it to.
-    if (first.get(id) === n) out.set(id, n);
-    else
-      trace("update", "a slide's shape count would not settle — not counting it", {
+    // The second read either way — it is the one the deck has never contradicted
+    // in favour of the first. A slide whose reads disagree is KEPT and flagged,
+    // so the reader can weigh it instead of never seeing it.
+    counts.set(id, n);
+    if (first.get(id) !== n) {
+      unsettled.add(id);
+      trace("update", "a slide's shape count would not settle — taking the second read", {
         slideId: id,
         first: first.get(id) ?? null,
         second: n,
       });
+    }
   }
-  return out;
+  return { counts, unsettled };
 }
 
 /**
@@ -1471,6 +1516,8 @@ function reportOrphanedShapes(
   before: Map<string, number>,
   after: Map<string, number>,
   churn: Map<string, { removed: number; drew: number; charts: number; withParts: number; atRisk: number }>,
+  /** Slides whose two reads disagreed — kept, but not to be weighed as settled. */
+  unsettled: Set<string> = new Set(),
 ): void {
   for (const [slideId, c] of churn) {
     const b = before.get(slideId);
@@ -1490,7 +1537,14 @@ function reportOrphanedShapes(
       // the host lagging an addGroup it had already committed. Entries without
       // this field come from that build and cannot be told apart from real
       // growth by their values alone, so the pool quarantines them.
-      settled: true,
+      //
+      // A MEASUREMENT, NOT A LITERAL. This was hardcoded `true`, which was
+      // tautologically correct only because a disagreeing slide never reached
+      // here — it was dropped upstream. Now that the second read is kept, the
+      // flag has to say which it is, or it would assert agreement about the one
+      // fifth of readings that had none. Third time this session a field turned
+      // out to be stating a conclusion rather than reporting one.
+      settled: !unsettled.has(slideId),
       charts: c.charts,
       // The discriminator. Growth on charts that HAD a parts list is an ordinary
       // change of size; growth on charts without one is the stranding.
@@ -1858,7 +1912,7 @@ export async function updateChartsInSlides(
    */
   const watching = tracing();
   const countsBefore = watching
-    ? await slideShapeCounts(items.map((i) => i.target.slideId))
+    ? (await slideShapeCounts(items.map((i) => i.target.slideId))).counts
     : new Map<string, number>();
   const churn = new Map<string, { removed: number; drew: number; charts: number; withParts: number; atRisk: number }>();
   /**
@@ -2323,8 +2377,10 @@ export async function updateChartsInSlides(
   });
   // OUTSIDE THE RUN, so the count is settled: one taken inside would be the
   // context's own stale view of a slide it has just been adding to.
-  if (watching && churn.size)
-    reportOrphanedShapes(countsBefore, await slideShapeCounts([...churn.keys()], true), churn);
+  if (watching && churn.size) {
+    const after = await slideShapeCounts([...churn.keys()], true);
+    reportOrphanedShapes(countsBefore, after.counts, churn, after.unsettled);
+  }
 
   // Outside the run, for the reason the insert path is: the context that could
   // not write the tag cannot write it now either.
@@ -8464,6 +8520,7 @@ async function groupAndTagAll(
             // on a chart that came out fine, and `emptyReReads` is read as a
             // per-round friction number.
             if (!lastAttempt) {
+              traceColdReRead("empty", { index: i, drew: it.created.length, listed: items?.length ?? 0 });
               retry.push(entry);
               return;
             }
@@ -8509,6 +8566,7 @@ async function groupAndTagAll(
           // about to be declined anyway, and if the second look matches nothing
           // either then everything below behaves exactly as it did before.
           if (!matched.length && !lastAttempt) {
+            traceColdReRead("zero-match", { index: i, drew: it.created.length, listed: items?.length ?? 0 });
             retry.push(entry);
             return;
           }
@@ -8525,6 +8583,7 @@ async function groupAndTagAll(
             // settled re-read has said the same thing twice is the trade below a
             // real trade.
             if (!lastAttempt) {
+              traceColdReRead("short", { index: i, drew: it.created.length, matched: matched.length });
               retry.push(entry);
               return;
             }
