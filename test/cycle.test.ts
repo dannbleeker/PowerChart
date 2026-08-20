@@ -28,6 +28,17 @@ describe("a night's cycle", () => {
     // Different decks — a 4:3 leg on the 16:9 deck would file a round under a
     // profile it was not measured at.
     expect(plan[0].deck).not.toBe(plan[2].deck);
+
+    // THE NAMES, PINNED, because "they differ" is what this test used to check
+    // and it passed happily while the 4:3 default named `Presentation66` — a
+    // deck that no longer existed. An unattended night would have refused its
+    // whole validation leg with `deck-missing`.
+    //
+    // A unit test cannot know what is open in a browser, so this pin only makes
+    // a change DELIBERATE. The live check is `node scripts/round.mjs --check`,
+    // which now prints the fronted document and its measured slide size.
+    expect(plan[0].deck).toBe("Presentation64");
+    expect(plan[2].deck).toBe("Presentation67");
   });
 
   it("carries on after a round whose scenarios failed", () => {

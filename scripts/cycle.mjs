@@ -40,7 +40,17 @@ import { RECEIPT_PATH } from "./round.mjs";
  * profile — without it a 4:3 leg run against a 16:9 deck files a round under a
  * profile it was not measured at, and every later comparison inherits that.
  */
-export function cyclePlan({ wide = "Presentation64", tall = "Presentation66" } = {}) {
+// `tall` IS THE DECK THAT EXISTS, and this default has already been wrong once.
+//
+// It said `Presentation66` until 2026-08-20, while the deck actually created,
+// sideloaded and left open for the 4:3 leg was `Presentation67`. An unattended
+// cycle would have fronted a tab that is not there and refused the whole leg
+// with `deck-missing` — which is at least loud, but the night would still have
+// lost its validation arm. The driver's own comments record the same trap one
+// layer down (`recover` hard-coded `Presentation63` after the deck became
+// `Presentation64`). A deck name is not a constant; it is a fact about the
+// browser, and it goes stale every time a document is remade.
+export function cyclePlan({ wide = "Presentation64", tall = "Presentation67" } = {}) {
   return [
     { leg: 1, deck: wide, size: "16:9", why: "the measurement" },
     { leg: 2, deck: wide, size: "16:9", why: "the pair — one round is never evidence" },

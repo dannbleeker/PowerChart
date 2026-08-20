@@ -648,10 +648,24 @@ as a tab, and a leg runs with:
 
     PW_DECK="<the 4:3 deck>" PW_EXPECT_SIZE=4:3 node scripts/round.mjs --dir .pw-session --retry 6
 
-Both halves of that setup are owner-only: creating the deck, and sideloading into
-it. `sideloadAddIn` exists but has never once succeeded on a real host — its only
-live outing was against a disconnected document, where every ribbon button was
-disabled.
+Creating the deck and sideloading into it are owner-only. `sideloadAddIn` exists
+but has never once succeeded on a real host — its only live outing was against a
+disconnected document, where every ribbon button was disabled.
+
+**SETTING THE SIZE IS NOT OWNER-ONLY, and this paragraph said it was until
+2026-08-20.** `PW_SET_SIZE=1` writes `slideWidth`/`slideHeight` through the pane.
+
+**AND THE REAL BLOCKER WAS NEITHER HALF.** `Presentation67` was created and
+sideloaded, its pane opened on demand, and `recover()` healed a silent host on it
+without a password. What was wrong is that the deck was still **960x540 — a
+second 16:9 deck** — and nothing had ever measured it, because `--check` read the
+slide size ONLY when `PW_EXPECT_SIZE` was set. An instrument that answers only
+when you tell it the answer cannot surprise you, so "blocked on owner setup" went
+unchallenged for days while the setup was in fact complete.
+
+The check now reads the size every time and names the fronted document, and
+`cyclePlan`'s 4:3 default names the deck that exists rather than one that does
+not.
 
 ### The cycle runner already drives the 4:3 leg
 
