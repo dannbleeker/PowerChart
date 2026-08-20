@@ -155,7 +155,11 @@ if (isMain(import.meta.url, process.argv[1])) {
     const { now, refusedMedian, rounds: priorRounds } = grouping;
     console.log(
       `  GROUPING, which no scenario verdict reports: ${now.grouped} chart(s) grouped, ` +
-        `${now.refused} refused (usually ${refusedMedian} over ${priorRounds} prior round(s))`,
+        // NO BASELINE IS NOT A BASELINE OF ZERO. This used to print `usually 0`
+        // when there was no history at all, which reads as "clean until now".
+        (refusedMedian === null
+          ? `${now.refused} refused (no baseline — ${priorRounds} prior round(s) is too few to say what is usual)`
+          : `${now.refused} refused (usually ${refusedMedian} over ${priorRounds} prior round(s))`),
     );
     console.log(`    the deck ended holding ${now.deck.join(",")} shape(s) per slide`);
     if (now.refused > 0)

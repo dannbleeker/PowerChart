@@ -1691,13 +1691,36 @@ describe("grouping, which no scenario verdict reports", () => {
     const out = poolGroupingOutcome([
       round("a", 20, 2, [1, 1, 1]),
       round("a", 20, 0, [0, 4, 2, 5, 1, 1, 1]),
+      round("a", 20, 2, [1, 1, 1]),
       round("a", 15, 4, [0, 4, 2, 17, 24, 24, 24]),
     ]);
-    // priors are [2, 0]; sorted [0, 2] and the median index lands on the upper,
-    // so the baseline is 2. The conservative direction: a higher baseline flags
-    // LESS, and this line is a reason to read rather than a verdict.
-    expect(out).toMatchObject({ now: { grouped: 15, refused: 4 }, refusedMedian: 2, rounds: 2 });
+    // priors are [2, 0, 2]; sorted [0, 2, 2] and the median index lands on the
+    // middle, so the baseline is 2. The conservative direction: a higher
+    // baseline flags LESS, and this line is a reason to read, not a verdict.
+    expect(out).toMatchObject({ now: { grouped: 15, refused: 4 }, refusedMedian: 2, rounds: 3 });
     expect(out?.now.deck, "the deck is printed as corroboration, not derived from").toEqual([0, 4, 2, 17, 24, 24, 24]);
+  });
+
+  it("refuses to name a usual until three rounds have been seen", () => {
+    // THE HOUSE DEFECT, caught in a second emitter. With too little history this
+    // used to report `refusedMedian: 0` — indistinguishable, to a reader, from a
+    // history in which nothing was ever refused. The gate printed that as
+    // "usually 0 refused".
+    const thin = poolGroupingOutcome([round("a", 20, 3, [1]), round("a", 20, 3, [1]), round("a", 15, 4, [1])]);
+    expect(thin?.rounds, "two priors").toBe(2);
+    expect(thin?.refusedMedian, "two priors cannot name a usual").toBeNull();
+
+    // And it is a THRESHOLD, not a refusal to ever answer: one more round and
+    // the same data yields a number. Without this half, deleting the median
+    // entirely would pass the assertion above.
+    const enough = poolGroupingOutcome([
+      round("a", 20, 3, [1]),
+      round("a", 20, 3, [1]),
+      round("a", 20, 3, [1]),
+      round("a", 15, 4, [1]),
+    ]);
+    expect(enough?.rounds, "three priors").toBe(3);
+    expect(enough?.refusedMedian, "three priors is a baseline").toBe(3);
   });
 
   it("counts charts, not grouped-lines — one line can carry several", () => {
