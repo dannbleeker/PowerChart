@@ -2731,3 +2731,70 @@ been checked against the code before it went into a commit message.
 
 What is actually true: the 4:3 arm refuses more charts and repairs fewer
 re-reads, replicated across a pair, with the deck exonerated. Why, is open.
+
+## Rounds 117 + 118 — 796605c — the second round of a pair is worse, and always has been
+
+**117 refuted the 4:3 claim I published this morning, and 118 rebuilt it smaller.**
+
+    round  arm       post-retry  grp/ref  deck  position
+    111    16:9 P64      0         20/0     16   1st
+    112    16:9 P64      2         18/1     45   2nd
+    113    4:3  P67      5         15/3     97   1st
+    114    4:3  P67      7         17/3     72   2nd
+    115    16:9 P67      0         20/0     16   1st
+    116    16:9 P67      3         18/2     45   2nd
+    117    4:3  P67      0         20/0     16   1st
+    118    4:3  P67      8         16/4     95   2nd
+
+117 is 4:3 and scored 0 post-retry, 0 refused, deck 16 — the 16:9 signature
+exactly. "The profile degrades the retry, replicated, deck exonerated" does not
+survive its third round at that profile.
+
+### What was actually there: POSITION IN THE PAIR
+
+Pooled over every build this archive has run twice — 31 pairs, not the eight
+that suggested it:
+
+    second round had MORE post-retry failures : 15   (tied 14, better 2)
+    second round left a BIGGER deck           : 15   (tied 10, better 6)
+
+**Of the 17 pairs that moved at all, the second round is worse in 15.** The ties
+are mostly older rounds whose counters sat at zero both times; they are not
+evidence of symmetry, and counting them as coin flips is how this nearly got
+waved away as noise.
+
+**Nothing in this project's method controls for it.** The pair exists to
+separate a real fault from the host's mood, and the two halves are read as two
+samples of one condition. They are not: the second is systematically degraded.
+Every "one build run twice" noise-floor figure in these docs is measuring
+position as well as noise, and every comparison that reads a 1st-round number
+against a 2nd-round number is comparing different conditions.
+
+### The profile effect survives, smaller and better bounded
+
+Split by position, it is still there — and only in second rounds:
+
+    2nd rounds   16:9  2, 3        4:3  7, 8      no overlap
+    1st rounds   16:9  0, 0        4:3  5, 0      overlapping
+
+So: **the second round is worse everywhere, and at 4:3 much worse.** That is a
+weaker and more honest claim than the one it replaces, which pooled both
+positions and read the compounded effect as a clean profile difference.
+
+113 remains an outlier among first rounds — 5 post-retry and a 97-shape deck
+against 0, 0, 0 and 16, 16, 16. Unexplained.
+
+### The cross-check fired for the first time, and agreed
+
+117 and 118 are the first rounds to carry `driverSlideSize`. Both record
+`4:3` from the driver against `720x540` from the pane — agreement, stated
+rather than assumed. The guard built this morning for the 115/116 failure now
+has live data proving it can also say "these match".
+
+### What is worth doing next, and it is not another 4:3 round
+
+The position effect is the bigger prize and it is cheap to attack: run one build
+THREE times. If the third is worse again, something accumulates across rounds
+within a browser session — the proxy-memory exhaustion this project already
+knows about is the obvious suspect. If the third matches the first, the sweep
+between rounds is leaving something behind that one more sweep clears.

@@ -43,7 +43,7 @@ const {
 // covers only the NEXT line — so the directive stopped reaching the `from`
 // clause. Suite stayed green, `tsc` went red, exactly as predicted here.
 // @ts-expect-error — as above.
-import { poolEveryDraw, poolProfileDisagreements } from "../scripts/triage.mjs";
+import { poolEveryDraw, poolProfileDisagreements, poolPairPosition } from "../scripts/triage.mjs";
 // Its own line: adding it above pushes that import over the print width, and a
 // reflowed import moves this directive off the statement it is annotating.
 // @ts-expect-error — as above.
@@ -976,6 +976,55 @@ describe("triage — logs that are not inserts", () => {
     expect(after.rasterise, "the untagged stall after a rasterise was not counted").toEqual({ ok: 0, stall: 1 });
     expect(after["anything else"].ok).toBeGreaterThanOrEqual(2);
     expect(after["anything else"].stall).toBe(0);
+  });
+
+  it("counts pair position without letting ties vote", () => {
+    // THE PAIR IS NOT TWO SAMPLES OF ONE CONDITION, and nothing in this project
+    // controlled for that. Over the 31 builds run twice, the SECOND round had
+    // more post-retry failures in 15 and fewer in 2.
+    //
+    // TIES ARE THE TRAP. 14 pairs tied, mostly old rounds whose counters sat at
+    // zero both times — and reading "15 worse, 16 not worse" as a coin flip is
+    // exactly how a directional effect stays invisible. They are counted, and
+    // reported, SEPARATELY.
+    const round = (build: string, post: number) => ({
+      build: `${build} 2026-08-20`,
+      deck: { inventory: [{ slideId: "s1", count: 1 }] },
+      trace: {
+        entries: Array.from({ length: post }, () => ({
+          message: "the re-read before grouping came back empty",
+          data: { afterRetry: true, kind: "empty" },
+        })),
+      },
+    });
+
+    const out = poolPairPosition([
+      round("aaa", 0),
+      round("aaa", 3), // worse
+      round("bbb", 2),
+      round("bbb", 0), // better
+      round("ccc", 1),
+      round("ccc", 1), // tied
+      round("ddd", 0),
+      round("ddd", 5), // worse
+    ]);
+    expect(out).toEqual({ pairs: 4, worse: 2, better: 1, tied: 1 });
+
+    // A build run ONCE is not a pair and must not be counted — it has no second
+    // round to be worse than anything.
+    expect(poolPairPosition([round("solo", 4)])).toMatchObject({ pairs: 0 });
+
+    // And a build run THREE times votes ONCE, on its first two rounds — the
+    // experiment this finding asks for is exactly a build run three times, so
+    // the counter must not change meaning the moment someone runs it.
+    //
+    // 5 -> 2 -> 9 ON PURPOSE. First-against-second says BETTER; first-against-
+    // last says WORSE. An earlier fixture read 0 -> 2 -> 9, where both readings
+    // agree, so it asserted nothing about which pair was taken — mutation
+    // testing caught that: swapping the implementation to first-against-last
+    // left it green.
+    const thrice = poolPairPosition([round("eee", 5), round("eee", 2), round("eee", 9)]);
+    expect(thrice, "took the LAST round instead of the second").toMatchObject({ pairs: 1, better: 1, worse: 0 });
   });
 
   it("classifies a rasterise by op, not by whether its label says 'rasteris'", () => {
