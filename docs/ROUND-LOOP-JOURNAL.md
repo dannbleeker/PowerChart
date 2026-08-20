@@ -2292,3 +2292,42 @@ one build.
   adding it to the pane's MOCK in the same change: without it `app.ts` throws at
   boot and 110 tests die at once. Second time this session — the same thing
   happened with `readDeckStyleWithReason`.
+
+## Rounds 106 + 107 — fa6448a — the first quiet pair, and why quiet is not an answer
+
+    106   12/13   deck-style entries: 0
+    107   13/13   deck-style entries: 0
+
+**The first two rounds in this archive where the deck-style read recorded no
+failure at all**, and the staked claim came back `held` on exactly that.
+
+**It is weaker than it looks, and the claim was the wrong shape.** The probe
+writes only when the read FAILS and the warm-up traces nothing, so an empty scope
+is equally consistent with the read never having run — and the pane-load window
+sits before the round's trace mark, so nothing in the file can settle it. A cure
+and a silence have the same shape here.
+
+That is this project's house defect pointed the other way: an absent failure line
+read as evidence of success. Round 102 had pushed me toward claiming an ABSENCE
+after a message-shaped claim misfired, and the right answer there was a POSITIVE
+claim, not a broader negative one. Two mistakes about the same instrument, in
+opposite directions, three rounds apart.
+
+- **Fix.** The read records success as well as failure — `the deck-style read
+  answered`, carrying the part count and the call it got past — and the verdict
+  replays at round start like the failure one. A round can now SAY the read
+  worked instead of leaving a gap that has to be interpreted.
+
+- **Re-staked positively** as `the-read-answers-and-says-so`. HELD means the read
+  is genuinely cured on this host and the round says so in a line that only
+  exists if it completed. FAILED — `round starting` present, success line absent
+  — means the read is not running in the pane-load chain at all, which would make
+  this pair's quiet a worse story than a cure rather than a better one.
+
+- **The warm-up is kept and is not yet credited.** It is cheap, it cannot throw,
+  and nothing here argues against it. But two silent rounds do not show it is the
+  reason they were silent, and saying so costs nothing.
+
+Grouping, seventh pair: 20/0 then 17/2. 106 skipped `the chart is actually
+visible` and 107 passed it — the control render moving again, which is what the
+skip exists to report.

@@ -5379,6 +5379,28 @@ describe("the style a deck carries", () => {
     expect(took, "waited on the readback budget instead of its own").toBeLessThan(5_000);
   });
 
+  it("SAYS when the read answered — silence is not evidence of success", async () => {
+    // ROUND 106 IS WHY. It carried zero `deck-style` entries and the staked
+    // claim came back `held` — but the probe only writes when the read FAILS, so
+    // an empty scope could equally mean the read never ran. A cure and a silence
+    // are the same shape, which is this project's house defect pointed the other
+    // way: absence of a failure line read as evidence of success.
+    installHost([makeSlide("s1")]);
+    _resetDeckStyleVerdictForTest();
+    await readDeckStyleWithReason();
+
+    const seen: { message: string }[] = [];
+    setTracing(true);
+    onTrace((e) => seen.push(e));
+    replayDeckStyleVerdict();
+    onTrace(undefined);
+    setTracing(false);
+    expect(
+      seen.filter((e) => /the deck-style read answered/.test(e.message)).length,
+      "a successful read left the round file silent, which cannot be told from never running",
+    ).toBe(1);
+  });
+
   it("warms the surface with a call whose failure is the point", async () => {
     // Seven rounds say the FIRST custom-XML call after a pane loads fails and the
     // second works. Retrying inside the read was tried (#602) and reverted (#603)
