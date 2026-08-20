@@ -26,6 +26,7 @@ import {
   timeShapeRounds,
   gridFootprint,
   shapesDrawnOn,
+  _setLastStallForTest,
 } from "../src/render/powerpoint";
 import { sampleConfig } from "../src/core/samples";
 import { buildChart } from "../src/core/chart";
@@ -1383,6 +1384,24 @@ describe("scenarios that must not be able to pass without proving anything", () 
     // naming failure rides along as a caveat rather than replacing it.
     expect(unnamed.ok, unnamed.detail).toBe(true);
     expect(unnamed.detail).toMatch(/would not name the chart/);
+  });
+
+  it("names the rasterise stall when the control is missing, instead of shrugging", () => {
+    // ACROSS 14 ROUNDS THE CORRELATION IS EXACT: every blind round carries one
+    // `rasterising a slide` stall at its full 20000ms budget, every sighted
+    // round carries none. 8 blind / 8 stalls, 6 sighted / 0 stalls. So "no
+    // control render" is not an unknown — the SECOND rasterise of the same
+    // slide hangs, and the verdict can say so rather than leaving a reader to
+    // join it against the trace by hand.
+    _setLastStallForTest({ what: "rasterising a slide", afterAnswering: null, idleMs: 0, afterAnsweringMs: 0 });
+    const blind = visibilityVerdict("PNG:before", "PNG:after", true);
+    expect(blind.skipped).toBe(true);
+    expect(blind.detail, "shrugged at a cause the archive has pinned 14 times").toMatch(/second rasterise/);
+    // And it must NOT invent a cause it has no evidence for.
+    _setLastStallForTest(null);
+    const quiet = visibilityVerdict("PNG:before", "PNG:after", true);
+    expect(quiet.detail).toMatch(/cannot be ruled out/);
+    expect(quiet.detail).not.toMatch(/second rasterise/);
   });
 
   it("keeps the four visibility readings apart", () => {
