@@ -42,8 +42,15 @@ const {
 // import above reflowed that statement across lines, and `@ts-expect-error`
 // covers only the NEXT line — so the directive stopped reaching the `from`
 // clause. Suite stayed green, `tsc` went red, exactly as predicted here.
+// A NAMESPACE IMPORT, because this list has now grown past the print width
+// twice. `@ts-expect-error` covers exactly the next LINE, so the moment prettier
+// reflows a named-import list the `from` clause moves off the directive, the
+// suite stays green and `tsc` goes red — which is precisely what happened when
+// `paneAgeAtStartSeconds` was added. A namespace import is one line forever and
+// cannot be reflowed out from under it.
 // @ts-expect-error — as above.
-import { poolEveryDraw, poolProfileDisagreements, poolPairPosition, roundSpanSeconds } from "../scripts/triage.mjs";
+import * as pooled from "../scripts/triage.mjs";
+const { poolEveryDraw, poolProfileDisagreements, poolPairPosition, roundSpanSeconds, paneAgeAtStartSeconds } = pooled;
 // Its own line: adding it above pushes that import over the print width, and a
 // reflowed import moves this directive off the statement it is annotating.
 // @ts-expect-error — as above.
@@ -985,7 +992,20 @@ describe("triage — logs that are not inserts", () => {
     // 5.1 post-retry failures against 2.8. The second round of a pair runs
     // 2.0-2.4x slower than the first in all four pairs measured, most likely
     // because the first is being mined while the second runs.
-    expect(roundSpanSeconds({ trace: { entries: [{ ms: 1000 }, { ms: 758_000 }, { ms: 12 }] } })).toBe(758);
+    // LAST MINUS FIRST, NOT THE LAST. `ms` counts from the PANE's load, and the
+    // pane is not reloaded between rounds — so a round inheriting its pane
+    // starts its clock where the previous round stopped. Taking `max` reported
+    // such a round's duration as its own PLUS the previous round's, which is
+    // how "the second round is 2.0-2.4x slower" got published twice. The real
+    // figure is about 1.35x.
+    //
+    // Verbatim shape from rounds/123: first entry at 961s, last at 2075s. The
+    // round took 1114s, not 2076s.
+    expect(
+      roundSpanSeconds({ trace: { entries: [{ ms: 961_782 }, { ms: 2_075_549 }] } }),
+      "counted the pane's age as this round's time",
+    ).toBe(1114);
+    expect(roundSpanSeconds({ trace: { entries: [{ ms: 1000 }, { ms: 759_000 }, { ms: 12 }] } })).toBe(759);
 
     // AN UNREADABLE SPAN MUST NOT BECOME A FAST ONE. Returning 0 here would put
     // every old round in the "fast" half and reproduce, exactly, the confounded
@@ -994,6 +1014,27 @@ describe("triage — logs that are not inserts", () => {
     expect(roundSpanSeconds({ trace: { entries: [] } }), "an empty trace is not a 0s round").toBeNull();
     expect(roundSpanSeconds({}), "a round with no trace is not a 0s round").toBeNull();
     expect(roundSpanSeconds({ trace: { entries: [{ ms: 0 }, {}] } }), "no usable offsets").toBeNull();
+  });
+
+  it("reads the pane's age at the round's start, which is what predicts the counters", () => {
+    // THE VARIABLE THAT WAS HIDING INSIDE THE BROKEN DURATION METRIC. `ms`
+    // counts from the pane's load, so the FIRST entry's offset is how long the
+    // pane had already been alive when the round began.
+    //
+    // Rounds 110-123 split on it: fresh panes scored post-retry 0, 2, 0, 0, 0,
+    // 1, 0 and reused panes 0, 5, 7, 3, 8, 7, 2 — a mean of 0.4 against 4.6,
+    // with decks of 16 against 60+. "The second round of a pair is worse" was
+    // always this: the second round is the one that inherits a pane. Position,
+    // profile and observer load were all stand-ins for it.
+    expect(paneAgeAtStartSeconds({ trace: { entries: [{ ms: 961_782 }, { ms: 2_075_549 }] } })).toBe(962);
+    expect(paneAgeAtStartSeconds({ trace: { entries: [{ ms: 67_116 }, { ms: 862_019 }] } })).toBe(67);
+
+    // AN UNKNOWN AGE MUST NOT READ AS A FRESH PANE. The gate treats < 200s as
+    // fresh, so returning 0 here would silently mark every unreadable round as
+    // clean — the same shape as reporting an unreadable span as a fast one.
+    expect(paneAgeAtStartSeconds({ trace: { entries: [] } })).toBeNull();
+    expect(paneAgeAtStartSeconds({})).toBeNull();
+    expect(paneAgeAtStartSeconds({ trace: { entries: [{}, { ms: "x" }] } }), "no usable offsets").toBeNull();
   });
 
   it("counts pair position without letting ties vote", () => {

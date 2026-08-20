@@ -2914,3 +2914,75 @@ in this project's model accounts for that, and the next experiment should
 measure the HOST rather than the harness: whether the slowdown is in the
 `context.sync()` round trips (service-side throttling) or in the pane's own
 work.
+
+## It was the PANE'S AGE all along — and the metric that hid it was mine
+
+Asked to find where the extra time goes, the answer turned out to be that there
+was no extra time. **`ms` counts from the PANE'S load, not the round's start, and
+the pane is not reloaded between rounds.**
+
+    round 122   first entry     67,116ms   last     862,019ms
+    round 123   first entry    961,782ms   last   2,075,549ms
+
+123's clock starts at 961s because it inherited 122's pane. `roundSpanSeconds`
+took `Math.max(...)`, so every reused-pane round's "duration" silently included
+the previous round's. Corrected, last-minus-first:
+
+    pair          published   actual
+    113 -> 114      1.99x      1.26x
+    115 -> 116      2.41x      1.43x
+    117 -> 118      2.18x      1.38x
+    119 -> 120      2.41x      1.36x
+    122 -> 123      2.41x      1.40x
+
+**Every ratio in #624 and #625 is wrong.** The real effect is about 1.35x, not
+2.0-2.4x, and I published the inflated figure twice without checking what the
+number measured.
+
+### And the inflated metric was accidentally encoding the real cause
+
+Split rounds 110-123 on the pane's age when the round STARTED:
+
+    fresh pane (<200s)   110, 112, 115, 117, 119, 121, 122
+                         post-retry 0, 2, 0, 0, 0, 1, 0     deck mostly 16
+    reused pane          111, 113, 114, 116, 118, 120, 123
+                         post-retry 0, 5, 7, 3, 8, 7, 2     deck 45-97
+
+Mean post-retry **0.43 against 4.57**. Deck 16 against 60+.
+
+**"The second round of a pair is worse" was always this.** The second round is
+the one that inherits a pane. Position, profile and observer load were three
+stand-ins for a variable none of them named.
+
+### Which means theory 1 was right, and I killed it with a broken instrument
+
+    121   pane age at start: 71s   FRESH
+
+121 is the round I used to refute "damage accumulates within a pane session" —
+"it ran on the oldest pane of three and came back clean". **It did not. Its pane
+was 71 seconds old.** It never tested accumulation, and the refutation was
+worthless. `docs/ROUND-LOOP-JOURNAL.md` has carried that claim since this
+morning and every conclusion built on it inherits the error.
+
+The idle pair's finding survives intact and is now explained: 123 was slower and
+worse than 122 with the machine idle **because it inherited a pane**, not because
+of anything the observer did.
+
+### The fix is cheap and the driver already knows how
+
+`recover` reloads the tab and reopens the pane. Rounds should do that BETWEEN
+runs rather than only sweeping the deck — a sweep clears the slides and leaves
+whatever the pane accumulated. That is one call in `collectRound` and it turns
+every round into a fresh-pane round.
+
+Not shipped in this commit, deliberately: it changes what every future round
+measures, and it deserves its own pair — run on a fresh pane both times, which
+is exactly the thing this archive has never done on purpose.
+
+### The instruments
+
+`roundSpanSeconds` is last-minus-first now. `paneAgeAtStartSeconds` is new and is
+printed by the gate above the counters, because it is the single best predictor
+of what those counters will say. Null when unreadable, never 0 — the gate treats
+under 200s as fresh, so a 0 for "unknown" would mark every unreadable round
+clean, which is the same defect in a third costume.

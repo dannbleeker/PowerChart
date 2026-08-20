@@ -30,6 +30,7 @@ import {
   poolProfileDisagreements,
   poolPairPosition,
   roundSpanSeconds,
+  paneAgeAtStartSeconds,
 } from "./triage.mjs";
 
 /**
@@ -174,8 +175,20 @@ if (isMain(import.meta.url, process.argv[1])) {
     const sorted = [...priorSpans].sort((a, b) => a - b);
     const median = sorted[Math.floor(sorted.length / 2)];
     const ratio = median ? span / median : 1;
+    const age = paneAgeAtStartSeconds(newest);
     console.log(`
   THIS ROUND TOOK ${span}s (median of ${priorSpans.length} prior round(s): ${median}s)`);
+    // THE READING THAT PREDICTS THE COUNTERS. See `paneAgeAtStartSeconds`.
+    if (age !== null)
+      console.log(
+        age < 200
+          ? `    Pane was FRESH at the start (${age}s old). Fresh-pane rounds average 0.4 post-retry failures.`
+          : `    PANE WAS REUSED — ${age}s old at the start. Reused-pane rounds average 4.6 post-retry
+` +
+              `    failures against 0.4, and leave 60+ deck shapes against 16. Read the counters below as a
+` +
+              `    degraded sample; reload the pane between rounds to avoid it.`,
+      );
     if (ratio >= 1.5)
       console.log(
         `    ${ratio.toFixed(1)}x the usual. Slow rounds in this archive average roughly twice the post-retry
