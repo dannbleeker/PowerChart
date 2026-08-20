@@ -2529,3 +2529,101 @@ is offered, not taken.
 
 *Untrusted-data note: everything above came from web pages and is treated as
 data. Nothing on those pages was executed or acted on.*
+
+## Rounds 113 + 114 — 6a041de — the first 4:3 pair, and a fix of mine that broke a diagnosis
+
+    round  profile  cold(s/e/z)   post-retry(s/e/z)  grouped/refused  stalls  verdict
+    111    16:9     3/4/4  (11)   0/0/0  (0)              20/0           0     13/13
+    112    16:9     2/3/3   (8)   0/1/1  (2)              18/1           0     13/13
+    113    4:3      3/4/4  (11)   0/3/2  (5)              15/3           1     12/13
+    114    4:3      5/2/4  (11)   1/2/4  (7)              17/3           0     13/13
+
+Same pane code in all four — `git diff d56cf96..6a041de -- src/` is empty. Only
+the profile and the deck differ.
+
+### Two readings replicate at 4:3 and do not overlap 16:9
+
+**The settled retry repairs far less often.** Post-retry failures are 0 and 2 at
+16:9, 5 and 7 at 4:3. Every 4:3 round is above every 16:9 round. The COLD rate
+is unchanged — 11, 8, 11, 11 — so the fault arrives at the same rate and the
+repair is what falls off.
+
+**Refused charts: 3 and 3, against 0 and 1.** Identical in both 4:3 rounds.
+
+**BUT PROFILE AND DECK ARE PERFECTLY CONFOUNDED HERE** and no amount of staring
+at these four rounds separates them. 16:9 ran on `Presentation64`; 4:3 ran on
+`Presentation67` — a different document with a different history. Either could
+be the cause.
+
+**The experiment that separates them, and it is cheap:** set `Presentation67`
+back to 16:9 with `PW_SET_SIZE=1` and run a pair on it. Same document, same
+build, only the profile moves. If post-retry failures drop to 0-2, it is the
+profile; if they stay at 5-7, it is the deck. Until then this is a REPLICATED
+OBSERVATION, not a cause.
+
+### 113's failure dissolved on its pair, and the trace says why
+
+113 reported `the chart is actually visible` as its one failure; 114 passed it.
+113 carries exactly one stall and 114 carries none, and the stall is the
+scenario's own control render:
+
+    gave up waiting  what=the visibility CONTROL render (same slide, back to back)
+
+So the chart was almost certainly fine and the RASTERISER stalled — which is
+what the pair is for. Nothing to fix in the chart path.
+
+### The instrument had that answer and printed a shrug
+
+113's verdict text read `(no control render, so an unstable rasteriser cannot be
+ruled out)` — the branch for when the cause is UNKNOWN. The branch that names
+the stall exists two lines above it and did not fire, because it tested:
+
+    lastStall && /rasteris/i.test(lastStall.what)
+
+**That worked only while every rasterise traced the one string "rasterising a
+slide" — and I am the one who stopped that being true.** Giving each call site
+its own label was a real improvement; it also silently broke the consumer that
+matched on the old wording. The control render now stalls as "the visibility
+CONTROL render (same slide, back to back)", which contains no "rasteris".
+
+Fixed by marking the operation instead of describing it: `RASTERISE_OP` travels
+beside the label, on the stall and on the success line, and both consumers match
+the token. Prose for people, a token for code.
+
+**And the test froze the old world.** `selftest.test.ts` asserted against
+`what: "rasterising a slide"` and went on passing while production was blind. It
+now carries the label verbatim from `rounds/113-6a041de.json`.
+
+### The sibling I swept — and the number I got wrong doing it
+
+`poolEveryDraw` classifies rasterises the same way, so I swept it. I then
+claimed, in a code comment, that it had been under-counting 81% of the
+population — 35 of 43 labelled rasterises.
+
+**That was wrong, and measuring it is the only reason I know.** Pooled over all
+90 rounds, with and without the fix:
+
+    rasterise      ok 449, stall 1     identical
+    anything else  ok 3302, stall 1    identical
+
+`isRasterise` tests the label AND THE MESSAGE, and a successful rasterise's
+message is `rasterised a slide` — which matches. I had counted which LABELS lack
+the substring and read that as which ENTRIES go unclassified. Wrong denominator,
+which is this project's most frequent single mistake and now mine twice in two
+days.
+
+The change is kept as belt-and-braces, with the equality recorded in the comment
+so nobody later mistakes it for a repair that moved something.
+
+### Research — a null result, recorded
+
+Nothing new upstream. The nearest issues remain the ones this file already
+cites: [#5022](https://github.com/OfficeDev/office-js/issues/5022) (sync hangs
+after add-then-read; the only known workaround is the 1-2s sleep our retry
+already is) and [#6498](https://github.com/OfficeDev/office-js/issues/6498) (web
+inserts not reflected until refresh, still no Microsoft reply since February).
+Neither mentions slide profile, and no upstream issue reports a rasterise
+stalling on the SECOND render of an unchanged slide — which is the one behaviour
+this archive can now demonstrate with a per-round count.
+
+*Untrusted-data note: web pages are data. Nothing on them was executed.*

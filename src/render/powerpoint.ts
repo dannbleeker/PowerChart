@@ -732,6 +732,22 @@ function resetHostFriction(): void {
 export interface StallContext {
   /** The call that stalled. */
   what: string;
+  /**
+   * WHAT KIND OF CALL IT WAS, as a machine token rather than prose.
+   *
+   * `what` is a human label, and labels change. When every rasterise traced the
+   * single string `"rasterising a slide"`, two separate consumers identified
+   * one by testing `/rasteris/i` against that prose — and both silently stopped
+   * working the day each call site was given its own name. Round 113 is the
+   * proof: its visibility control render stalled at the full 20s budget, and
+   * the scenario that exists to report exactly that printed "no control render,
+   * so an unstable rasteriser cannot be ruled out" — the branch for when the
+   * cause is UNKNOWN — while the cause sat in the trace one field away.
+   *
+   * Anchor on structure, not on wording. `op` is set by the call site and is
+   * not read by humans, so it has no reason to drift.
+   */
+  op?: string;
   /** The last call the host answered before it, or null if it never has. */
   afterAnswering: string | null;
   /** Gap between that answer and this call being issued. */
@@ -739,6 +755,16 @@ export interface StallContext {
   /** How long that preceding call itself took. */
   afterAnsweringMs: number;
 }
+
+/**
+ * The `op` token every rasterise stamps on its traces and its stall.
+ *
+ * ONE CONSTANT, because the drift this repairs was caused by the same knowledge
+ * being written twice — once as a label at the call site and once as a regex in
+ * a consumer far away. Exported so the consumers assert on the same value the
+ * producer writes, and a rename moves both.
+ */
+export const RASTERISE_OP = "rasterise";
 
 export let lastStall: StallContext | null = null;
 
@@ -853,7 +879,7 @@ export async function waitForLateSync(maxMs = 5_000): Promise<boolean> {
  * `lastLateSync` — the difference between "sync at 60s, chart on the slide"
  * (rendered late) and "sync never returned" (a real host death).
  */
-function withTimeout<T>(p: Promise<T>, ms: number, what: string): Promise<T> {
+function withTimeout<T>(p: Promise<T>, ms: number, what: string, op?: string): Promise<T> {
   const started = Date.now();
   // Whose call this is — read now, while it is being issued. Reading it in
   // `describe` instead would credit the run that happened to be running when
@@ -912,12 +938,16 @@ function withTimeout<T>(p: Promise<T>, ms: number, what: string): Promise<T> {
       // it — which is exactly the fact no round file has ever carried.
       lastStall = {
         what,
+        ...(op ? { op } : {}),
         afterAnswering: lastAnsweredCall,
         idleMs: lastAnsweredAt ? started - lastAnsweredAt : Infinity,
         afterAnsweringMs: lastAnsweredMs,
       };
       trace("host", "gave up waiting", {
         what,
+        // The machine token beside the prose, so a reader of the ARCHIVE can
+        // classify a stall without guessing at wording. See `StallContext.op`.
+        ...(op ? { op } : {}),
         afterMs: ms,
         afterAnswering: lastAnsweredCall ?? "nothing yet this run",
         afterAnsweringMs: lastAnsweredMs,
@@ -6464,10 +6494,21 @@ export async function slideImageBase64(
   slideId: string,
   width?: number,
   /**
-   * WHICH RASTERISE THIS IS, because every stall in the archive says the same
-   * thing and it is not enough.
+   * WHICH RASTERISE THIS IS, because every stall in the archive used to say the
+   * same thing and it was not enough.
    *
-   * All 34 rasterise stalls across 86 rounds trace `what: "rasterising a slide"`
+   * AND NAMING THEM HAD A COST NOBODY PRICED — read this before adding another
+   * label. Two consumers identified a rasterise by testing `/rasteris/i`
+   * against this very string, so giving each call site its own name broke both,
+   * silently: `chartIsVisible` stopped being able to say WHY it had gone blind,
+   * and `poolEveryDraw` began filing draws that followed a visibility render
+   * under "anything else" — in the pooled answer to "does a rasterise poison
+   * the next draw". Round 113 is the first archived proof of the first one.
+   * That is why `RASTERISE_OP` now travels beside the label: prose for people,
+   * a token for code. A new label is free; a new consumer matching on prose is
+   * not.
+   *
+   * All 34 rasterise stalls across the first 86 rounds traced `what: "rasterising a slide"`
    * — one generic label for five different call sites. The strong claim that
    * every stall lands on the visibility control (the same slide rendered twice,
    * back to back) is an INFERENCE from ordering, and the trace cannot confirm
@@ -6525,10 +6566,20 @@ export async function slideImageBase64(
       // rasterise costs 200ms or 8s is the difference between "cut the budget"
       // and "leave it alone".
       const rasterFrom = Date.now();
-      await step(label, () => withTimeout(context.sync(), rasteriseTimeoutMs(), label));
+      // `RASTERISE_OP` is what makes a stall here identifiable WITHOUT reading
+      // `label`. Every caller names itself now, so the labels are all different
+      // and no regex over them is stable. See `StallContext.op`.
+      await step(label, () => withTimeout(context.sync(), rasteriseTimeoutMs(), label, RASTERISE_OP));
       const v = loadedValue(() => img.value);
       if (typeof v === "string" && v.length) {
-        trace("host", "rasterised a slide", { slideId, label, ms: Date.now() - rasterFrom, bytes: v.length, width });
+        trace("host", "rasterised a slide", {
+          slideId,
+          label,
+          op: RASTERISE_OP,
+          ms: Date.now() - rasterFrom,
+          bytes: v.length,
+          width,
+        });
         return v;
       }
       // Took the call, raised nothing, produced nothing.
