@@ -4426,6 +4426,75 @@ describe("reading the presentation's slide size", () => {
     expect((await slideSize({ refresh: true })).width).toBe(720);
   });
 
+  it("does not let a fallback reading become the deck's permanent answer", async () => {
+    // ROUND 115, REPRODUCED. The driver had just set the deck to 16:9 and
+    // confirmed it twice against live `PageSetup`. The round then filed itself
+    // as 720x540 from `documentFile` — the wrong profile, in the field every
+    // later comparison groups by.
+    //
+    // The sequence: the first `slideSize()` after the resize caught the host
+    // still busy, so rung 1 threw and rung 2 stalled; rung 3 read the SAVED
+    // file, which PowerPoint had not yet written the new size into. That
+    // fallback was cached, and one unlucky moment became the whole round's
+    // answer even though the good rungs recovered seconds later.
+    //
+    // A fallback is what you take when the measurements are unavailable. It
+    // must never outrank one that becomes available.
+    installHost([makeSlide("s1")], [], undefined, () => false);
+    hostSlideSize.cx = 12192000; // the deck really is 16:9 — 960pt
+    const stale = await slideSize();
+    expect(stale.source, "no rung above the floor could answer yet").toBe("assumed");
+
+    // The host comes back. No `refresh: true`, because nothing in production
+    // knows to pass it — that is precisely why round 115 filed wrongly.
+    installHost([makeSlide("s1")]);
+    const good = await slideSize();
+    expect(good.source, "a fallback outranked a live measurement").toBe("pageSetup");
+    expect(good.width, "kept the stale width").toBe(960);
+  });
+
+  it("keeps using a fallback rather than re-reading the whole deck for it", async () => {
+    // The other half, and without it the fix above is a performance fault:
+    // rung 3 copies the entire presentation in 4MB slices. Once the cheap rungs
+    // have failed AGAIN, the answer already in hand is the right one to use.
+    let fileReads = 0;
+    installHost([makeSlide("s1")], [], undefined, () => false);
+    const { default: JSZip } = await import("jszip");
+    const zip = new JSZip();
+    zip.file(
+      "ppt/presentation.xml",
+      `<p:presentation xmlns:p="x"><p:sldSz cx="9144000" cy="6858000"/></p:presentation>`,
+    );
+    const bytes = await zip.generateAsync({ type: "uint8array" });
+    vi.stubGlobal("Office", {
+      context: {
+        host: "PowerPoint",
+        requirements: { isSetSupported: () => false },
+        document: {
+          getFileAsync: (_t: unknown, _o: unknown, cb: (r: unknown) => void) => {
+            fileReads++;
+            cb({
+              status: "succeeded",
+              value: {
+                size: bytes.length,
+                sliceCount: 1,
+                getSliceAsync: (_i: number, scb: (r: unknown) => void) =>
+                  scb({ status: "succeeded", value: { data: bytes } }),
+                closeAsync: () => {},
+              },
+            });
+          },
+        },
+      },
+      FileType: { Compressed: "compressed" },
+    });
+    expect((await slideSize()).source).toBe("documentFile");
+    expect(fileReads, "the expensive rung ran once").toBe(1);
+    expect((await slideSize()).width, "lost the fallback it already had").toBe(720);
+    expect(fileReads, "re-read the entire deck for an answer it already held").toBe(1);
+    vi.unstubAllGlobals();
+  });
+
   it("loads pageSetup before reading it", async () => {
     // The bug class this repo keeps finding: a proxy resolved and never loaded
     // answers on the fake and throws PropertyNotLoaded on the host. The fake is

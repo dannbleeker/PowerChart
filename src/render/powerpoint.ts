@@ -6698,6 +6698,19 @@ export interface SlideSize {
 const ASSUMED_SLIDE_SIZE: SlideSize = { width: 960, height: 540, source: "assumed" };
 
 /**
+ * The rungs whose answer is a MEASUREMENT of the live deck.
+ *
+ * `pageSetup` asks the host what the deck is. `exportedSlide` reads it out of a
+ * slide the host just exported. Both describe the presentation as it is now.
+ *
+ * `documentFile` does not: it reads the SAVED file, which lags the session by
+ * however long PowerPoint takes to persist a change — and after a programmatic
+ * resize that lag is exactly when the question gets asked. `assumed` is not a
+ * reading at all. Neither may end the ladder permanently.
+ */
+const AUTHORITATIVE_SIZE_SOURCES: ReadonlySet<SlideSizeSource> = new Set(["pageSetup", "exportedSlide"]);
+
+/**
  * Cached because two of the three rungs below are expensive, and slide size is
  * a property of the deck rather than of any one operation.
  *
@@ -6761,7 +6774,29 @@ async function slideSizeFromPptxBase64(base64: string): Promise<SlideSize | null
  * an insert over a layout hint.
  */
 export async function slideSize(opts: { refresh?: boolean } = {}): Promise<SlideSize> {
-  if (!opts.refresh && cachedSlideSize) return cachedSlideSize;
+  // ONLY AN AUTHORITATIVE READING IS ALLOWED TO END THE LADDER FOR GOOD.
+  //
+  // Round 115 is what this repairs. The driver had just changed the deck to
+  // 16:9 and confirmed it twice against live `PageSetup`; the round then filed
+  // itself as `720x540, source: "documentFile"` — the WRONG PROFILE, in the
+  // field every later comparison is grouped by. What happened is that the first
+  // `slideSize()` after the resize found the host still busy: rung 1 threw,
+  // rung 2's export stalled, and rung 3 read the SAVED FILE, which PowerPoint
+  // had not yet written the new size into. That fallback was then cached, so
+  // one unlucky moment became the round's permanent answer.
+  //
+  // A fallback is a reading taken when the good ones were unavailable. Caching
+  // it as though it were a measurement is this project's oldest mistake wearing
+  // a new hat: a low-confidence answer promoted to a fact because nothing
+  // recorded how it was obtained. It IS recorded here — that is what `source`
+  // is for — so the cache can simply respect it.
+  //
+  // The cost of re-trying is small and the comment on `cachedSlideSize` already
+  // says so: rung 1 is one property load riding on a sync that happens anyway.
+  // Rung 3 is the expensive one, and it is precisely the one no longer allowed
+  // to stick.
+  if (!opts.refresh && cachedSlideSize && AUTHORITATIVE_SIZE_SOURCES.has(cachedSlideSize.source))
+    return cachedSlideSize;
 
   // Rung 1 — the direct read.
   if (supports("1.10")) {
@@ -6810,6 +6845,14 @@ export async function slideSize(opts: { refresh?: boolean } = {}): Promise<Slide
       /* empty deck, or a host that will not export — try the next rung */
     }
   }
+
+  // KEEP THE FALLBACK, DO NOT PAY FOR IT TWICE. Rungs 1 and 2 have just had
+  // another go and failed again, so the cheap upgrade path is exhausted for
+  // now. Re-reading the entire deck in 4MB slices to re-learn what we already
+  // have would turn a correctness fix into a performance fault — the point of
+  // the change above is that a fallback stops being FINAL, not that it stops
+  // being USED.
+  if (cachedSlideSize) return cachedSlideSize;
 
   // Rung 3 — the whole document, through the Common API.
   const fromFile = await slideSizeFromDocumentFile();

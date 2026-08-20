@@ -1,9 +1,11 @@
 # PowerChart round loop — brief
 
 One round per cycle: run it, mine it, fix what it exposes, journal it, land it.
-Repeat. Last round **114** (`rounds/114-6a041de.json`, 13 of 13, 2026-08-20),
-paired with 113 — **the first 4:3 pair**, on `Presentation67` at 720x540. Same
-pane code as 111/112, so the four rounds compare directly.
+Repeat. Last round **116** (`rounds/116-a46a2d3.json`, 13 of 13, 2026-08-20),
+paired with 115 — the same deck as the 4:3 pair, flipped to 16:9, which
+**exonerates the deck and pins the effect on the profile**. Six rounds across
+three pairs now compare directly. Note 115/116 record `720x540` and were run at
+`960x540`; see the journal.
 
 **Move that line with the loop.** It was once twenty-one rounds out of date —
 reading `067 … 10 of 12` while a paragraph further down this same file cited
