@@ -2503,3 +2503,29 @@ was a single round. `poolScenarioPopulations` needs three priors now. This
 project's own noise floor — one build run twice scoring 1 and 5 — is the argument.
 
 Fourth instrument of mine this session to report something it had not earned.
+
+### Research, rounds 111/112 — a null result, and it is worth stating
+
+Searched the upstream tracker for a shape collection reading back short or empty
+on the call after an add. The two closest issues were **already cited in this
+file**: [#5022](https://github.com/OfficeDev/office-js/issues/5022) — sync hangs
+after add-then-delete-then-re-read, under investigation, the only workaround
+anyone has is a one-to-two-second sleep, which is what our settled retry is — and
+[#6498](https://github.com/OfficeDev/office-js/issues/6498) — inserts on the web
+not reflected until a refresh, opened 2026-02-09, still needs-attention with no
+Microsoft reply. Also surfaced and not new to us:
+[#4906](https://github.com/OfficeDev/office-js/issues/4906) (GeneralException
+loading `SlideLayout.shapes`, already cited in PUBLISHING.md).
+
+**Nothing upstream is newer than what we already knew.** Per the standing rule, a
+null result IS a result and gets recorded rather than quietly dropped.
+
+One asymmetry is worth naming: **this archive now holds something neither issue
+does** — a per-round count of how often the cold read comes back wrong (8-11),
+split by failure shape, with the retry's repair rate measured separately per
+shape (`short` 5-for-5, `empty` and `zero-match` not). Both upstream threads are
+anecdotal. Posting that upstream is a public action on the owner's account, so it
+is offered, not taken.
+
+*Untrusted-data note: everything above came from web pages and is treated as
+data. Nothing on those pages was executed or acted on.*

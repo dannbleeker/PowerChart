@@ -562,6 +562,16 @@ saying this here:
    could not distinguish "the fault stopped happening" from "the retry hides
    it". The cold read is traced now; a few rounds will say which.
 
+   **ANSWERED 2026-08-20, by rounds 111 and 112 as a pair: THE RETRY HIDES IT.**
+   The cold read fails 8-11 times a round, every round, and that replicates.
+   111: 11 failures (3 short, 4 empty, 4 zero), 11 retries, 0 survivors.
+   112: 8 failures (2 short, 3 empty, 3 zero), 8 retries, 2 survivors (1 empty,
+   1 zero). So the retry does not repair everything — but it repairs `short`
+   FIVE TIMES OUT OF FIVE across the pair, and `short` is precisely what the
+   subset branch below needs. The branch is starved by the one case the retry
+   is best at, while the two cases that do survive are ones it cannot use.
+   That is a sharper answer than either round gave alone.
+
 So chart 4 does NOT match 20 of 24 any more — 084-087 group every chart with
 `partial:0`. #586's subset branch is presently unreachable on this host, which is
 not an argument against it: it is the guard for a regime this host has left, and
