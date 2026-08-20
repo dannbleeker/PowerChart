@@ -1487,6 +1487,41 @@ function reportOriginTagLosses(logs) {
  * where 16:9 scored 13 of 13 twice, so the difference is large enough to swamp
  * anything a pooled number would say.
  */
+/**
+ * Rounds whose two independent slide-size readings disagree.
+ *
+ * THE ROUND THAT MADE THIS NECESSARY: 115 and 116 recorded `720x540` from the
+ * pane while the driver had read `960x540` off live `PageSetup`, twice, and
+ * printed it before each round started. Every profile comparison in this file
+ * groups by `slideSize`, so both rounds were filed into the wrong arm — the
+ * exact failure `PW_EXPECT_SIZE` exists to prevent, sailing past it because the
+ * guard and the archive read different sources and nobody compared them.
+ *
+ * A ROUND WITH NO DRIVER READING IS NOT A ROUND THAT AGREES. It is a round with
+ * one opinion, and it is skipped rather than counted as a pass — every round
+ * archived before `driverSlideSize` existed is in that state, and reporting 116
+ * of them as "consistent" would be a lie told by a denominator.
+ */
+export function poolProfileDisagreements(logs) {
+  const out = [];
+  for (const log of logs ?? []) {
+    const pane = log?.slideSize;
+    const driver = log?.driverSlideSize;
+    if (!driver || !pane || typeof pane.width !== "number") continue;
+    // The driver records a PROFILE STRING ("16:9"), the pane records points.
+    // Compare them as profiles, which is the unit every consumer groups by.
+    const paneProfile = roundProfile(log);
+    if (String(driver) !== paneProfile)
+      out.push({
+        build: String(log.build ?? "").split(" ")[0],
+        pane: paneProfile,
+        driver: String(driver),
+        source: pane.source ?? "?",
+      });
+  }
+  return out;
+}
+
 export function roundProfile(log) {
   const s = log?.slideSize;
   if (!s || typeof s.width !== "number" || typeof s.height !== "number") return "16:9";

@@ -1529,16 +1529,23 @@ export function visibilityVerdict(
       stable === false
         ? " — but two renders of the UNCHANGED slide also differed, so this proves NOTHING about the chart"
         : stable === undefined
-          ? // WHY THE CONTROL IS MISSING, not merely that it is. Across the 14
-            // rounds since this scenario started reporting blind, the correlation
-            // is exact: every blind round carries one rasterise stall at its full
-            // 20000ms budget, and every sighted round carries none. 8 blind / 8
+          ? // WHY THE CONTROL IS MISSING, not merely that it is. The
+            // correlation held exactly over the first 14 rounds that reported
+            // blind — every blind round carried one rasterise stall at its full
+            // 20000ms budget, every sighted round carried none; 8 blind / 8
             // stalls, 6 sighted / 0 stalls.
             //
             // So this is not an unknown. The SECOND rasterise of the same slide
             // hangs — the first one answered, which is where `before` came from —
             // and that costs the project its only mechanical evidence that a
-            // drawn chart is visible, in more than half of all rounds.
+            // drawn chart is visible.
+            //
+            // RE-MEASURED 2026-08-20 over all 92 archived rounds: 36 blind, 56
+            // sighted — a 39% blind rate. The comment said "more than half of
+            // all rounds" until then, which was true of the sample it was
+            // written from and has not been true for a while. A rate quoted in
+            // a comment is a measurement with no re-measure attached; date it
+            // and say what it was measured over, or it becomes folklore.
             //
             // MATCHED ON `op`, NOT ON WORDING, and this line is why the rule
             // exists. It used to read `/rasteris/i.test(lastStall.what)`, which
