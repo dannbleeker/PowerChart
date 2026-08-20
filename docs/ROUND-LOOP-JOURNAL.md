@@ -2866,3 +2866,51 @@ two days.
   trace; nothing surfaces it.
 - **Stop treating a pair as two samples of one condition** until a pair has been
   run with the machine deliberately idle for both halves.
+
+## Rounds 122 + 123 — b321c65 — the idle pair refutes "the observer is the variable"
+
+Run deliberately with nothing else happening on this machine: no mining between
+the two, no triage, no test suite. The whole point was to remove the one
+difference I had identified between a first and a second round.
+
+    round  condition   span    post  grp/ref  deck
+    122    1st, IDLE    862s      0    20/0     16
+    123    2nd, IDLE   2076s      2    18/2     62
+
+**2.4x slower, with the machine idle.** That is the same ratio as every loaded
+pair — 2.0x, 2.4x, 2.2x, 2.4x — so THE SLOWDOWN IS NOT CAUSED BY MY LOAD. The
+hypothesis published in #624 an hour earlier is refuted by the experiment it
+asked for, which is the best thing that can happen to a hypothesis.
+
+**Three theories down in one day:**
+
+1. *Damage accumulates within a session* — killed by 121, which ran on the
+   oldest pane of three and came back clean.
+2. *Position in the pair determines it* — killed by the archive's earlier
+   three-run builds, which spike on the third instead.
+3. *The observer's load causes it* — killed here.
+
+**What survives, and it is worth stating precisely.** The second round of a pair
+is 2.0-2.4x slower than the first in FIVE of five pairs measured, idle or not.
+That is now a fact about the HOST, not about the machine or the method.
+
+Load may still MODULATE severity rather than cause it: the idle second round
+scored 2 post-retry failures where loaded second rounds scored 7, 8, 3 and 7,
+and left 62 deck shapes against 45, 72, 91 and 95. One observation, so it is a
+lead and nothing more — but it is the difference between "my analysis invalidates
+the round" and "my analysis makes a real effect worse", and those call for
+different rules.
+
+**So the brief's second rule stays, with an honest reason.** "Do nothing heavy
+while a round polls" is still right — it is cheap, and the one idle second round
+is the mildest second round on record. What must change is the CLAIM attached to
+it: it does not prevent the slowdown, and anyone who obeys it expecting fast
+second rounds will conclude the rule does not work.
+
+**What is actually unexplained now:** why a round that follows another round is
+half as fast, on a swept deck, on a pane that has not been reloaded, with no
+load on the box — and why the third round recovers (758 -> 1830 -> 800). Nothing
+in this project's model accounts for that, and the next experiment should
+measure the HOST rather than the harness: whether the slowdown is in the
+`context.sync()` round trips (service-side throttling) or in the pane's own
+work.

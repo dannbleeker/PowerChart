@@ -146,11 +146,19 @@ full 3,195-test suite was being run repeatedly to chase a flake; round 121 ran
 during light work and came back clean on a pane that had already served two
 rounds.
 
-That is a hypothesis — the load was never recorded and cannot be recovered from
-the archive — but it explains what neither "damage accumulates" nor "position in
-the pair" could, and it costs nothing to obey. **Mine the previous round before
-starting the next one, or after both have landed.** See the 119-121 entry in the
-journal.
+**THAT HYPOTHESIS WAS TESTED AND REFUTED THE SAME DAY.** Rounds 122 and 123 ran
+with the machine deliberately idle — no mining between them, no triage, no test
+suite — and the second round was still **2.4x slower** (862s -> 2076s), the same
+ratio as every loaded pair. The slowdown is a fact about the HOST, not about the
+observer.
+
+**Keep the rule anyway, for the reason that survived.** The idle second round
+scored 2 post-retry failures where loaded ones scored 7, 8, 3 and 7, and left 62
+deck shapes against 45, 72, 91 and 95. Load looks like it makes a real effect
+WORSE rather than causing it — one observation, so treat it as a lead. **Mine
+the previous round before starting the next one, or after both have landed.** It
+is cheap and it cannot hurt; just do not expect it to make the second round
+fast. See the 119-121 and 122-123 entries in the journal.
 
 ## Where this stands — read before adding a round
 
