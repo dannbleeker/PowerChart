@@ -27,6 +27,7 @@ import {
   gridFootprint,
   shapesDrawnOn,
   _setLastStallForTest,
+  RASTERISE_OP,
 } from "../src/render/powerpoint";
 import { sampleConfig } from "../src/core/samples";
 import { buildChart } from "../src/core/chart";
@@ -1402,6 +1403,39 @@ describe("scenarios that must not be able to pass without proving anything", () 
     const quiet = visibilityVerdict("PNG:before", "PNG:after", true);
     expect(quiet.detail).toMatch(/cannot be ruled out/);
     expect(quiet.detail).not.toMatch(/second rasterise/);
+
+    // THE LABEL THIS FIXTURE FROZE IS NO LONGER THE ONE PRODUCTION WRITES, and
+    // that is the whole failure. The case above passed continuously while the
+    // real thing was broken, because it asserts against "rasterising a slide" —
+    // the single string every rasterise used to trace. Once each call site was
+    // named, the control render began stalling as the label below, `/rasteris/i`
+    // stopped matching, and round 113 reported the cause as unknown with the
+    // cause in its own trace.
+    //
+    // VERBATIM FROM `rounds/113-6a041de.json`, not paraphrased, so the fixture
+    // cannot drift away from production a second time.
+    _setLastStallForTest({
+      what: "the visibility CONTROL render (same slide, back to back)",
+      op: RASTERISE_OP,
+      afterAnswering: null,
+      idleMs: 0,
+      afterAnsweringMs: 0,
+    });
+    const named = visibilityVerdict("PNG:before", "PNG:after", true);
+    expect(named.detail, "the label carries no 'rasteris' — only `op` can classify it").toMatch(/second rasterise/);
+    expect(named.detail).toContain("the visibility CONTROL render");
+
+    // And `op` must be what decides it, not the new wording sneaking past the
+    // old regex: a stall with neither marker is still an honest unknown.
+    _setLastStallForTest({
+      what: "waiting for something else entirely",
+      afterAnswering: null,
+      idleMs: 0,
+      afterAnsweringMs: 0,
+    });
+    const other = visibilityVerdict("PNG:before", "PNG:after", true);
+    expect(other.detail, "claimed a rasterise stall that never happened").toMatch(/cannot be ruled out/);
+    _setLastStallForTest(null);
   });
 
   it("keeps the four visibility readings apart", () => {

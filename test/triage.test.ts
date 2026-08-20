@@ -955,6 +955,78 @@ describe("triage — logs that are not inserts", () => {
     expect(after["anything else"].stall).toBe(0);
   });
 
+  it("classifies a rasterise by op, not by whether its label says 'rasteris'", () => {
+    // THE SIBLING THAT SURVIVED, PINNED SO IT KEEPS SURVIVING. Naming each
+    // rasterise call site broke the matcher in `chartIsVisible`, which reads
+    // `lastStall.what` alone. This classifier reads the label AND the message,
+    // and the message on a success is `rasterised a slide`, so it kept working
+    // — by luck, not by design. Pooled counts are identical with and without
+    // the `op` path, which is checked in the fixture comment rather than
+    // claimed here.
+    //
+    // These assertions pin the DESIGN: an entry whose label carries no
+    // "rasteris" and whose message is not a rasterise message must still
+    // classify. The label below is verbatim from `rounds/113-6a041de.json`.
+    const issued = (ms: number) => ({ ms, scope: "draw", message: "batch issued", data: {} });
+    const log = {
+      trace: {
+        entries: [
+          {
+            ms: 500,
+            scope: "selftest",
+            message: "visibility step",
+            data: { what: "the visibility CONTROL render (same slide, back to back)", op: "rasterise" },
+          },
+          issued(501),
+          gaveUp(560),
+        ],
+      },
+    };
+    const { after } = poolEveryDraw([log]);
+    expect(after.rasterise, "a named rasterise was filed as 'anything else'").toEqual({ ok: 0, stall: 1 });
+    expect(after["anything else"], "the draw was double-counted").toEqual({ ok: 0, stall: 0 });
+
+    // AND op MUST BE WHAT DECIDES IT. Without this half, a classifier that
+    // simply called everything a rasterise would pass the assertion above.
+    const unrelated = {
+      trace: {
+        entries: [
+          { ms: 500, scope: "selftest", message: "visibility step", data: { what: "reading the deck's style" } },
+          issued(501),
+          gaveUp(560),
+        ],
+      },
+    };
+    const other = poolEveryDraw([unrelated]).after;
+    expect(other.rasterise, "a non-rasterise was counted as one").toEqual({ ok: 0, stall: 0 });
+    expect(other["anything else"]).toEqual({ ok: 0, stall: 1 });
+
+    // AND THE ARCHIVE ALREADY WRITTEN. Rounds 001-114 carry no `op` at all, so
+    // an op-only fix would repair only evidence not yet gathered. These four
+    // labels are enumerated from those rounds — 35 of the 43 labelled
+    // rasterises in them — and must classify without `op`.
+    for (const legacy of [
+      "an end-of-round slide shot",
+      "the visibility BEFORE render",
+      "the visibility AFTER render",
+      "the visibility CONTROL render (same slide, back to back)",
+    ]) {
+      const old = {
+        trace: {
+          entries: [
+            { ms: 500, scope: "selftest", message: "visibility step", data: { what: legacy } },
+            issued(501),
+            gaveUp(560),
+          ],
+        },
+      };
+      expect(poolEveryDraw([old]).after.rasterise, `pre-op archive: "${legacy}" was not recognised`).toEqual({
+        ok: 0,
+        stall: 1,
+      });
+    }
+  });
+
   it("blames the rasterise nearest the draw, not one from earlier in the round", () => {
     // Without resetting at each draw, one rasterise early on would tar every
     // draw after it and the population would be meaningless.

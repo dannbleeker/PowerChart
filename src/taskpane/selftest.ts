@@ -86,6 +86,7 @@ import {
   // around a scenario.
   deadlinesFired,
   lastStall,
+  RASTERISE_OP,
   lastLateSync,
   lastLateSyncSeq,
   waitForLateSync,
@@ -1530,15 +1531,26 @@ export function visibilityVerdict(
         : stable === undefined
           ? // WHY THE CONTROL IS MISSING, not merely that it is. Across the 14
             // rounds since this scenario started reporting blind, the correlation
-            // is exact: every blind round carries one `rasterising a slide` stall
-            // at its full 20000ms budget, and every sighted round carries none.
-            // 8 blind / 8 stalls, 6 sighted / 0 stalls.
+            // is exact: every blind round carries one rasterise stall at its full
+            // 20000ms budget, and every sighted round carries none. 8 blind / 8
+            // stalls, 6 sighted / 0 stalls.
             //
             // So this is not an unknown. The SECOND rasterise of the same slide
             // hangs — the first one answered, which is where `before` came from —
             // and that costs the project its only mechanical evidence that a
             // drawn chart is visible, in more than half of all rounds.
-            lastStall && /rasteris/i.test(lastStall.what)
+            //
+            // MATCHED ON `op`, NOT ON WORDING, and this line is why the rule
+            // exists. It used to read `/rasteris/i.test(lastStall.what)`, which
+            // worked only while every rasterise traced the one string
+            // "rasterising a slide". Once each call site was given its own name
+            // the control render began stalling as "the visibility CONTROL
+            // render (same slide, back to back)" — no "rasteris" in it — so this
+            // branch stopped firing and the scenario reported the cause as
+            // UNKNOWN while the cause sat one field away in its own trace.
+            // Round 113 is the first archived proof. The regex is kept as a
+            // fallback ONLY for rounds archived before `op` existed.
+            lastStall && (lastStall.op === RASTERISE_OP || /rasteris/i.test(lastStall.what))
             ? ` (no control render: the second rasterise of the same slide stalled — ${lastStall.what})`
             : " (no control render, so an unstable rasteriser cannot be ruled out)"
           : "";

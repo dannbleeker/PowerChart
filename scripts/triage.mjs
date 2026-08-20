@@ -486,6 +486,47 @@ export function poolRasteriseArms(logs) {
  * and it cannot settle one. Two populations, honestly labelled, beat one
  * population quietly mixing the two kinds of evidence.
  */
+/**
+ * Rasterise labels from rounds archived BEFORE `op` existed.
+ *
+ * NOT a guess at wording — an ENUMERATION of the archive. A rasterise names
+ * itself unambiguously in two places that do not depend on the label at all:
+ * the success line `rasterised a slide` carries `label`, and the visibility
+ * scenario's `visibility step` carries `what`. Reading every round through
+ * those gives the complete set, and it is closed: old archives do not change.
+ *
+ * WHAT THIS RECOVERS TODAY: NOTHING, AND THAT IS MEASURED, NOT ASSUMED.
+ *
+ * The first version of this comment claimed these four labels were 35 of 43
+ * labelled rasterises and that 81% of the population was missing from the
+ * pooled answer. THAT WAS WRONG, and it was wrong in the way this repo keeps
+ * being wrong: a number counted against the wrong denominator. These labels do
+ * lack the string "rasteris" — but `isRasterise` tests the label AND THE
+ * MESSAGE, and the message on a successful rasterise is `rasterised a slide`,
+ * which matches. They were classified correctly all along.
+ *
+ * Pooled over all 90 archived rounds, with and without this set:
+ *
+ *     rasterise      ok 449, stall 1      (identical both ways)
+ *     anything else  ok 3302, stall 1     (identical both ways)
+ *
+ * So this set is belt-and-braces, not a repair. It is kept because it makes the
+ * classifier independent of a message string that nobody has promised to keep,
+ * and because the equality above is now a fact on the record rather than an
+ * assumption. If it ever starts changing a number, something upstream renamed a
+ * trace message and that is worth knowing.
+ *
+ * The REAL breakage this pair found was in `chartIsVisible`, which matches
+ * `lastStall.what` alone — no message to fall back on — and therefore genuinely
+ * did stop firing. See round 113.
+ */
+const RASTERISE_LABELS_BEFORE_OP = new Set([
+  "an end-of-round slide shot",
+  "the visibility BEFORE render",
+  "the visibility AFTER render",
+  "the visibility CONTROL render (same slide, back to back)",
+]);
+
 export function poolEveryDraw(logs) {
   const isDraw = (e) =>
     (e.scope === "draw" && e.message === "batch issued") ||
@@ -495,7 +536,25 @@ export function poolEveryDraw(logs) {
   // and reading it as one would tar the next draw with a rasterise that had
   // already been accounted for. Caught by the test below rather than by reading:
   // the untagged-draw case came out one short and the miscount was this.
-  const isRasterise = (e) => !isDraw(e) && /rasteris/i.test(`${String(e.data?.what ?? "")} ${String(e.message ?? "")}`);
+  // ON `op` FIRST, then the enumerated legacy labels, then the prose.
+  //
+  // THIS ONE WAS NOT BROKEN — checked, and the check is the point. The sibling
+  // in `chartIsVisible` was broken by call sites being given individual names,
+  // so this classifier was the obvious next casualty: it also identifies a
+  // rasterise by matching prose. It survives only because it happens to test
+  // the MESSAGE as well as the label, and the message `rasterised a slide`
+  // still contains "rasteris".
+  //
+  // That is luck, not design. `op` makes it design. The pooled numbers are
+  // identical before and after (see `RASTERISE_LABELS_BEFORE_OP`), which is
+  // exactly what a belt-and-braces change should look like and is recorded so
+  // nobody later mistakes this for a fix that moved something.
+  const isRasterise = (e) =>
+    !isDraw(e) &&
+    (e.data?.op === "rasterise" ||
+      RASTERISE_LABELS_BEFORE_OP.has(String(e.data?.what ?? "")) ||
+      RASTERISE_LABELS_BEFORE_OP.has(String(e.data?.label ?? "")) ||
+      /rasteris/i.test(`${String(e.data?.what ?? "")} ${String(e.message ?? "")}`));
   const isStall = (e) =>
     e.scope === "host" && e.message === "gave up waiting" && /drawing shapes/.test(String(e.data?.what ?? ""));
 
