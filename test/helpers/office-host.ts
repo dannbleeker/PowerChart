@@ -2328,7 +2328,21 @@ export function installHost(
               get items() {
                 return inNs().map(partHandle);
               },
-              getCount: () => ({ value: inNs().length }),
+              getCount: () => {
+                // THE FIRST CUSTOM-XML CALL, WHATEVER IT IS. The real fault this
+                // models does not care which method it lands on: seven rounds
+                // show the first call after a pane loads failing and the second
+                // working, and it has been a `getOnlyItemOrNullObject` hang and
+                // a `getCount` that resolved unloaded on different builds. A
+                // once-fault that fired only on the item read could not express
+                // that, so the warm-up — whose whole job is to BE the first call
+                // — sailed through it and the test failed for the wrong reason.
+                if (faults.refuseCustomXmlReadsOnce) {
+                  faults.refuseCustomXmlReadsOnce = false;
+                  throw new Error("GeneralException | the host did not answer the custom XML read");
+                }
+                return { value: inNs().length };
+              },
               getOnlyItemOrNullObject() {
                 // THE HOST THAT HAS THE API AND WILL NOT ANSWER THE READ. Round
                 // 089 recorded exactly that on the day #583 merged — `reading

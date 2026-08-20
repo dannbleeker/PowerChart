@@ -2257,3 +2257,38 @@ had failed both attempts. A false HELD, in my own claim, of exactly the kind thi
 file spends its time finding elsewhere. `trace-line-present` takes a `scope` now,
 so an absence claim can name the whole family, and the verdict says which of the
 two it matched rather than quoting the one it did not use.
+
+## Rounds 104 + 105 — 9b6a78f — the revert holds, and the diagnosis is now clean
+
+    102, 103   WITH my retry     probe: the namespace is UNREACHABLE too
+    104, 105   retry removed     probe: the namespace IS reachable   (both)
+
+Two pairs bracketing one commit. The probe answers again on both rounds with the
+retry gone, so it really was being starved of the good second call, and the
+revert was not wasted motion.
+
+**The pair also gives the cleanest statement of the fault the archive has
+produced:** on both rounds the read fails at `counting the deck's style parts` —
+its FIRST call — and the probe counts the same namespace successfully moments
+later. First call fails, second works, twice, on one build.
+
+105 skipped `the chart is actually visible` where 104 passed it; that is the
+control render's availability moving, which is what the skip is there to report.
+Grouping 20/0 then 17/2 — the sixth pair, and the refusal counts still swing on
+one build.
+
+- **Fix.** `warmCustomXmlSurface` spends the bad call before the read, in the
+  pane's boot chain, where nothing waits on the answer and nothing else measures
+  it. One thrown-away `getCount`. It cannot throw — failing is what it is for —
+  and the guard for that is a mutation that rethrows, which takes the whole
+  pane-load chain down.
+
+- **Instrument.** The fake's once-fault only fired on the ITEM read, so it could
+  not express "the first call, whatever it is" — and the warm-up sailed straight
+  through it while the test failed for the wrong reason. It covers `getCount` now,
+  which is what the real fault does.
+
+- **The gate caught a real one.** Adding a renderer export the pane calls means
+  adding it to the pane's MOCK in the same change: without it `app.ts` throws at
+  boot and 110 tests die at once. Second time this session — the same thing
+  happened with `readDeckStyleWithReason`.

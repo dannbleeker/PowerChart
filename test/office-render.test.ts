@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   readDeckStyle,
   readDeckStyleWithReason,
+  warmCustomXmlSurface,
   replayDeckStyleVerdict,
   _resetDeckStyleVerdictForTest,
   stallShape,
@@ -5376,6 +5377,31 @@ describe("the style a deck carries", () => {
     delete process.env.PW_DECK_STYLE_TIMEOUT_MS;
     expect(r).toEqual({ style: null, unreadable: true });
     expect(took, "waited on the readback budget instead of its own").toBeLessThan(5_000);
+  });
+
+  it("warms the surface with a call whose failure is the point", async () => {
+    // Seven rounds say the FIRST custom-XML call after a pane loads fails and the
+    // second works. Retrying inside the read was tried (#602) and reverted (#603)
+    // because the read's retry spent the good second call and starved the probe.
+    // So the bad call is spent here, where nothing waits on it.
+    installHost([makeSlide("s1")]);
+    await writeDeckStyle({ palette: ["#2a78d6"] });
+    faults.refuseCustomXmlReadsOnce = true;
+    // The warm-up eats the refusal...
+    await expect(warmCustomXmlSurface()).resolves.toBeUndefined();
+    // ...so the read that follows is the second call, and it answers.
+    expect(await readDeckStyleWithReason()).toEqual({ style: { palette: ["#2a78d6"] }, unreadable: false });
+    faults.refuseCustomXmlReadsOnce = false;
+  });
+
+  it("never throws out of the warm-up — failing is what it is for", async () => {
+    // A warm-up that rejects would take the pane-load chain down with it, and
+    // the chain it sits in is `void warm().then(read)`. The whole design is that
+    // this call is allowed to fail.
+    installHost([makeSlide("s1")]);
+    faults.refuseCustomXmlReads = true;
+    await expect(warmCustomXmlSurface()).resolves.toBeUndefined();
+    faults.refuseCustomXmlReads = false;
   });
 
   it("attempts ONCE — the retry made this worse and the rounds took it back", async () => {

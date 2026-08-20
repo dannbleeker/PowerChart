@@ -34,6 +34,7 @@ import {
   loadThemePalette,
   readDeckStyle,
   readDeckStyleWithReason,
+  warmCustomXmlSurface,
   writeDeckStyle,
   updateChartInSlide,
   updateChartsInSlides,
@@ -4599,11 +4600,22 @@ if (typeof Office !== "undefined" && Office.onReady) {
     // usable before it answers, and a host that cannot store one (or a deck
     // that has none) simply leaves the browser's style in force. It re-renders
     // only when there is something to show, so an ordinary load does not flash.
-    void readDeckStyle().then((style) => {
-      if (!style) return;
-      deckStyle = style;
-      renderPreview();
-    });
+    // WARM FIRST, THEN READ. The first custom-XML call after a pane loads fails
+    // on this host and the second works — seven rounds, and the diagnostic probe
+    // (always the second call) has answered on every one of them. `#602` tried
+    // retrying inside the read and `#603` reverted it: the read's own retry
+    // spent the good second call and left the probe third, so the probe stopped
+    // answering too. Spending it HERE costs one thrown-away count and leaves the
+    // real read as the second call.
+    //
+    // Still fired and forgotten — the pane is usable before any of this answers.
+    void warmCustomXmlSurface()
+      .then(() => readDeckStyle())
+      .then((style) => {
+        if (!style) return;
+        deckStyle = style;
+        renderPreview();
+      });
     try {
       localizePane(Office.context.displayLanguage);
     } catch {
