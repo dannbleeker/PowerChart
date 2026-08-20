@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "fs";
 // @ts-expect-error — plain .mjs tool, no types.
 import * as driver from "../scripts/round.mjs";
 // A NAMESPACE import, and destructured below, because the directive only covers
@@ -20,6 +21,7 @@ const {
   frontedDeck,
   roundConfigArg,
   waitForRef,
+  refreshPane,
   namePresent,
   setSlideSizeScript,
   readSlideSize,
@@ -310,6 +312,73 @@ describe("talking to the browser at all", () => {
     expect(selectDeck(shWith('0: https://x/ "Presentation64"'), "Presentation66")).toBe(false);
     // No deck asked for is the behaviour this has always had.
     expect(selectDeck(shWith(""), null)).toBe(true);
+  });
+
+  it("hands the next round a fresh pane, not just a clean deck", async () => {
+    // A CLEAN DECK IS NOT A CLEAN PANE. The pane's age when a round starts
+    // separates post-retry 0.43 from 4.57 and a 16-shape deck from a 60+ one
+    // (rounds 110-123). Sweeping clears the SLIDES and leaves the pane exactly
+    // as the last round left it, so every second round in this archive is a
+    // degraded sample — a fact published three times as a property of the
+    // profile, the position and the observer before anyone measured pane age.
+    const calls: string[][] = [];
+    const sh = ((...args: string[]) => {
+      calls.push(args);
+      if (args[0] === "find" && /Insert chart/.test(args[1] ?? "")) return 'button "Insert chart" [ref=r1]';
+      if (args[0] === "find" && /Automation/.test(args[1] ?? "")) return 'tab "Automation" [ref=r2]';
+      return "";
+    }) as never as { (...a: string[]): string; state: unknown };
+
+    const ok = await refreshPane(sh, async () => {});
+    expect(ok, "reported no pane when one reopened").toBe(true);
+    expect(
+      calls.some((c) => c[0] === "reload"),
+      "never reloaded the tab",
+    ).toBe(true);
+    // Reopened AND put on Automation: a pane always reopens on Chart, where
+    // `Verbose trace` and the run button are not in the DOM at all, so a round
+    // starting there reads `verbose trace ?` and cannot find its own button.
+    expect(calls.filter((c) => c[0] === "eval").length, "clicked neither the pane nor the tab").toBeGreaterThanOrEqual(
+      2,
+    );
+
+    // AND IT MUST NOT RELOAD TWICE. `recover` chooses between a crash dialog's
+    // Refresh button and a plain reload before delegating here; a second reload
+    // would throw away the dialog handling it just did.
+    const after: string[][] = [];
+    const sh2 = ((...args: string[]) => {
+      after.push(args);
+      return "";
+    }) as never as { (...a: string[]): string; state: unknown };
+    await refreshPane(sh2, async () => {}, { reloaded: true });
+    expect(
+      after.some((c) => c[0] === "reload"),
+      "reloaded on top of the caller's own reload",
+    ).toBe(false);
+  });
+
+  it("actually wires the refresh into the end of a round", () => {
+    // THE GAP MUTATION TESTING FOUND. The test above proves `refreshPane` works;
+    // it proves nothing about `collectRound` CALLING it, and deleting the call
+    // left the whole suite green. The behaviour being shipped is the wiring,
+    // not the helper.
+    //
+    // `collectRound` is not exported and does enough — archive, sweep, refresh —
+    // that a stub complete enough to reach the end would be most of a fake
+    // driver. So this reads the source, which is a weaker check and is labelled
+    // as one: it catches the call being DELETED, not the call being wrong. The
+    // live evidence is a round's own output ("pane reloaded") and the next
+    // round's pane age in the gate, both of which a unit test cannot see.
+    const src = readFileSync(new URL("../scripts/round.mjs", import.meta.url), "utf8");
+    const body = src.slice(src.indexOf("async function collectRound"));
+    const end = body.indexOf("\n}\n");
+    const fn = body.slice(0, end > 0 ? end : 4000);
+    expect(fn, "collectRound stopped refreshing the pane — every next round is a reused-pane round").toMatch(
+      /refreshPane\(/,
+    );
+    expect(fn.indexOf("sweepDeck"), "sweep must come first: it needs the pane the refresh replaces").toBeLessThan(
+      fn.indexOf("refreshPane("),
+    );
   });
 
   it("never reads `find`'s miss message as a hit", async () => {
