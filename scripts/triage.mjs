@@ -753,7 +753,7 @@ export function poolScenarioPopulations(logs) {
     // only recently started carrying an "N of M" count, so its entire history
     // was a single round. One number is not a norm, and this project's own noise
     // floor — one build run twice scoring 1 and 5 — is the reason to say so.
-    if (hist.length < 4) continue;
+    if (hist.length < MIN_PRIORS_FOR_A_BASELINE + 1) continue;
     const now = hist[hist.length - 1];
     const priors = hist.slice(0, -1).map((h) => h.of);
     // The population it has USUALLY had. Not the mean: a single small round
@@ -789,6 +789,17 @@ export function poolScenarioPopulations(logs) {
  * threshold to interpret, and a guard sized by guesswork is how this instrument
  * has been wrong before.
  */
+/**
+ * How many earlier rounds a "usually" needs before it is allowed to be printed.
+ *
+ * Two emitters have now shipped a baseline computed from ONE prior round, and
+ * the gate printed `usually 16 over 1 prior round(s)` in a real run before
+ * anyone noticed. This project's own noise floor — one build run twice, scoring
+ * 1 and 5 with nothing changed — is the argument: a single prior cannot
+ * distinguish a trend from the host's mood.
+ */
+const MIN_PRIORS_FOR_A_BASELINE = 3;
+
 export function poolGroupingOutcome(logs) {
   const per = [];
   for (const log of logs) {
@@ -808,9 +819,16 @@ export function poolGroupingOutcome(logs) {
   if (!per.length) return null;
   const now = per[per.length - 1];
   const priors = per.slice(0, -1);
-  const refusedMedian = priors.length
-    ? priors.map((p) => p.refused).sort((a, b) => a - b)[Math.floor(priors.length / 2)]
-    : 0;
+  // THREE PRIORS MINIMUM — the same rule `poolScenarioPopulations` needed, and
+  // the same defect it had. A median of one observation is not a "usually", and
+  // a median of ZERO observations used to be reported here as `0`, which is this
+  // project's house defect exactly: UNREADABLE PRINTED AS A NEGATIVE. A reader
+  // seeing "usually 0 refused" cannot tell a clean history from no history.
+  // `null` is the honest value and the printer must say so out loud.
+  const refusedMedian =
+    priors.length >= MIN_PRIORS_FOR_A_BASELINE
+      ? priors.map((p) => p.refused).sort((a, b) => a - b)[Math.floor(priors.length / 2)]
+      : null;
   return { now, refusedMedian, rounds: priors.length };
 }
 
