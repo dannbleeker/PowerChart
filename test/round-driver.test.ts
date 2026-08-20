@@ -18,6 +18,8 @@ const {
   readPing,
   refFor,
   namePresent,
+  setSlideSizeScript,
+  readSlideSize,
   sawCrashDialog,
   quietStreak,
   archive,
@@ -34,7 +36,6 @@ const {
   DEAD_BROWSER_POLLS,
   slideResolveScript,
   readSlideResolve,
-  readSlideSize,
   slideSizeScript,
   outcomeReceipt,
   RECOVERABLE_STOPS,
@@ -120,6 +121,41 @@ describe("deciding whether a round is worth running", () => {
     // was not open at that moment, and turning that into a hard stop would make
     // the driver unusable while telling nobody anything true.
     expect(readiness({ ...ready, verbose: null, pictures: null, slides: null }).ok).toBe(true);
+  });
+});
+
+describe("setting the deck's slide size, only when asked", () => {
+  it("writes BOTH dimensions and reads them back rather than assuming", () => {
+    // `PowerPoint.PageSetup.slideWidth`/`slideHeight` are writable at
+    // PowerPointApi 1.10, which round 096's `environment` line shows this host
+    // advertising — so the `wrong-size` refusal was asking a person to do
+    // something the API can do.
+    //
+    // The read-back is the point. The driver's own refusal text has warned for
+    // months that a size change "made while the document is loading is accepted
+    // and does nothing", and an API write deserves the same suspicion.
+    const four = setSlideSizeScript("4:3", 20_000);
+    expect(four, "4:3 is 720x540 at 96dpi").toMatch(/slideWidth = 720/);
+    expect(four).toMatch(/slideHeight = 540/);
+    expect(four, "wrote without reading the result back").toMatch(/load\("slideWidth,slideHeight"\)/);
+    expect(four).toMatch(/return "size:"/);
+
+    const wide = setSlideSizeScript("16:9", 20_000);
+    expect(wide).toMatch(/slideWidth = 960/);
+    expect(wide).toMatch(/slideHeight = 540/);
+  });
+
+  it("carries a budget, so a host that will not answer cannot hang the leg", () => {
+    expect(setSlideSizeScript("4:3", 12_345)).toMatch(/12345/);
+  });
+
+  it("round-trips through readSlideSize, or the driver cannot tell whether it took", () => {
+    // The setter returns the same `size:WxH` shape the reader parses. If those
+    // two ever drift, the driver would resize the deck and then report that it
+    // could not read the result — and carry on with the old value.
+    expect(readSlideSize("size:720x540")).toBe("4:3");
+    expect(readSlideSize("size:960x540")).toBe("16:9");
+    expect(readSlideSize("size-failed:budget"), "a failure must not read as a size").toBeNull();
   });
 });
 

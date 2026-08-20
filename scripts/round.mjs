@@ -735,6 +735,39 @@ export function slideResolveScript(budgetMs) {
  *
  * Points, via `pageSetup`, because that is what the add-in itself reads.
  */
+/**
+ * Set the deck's slide size, so a dedicated 4:3 deck can be made 4:3 unattended.
+ *
+ * `PowerPoint.PageSetup.slideWidth` and `slideHeight` are WRITABLE at
+ * PowerPointApi 1.10, and round 096's `environment` line records this host
+ * advertising 1.1 through 1.10. So the driver's `wrong-size` refusal — "set it
+ * in Design ▸ Slide Size" — was asking a person to do something the API can do.
+ *
+ * OFF BY DEFAULT, AND THAT IS THE IMPORTANT HALF. Resizing the WRONG deck is a
+ * quiet disaster: there is one 16:9 deck behind almost the whole archive,
+ * `roundProfile` defaults to 16:9 for the 53 rounds that carry no size at all,
+ * and `scenarioRegressions` compares within one profile — so a deck that
+ * silently changed shape mid-series would split every comparison built on it.
+ * A misaimed `PW_DECK` plus an automatic resize would do that to a real
+ * presentation without anyone noticing.
+ *
+ * So it happens only when the owner asks for it with `PW_SET_SIZE=1`, and it
+ * says so loudly when it does. The intended use is a deck that EXISTS to be 4:3,
+ * where setting the size is idempotent and makes the deck what its name claims.
+ */
+export function setSlideSizeScript(size, budgetMs) {
+  const [w, h] = size === "4:3" ? [720, 540] : [960, 540];
+  return (
+    "async () => { try { return await Promise.race([ " +
+    "PowerPoint.run(async (c) => { const p = c.presentation.pageSetup; " +
+    `p.slideWidth = ${w}; p.slideHeight = ${h}; await c.sync(); ` +
+    'p.load("slideWidth,slideHeight"); await c.sync(); ' +
+    'return "size:" + Math.round(p.slideWidth) + "x" + Math.round(p.slideHeight); }), ' +
+    `new Promise((_, rej) => setTimeout(() => rej(new Error("budget")), ${budgetMs})) ]); ` +
+    '} catch (e) { return "size-failed:" + (e && e.message ? String(e.message).slice(0, 60) : "?"); } }'
+  );
+}
+
 export function slideSizeScript(budgetMs) {
   return (
     "async () => { try { return await Promise.race([ " +
@@ -1002,7 +1035,25 @@ async function attempt(argv, deps, sh, healed = false) {
   // and answers nothing. `PW_EXPECT_SIZE=4:3` is how a nightly cycle says which
   // arm this round belongs to.
   const expectSize = process.env.PW_EXPECT_SIZE || null;
-  const size = expectSize && pane && ping?.answered ? readSlideSize(sh("eval", slideSizeScript(15000), pane)) : null;
+  let size = expectSize && pane && ping?.answered ? readSlideSize(sh("eval", slideSizeScript(15000), pane)) : null;
+  // MAKE THE DECK WHAT THE LEG ASKED FOR, when the owner has opted in. See
+  // `setSlideSizeScript` for why this is off by default: resizing the wrong deck
+  // splits every comparison the archive rests on, and a misaimed `PW_DECK` would
+  // do it to a real presentation silently.
+  //
+  // Only when the size is KNOWN and WRONG. A host that would not answer has said
+  // nothing, and resizing on no evidence is the mistake `reachable` exists to
+  // prevent — the same reason the refusal below needs both values.
+  if (expectSize && size && size !== expectSize && process.env.PW_SET_SIZE && pane) {
+    console.log(`  the deck is ${size} and this leg wants ${expectSize} — setting it (PW_SET_SIZE is on)`);
+    const after = readSlideSize(sh("eval", setSlideSizeScript(expectSize, 20000), pane));
+    console.log(`  slide size is now ${after ?? "unreadable"}`);
+    // READ THE ANSWER BACK rather than assuming the write took. The driver's own
+    // refusal text has warned about this for months — "CHECK IT TOOK, because a
+    // click made while the document is loading is accepted and does nothing" —
+    // and an API write deserves the same suspicion.
+    size = after ?? size;
+  }
   // RE-READ, after the slide touch rather than only before it. If the touch is
   // what trips the host, the dialog appears in the seconds that follow — and
   // reading the dialog only at the top of the sweep is how a crash the check
