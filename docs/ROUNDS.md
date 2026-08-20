@@ -598,10 +598,21 @@ onto the retry list and returned in silence. So the archive could not say whethe
 the cold read still comes back short, which is the difference between "the fault
 went away" and "the retry hides it". Those want opposite responses.
 
-The cold read is traced now (`the cold re-read fell short — asking again after
-the settle`, with `kind`). Until a few rounds carry it, #586's branch is best
-described as **starved** rather than unreachable, and a round that passes still
-says nothing about it either way.
+The cold read is traced now, and **round 111 answered it on the first outing**:
+
+    cold re-reads that fell short   11
+    settle-delay retries fired      11
+    post-retry failures              0
+
+**The fault never stopped happening — it happens eleven times a round.** The
+first of those eleven is `chart 4/8, kind: short, drew: 24, matched: 20`: the
+twenty-of-twenty-four case #586 was built for, still occurring every round and
+invisible until the cold read was traced.
+
+So the branch is **starved because the retry never fails**, not because the host
+stopped producing short reads. Different fact, different response — it guards a
+regime this host enters constantly and is rescued from every time. Keep the code;
+stake nothing on it firing.
 
 ### Every round before 2026-08-16 was 16:9
 

@@ -155,7 +155,29 @@ export function readiness({
   // seconds. See `docs/ROUNDS.md`, "The wedge".
   // Before everything the browser could tell us, because if this is true then
   // nothing else was measurable and every message below is noise.
-  if (loggedOut)
+  //
+  // UNLESS THE HOST IS ANSWERING, and that exception is the whole point. A
+  // sign-in TAB is not a sign-in PROMPT. Chrome's "Restore pages?" brings back
+  // every tab a crashed session had open, including an `oauth20_authorize`
+  // popup that was already finished — so the tab list shows a login page beside
+  // a deck that is working perfectly.
+  //
+  // Observed 2026-08-20: the check printed `host answered in 7ms · slide 1
+  // resolved` and refused in the same breath, telling the owner to go and enter
+  // a password they had already entered. The deck was fine; the tab was debris.
+  //
+  // A host that answers Office.js and resolves a slide IS an authenticated
+  // session — an unauthenticated one cannot do either. So the ping is the
+  // discriminator, and it is better evidence than the tab list because it asks
+  // the thing we actually care about instead of looking at the furniture around
+  // it. If the host is silent, the refusal stands and reads exactly as before.
+  const hostAnswering = Boolean(ping?.answered) && slideOk !== false;
+  if (loggedOut && hostAnswering)
+    console.log(
+      "  a Microsoft sign-in tab is open, but the host is answering — treating it as leftover from a " +
+        "browser restore rather than a live prompt",
+    );
+  if (loggedOut && !hostAnswering)
     return {
       ok: false,
       stop: [
@@ -1060,6 +1082,27 @@ async function attempt(argv, deps, sh, healed = false) {
   // itself provoked would be carried into the round as `ready`.
   const crashedAfter = slideOk === false ? sawCrashDialog(sh("find", "Sorry, we ran into a problem")) : false;
 
+  // THE AUTOMATION TAB HAS TO BE SHOWING BEFORE ANY OF THIS IS READ. `Verbose
+  // trace`, `Picture every slide` and the run button all live on it, and a pane
+  // does not open there — a freshly sideloaded or reopened one comes up on
+  // `Chart`, where none of the three is in the DOM.
+  //
+  // 2026-08-20 is what this is for: the driver put the add-in back by itself for
+  // the first time, reached `ready` with `verbose trace ?` in the same block,
+  // and then stopped because the run button was not there either. Both readings
+  // had the same cause and neither was acted on.
+  //
+  // Selected HERE rather than just before the click, so the two toggles are read
+  // rather than guessed. A round that starts with verbose trace off produces a
+  // trace too thin to mine, and `?` is not evidence that it is on.
+  if (pane) {
+    const autoTab = refFor(sh, "Automation", /tab "Automation"/);
+    const already = /tab "Automation" \[selected\]/.test(sh("find", "Automation"));
+    if (autoTab && !already) {
+      console.log("  the pane is not on the Automation tab — selecting it");
+      clickRef(sh, autoTab);
+    }
+  }
   const toggles = sh("find", "Verbose trace");
   const verbose = /checkbox "Verbose trace"/.test(toggles) ? /Verbose trace" \[checked\]/.test(toggles) : null;
   const pictures = /checkbox "Picture every slide"/.test(toggles)
@@ -1124,9 +1167,31 @@ async function attempt(argv, deps, sh, healed = false) {
   console.log("  ready");
   if (checkOnly) return { code: 0, reason: "checked" };
 
-  const runBtn = refFor(sh, "Probe, then self-test", /button "Probe, then self-test"/);
+  // THE RUN BUTTON ONLY EXISTS ON THE AUTOMATION TAB, and a pane does not open
+  // there. A freshly sideloaded or reopened pane comes up on `Chart`, so the
+  // button is not merely hidden — it is not in the DOM at all.
+  //
+  // 2026-08-20: the driver put the add-in back by itself for the first time,
+  // reached `ready`, and then stopped on `no-run-button` with the pane sitting
+  // on Chart and `verbose trace ?` in the same block — the checkbox that reads
+  // as `?` lives on the same tab as the button that was missing. Everything
+  // needed to notice was on screen; nothing acted on it.
+  //
+  // So: select the tab, then look again. This is the cheapest possible recovery
+  // and it was previously an un-retryable stop.
+  // The Automation tab was selected before readiness read its toggles, so the
+  // button should be here. One more try anyway — the pane can be re-rendered
+  // between the two, and a second look is cheaper than a lost round.
+  let runBtn = refFor(sh, "Probe, then self-test", /button "Probe, then self-test"/);
   if (!runBtn) {
-    console.error("  could not find the run button — is the Automation tab open?");
+    const automation = refFor(sh, "Automation", /tab "Automation"/);
+    if (automation) {
+      clickRef(sh, automation);
+      runBtn = refFor(sh, "Probe, then self-test", /button "Probe, then self-test"/);
+    }
+  }
+  if (!runBtn) {
+    console.error("  could not find the run button, and the Automation tab did not bring it back");
     return { code: 1, reason: "no-run-button" };
   }
   console.log("  running — this takes about ten minutes");

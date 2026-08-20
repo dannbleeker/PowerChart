@@ -2410,3 +2410,50 @@ host surfaces, opposite orders, same class of fault.
   What that costs: the project's only mechanical evidence that a drawn chart is
   visible is unavailable in more than half of all rounds. Worth someone's next
   session.
+
+## Round 111 — d56cf96 — 13/13 — the cold read never stopped failing
+
+The first round carrying four new instruments, and one of them overturns a story
+this project has been telling itself for twenty rounds.
+
+**THE COLD RE-READ FAILS ELEVEN TIMES A ROUND.**
+
+    cold re-reads that fell short   11   (1 short, 4 empty, 4 zero-match, 2 short)
+    settle-delay retries fired      11
+    post-retry failures              0
+    charts grouped / refused      20 / 0
+
+Every claim of the form "no re-read has come back short since the retry shipped"
+was measuring **the retry's success rate**, not the host's behaviour. The fault
+is exactly as common as it ever was; attempt 0 pushed the entry onto the retry
+list and returned in silence, so nothing recorded it.
+
+And there it is in the first line: `chart 4/8, kind: short, drew: 24, matched:
+20` — the twenty-of-twenty-four case #586 was built for, still happening, on
+every round, invisible until today.
+
+**So #586's subset branch is starved because the RETRY NEVER FAILS**, not because
+the host stopped producing short reads. That is a different fact with a different
+response: the branch guards a regime this host enters constantly and is rescued
+from every time. Keeping it is right; staking a prediction on it firing is not.
+
+- **A successful rasterise costs under a second.** First durations ever recorded:
+
+      the visibility BEFORE render    694ms
+      the visibility CONTROL render   492ms
+      the visibility AFTER render     803ms
+      the rasterise-poisons arm       570-660ms
+      an end-of-round slide shot      532-949ms  (n=6)
+
+  Against a 20-second budget — twenty times the slowest of eleven. The budget can
+  finally be sized from evidence rather than from harm, and this pair of rounds
+  is the evidence. One round is a sample: pair it before cutting.
+
+- **Zero stalls this round, and the visibility scenario passed** — no skip. The
+  control render answered in 492ms. Consistent with the correlation: blind rounds
+  have a stall, sighted rounds do not.
+
+- **Four unsettled readings kept** that the old guard would have dropped in
+  silence.
+
+Every one of those four numbers was unmeasurable yesterday.

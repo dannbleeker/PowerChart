@@ -124,6 +124,66 @@ describe("deciding whether a round is worth running", () => {
   });
 });
 
+describe("the Automation tab holds everything the driver needs", () => {
+  it("does not treat an unread toggle as permission to run", () => {
+    // `Verbose trace`, `Picture every slide` and the run button all live on the
+    // Automation tab, and a pane does not open there — a freshly sideloaded or
+    // reopened one comes up on `Chart`, where none of the three is in the DOM.
+    //
+    // 2026-08-20: the driver put the add-in back by itself for the first time,
+    // reached `ready` with `verbose trace ?` in the same block, and then stopped
+    // because the run button was not there either. Both readings had one cause.
+    //
+    // `null` means "could not read it". A round started on that produces a trace
+    // too thin to mine, and the point of selecting the tab first is that the
+    // answer becomes a reading.
+    const unread = readiness({ ...READY, verbose: null });
+    expect(unread.ok, "an unread Verbose trace is not evidence that it is on").toBe(true);
+    // The refusal that DOES exist stays: an explicit false still stops the round.
+    const off = readiness({ ...READY, verbose: false });
+    expect(off.ok).toBe(false);
+    expect(off.stop.join(" ")).toMatch(/Verbose trace is off/);
+  });
+});
+
+describe("a sign-in TAB is not a sign-in PROMPT", () => {
+  it("refuses when the host is silent — the real prompt still stops the round", () => {
+    // Unchanged behaviour, and it has to be: a genuine credential prompt makes
+    // everything after it unmeasurable, and only a person can clear it.
+    const r = readiness({ ...READY, loggedOut: true, authPopup: true, ping: null });
+    expect(r.ok).toBe(false);
+    expect(r.stop.join(" ")).toMatch(/needs a password/);
+  });
+
+  it("carries on when the host is ANSWERING, because that proves the session is signed in", () => {
+    // 2026-08-20: Chrome's "Restore pages?" brought back an `oauth20_authorize`
+    // popup from a crashed session, so the tab list showed a login page beside a
+    // deck that was working perfectly. The check printed
+    // `host answered in 7ms · slide 1 resolved` and refused in the same breath,
+    // telling the owner to enter a password they had already entered.
+    //
+    // A host that answers Office.js and resolves a slide cannot be
+    // unauthenticated. The ping is better evidence than the tab list because it
+    // asks the thing we care about rather than looking at the furniture.
+    const r = readiness({ ...READY, loggedOut: true, authPopup: true, ping: { answered: true, ms: 7 }, slideOk: true });
+    expect(r.ok, "a stale login tab blocked a working deck").toBe(true);
+  });
+
+  it("still refuses when the slide will not resolve, even if the ping answered", () => {
+    // Half-answering is not answering. `slideOk === false` is the host taking a
+    // call and failing the one that matters, which is exactly the state the
+    // original guard existed to stop a round on.
+    const r = readiness({
+      ...READY,
+      loggedOut: true,
+      authPopup: true,
+      ping: { answered: true, ms: 7 },
+      slideOk: false,
+    });
+    expect(r.ok).toBe(false);
+  });
+});
+
 describe("setting the deck's slide size, only when asked", () => {
   it("writes BOTH dimensions and reads them back rather than assuming", () => {
     // `PowerPoint.PageSetup.slideWidth`/`slideHeight` are writable at

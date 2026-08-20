@@ -1,7 +1,7 @@
 # PowerChart round loop — brief
 
 One round per cycle: run it, mine it, fix what it exposes, journal it, land it.
-Repeat. Last round **110** (`rounds/110-48cd380.json`, 12 of 13, 2026-08-20).
+Repeat. Last round **111** (`rounds/111-d56cf96.json`, 13 of 13, 2026-08-20).
 
 **Move that line with the loop.** It was once twenty-one rounds out of date —
 reading `067 … 10 of 12` while a paragraph further down this same file cited
@@ -12,7 +12,26 @@ this file exists to prevent.
 **This file is the operating document.** A session that reads only this and
 `docs/ROUNDS.md` has everything it needs.
 
-## THE RETRY RAN — read this before staking another one
+## THE RETRY RAN — and round 111 showed what it was hiding
+
+**READ THIS FIRST, because the section below draws the wrong lesson.** It reads
+the retry's success as the fault having been fixed. Round 111 traced the COLD
+read for the first time and found it failing **eleven times in one round** —
+1 short, 4 empty, 4 zero-match, 2 more short — with eleven settle-delay retries
+fired and **zero** post-retry failures.
+
+The fault is exactly as common as it ever was. Attempt 0 pushed the entry onto
+the retry list and returned in silence, so no round could see it, and every
+sentence of the form "no re-read has come back short since the retry shipped" was
+measuring **the retry's success rate**.
+
+That includes `chart 4/8, kind: short, drew: 24, matched: 20` — the
+twenty-of-twenty-four case #586 was built for, still happening every round.
+
+So #586's subset branch is starved **because the retry never fails**, not because
+the host improved. Keep the code; stake nothing on it firing.
+
+## What the retry measurement said at the time
 
 **The run this section used to brief has happened.** `REREAD_RETRY_MS` — the
 pre-grouping re-read asking a second time after 1.5s when the first answer is
@@ -40,8 +59,12 @@ predate the retry, so that figure is a floor climbing rather than the rate.
     the host flipped at chart 4 of 8, so the last 3 were not attempted
 
 Against the recorded before-state — 5 of 8 drawing all 24 shapes and then
-unreachable — that is most of the way, and identical across two builds. It is
-**not** a pass, and the scenario should keep reporting FAIL until it is one.
+unreachable — that was most of the way, and identical across two builds.
+
+**SUPERSEDED: it passes now, and has for thirty-three consecutive rounds.** The
+sentence that stood here — "it is not a pass, and the scenario should keep
+reporting FAIL until it is one" — was true when written and stopped being true
+around round 079.
 
 **What is still broken is the TAG, not the grouping.** Those charts group now and
 lose their config anyway: the tag is refused through the GROUP handle, because
@@ -129,7 +152,8 @@ a freshly added slide's id does not round-trip on this host.
 **`same scale across the deck` NO LONGER FAILS.** This paragraph said it failed
 "the same charts in the same order, every round — it is deterministic" and that
 was true when written: it lost 47 of its first 57 rounds. It has now passed
-**fifteen consecutive rounds (079-093)**, and 18 rounds have scored full marks.
+**thirty-three consecutive rounds (079 onward)**, and 25 rounds have scored full
+marks, over an archive of 87.
 The settled retry, the bindings and the origin tag through the binding each took
 a piece of it. **Do not read the pooled figure below as the current rate either**
 — see the paragraph above it.
