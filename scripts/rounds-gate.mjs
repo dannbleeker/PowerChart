@@ -206,8 +206,13 @@ if (isMain(import.meta.url, process.argv[1])) {
     );
     if (moved > 0 && pos.worse > pos.better * 2)
       console.log(
-        `    ${pos.worse} of the ${moved} pairs that moved went the same way. That is a direction, not a mood —
-` + `    do not read a 1st-round number against a 2nd-round one, and do not average the two.`,
+        `    ${pos.worse} of the ${moved} pairs that moved went the same way. That is a direction, not a mood.
+` +
+          `    THE CAUSE IS THE PANE, not the position: a second round used to INHERIT the first round's
+` +
+          `    pane, and pane age separates post-retry 0.4 from 4.6. The driver reloads it between rounds
+` +
+          `    now, so this count is mostly history — ${pos.secondFresh} of ${pos.pairs} pairs had a fresh second round.`,
       );
   }
 
