@@ -3129,3 +3129,59 @@ The guard therefore reads the source and says so: it catches the call being
 removed or reordered, not the gap being the wrong length. Second time this week
 that mutation testing has caught a shipped behaviour with no guard behind it,
 and both times the behaviour was the whole point of the change.
+
+## Rounds 129-132 — the gap looks right, and the reload that carried it had to be pulled
+
+**The four rounds that ran are clean, and so is the mechanism:**
+
+    round  pane-age  visibility  rasterise-stalls  control-render
+    129       66s    sighted            0            413ms
+    130       93s    sighted            0            361ms
+    131       61s    sighted            0            503ms
+    132       65s    sighted            0            444ms
+
+Against a 38% blind archive. **Not proof:** four sighted in a row has an 17.9%
+probability at the 35% fresh-pane baseline, and the batch was meant to be seven.
+The 40-for-40 correlation between blindness and a rasterise stall still holds —
+zero stalls, zero blind.
+
+The control render now returns in 361-503ms, faster than the 941ms median of the
+sighted rounds before it. That is what a call that is not fighting for the
+rasteriser looks like.
+
+### THE BATCH DIED AT ROUND 3, AND THE CAUSE WAS MY OWN FIX
+
+    batch round 3   the pane did NOT reopen
+    batch round 4   this document has no PowerChart command in its ribbon
+                    the deck holds 79 slides
+
+One mechanism explains both. A reload of a tab with unsaved work raises
+PowerPoint's beforeunload prompt, and **`dialog-accept` means LEAVE WITHOUT
+SAVING**. The deck sweep immediately before it GUARANTEES unsaved work — it has
+just deleted slides — so accepting discards them, and the deck comes back. It
+appears to discard the per-document SIDELOAD too: the add-in was gone from the
+ribbon after the reload following round 124, and again after 132.
+
+**So the between-rounds reload is out.** It worked — 126 was the first second
+round in this archive to score a first round's numbers — and it cost the session
+roughly one round in four, on the one failure only the owner can reliably undo.
+
+Dismissing the dialog instead would cancel the reload rather than save it. The
+real fix is to WAIT FOR THE AUTOSAVE and reload a clean document so no prompt
+appears at all, which needs a way to read PowerPoint's saved state that this
+driver does not have — and which must not be guessed at with a sleep on the one
+path whose failure costs the add-in.
+
+`refreshPane` stays, because `recover` needs it and is correct there: the page it
+reloads has usually already crashed and has nothing left to save.
+`paneAgeAtStartSeconds` stays too — the gate still reports whether a round
+inherited a pane, which is what makes its counters readable even when nothing
+can be done about it automatically.
+
+### What this leaves
+
+- **The gap is the live candidate** for the blind gate, at 4 rounds and 17.9%.
+- **Pane age is diagnosed, measured, reported — and no longer auto-corrected.**
+  A person can reload the pane by hand between rounds; the driver will not.
+- The guard that asserted the reload was wired in now asserts the opposite, and
+  says what it costs, so it cannot drift back unnoticed.
