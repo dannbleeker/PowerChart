@@ -1781,3 +1781,27 @@ The browser deaths themselves are **connected standby**, not crashes: Windows
 Event 507 four times in a morning, `ERR_NETWORK_IO_SUSPENDED` in the console
 tail. Power settings on AC now prevent it; on battery the display still sleeps at
 four minutes, which on a Modern Standby machine is what triggers it.
+
+## Retire the positional group-member mapping with `Shape.creationId`
+
+The in-place update maps scene nodes to a grouped chart's shapes by POSITION:
+member 0 is the anchor, the rest line up in drawing order. Round 145 showed what
+a mistake in that mapping costs — node 0's properties were written onto the
+group itself, and only the host caught it.
+
+**The order is not documented.** Checked 2026-08-21: the `PowerPoint.ShapeGroup`
+reference says `shapes` is "the collection of Shape objects in the group" and
+nothing more. The assumption rests on the classic Office object model, where a
+shape's index in a Shapes collection is its z-order position and the anchor —
+drawn first — is at the back. Consistent with everything observed, and inferred
+rather than promised.
+
+**`Shape.creationId` (PowerPointApi 1.10) is a durable per-shape identifier.**
+Recording creation ids at draw time would make the node-to-shape mapping
+explicit and ordering irrelevant, which is the only real fix for the assumption
+above. Blocked on the requirement set: the paths that reach this code are gated
+at 1.8, so it needs a 1.10 branch with the positional mapping kept as fallback.
+
+Until then the guard is the test that asserts the TARGET of a node-0 write
+(`writes node 0 to the group's ANCHOR, not to the group itself`) — a count check
+cannot catch a mapping error that preserves the count.
