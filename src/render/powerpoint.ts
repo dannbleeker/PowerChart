@@ -9746,6 +9746,19 @@ function groupMembersInOrder(members: PowerPoint.ShapeScopedCollection | undefin
   // parts tag itself is built on — `ungroupedFallback` takes `created.slice(1)`
   // and the tag "lists the rest in drawing order".
   //
+  // THE DOCUMENTATION DOES NOT GUARANTEE THE ORDER. Checked 2026-08-21: the
+  // `PowerPoint.ShapeGroup` reference describes `shapes` only as "the collection
+  // of Shape objects in the group" and says nothing about ordering. What the
+  // assumption actually rests on is the classic Office object model, where a
+  // shape's index in a Shapes collection IS its z-order position (index 1 is the
+  // backmost) — and the anchor is drawn first, so it is at the back. Consistent,
+  // but inferred rather than promised.
+  //
+  // THE LEAD THAT WOULD RETIRE IT: `Shape.creationId` (PowerPointApi 1.10) is a
+  // durable per-shape identifier. Recording creation ids at draw time would make
+  // the mapping explicit and ordering irrelevant. Not done here — this host is
+  // gated at 1.8 for the paths that reach this code.
+  //
   // THAT ASSUMPTION IS NOT PROVEN ON THE HOST, and it is worth saying plainly:
   // if `ShapeGroup.shapes` ever answered in some other order, the mapping would
   // be wrong rather than absent, and a wrong mapping writes a scrambled chart
