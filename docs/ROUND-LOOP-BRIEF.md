@@ -1,11 +1,11 @@
 # PowerChart round loop — brief
 
 One round per cycle: run it, mine it, fix what it exposes, journal it, land it.
-Repeat. Last round **118** (`rounds/118-796605c.json`, 12 of 13, 2026-08-20),
-paired with 117 at 4:3. **Read `PAIR POSITION` in the gate before comparing any
-two rounds:** the second round of a build is worse than the first in 15 of the
-17 pairs that moved. A 1st-round number and a 2nd-round number are not two
-samples of one condition.
+Repeat. Last round **149** (`rounds/149-945b69c.json`, 13 of 13, 2026-08-21),
+unpaired at 16:9 — no other round has run on `945b69c`. **Read `PAIR POSITION`
+in the gate before comparing any two rounds:** the second round of a build is
+worse than the first in 15 of the 17 pairs that moved. A 1st-round number and a
+2nd-round number are not two samples of one condition.
 
 **Move that line with the loop.** It was once twenty-one rounds out of date —
 reading `067 … 10 of 12` while a paragraph further down this same file cited
