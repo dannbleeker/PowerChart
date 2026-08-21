@@ -3446,3 +3446,62 @@ production path each one guards, and that is its own piece of work.
 
 **3. No starved probe questions.** Every host-probe question has answered at
 least once, so nothing there is asking into the void.
+
+## Chasing the redraw drift: it was never a drift, and the feature has never run
+
+**FIRST, THE CORRECTION.** I reported `not updating in place — redrawing instead`
+as a 40% regression, 9.3 to 13.0 per round. The per-round series says otherwise:
+
+    rounds 23-44   ~8
+    rounds 45-69    7, flat
+    round  70      jumps to 11, and stays 11-12 for every round since
+
+A step, not a drift — and my four-band averaging smeared it into a slope. The
+step lands exactly on build `01f3607`, PR #547 "Bind the tag target, so the
+settle has a handle that is not an id", which touched the tagging path.
+
+**AND THE FALLBACK RATE NEVER CHANGED AT ALL, because it has always been 100%.**
+
+    updated only the shapes that changed   : 0 times in 117 rounds
+    not updating in place — redrawing      : 1301 times in 117 rounds
+
+**The in-place chart update has never once succeeded.** What rose at round 70 is
+the number of updates ATTEMPTED per round, not the share that fail. Reporting a
+count without its denominator is the same mistake I made with the "81%
+under-count" two days ago, and I made it again here.
+
+### The project already knew, and stopped looking
+
+    #405  Change one thing, write one shape — the in-place chart update
+    #406  The in-place update fired zero times and would not say why
+
+#406 added the fallback trace precisely to answer this. **The answer has been
+sitting in every round file since, read by nothing** — and the docs record none
+of it. Nothing in BACKLOG, RESEARCH or the brief says the feature has never run.
+
+### The answer the trace has been giving
+
+    the chart has no parts list, so its nodes cannot be mapped   12 of 13
+    this update draws a picture, which is not in the scene        1 of 13
+
+The picture case is legitimate — a picture is not in the scene, so the scene
+cannot decide the update. The other twelve are the whole story: charts reach the
+update path without a `CHART_PARTS_TAG`, so their nodes cannot be mapped to
+shapes and the only option left is a full redraw.
+
+**Root cause not established here.** Whether the tag is never written, written
+and lost, or written and not found is a separate investigation, and the one thing
+this day has taught repeatedly is that a mechanism invented to fit a number is
+worse than an unexplained number.
+
+### What shipped
+
+`poolInPlaceUpdates`, and a gate line that cannot be missed:
+
+    IN-PLACE UPDATE HAS NEVER SUCCEEDED — 0 successes against 1301 fallbacks
+    over 117 round(s).
+
+A count of zero is the hardest thing for a report to say, because nothing draws
+attention to a line that is never printed. Guarded both ways: the test pins the
+zero AND pins that a success would be noticed, so the day the feature starts
+working the gate stops calling it dead.

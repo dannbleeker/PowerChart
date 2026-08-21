@@ -57,6 +57,7 @@ const {
   roundSpanSeconds,
   paneAgeAtStartSeconds,
   poolFallbackRates,
+  poolInPlaceUpdates,
 } = pooled;
 // Its own line: adding it above pushes that import over the print width, and a
 // reflowed import moves this directive off the statement it is annotating.
@@ -1042,6 +1043,32 @@ describe("triage — logs that are not inserts", () => {
     expect(paneAgeAtStartSeconds({ trace: { entries: [] } })).toBeNull();
     expect(paneAgeAtStartSeconds({})).toBeNull();
     expect(paneAgeAtStartSeconds({ trace: { entries: [{}, { ms: "x" }] } }), "no usable offsets").toBeNull();
+  });
+
+  it("says when a feature has never once run", () => {
+    // THE IN-PLACE UPDATE HAS NEVER SUCCEEDED. Across 117 archived rounds the
+    // success line appears ZERO times against 1301 fallbacks. #405 added the
+    // feature; #406 was titled "The in-place update fired zero times and would
+    // not say why" and added the trace that answers it — and the answer has sat
+    // in every round file since, read by nothing.
+    //
+    // A count of zero is the hardest thing for a report to say, because nothing
+    // draws attention to a line that is not printed. This pools it so the gate
+    // has to.
+    const round = (ok: number, fell: number) => ({
+      trace: {
+        entries: [
+          ...Array.from({ length: ok }, () => ({ message: "updated only the shapes that changed" })),
+          ...Array.from({ length: fell }, () => ({ message: "not updating in place — redrawing instead" })),
+        ],
+      },
+    });
+    expect(poolInPlaceUpdates([round(0, 12), round(0, 13)])).toEqual({ ok: 0, fell: 25, rounds: 2 });
+
+    // AND IT MUST NOTICE A SUCCESS, or the day the feature starts working the
+    // gate goes on calling it dead. A detector that can only report one answer
+    // is not measuring anything.
+    expect(poolInPlaceUpdates([round(3, 9)])).toMatchObject({ ok: 3, fell: 9 });
   });
 
   it("sees a slow drift, which a median cannot", () => {
