@@ -675,6 +675,17 @@ describe("talking to the browser at all", () => {
         calls.some((c) => c[0] === "dialog-accept"),
         "left a beforeunload modal blocking the walk it just started",
       ).toBe(true);
+
+      // AND IT MUST WAIT FOR THE RIBBON, not sleep at it. This was a fixed 55s
+      // sleep and one look, and it failed on the first cold browser start it
+      // met: round 133, after a machine restart, reported `no Add-ins button in
+      // the ribbon` — OFFICE'S OWN button — because the document was still
+      // loading. A minute later the whole ribbon was there.
+      //
+      // The tell is more than one `find` for the ribbon before the walk gives
+      // up: a single look cannot tell "not there" from "not there YET".
+      const docLooks = calls.filter((c) => c[0] === "find" && /Slide List/.test(c[1] ?? "")).length;
+      expect(docLooks, "looked for the document once — that is a sleep, not a wait").toBeGreaterThan(1);
     });
 
     it("refuses to walk a document that is not up", async () => {

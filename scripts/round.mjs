@@ -495,7 +495,24 @@ export async function sideloadAddIn(sh, sleep, manifest = MANIFEST_PATH) {
   // produce a round whose work would be worth saving.
   sh("reload");
   sh("dialog-accept");
-  await sleep(55000);
+
+  // WAITED FOR, NOT SLEPT THROUGH. This was a fixed 55s sleep and one look, and
+  // it failed on the first cold browser start it met: round 133, after a machine
+  // restart, reported `no Add-ins button in the ribbon` — OFFICE'S OWN button,
+  // not PowerChart's — because the document was still loading 55 seconds after a
+  // reload it had barely begun. Checked by hand a minute later, the whole ribbon
+  // was there.
+  //
+  // ON THE SLIDE LIST, not the ribbon: that is the signal the walk already uses
+  // for "the document is up", and probing the ribbon first would start touching
+  // it before knowing there is a document to touch — which the walk is
+  // deliberately built not to do.
+  //
+  // Fourth time this shape has been wrong in two days: `sideloadAddIn` after its
+  // upload, `commandPresent` before deciding to sideload, `refreshPane` after
+  // its reload, and now the reload this function does itself. A fixed sleep
+  // encodes a guess about the host's speed; the host does not know about it.
+  await waitForRef(sh, sleep, "Slide List", /listbox "Slide List"/, RIBBON_WAKE_BUDGET_MS * 3, 5000);
 
   // FIRST, and it is not optional: the ribbon will not open its menus while the
   // document surface is unfocused.
