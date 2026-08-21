@@ -141,18 +141,42 @@ export function planSceneUpdate(prev: Scene, next: Scene): SceneUpdatePlan | nul
 /**
  * Whether a plan is worth taking, given what the redraw would have cost.
  *
- * A plan that rewrites almost every shape saves almost nothing and still runs
- * the slower, less-tested path, so past a share of the chart the honest answer
- * is to redraw. Kept separate from `planSceneUpdate` because it is a judgement
- * about cost, where the plan is a judgement about safety — and only one of the
- * two should ever change because a benchmark moved.
+ * Kept separate from `planSceneUpdate` because it is a judgement about COST,
+ * where the plan is a judgement about SAFETY — and only one of the two should
+ * ever change because a measurement moved.
  *
- * The threshold is not tuned, and should not be read as though it were. It is
- * set where the arithmetic stops being obvious: a redraw is one delete plus one
- * add per node, so an update touching more than half the nodes is already doing
- * more host calls per shape saved than the redraw it replaces.
+ * THE OLD THRESHOLD WAS 0.5 AND ITS ARITHMETIC WAS WRONG. It read: "a redraw is
+ * one delete plus one add per node, so an update touching more than half the
+ * nodes is already doing more host calls per shape saved." That counts an
+ * in-place write as ONE call per node. It is about twenty — left, top, width,
+ * height, fill, lineFormat, textFrame, textRange, four font properties, and the
+ * rest — as the host's own statement list showed in round 145.
+ *
+ * WHAT THE ARCHIVE ACTUALLY MEASURES. Rounds 143-145 redrew; 146-149 took the
+ * fast path, on the same scenarios, the same deck and the same host. The step
+ * is instantaneous at 146 and the populations do not overlap:
+ *
+ *     edit a chart on the visible slide   21218 22471 25352  ->   5176  5445  6108  5409
+ *     edit the chart the user selected    27459 30275 29341  ->   9494  9207  9130  9294
+ *     an update follows a moved chart     27364 31637 28914  ->   8886 10491  9120  9109
+ *
+ * Three to four times faster, in three independent scenarios. The reason is
+ * that the expensive thing on this host is CREATING a shape — the render budget
+ * this project already skips dense charts over — and an in-place update creates
+ * none, at any share.
+ *
+ * SO WHY A LIMIT AT ALL, AND WHY 0.8. Every one of those samples is `changed 1
+ * of 24`: a 4% share. The measurement says nothing about 56% or 75%, which is
+ * exactly where the old limit bit — all eight of its declines are one scenario,
+ * `same scale across the deck`, at 18-of-24 and 9-of-16. 0.8 admits both so the
+ * unmeasured region can finally be measured, and stops short of a wholesale
+ * rewrite, where a redraw remains the better-tested way to get a clean chart.
+ *
+ * This is a measured step into unmeasured ground, not a final answer. If the
+ * next round makes that scenario SLOWER, the cap belongs lower and we will know
+ * where — which is more than could be said for 0.5.
  */
-export const UPDATE_SHARE_LIMIT = 0.5;
+export const UPDATE_SHARE_LIMIT = 0.8;
 
 export function worthUpdating(plan: SceneUpdatePlan, total: number): boolean {
   if (!total) return false;
