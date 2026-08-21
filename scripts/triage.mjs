@@ -1604,9 +1604,17 @@ export const FRESH_PANE_SECONDS = 200;
  *
  * A count that no one reads is not observability. This makes the gate say them.
  */
-const FALLBACK_SIGNALS = {
+export const FALLBACK_SIGNALS = {
   "tagging failed — charts are not re-editable until repaired": "charts left un-tagged",
   "not updating in place — redrawing instead": "in-place update fell back to a redraw",
+  // ITS OWN SIGNAL, not folded into the line above. The in-place update either
+  // declines by rule or THROWS, and this tracked only the first — the same
+  // two-of-three gap `poolInPlaceUpdates` had, missed when that one was fixed.
+  // Kept separate rather than merged because a write the HOST threw out is a
+  // different event from the differ declining work a redraw does better, and
+  // drift in one must not be absorbed by the other: rounds 144 and 145 carried
+  // 2 and 3 of these against a flat zero everywhere else, and nothing said so.
+  "in-place update refused — redrawing instead": "in-place update refused BY THE HOST",
   "took another scratch slide after giving up on the last": "scratch slide retried",
   "giving up the scratch slide this question wrecked": "scratch slide wrecked",
 };

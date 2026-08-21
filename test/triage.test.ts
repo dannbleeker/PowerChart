@@ -1,3 +1,4 @@
+import { readFileSync, readdirSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { spawnSync } from "child_process";
 import { mkdtempSync, writeFileSync, rmSync } from "fs";
@@ -30,6 +31,7 @@ const {
   poolStarvedQuestions,
   poolBatchSpanVsGroup,
   scenarioRegressions,
+  FALLBACK_SIGNALS,
   poolOriginTagLosses,
   roundProfile,
   profileDivergence,
@@ -2199,5 +2201,40 @@ describe("a scenario regression carries its own history", () => {
     const [g] = scenarioRegressions(rounds) as { ran: number; failed: number }[];
     expect(g.ran, "counted a round that did not measure this scenario").toBe(4);
     expect(g.failed).toBe(1);
+  });
+});
+
+describe("a detector keyed to a message that no longer exists", () => {
+  it("matches only trace messages the source still emits", () => {
+    // THE FAILURE MODE THIS PREVENTS IS SILENCE. Every one of these tools finds
+    // its evidence by comparing a trace message to a string literal. Rename the
+    // message in src/ and the detector does not break — it reports ZERO, every
+    // round, forever, and zero is exactly what a healthy round looks like.
+    //
+    // Nothing in the repo checked this. All the current literals happen to be
+    // live, which is the point: the guard is for the rename that has not
+    // happened yet, and the archive would carry months of false calm first.
+    const tool = readFileSync("scripts/triage.mjs", "utf8");
+    const app = readdirSync("src", { recursive: true })
+      .map(String)
+      .filter((f) => f.endsWith(".ts"))
+      .map((f) => readFileSync(`src/${f}`, "utf8"))
+      .join("\n");
+
+    const matched = new Set<string>(Object.keys(FALLBACK_SIGNALS));
+    // Deliberately backslash-free: a regex written through a heredoc has been
+    // corrupted here before, and a mangled one matches nothing while looking fine.
+    for (const m of tool.matchAll(/(?:e[.])?message *=== *"([^"]+)"/g)) matched.add(m[1]);
+    for (const m of tool.matchAll(/[^A-Za-z]m === "([^"]+)"/g)) matched.add(m[1]);
+
+    // THE REGEXES THEMSELVES ARE INSTRUMENTS. If one stops matching, the loop
+    // below passes vacuously and this test becomes decoration — the exact shape
+    // it exists to catch. Claim a positive count, not the absence of failures.
+    expect(matched.size, "the extractors matched almost nothing — they have stopped working").toBeGreaterThanOrEqual(8);
+
+    for (const message of matched)
+      expect(app, `no source file emits "${message}" any more — its detector now reports zero forever`).toContain(
+        message,
+      );
   });
 });

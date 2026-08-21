@@ -1700,3 +1700,52 @@ describe("the build under test is pinned for the whole round", () => {
     ).toHaveLength(0);
   });
 });
+
+describe("what the driver had to do to get the round", () => {
+  const log = { build: "abc1234 · 2026-08-21 10:00Z", selftest: [], trace: { entries: [] } };
+  const read = (() => `${JSON.stringify(log, null, 2)}\n`) as never;
+
+  it("records the attempts and the stops that forced them", () => {
+    // A SUCCESSFUL RECOVERY ERASES ITS OWN EVIDENCE. Once `recover` works, the
+    // round looks exactly like one that never needed it — so a round run
+    // against a host that was already unwell was indistinguishable from a clean
+    // one, for all 149 rounds on file.
+    //
+    // Round 148 is why this exists: three attempts (a silent host, then a
+    // closed pane), then two scenarios failed that had not failed once in 109
+    // rounds, with no app-code change to explain it. "Was the host sick?" is
+    // the first question and nothing archived could answer it.
+    let out = "";
+    const write = ((_p: string, body: string) => {
+      out = body;
+    }) as never;
+    archive(
+      "log.json",
+      "rounds",
+      read,
+      write,
+      (() => []) as never,
+      null as never,
+      null as never,
+      { attempts: 3, recovered: ["host-silent", "pane-closed"] } as never,
+    );
+    const filed = JSON.parse(out) as { driverRun?: { attempts: number; recovered: string[] } };
+    expect(filed.driverRun?.attempts, "the round does not say how many attempts it took").toBe(3);
+    expect(filed.driverRun?.recovered, "the stops that forced the retries were not recorded").toEqual([
+      "host-silent",
+      "pane-closed",
+    ]);
+  });
+
+  it("writes no driverRun at all when the driver did not say", () => {
+    // An ABSENT reading must not read as "no recoveries". Rounds archived before
+    // this existed carry no field, and a default of zero would quietly claim
+    // every one of them ran clean.
+    let out = "";
+    const write = ((_p: string, body: string) => {
+      out = body;
+    }) as never;
+    archive("log.json", "rounds", read, write, (() => []) as never);
+    expect(JSON.parse(out), "invented a clean run for a round that never reported one").not.toHaveProperty("driverRun");
+  });
+});

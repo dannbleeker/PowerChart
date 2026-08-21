@@ -1687,7 +1687,7 @@ export async function attempt(argv, deps, sh, healed = false) {
   // point — its evidence is in the pane either way, and a driver that turned a
   // good round into a non-zero exit over housekeeping would be worse than the
   // housekeeping.
-  const roundFile = await collectRound(sh, stamp, sleep, size);
+  const roundFile = await collectRound(sh, stamp, sleep, size, deps.driverRun ?? null);
   return { code: 0, reason: "finished", roundFile, build: stamp, size };
 }
 
@@ -1704,7 +1704,7 @@ export async function attempt(argv, deps, sh, healed = false) {
  * way to name WHICH round, and guessing "the newest file in rounds/" is the
  * assumption that already produced one wrong overwrite diagnosis in this repo.
  */
-async function collectRound(sh, stamp, sleep, driverSize = null) {
+async function collectRound(sh, stamp, sleep, driverSize = null, driverRun = null) {
   let filed = null;
   try {
     const dl = refFor(sh, "Download run log", /button "Download run log"/);
@@ -1716,7 +1716,7 @@ async function collectRound(sh, stamp, sleep, driverSize = null) {
       console.error("  the run log did not arrive — archive it by hand once it does");
       return null;
     }
-    filed = archive(logPath, "rounds", readFileSync, writeFileSync, everyRoundEverFiled, stamp, driverSize);
+    filed = archive(logPath, "rounds", readFileSync, writeFileSync, everyRoundEverFiled, stamp, driverSize, driverRun);
     console.log(`  archived as rounds/${filed}`);
   } catch (err) {
     // Named, never swallowed. A round whose log was not filed is a round that
@@ -2196,6 +2196,12 @@ async function main(argv, deps = {}) {
   const max = retryArg === -1 ? 0 : Number(argv[retryArg + 1]) || 0;
 
   const write = deps.write ?? writeFileSync;
+  // EVERY STOP THAT FORCED A RETRY, in order. A round that needed two
+  // recoveries before it could start is a round run against a host that was
+  // already unwell, and until now the archive said nothing about it: round 148
+  // took three attempts and then failed two scenarios that had never failed in
+  // 109 rounds, and no archived field could connect those two facts.
+  const recovered = [];
   // Read ONCE, here, and handed to every attempt. See `attempt`'s `head`.
   const pinnedHead =
     deps.head ??
@@ -2216,7 +2222,12 @@ async function main(argv, deps = {}) {
     // chance a crash dialog does.
     let outcome;
     try {
-      outcome = await attempt(argv, { ...deps, head: pinnedHead }, sh);
+      // WHAT THE DRIVER HAD TO DO TO GET A ROUND AT ALL. See `driverRun`.
+      outcome = await attempt(
+        argv,
+        { ...deps, head: pinnedHead, driverRun: { attempts: n + 1, recovered: [...recovered] } },
+        sh,
+      );
     } catch (err) {
       console.error(`  the round threw where nothing expected it to: ${err?.message ?? err}`);
       outcome = { code: 1, reason: "threw", codes: [], threw: String(err?.message ?? err) };
@@ -2243,6 +2254,10 @@ async function main(argv, deps = {}) {
     // crash was being cleared. A recovery line is read while someone is
     // debugging, and one that invents a crash sends them looking for it.
     console.log(`  ${recoveryFor(reason, codes)} — see docs/ROUNDS.md, "The wedge"`);
+    // The REASON, recorded before the recovery that hides it. Once `recover`
+    // succeeds the round looks like any other, and the only evidence it was ever
+    // in trouble is this list.
+    recovered.push(reason);
     await recover(sh, sleep);
   }
 }
@@ -2316,6 +2331,24 @@ export function archive(
    * absent second opinion must never read as agreement.
    */
   driverSize = null,
+  /**
+   * WHAT THE DRIVER HAD TO DO TO GET THIS ROUND.
+   *
+   * `{ attempts, recovered }` — how many times the driver tried, and the stop
+   * reason behind each retry. A round that needed two recoveries before it
+   * could start was run against a host that was already unwell, and that is a
+   * property of the EVIDENCE, not of the driver.
+   *
+   * Round 148 is the case. It took three attempts — a silent host, then a
+   * closed pane — and then failed two scenarios that had not failed once in 109
+   * rounds, with no app-code change to explain it. "Was it a sick host?" is the
+   * obvious question and the archive could not answer it for any of the 149
+   * rounds on file, because a successful recovery leaves a round looking exactly
+   * like one that never needed it.
+   *
+   * Null when unknown — an absent reading must never read as "no recoveries".
+   */
+  driverRun = null,
 ) {
   const round = stripImages(JSON.parse(read(logPath, "utf8")));
   const build = buildOf(round.build);
@@ -2402,6 +2435,7 @@ export function archive(
   // itself would destroy the evidence that the two ever disagreed, which is the
   // only thing that makes the disagreement findable.
   if (driverSize) round.driverSlideSize = driverSize;
+  if (driverRun) round.driverRun = driverRun;
   write(`${dir}/${name}`, JSON.stringify(round, null, 2) + "\n");
   return name;
 }
