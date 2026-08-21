@@ -1775,6 +1775,91 @@ describe("proxy lifecycle", () => {
   });
 });
 
+describe("a grouped chart can be updated in place", () => {
+  // THE REASON THE IN-PLACE UPDATE HAD NEVER RUN. A grouped chart carries no
+  // CHART_PARTS_TAG — correctly, because its shapes live inside the group and
+  // are deleted with it — and the update path refused every chart without one.
+  // On this host grouping nearly always succeeds: round 142 grouped 18 of 21
+  // charts, wrote a parts list for none of them, and the feature had gone 117
+  // archived rounds without a single success.
+  //
+  // office-js#3014 says grouped sub-shapes "cannot be reached". That note is
+  // from 2022 and is out of date: `ShapeGroup.shapes` is reachable through
+  // `shape.group` at PowerPointApi 1.8, the set this project already requires
+  // for `getImageAsBase64`.
+  const cfg: ChartConfig = {
+    kind: "stacked",
+    ...DEFAULT_SIZE,
+    data: { categories: ["A", "B"], series: [{ name: "S", values: [3, 4] }] },
+  };
+
+  it("reads the group's members instead of refusing for want of a parts tag", async () => {
+    setTracing(true);
+    try {
+      const slide = makeSlide("s1");
+      // Grouping SUCCEEDS and 1.8 is present — the real host's ordinary case,
+      // and the one that was never able to update in place.
+      installHost([slide], [], slide, () => true);
+      await insertSceneIntoSlide(buildChart(cfg), { tagData: JSON.stringify(cfg), left: 60, top: 90 });
+
+      const charts = (await listChartsInDeck()).charts;
+      expect(charts, "the fixture drew no chart").toHaveLength(1);
+      const target = charts[0].target;
+      // The premise: this chart genuinely has no parts list. If the fixture ever
+      // starts writing one, this test stops testing what it says it does.
+      expect(target.partIds?.length ?? 0, "a grouped chart should carry no parts tag").toBe(0);
+
+      traceLog().entries.length = 0;
+      await updateChartsInSlides([
+        {
+          scene: buildChart({ ...cfg, data: { categories: ["A", "B"], series: [{ name: "S", values: [9, 1] }] } }),
+          target,
+          opts: { tagData: JSON.stringify(cfg) },
+        },
+      ]);
+
+      const refused = traceLog().entries.find((e) => e.message === "not updating in place — redrawing instead");
+      expect(
+        refused && String(refused.data?.why ?? ""),
+        "still refused a grouped chart — the group members were not read",
+      ).not.toMatch(/no parts list/);
+    } finally {
+      setTracing(false);
+    }
+  });
+
+  it("still refuses when the group's members do not line up with the scene", async () => {
+    // THE GUARD THAT MAKES THE ABOVE SAFE. The mapping is positional — node 0 is
+    // the anchor, the rest line up in drawing order — so a group holding a
+    // different number of shapes than the scene has nodes must be refused, not
+    // guessed at. Writing into a mismatched mapping would corrupt a chart the
+    // user is looking at, which is worse than the redraw it falls back to.
+    setTracing(true);
+    try {
+      const slide = makeSlide("s1");
+      installHost([slide], [], slide, () => true);
+      await insertSceneIntoSlide(buildChart(cfg), { tagData: JSON.stringify(cfg), left: 60, top: 90 });
+      const charts = (await listChartsInDeck()).charts;
+      const target = charts[0].target;
+
+      traceLog().entries.length = 0;
+      // A DIFFERENT SHAPE OF CHART: more categories means more nodes, so the
+      // group's members cannot line up one for one.
+      const wider: ChartConfig = {
+        ...cfg,
+        data: { categories: ["A", "B", "C", "D"], series: [{ name: "S", values: [1, 2, 3, 4] }] },
+      };
+      await updateChartsInSlides([{ scene: buildChart(wider), target, opts: { tagData: JSON.stringify(wider) } }]);
+
+      const refused = traceLog().entries.find((e) => e.message === "not updating in place — redrawing instead");
+      expect(refused, "wrote into a mapping that does not line up").toBeDefined();
+      expect(String(refused!.data?.why ?? "")).toMatch(/one for one|no parts list|no readable group/);
+    } finally {
+      setTracing(false);
+    }
+  });
+});
+
 describe("in-place update keeps the chart where it is", () => {
   // The tagged shape's left/top is NOT the frame origin: grouped it is the
   // group's bounding box, ungrouped it is whatever created[0] happens to be.
