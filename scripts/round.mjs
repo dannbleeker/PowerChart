@@ -94,6 +94,16 @@ export function readiness({
   // Whether the ribbon carries the command AT ALL, apart from whether it can be
   // clicked. Defaults true so an absent argument cannot invent a missing add-in.
   commandPresent = true,
+  /**
+   * The page's width when the ribbon was read, or null if it could not be read.
+   *
+   * PowerPoint hides trailing ribbon commands in an overflow on a narrow
+   * window, and a hidden command is not in the accessibility tree — so
+   * `commandPresent: false` means "absent OR merely not rendered", and those
+   * need different answers. Defaults to a width known to be wide enough,
+   * because an absent argument must not manufacture a narrow window.
+   */
+  ribbonRoom = MIN_RIBBON_WIDTH,
 }) {
   const stop = [];
   /**
@@ -262,6 +272,24 @@ export function readiness({
       "the PowerChart command is in the ribbon but DISABLED — the document is not connected, " +
         "so nothing in the ribbon can be clicked. This clears on its own or with a reload; " +
         "it is not a missing add-in.",
+    );
+  else if (!stamp && !canOpenPane && slides !== null && !wideEnoughToJudge(ribbonRoom))
+    // TOO NARROW TO TELL, and this refusal is the one that must never guess.
+    //
+    // On 2026-08-21 a 1237px window hid `Insert chart` in PowerPoint's `...`
+    // overflow, the driver read it as a missing add-in, ran the sideload walk
+    // four times against a deck that already had it, and sent the owner to do
+    // the job by hand. Widening the window to 2375px brought the command
+    // straight back. NOTHING WAS EVER MISSING.
+    //
+    // Recoverable, unlike `addin-missing` below: the window is not a
+    // measurement surface, so `ensureRibbonRoom` simply widens it and the next
+    // attempt reads a ribbon that is allowed to show what it has.
+    refuse(
+      "ribbon-cramped",
+      `the window is ${ribbonRoom === null ? "an unreadable width" : `${ribbonRoom}px wide`} and PowerPoint hides ribbon ` +
+        `commands below about ${MIN_RIBBON_WIDTH}px — a command that is not RENDERED is not in the accessibility tree, ` +
+        "so this cannot tell a missing add-in from a hidden one. Widening and re-reading.",
     );
   else if (!stamp && !canOpenPane && slides !== null)
     // A DIFFERENT REFUSAL, because recovery cannot touch it. `recover` reopens
@@ -892,6 +920,81 @@ export async function waitForRef(sh, sleep, query, pattern, budgetMs, every = 30
   }
 }
 
+/**
+ * The page width below which PowerPoint hides ribbon commands in an overflow.
+ *
+ * THE MOST EXPENSIVE MISREADING OF THIS WHOLE PROJECT, and it cost a day.
+ * PowerPoint collapses trailing ribbon commands into a `...` menu when the
+ * window is narrow, and a collapsed command IS NOT IN THE ACCESSIBILITY TREE.
+ * So `namePresent(sh, "Insert chart", ...)` answers false — TRUTHFULLY, the
+ * button is not rendered — and every reader above it concludes the add-in is
+ * gone.
+ *
+ * Measured on 2026-08-21, same browser, same document, seconds apart:
+ *
+ *     page width 1237   Insert chart: false     "the add-in is not loaded here"
+ *     page width 2375   Insert chart: true      round runs
+ *
+ * On that reading the driver ran the sideload walk FOUR TIMES against a deck
+ * that already had the add-in, refused four rounds, and told the owner to
+ * sideload by hand. Nothing was ever missing.
+ *
+ * It became reachable when the round browser moved to `viewport: null` so the
+ * page would follow the window — which fixed the pane being invisible to a
+ * PERSON and made commands invisible to the DRIVER. The window is not a
+ * measurement surface, so it must not be allowed to vary.
+ *
+ * 1600 is comfortably above the width that collapsed and below the width that
+ * worked; the resize below asks for far more than either.
+ */
+export const MIN_RIBBON_WIDTH = 1600;
+
+/**
+ * Is the window wide enough for an absent command to MEAN something?
+ *
+ * Null — the width could not be read — is NOT wide enough. A reader that cannot
+ * measure the window cannot distinguish a missing add-in from a hidden one, and
+ * this project's house defect is exactly that substitution.
+ */
+export function wideEnoughToJudge(width) {
+  return typeof width === "number" && width >= MIN_RIBBON_WIDTH;
+}
+
+/** The page's own width in CSS pixels, or null if it could not be read. */
+export function pageWidth(sh) {
+  const out = sh("eval", "() => String(window.innerWidth)");
+  const m = /(\d{3,5})/.exec(String(out ?? ""));
+  return m ? Number(m[1]) : null;
+}
+
+/**
+ * Make the window wide enough that the ribbon shows its commands.
+ *
+ * Returns the width finally measured, or null if it could not be read at all —
+ * and NULL IS NOT A PASS. A caller that cannot measure the window cannot tell a
+ * missing add-in from a hidden one, which is the whole failure this exists to
+ * end.
+ *
+ * Widens rather than refuses, because the window is not something the round is
+ * measuring: nothing in a round's result depends on how wide the tab is, so
+ * correcting it silently costs nothing and asking a person to do it costs a
+ * round.
+ */
+export async function ensureRibbonRoom(sh, sleep) {
+  const before = pageWidth(sh);
+  if (before !== null && before >= MIN_RIBBON_WIDTH) return before;
+  // Generous on purpose. The relationship between the requested size and the
+  // page's own width depends on the device scale factor, which varies by
+  // machine and by monitor — so ask for plenty and MEASURE what arrived rather
+  // than computing what should have.
+  sh("resize", "1900", "1000");
+  await sleep(3000);
+  const after = pageWidth(sh);
+  if (after !== null && before !== null && after > before)
+    console.log(`  the window was ${before}px and hides ribbon commands — widened to ${after}px`);
+  return after;
+}
+
 export function refFor(sh, query, pattern) {
   // Through `findLines`, so the miss message can never be matched as a hit —
   // see the note there. `refFor` was safe only because a ref-bearing pattern
@@ -1232,6 +1335,10 @@ async function attempt(argv, deps, sh, healed = false) {
   // pane is ON the Automation tab, so anchoring the ping there skipped it
   // silently on a pane sitting anywhere else — and a skipped ping reads as
   // `ready`, which is the one answer this must never give without asking.
+  // BEFORE ANY RIBBON READ. A narrow window hides commands in an overflow, and
+  // a hidden command is indistinguishable from an absent one — see
+  // `MIN_RIBBON_WIDTH` for the day that cost.
+  const ribbonRoom = await ensureRibbonRoom(sh, sleep);
   const paneRef = refFor(sh, "Chart", /tab "Chart"/);
   // CAN THE PANE BE OPENED AT ALL, if it is shut? `recover` reopens it from the
   // ribbon's `Insert chart` control, so a document that does not offer that
@@ -1288,7 +1395,18 @@ async function attempt(argv, deps, sh, healed = false) {
   // button in the ribbon", which reads as Microsoft having moved something. It
   // did exactly that on 2026-08-19, burning the one attempt the latch allows on
   // a document that simply had to reconnect.
-  if (!pane && !canOpenPane && !commandPresent && slides !== null && !sideloadAttempted) {
+  // AND NOT ON A CRAMPED RIBBON. The walk ran four times on 2026-08-21 against
+  // a deck that already had the add-in, because a narrow window hid the command
+  // it was looking for. A sideload is the most expensive thing this driver can
+  // do to a document; it must never be triggered by a reading it cannot trust.
+  if (
+    !pane &&
+    !canOpenPane &&
+    !commandPresent &&
+    slides !== null &&
+    !sideloadAttempted &&
+    wideEnoughToJudge(ribbonRoom)
+  ) {
     sideloadAttempted = true;
     if (await sideloadAddIn(sh, sleep)) {
       // RE-READ, because everything below was measured before the add-in
@@ -1398,6 +1516,7 @@ async function attempt(argv, deps, sh, healed = false) {
     deckFronted,
     canOpenPane,
     commandPresent,
+    ribbonRoom,
   };
   const { ok, stop, codes } = readiness(state);
   console.log(
@@ -1690,6 +1809,11 @@ export const RECOVERABLE_STOPS = new Set([
   "pane-closed",
   "pane-stale",
   "deck-dirty",
+  // A window too narrow for PowerPoint to render its ribbon commands. Recovery
+  // does not need to click anything to clear it — `ensureRibbonRoom` widens the
+  // window on the next attempt — and the alternative is `addin-missing`, a stop
+  // only a person can clear, fired on a command that was never absent.
+  "ribbon-cramped",
   // A greyed-out ribbon on a `Disconnected` document. Transient by nature — the
   // tab reconnects or a reload clears it — and it used to be reported as
   // `addin-missing`, which recovery is forbidden to retry.

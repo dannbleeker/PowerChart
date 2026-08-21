@@ -3220,3 +3220,53 @@ hour to report, and this one WAS a genuine failure.
 So the number stays and the message carries the caveat instead: "the upload may
 still land, so re-check the ribbon before sideloading by hand". A wait cannot
 distinguish a slow success from a failure; only looking again can.
+
+## The add-in was never missing: a narrow window hid it, four times
+
+PowerPoint collapses trailing ribbon commands into a `...` overflow when the
+window is narrow, and **a collapsed command is not in the accessibility tree**.
+So the ribbon read answers `false` — truthfully, it is not rendered — and every
+reader above it concludes the add-in is gone.
+
+Measured 2026-08-21, same browser, same document, seconds apart:
+
+    page width 1237   Insert chart: false   "the add-in is not loaded here"
+    page width 2375   Insert chart: true    round runs
+
+On that reading the driver ran the sideload walk **four times** against a deck
+that already had the add-in, refused four rounds, and I told the owner to
+sideload by hand. Nothing was ever missing, and two "fixes" — the pre-walk
+reload and the document wait — were shipped for a failure that was never the
+walk's fault.
+
+**It became reachable through my own change.** The round browser moved to
+`viewport: null` so the page would follow the window, which fixed the pane being
+invisible to a PERSON and made commands invisible to the DRIVER. The window is
+not a measurement surface; nothing in a round's result depends on how wide the
+tab is. So it must not be allowed to vary.
+
+### Two fixes, and the second is the one that matters
+
+**`ensureRibbonRoom` widens the window** before any ribbon read, and reports the
+width it actually measured rather than the one it asked for — the relationship
+between the two depends on the device scale factor, which varies by machine and
+by monitor.
+
+**`ribbon-cramped` replaces `addin-missing` when the window is too narrow to
+judge.** It is RECOVERABLE, unlike `addin-missing`: widening a window changes
+nothing a round measures, so the driver corrects it instead of stopping. And a
+width that could not be READ counts as too narrow, because a reader that cannot
+measure the window cannot tell a missing add-in from a hidden one.
+
+The real refusal survives: with room to render and still no command, the add-in
+genuinely is not there, and that stays a hard stop.
+
+### The pattern, stated plainly because I keep repeating it
+
+Three times in two days I have read ABSENT FROM THE ACCESSIBILITY TREE as ABSENT
+FROM THE PRODUCT: the `find` miss message matching a bare-name pattern, a
+disabled control carrying no ref, and now a command collapsed into an overflow.
+Each time a SCREENSHOT settled it in one call, and each time I reached for it
+only after exhausting the text queries that cannot distinguish the two states.
+
+The tree says what is rendered. It does not say what exists.

@@ -402,6 +402,59 @@ describe("talking to the browser at all", () => {
     );
   });
 
+  it("will not call an add-in missing when the window is too narrow to show it", () => {
+    // THE MOST EXPENSIVE MISREADING IN THIS PROJECT, and it cost a day.
+    // PowerPoint collapses trailing ribbon commands into a `...` overflow on a
+    // narrow window, and a collapsed command IS NOT IN THE ACCESSIBILITY TREE.
+    // So the ribbon read answers false — truthfully, it is not rendered — and
+    // every reader above it concludes the add-in is gone.
+    //
+    // Measured 2026-08-21, same browser, same document, seconds apart:
+    //
+    //     page width 1237   Insert chart: false   "the add-in is not loaded here"
+    //     page width 2375   Insert chart: true    round runs
+    //
+    // On that reading the driver ran the sideload walk FOUR TIMES against a deck
+    // that already had the add-in and sent the owner to do it by hand.
+    const cramped = readiness({
+      ...READY,
+      stamp: null,
+      canOpenPane: false,
+      commandPresent: false,
+      slides: 1,
+      ribbonRoom: 1237,
+    });
+    expect(cramped.ok).toBe(false);
+    expect(cramped.codes, "called it a missing add-in from a window that cannot show one").not.toContain(
+      "addin-missing",
+    );
+    expect(cramped.codes).toContain("ribbon-cramped");
+    // RECOVERABLE, unlike `addin-missing`: widening a window is not a change to
+    // anything the round measures, so the driver fixes it instead of stopping.
+    expect(RECOVERABLE_STOPS.has("ribbon-cramped"), "a cramped ribbon must not end the night").toBe(true);
+
+    // AN UNREADABLE WIDTH IS NOT A WIDE ONE. A reader that cannot measure the
+    // window cannot tell a missing add-in from a hidden one.
+    expect(
+      readiness({ ...READY, stamp: null, canOpenPane: false, commandPresent: false, slides: 1, ribbonRoom: null })
+        .codes,
+    ).toContain("ribbon-cramped");
+
+    // AND THE REAL REFUSAL MUST SURVIVE. With room to render and still no
+    // command, the add-in genuinely is not there — that stop is the point of
+    // all this and must not be softened away.
+    const roomy = readiness({
+      ...READY,
+      stamp: null,
+      canOpenPane: false,
+      commandPresent: false,
+      slides: 1,
+      ribbonRoom: 2375,
+    });
+    expect(roomy.codes, "a genuinely missing add-in stopped being reported").toContain("addin-missing");
+    expect(RECOVERABLE_STOPS.has("addin-missing"), "addin-missing must stay a hard stop").toBe(false);
+  });
+
   it("never reads `find`'s miss message as a hit", async () => {
     // THE WORST POLARITY A BUG CAN HAVE, and it caught me twice on 2026-08-20.
     // `playwright-cli find` answers a miss with:
