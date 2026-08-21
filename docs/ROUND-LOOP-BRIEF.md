@@ -159,6 +159,17 @@ observer load before it, was an artefact of reused panes.
 What survives all of it: **the cold re-read fails 10-11 times a round**, at both
 profiles, on a fresh pane, with everything else clean.
 
+**The blind visibility gate is FIXED, settled over 13 rounds.** `rasterGap`
+waits three seconds before re-rasterising a slide the host has just rasterised.
+Blind rate went 38% -> 0 of 13, with zero rasterise stalls; if the gap changed
+nothing, that run had a 0.10% probability.
+
+**And pane age is DOSE-DEPENDENT, not a two-state thing.** Post-retry failures
+climb 6, 7, 8, 9, 10 as the pane ages 844s -> 4283s, while grouped charts fall
+16 -> 10 and refused climb 3 -> 9. Scenario verdicts stay at 13/13 well past the
+point the counters have degraded, so **read the counters, not the verdict**, when
+judging whether a round is a clean sample.
+
 Read the gate's pane-age line anyway. A recovery, a crash or a hand-run round can
 still leave a reused pane, and a reused-pane round is a degraded sample whatever
 the code says.
