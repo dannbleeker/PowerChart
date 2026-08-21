@@ -477,6 +477,26 @@ export async function sideloadAddIn(sh, sleep, manifest = MANIFEST_PATH) {
     return false;
   };
   console.log("  the add-in is gone from this document — putting it back");
+
+  // A RELOAD BEFORE THE WALK, because the walk cannot open a menu that is
+  // already open. Twice on 2026-08-21 the first attempt died at "the Add-ins
+  // menu did not open", and both times the cause was a `button "Add-ins"
+  // [expanded]` left over from a PREVIOUS failed attempt: clicking an open menu
+  // closes it, so every retry toggled the menu instead of walking it, and the
+  // driver reported the ribbon as unopenable when it was merely already open.
+  //
+  // ESCAPE IS NOT ENOUGH — measured. It returns the button to `[active]` and
+  // the very next attempt still failed; only a reload let the walk run to the
+  // upload, both times.
+  //
+  // This can discard unsaved work, which is the fault that got the between-
+  // rounds reload pulled. Acceptable HERE and nowhere else: this path only runs
+  // when the add-in is already missing, and a document with no add-in cannot
+  // produce a round whose work would be worth saving.
+  sh("reload");
+  sh("dialog-accept");
+  await sleep(55000);
+
   // FIRST, and it is not optional: the ribbon will not open its menus while the
   // document surface is unfocused.
   const list = step("Slide List", /listbox "Slide List"/);

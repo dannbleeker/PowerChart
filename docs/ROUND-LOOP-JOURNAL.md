@@ -3185,3 +3185,38 @@ can be done about it automatically.
   A person can reload the pane by hand between rounds; the driver will not.
 - The guard that asserted the reload was wired in now asserts the opposite, and
   says what it costs, so it cannot drift back unnoticed.
+
+## `sideloadAddIn`: two successes, one failure, and one real fix
+
+Its record before today was "has never once succeeded on a real host". Today it
+put the add-in back twice unaided, and failed once — the failure being the
+current state of `Presentation67`, which needs a hand sideload.
+
+**The fix with evidence behind it: reload before walking.** Twice today the walk
+died at `the Add-ins menu did not open`, and both times the cause was a
+`button "Add-ins" [expanded]` left over from a PREVIOUS failed attempt. Clicking
+an open menu closes it, so every retry toggled the menu instead of walking it —
+and the driver reported the ribbon as unopenable when it was merely already
+open. A first failure therefore guaranteed every later one.
+
+**Escape is not enough, and that is measured rather than assumed.** It returned
+the button to `[active]` and the very next attempt still failed; only a reload
+let the walk reach the upload, both times.
+
+The reload can discard unsaved work, which is exactly the fault that got the
+between-rounds reload pulled an hour ago. Acceptable HERE and nowhere else: this
+path runs only when the add-in is already missing, and a document with no add-in
+cannot produce a round whose work would be worth saving.
+
+### What is NOT fixed, and why I am not touching it
+
+`SIDELOAD_COMMAND_BUDGET_MS` is 90s and the command has twice taken longer. The
+obvious move is to raise it — and the evidence refuses. On 2026-08-20 the
+command surfaced roughly fourteen minutes after the upload; today it never
+surfaced at all, through twelve minutes of polling and a further reload. A budget
+long enough to catch the first case makes a genuine failure take a quarter of an
+hour to report, and this one WAS a genuine failure.
+
+So the number stays and the message carries the caveat instead: "the upload may
+still land, so re-check the ribbon before sideloading by hand". A wait cannot
+distinguish a slow success from a failure; only looking again can.
