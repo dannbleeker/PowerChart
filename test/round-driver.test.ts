@@ -1749,3 +1749,74 @@ describe("what the driver had to do to get the round", () => {
     expect(JSON.parse(out), "invented a clean run for a round that never reported one").not.toHaveProperty("driverRun");
   });
 });
+
+describe("the steps a crashed round managed to write", () => {
+  const OFFERED = '        - button "Download the crashed run" [ref=f7c1]';
+  const shWith = (out: string) => {
+    const calls: string[][] = [];
+    const fn = ((...args: string[]) => {
+      calls.push(args);
+      return args[0] === "find" ? out : "ok";
+    }) as unknown as ((...a: string[]) => string) & { dir?: string; state?: Record<string, unknown> };
+    fn.dir = ".pw";
+    fn.state = {};
+    return { fn, calls };
+  };
+  const sleep = async () => {};
+
+  it("keeps them, because a crashed round archives nothing at all", async () => {
+    // ROUND 150 CRASHED SIX TIMES AND LEFT NO TRACE. Placing the crash needed
+    // the scenario start times of OTHER rounds to guess at — and it did not
+    // have to. `crashlog.ts` flushes every step to localStorage as it happens,
+    // and the next pane load un-hides "Download the crashed run". The driver's
+    // own recovery reopens that pane against the same persistent profile, so
+    // the button was there after every one of those six crashes.
+    const { fn, calls } = shWith(OFFERED);
+    const copied: string[][] = [];
+    const to = await driver.keepCrashedRun(
+      fn,
+      sleep,
+      ((from: string, dest: string) => copied.push([from, dest])) as never,
+      (() => true) as never,
+    );
+    expect(copied, "the crashed run was offered and not saved").toHaveLength(1);
+    expect(copied[0][0]).toBe(".pw/.playwright-cli/powerchart-crashed-run.json");
+    expect(to, "kept it but did not say where").toMatch(/^crashes\/.*-crashed-run\.json$/);
+    // It has to actually press the button, not merely notice it.
+    expect(
+      calls.some((c) => c[0] === "eval"),
+      "found the button and never clicked it",
+    ).toBe(true);
+  });
+
+  it("does nothing when no crashed run is offered", async () => {
+    // The ordinary case, every healthy round. `clearCrashLog` hides the button
+    // once pressed, so this must not re-download in a loop either.
+    const { fn } = shWith('        - button "Insert chart" [ref=f1]');
+    const copied: string[][] = [];
+    const to = await driver.keepCrashedRun(
+      fn,
+      sleep,
+      ((a: string, b: string) => copied.push([a, b])) as never,
+      (() => true) as never,
+    );
+    expect(to).toBeNull();
+    expect(copied, "invented a crashed run out of a healthy pane").toHaveLength(0);
+  });
+
+  it("says so when the file never arrives, rather than reporting a save", async () => {
+    // An ABSENT file must not read as a rescue. The download is a browser
+    // save that can simply not happen, and `collectRound` already carries a
+    // comment about exactly that on the run log.
+    const { fn } = shWith(OFFERED);
+    const copied: string[][] = [];
+    const to = await driver.keepCrashedRun(
+      fn,
+      sleep,
+      ((a: string, b: string) => copied.push([a, b])) as never,
+      (() => false) as never,
+    );
+    expect(to, "claimed a save for a file that never arrived").toBeNull();
+    expect(copied).toHaveLength(0);
+  });
+});
