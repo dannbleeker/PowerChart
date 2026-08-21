@@ -173,6 +173,20 @@ describe("whether a plan is worth taking", () => {
     expect(UPDATE_SHARE_LIMIT).toBeGreaterThan(0);
   });
 
+  it("admits 9-of-16 and still declines 18-of-24 — the two edges of 0.6", () => {
+    // BOTH EDGES, because the whole point of this number is which side of it
+    // two real edits fall on. `same scale across the deck` makes exactly these:
+    // 18-of-24 six times a round and 9-of-16 twice.
+    //
+    // 0.8 admitted both and PowerPoint died on all seven attempts of round 150,
+    // at 255/284/282/278/257/282s. 0.6 admits the smaller one only: two charts
+    // writing nine shapes rather than eight charts writing eighteen — 18 extra
+    // shape-writes against 144, an eighth of the dose.
+    const upTo = (n: number) => ({ changed: Array.from({ length: n }, (_, i) => i) });
+    expect(worthUpdating(upTo(9), 16), "9-of-16 declined — the 0.6 step does nothing at all").toBe(true);
+    expect(worthUpdating(upTo(18), 24), "18-of-24 admitted — that is the share that killed the host").toBe(false);
+  });
+
   it("declines rather than dividing by zero on an empty chart", () => {
     expect(worthUpdating({ changed: [] }, 0)).toBe(false);
   });
