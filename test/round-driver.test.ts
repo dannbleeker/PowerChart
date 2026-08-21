@@ -647,6 +647,36 @@ describe("talking to the browser at all", () => {
       expect(await sideloadAddIn(sh, now, "C:/x/m.xml")).toBe(false);
     });
 
+    it("reloads before walking, because it cannot open a menu that is already open", async () => {
+      // TWICE ON 2026-08-21 the first attempt died at "the Add-ins menu did not
+      // open", and both times the cause was a `button "Add-ins" [expanded]`
+      // left over from a PREVIOUS failed attempt. Clicking an open menu closes
+      // it, so every retry toggled the menu instead of walking it — and the
+      // driver reported the ribbon as unopenable when it was merely already
+      // open.
+      //
+      // Escape is not enough, measured: it returned the button to `[active]`
+      // and the next attempt still failed. Only a reload let the walk reach the
+      // upload, both times.
+      const calls: string[][] = [];
+      const sh = ((...args: string[]) => {
+        calls.push(args);
+        return "";
+      }) as never as { (...a: string[]): string; state: unknown };
+      await sideloadAddIn(sh, async () => {}, "C:/x/m.xml");
+
+      const reloadAt = calls.findIndex((c) => c[0] === "reload");
+      const firstFind = calls.findIndex((c) => c[0] === "find");
+      expect(reloadAt, "never reloaded — a stuck menu will defeat every attempt").toBeGreaterThanOrEqual(0);
+      expect(reloadAt, "reloaded AFTER starting the walk, which is too late to clear the menu").toBeLessThan(firstFind);
+      // And the modal a reload can raise must be answered, or every later call
+      // fails in a way that impersonates a dead browser.
+      expect(
+        calls.some((c) => c[0] === "dialog-accept"),
+        "left a beforeunload modal blocking the walk it just started",
+      ).toBe(true);
+    });
+
     it("refuses to walk a document that is not up", async () => {
       // Ten ribbon steps against a loading tab would leave a dialog on it.
       const sh = shWith(ALL, ["Slide List"]);
