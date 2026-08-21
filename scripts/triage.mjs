@@ -1635,10 +1635,37 @@ const FALLBACK_SIGNALS = {
  * A feature that has never once run in production is not a feature; it is a
  * branch that costs a fallback every time. This makes the gate say so.
  */
+/**
+ * The in-place update has THREE outcomes and this counted two.
+ *
+ * `tryInPlaceUpdate` declines by rule (`not updating in place`, carrying a
+ * `why`) or THROWS (`in-place update refused`, carrying an `error` and no
+ * `why`). Only the first was counted, so every host-side refusal was invisible
+ * here — including the three `InvalidArgument | errorLocation=Shape.textFrame`
+ * in round 145 that turned out to be the last thing standing between this
+ * feature and working. They sat in round 144's trace too, uncounted.
+ *
+ * The reason breakdown exists for the same reason. A total says a feature fell
+ * back; only the reasons say whether that was the differ declining work a
+ * redraw does better (correct) or the host refusing a write (a defect).
+ */
+function inPlaceErrorKey(err) {
+  const code = err.split(" | ")[0]?.trim() || "threw";
+  const where = /"errorLocation":"([^"]+)"/.exec(err)?.[1];
+  return where ? `${code} at ${where}` : code;
+}
+
 export function poolInPlaceUpdates(logs) {
   let ok = 0,
     fell = 0,
+    threw = 0,
     rounds = 0;
+  const reasons = new Map();
+  // ONE EXAMPLE, not just a tally. A residual bucket reported as a number is
+  // read as noise; reported as a line it gets opened. That distinction cost two
+  // rounds of a host defect sitting in plain sight.
+  const unexplained = [];
+  const note = (key) => reasons.set(key, (reasons.get(key) ?? 0) + 1);
   for (const log of logs ?? []) {
     const entries = log?.trace?.entries;
     if (!Array.isArray(entries)) continue;
@@ -1646,10 +1673,27 @@ export function poolInPlaceUpdates(logs) {
     for (const e of entries) {
       const m = String(e.message ?? "");
       if (m === "updated only the shapes that changed") ok++;
-      else if (m === "not updating in place — redrawing instead") fell++;
+      else if (m === "not updating in place — redrawing instead") {
+        fell++;
+        const why = e.data?.why;
+        if (why) note(String(why));
+        else unexplained.push(m);
+      } else if (m === "in-place update refused — redrawing instead") {
+        threw++;
+        const err = String(e.data?.error ?? "");
+        if (err) note(inPlaceErrorKey(err));
+        else unexplained.push(m);
+      }
     }
   }
-  return { ok, fell, rounds };
+  return {
+    ok,
+    fell,
+    threw,
+    rounds,
+    unexplained,
+    reasons: [...reasons].sort((a, b) => b[1] - a[1]).map(([why, n]) => ({ why, n })),
+  };
 }
 
 export function poolFallbackRates(logs) {

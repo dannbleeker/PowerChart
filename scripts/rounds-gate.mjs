@@ -203,17 +203,30 @@ if (isMain(import.meta.url, process.argv[1])) {
   // thirtyfold win and the 40% drift that both went unnoticed.
   // A FEATURE THAT HAS NEVER RUN. See `poolInPlaceUpdates`.
   const ip = poolInPlaceUpdates(rounds);
-  if (ip.fell > 0 && ip.ok === 0)
+  // fell + threw: a host-side refusal is a fallback too, and counting only the
+  // rule-based declines hid three of them for two rounds.
+  const ipDown = ip.fell + ip.threw;
+  if (ipDown > 0 && ip.ok === 0)
     console.log(
       `
-  IN-PLACE UPDATE HAS NEVER SUCCEEDED — 0 successes against ${ip.fell} fallbacks over ${ip.rounds} round(s).
+  IN-PLACE UPDATE HAS NEVER SUCCEEDED — 0 successes against ${ipDown} fallbacks over ${ip.rounds} round(s).
 ` +
         "    #406 was titled 'The in-place update fired zero times and would not say why' and added the trace" +
         "\n    that answers it. The answer has been sitting in every round file since. See FALLBACKS below for why.",
     );
   else if (ip.ok > 0)
     console.log(`
-  in-place update: ${ip.ok} succeeded, ${ip.fell} fell back over ${ip.rounds} round(s)`);
+  in-place update: ${ip.ok} succeeded, ${ip.fell} declined, ${ip.threw} refused by the host over ${ip.rounds} round(s)`);
+  // WHY, not just how many. A decline the differ made on purpose and a write the
+  // host threw out read identically in a total.
+  if (ip.reasons.length) {
+    console.log("    why it fell back:");
+    for (const r of ip.reasons.slice(0, 6)) console.log(`      ${String(r.n).padStart(4)}x  ${r.why}`);
+  }
+  if (ip.unexplained.length)
+    console.log(
+      `    ${ip.unexplained.length} carried NO reason at all — open these first, they are the ones no category fits`,
+    );
 
   const fb = poolFallbackRates(rounds);
   if (fb.length) {
