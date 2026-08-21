@@ -1305,6 +1305,12 @@ questions have produced nothing in **41 of 41 rounds**:
       group-children-via-getcount        41 round(s)  unreadable
       shape-proxy-survives-one-sync      41 round(s)  unreadable
 
+> **PARTLY RESOLVED 2026-08-21.** Two of these six — `grouped-child-by-id-from-slide`
+> and `tag-on-group-survives` — were RETIRED rather than fixed: production
+> answered one and the product routed around the other. See "Two questions
+> production answered before the probe sheet could" at the end of this file.
+> The entry below is left as it was written.
+
 **Four of the six are the group cluster**, and that is the cluster rounds 064 and
 065 just made urgent. `tag-on-group-survives` asks precisely what those two
 rounds discovered: whether a tag written on a group is honoured. It has never
@@ -1805,3 +1811,74 @@ at 1.8, so it needs a 1.10 branch with the positional mapping kept as fallback.
 Until then the guard is the test that asserts the TARGET of a node-0 write
 (`writes node 0 to the group's ANCHOR, not to the group itself`) — a count check
 cannot catch a mapping error that preserves the count.
+
+### Two questions production answered before the probe sheet could — RETIRED 2026-08-21
+
+`grouped-child-by-id-from-slide` and `tag-on-group-survives` are gone from
+`PROBES`, from `FAKE_BASELINE`, from `KNOWN_DIVERGENCES`, from
+`PENDING_QUESTIONS` and from `WHAT_IT_MEANS`. The probe sheet is 31 questions,
+down from 33.
+
+**They never answered once, in the entire archive.**
+
+    rounds carrying a probe sheet: 125
+
+    grouped-child-by-id-from-slide   no-scratch-shape 117, no-scratch-slide  8   = 125/125 starved
+    tag-on-group-survives            no-scratch-slide 122, no-scratch-shape  3   = 125/125 starved
+
+Every one of those 250 attempts spent a scratch slide and host time on a
+question that could not be put, in a run where scratch slides are contended —
+so they were not merely useless, they were starving questions that could still
+pay.
+
+**Why they starved is settled, and it is not lateness.** They sat directly
+under `group-reports-its-children`, which carries `burnsTheSlide: true`. A
+question placed beneath a slide-burner finds the slide gone. The rival theory —
+that they starved for sitting at positions 22 and 23 — is refuted in that
+probe's own comment: round 26 answered #31, the last question of all, while #8,
+#16, #22 and #23 starved, and the positional split came out 55% for questions
+1-8 against 62% for 9-and-later. **Starvation here is a property of the SLOT.**
+Anything moved in under that probe inherits the same fate, which is why the
+answer was never "promote them".
+
+## What actually answered them
+
+**`tag-on-group-survives` — "Does a tag written on a GROUP read back?" YES, from
+production, over 149 rounds.** It is the mechanism the whole product runs on:
+every chart is discovered by reading `POWERCHART_CONFIG` off its group, and
+since #645 the in-place update reads `POWERCHART_SCENE` off the same group
+thirteen times a round. Rounds 146, 147 and 149 each completed three in-place
+updates, which is not possible unless a tag on a group reads back. A probe
+cannot beat that evidence; it can only agree with it more slowly.
+
+**`grouped-child-by-id-from-slide` — "Can a shape INSIDE a group still be
+resolved by id off the slide?" MOOT.** It was described as the question that
+decides whether the in-place update can ever work here. It is not, because the
+update no longer takes that route: #643 reads a grouped chart's members from
+`shape.group.shapes` (a `ShapeScopedCollection` at PowerPointApi 1.8), and #646
+writes through those member proxies. The by-id-off-the-slide path is not used
+and does not need an answer.
+
+Note what that means for the older entry above, "The probe has been blind on
+GROUPS for the whole archive": the blindness was real, and the product routed
+around it without the probe ever seeing. **A question worth asking is not the
+same as a question worth waiting for.**
+
+## The branch that tried the other remedy
+
+`claude/ask-the-decisive-probes-early` (`f09041c`, 2026-08-13) proposed moving
+both to positions 5 and 6. It is pushed and preserved, and it was NOT merged,
+for three independent reasons: it ships a deliberately failing test ("KNOWN RED,
+AND THE REASON IS THE POINT"); 23 commits have touched `host-probe.ts` since,
+and it no longer rebases cleanly; and its premise — that these two questions
+gate the in-place update — is now false.
+
+Its diagnosis was still worth keeping, and is recorded above: these questions
+never get put. The conclusion inverted once production answered them.
+
+## What is left open
+
+The `no-scratch-*` split in the older entry still stands for the four remaining
+starved questions. Retiring two of the six is not a fix for the harness; it
+removes two questions that could never pay, and gives their slide back to the
+ones that might.

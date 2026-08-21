@@ -510,11 +510,7 @@ describe("the fake host's answer sheet", () => {
         "addgroup-returns-usable",
         "group-reports-its-children",
         "group-of-existing-shape-readable",
-        // Needs two shapes to group and then a child id to look up; a host that
-        // refuses every add has told it nothing about children.
-        "grouped-child-by-id-from-slide",
         "picture-then-shape-read",
-        "tag-on-group-survives",
         // Needs six shapes to see which of them a short read keeps.
         "which-end-a-short-read-drops",
         // Needs two shapes to offer addGroup something to refuse.
@@ -896,11 +892,13 @@ describe("what the pane says about a probe run", () => {
   it("counts a declared divergence as known, not as news", async () => {
     installHost([makeSlide("s1")]);
     const sheet = await runHostProbes("fake", "test");
-    // `tag-on-group-survives` is declared: the real host's "no" is withdrawn
-    // pending a re-run. A sheet reproducing it is not a finding.
+    // `group-reports-its-children` is declared divergent, so a sheet reproducing
+    // it is not a finding. It stands in for `tag-on-group-survives`, which this
+    // test used until that question was retired — what is under test is the
+    // COUNTING, so any declared id will do.
     const known = {
       ...sheet,
-      answers: sheet.answers.map((a) => (a.id === "tag-on-group-survives" ? { ...a, answer: "no" } : a)),
+      answers: sheet.answers.map((a) => (a.id === "group-reports-its-children" ? { ...a, answer: "reports-1" } : a)),
     };
     expect(sheetNeedsAttention(known), "treated a declared divergence as news").toBe(false);
     expect(describeHostSheet(known)).toContain("1 known divergence");
@@ -2112,12 +2110,15 @@ describe("what a probe says when it could not set itself up", () => {
   it("uses the gates' vocabulary when the host will not name a shape", async () => {
     installHost([makeSlide("s1")]);
     // The state the real round was in: shapes are added, and their ids will not
-    // read back — so there is no child id to look up and the question about
-    // groups was never put.
+    // read back — so a question that has to re-fetch a shape BY its id was
+    // never put. `tag-through-refetched-shape` stands in for
+    // `grouped-child-by-id-from-slide`, which this test used until that
+    // question was retired; both need an id read back, which is the setup the
+    // fault refuses.
     faults.refuseShapeIdLoads = 9999;
     try {
       const sheet = await runHostProbes("fake-refuses-ids", "test");
-      const row = sheet.answers.find((a) => a.id === "grouped-child-by-id-from-slide");
+      const row = sheet.answers.find((a) => a.id === "tag-through-refetched-shape");
       expect(row, "the question vanished from the sheet").toBeTruthy();
       expect(
         NEVER_ASKED.has(String(row!.answer)),
