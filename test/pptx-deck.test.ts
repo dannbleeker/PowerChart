@@ -14,7 +14,8 @@ import {
   topLevelElements,
   xmlAttr,
 } from "../src/render/ooxml";
-import { buildChart } from "../src/core/chart";
+import { sceneFingerprint } from "../src/core/scene-diff";
+import { buildChart, DEFAULT_SIZE } from "../src/core/chart";
 import { sampleConfig } from "../src/core/samples";
 import type { ChartConfig } from "../src/core/types";
 
@@ -150,6 +151,55 @@ describe("ooxml: tags and deck size", () => {
     const part = tagPart([["POWERCHART_CONFIG", `{"title":"A & <B>"}`]]);
     expect(part).toContain(`val="{&quot;title&quot;:&quot;A &amp; &lt;B&gt;&quot;}"`);
     expect(xmlAttr(`'`)).toBe("&apos;");
+  });
+
+  it("stamps the scene fingerprint into a generated deck", async () => {
+    // WITHOUT THIS, EVERY DECK CHART IS PERMANENTLY REDRAW-ONLY. The in-place
+    // update refuses a chart with no fingerprint — "it was drawn by an older
+    // build" — and that message was wrong about these: they were drawn by THIS
+    // builder, which had never written one.
+    //
+    // Rounds 143 and 144 both show charts 1/8, 2/8 and 3/8 getting past the
+    // check while 4/8 through 8/8 refuse, and the split is exactly which charts
+    // came from `insertSceneIntoSlide` and which arrived in the generated deck.
+    // The fingerprint blocker only became visible at all once the group read
+    // stopped the parts check short-circuiting ahead of it.
+    const cfg = { ...sampleConfig("clustered"), ...DEFAULT_SIZE };
+    const scene = buildChart(cfg);
+    const built = await buildDeckBase64([{ scene, configJson: JSON.stringify(cfg) }]);
+    // The tag parts are where both tags land, so read those rather than the
+    // whole deck: a substring hit anywhere in the file would not prove the tag
+    // reached a part a shape actually references.
+    const zip = await JSZip.loadAsync(built.base64, { base64: true });
+    const parts = await Promise.all(
+      Object.keys(zip.files)
+        // `zip.files` lists the DIRECTORY `ppt/tags/` too, and `zip.file()`
+        // answers null for one — the prefix alone is not enough.
+        .filter((n) => n.startsWith("ppt/tags/") && !zip.files[n].dir)
+        .map((n) => zip.file(n)!.async("string")),
+    );
+    expect(parts.length, "the deck carries no tag parts at all").toBeGreaterThan(0);
+    const xml = parts.join(" ");
+    const valueOf = (name: string) => xml.match(new RegExp(`<p:tag name="${name}" val="([^"]*)"`))?.[1];
+
+    const stored = valueOf("POWERCHART_SCENE");
+    expect(stored, "the generated deck carries no scene fingerprint").toBeTruthy();
+    // Beside the config, not instead of it — a shape may reference only one
+    // tags part, so losing the config to gain the fingerprint would be a trade,
+    // not a fix.
+    const storedConfig = valueOf("POWERCHART_CONFIG");
+    expect(storedConfig, "the config tag went missing").toBeTruthy();
+
+    // AND IT HAS TO BE THE SAME VALUE THE UPDATE PATH RECOMPUTES. `tryInPlaceUpdate`
+    // does `sceneFingerprint(buildChart(JSON.parse(tags.config)))` and refuses on a
+    // mismatch, so a tag that is merely PRESENT would move the refusal one reason
+    // along rather than end it — which is exactly how this bug hid behind the
+    // parts check for 117 rounds.
+    const decoded = storedConfig!.replace(/&quot;/g, '"').replace(/&amp;/g, "&");
+    expect(
+      sceneFingerprint(buildChart(JSON.parse(decoded) as ChartConfig)),
+      "the stored fingerprint is not the one the update path will recompute",
+    ).toBe(stored);
   });
 
   it("carries several tags in one part, since a shape may reference only one", () => {

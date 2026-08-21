@@ -27,6 +27,7 @@
  */
 import { arrowheadBox, annularSectorPoints, dashKind, symbolPreset } from "../core/geometry";
 import type { Scene } from "../core/scene";
+import { sceneFingerprint } from "../core/scene-diff";
 import { IN, hexOr, makeAddNode } from "../../skill/scripts/pptx-paint.mjs";
 import { injectGroupsAndTags, EMU_PER_POINT, type SlideDressing } from "./ooxml";
 
@@ -91,6 +92,12 @@ export async function buildDeckBase64(
     for (const node of item.scene.nodes) addNode(slide, node, dx, dy);
     dressing.push({
       configJson: item.configJson,
+      // THE FINGERPRINT OF WHAT THIS BUILDER ACTUALLY DREW. Computed from the
+      // same scene whose nodes are written above, so it describes the shapes on
+      // the slide rather than whatever the stored config re-renders to later.
+      // Only alongside a config: a chart with no config is not re-editable and
+      // has nothing to diff against. See `SlideDressing.sceneTag`.
+      sceneTag: item.configJson ? sceneFingerprint(item.scene) : undefined,
       slot: item.slot,
       title: item.title,
       run: item.run,

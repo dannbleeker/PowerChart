@@ -85,6 +85,19 @@ export interface SlideDressing {
   configJson?: string;
   /** `POWERCHART_ORIGIN` payload: [frameLeft, frameTop, groupLeft, groupTop]. */
   origin?: [number, number, number, number];
+  /**
+   * `POWERCHART_SCENE`: the fingerprint of the scene these shapes were drawn
+   * from, so the chart's first in-place update has something to diff against.
+   *
+   * WITHOUT IT EVERY DECK CHART IS PERMANENTLY REDRAW-ONLY. `tryInPlaceUpdate`
+   * refuses a chart with no fingerprint — "it was drawn by an older build" —
+   * and that message was wrong about these: they were drawn by THIS builder,
+   * which had never written one. Rounds 143 and 144 both show charts 1/8, 2/8
+   * and 3/8 updating past the check while 4/8 through 8/8 refuse, and the split
+   * is exactly which charts came from `insertSceneIntoSlide` and which arrived
+   * in the generated deck.
+   */
+  sceneTag?: string;
   /** Item index for the slide-level `POWERCHART_DEMO_SLOT` tag. */
   slot?: number;
   /** Item title, carried alongside the slot index. */
@@ -460,6 +473,9 @@ export async function injectGroupsAndTags(
     const groupTags: [string, string][] = [];
     if (item.configJson) groupTags.push(["POWERCHART_CONFIG", item.configJson]);
     if (item.origin) groupTags.push(["POWERCHART_ORIGIN", JSON.stringify(item.origin)]);
+    // Beside the config, in the same part: one shape may reference only one tags
+    // part, and the update path needs BOTH to take the fast path at all.
+    if (item.sceneTag) groupTags.push(["POWERCHART_SCENE", item.sceneTag]);
     if (groupTags.length) {
       const n = ++tagPartNo;
       groupRid = `rId${nextRelId(rels)}`;
