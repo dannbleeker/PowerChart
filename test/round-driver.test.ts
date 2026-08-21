@@ -368,27 +368,37 @@ describe("talking to the browser at all", () => {
     ).toBe(false);
   });
 
-  it("actually wires the refresh into the end of a round", () => {
-    // THE GAP MUTATION TESTING FOUND. The test above proves `refreshPane` works;
-    // it proves nothing about `collectRound` CALLING it, and deleting the call
-    // left the whole suite green. The behaviour being shipped is the wiring,
-    // not the helper.
+  it("does NOT reload the pane at the end of a round", () => {
+    // THIS GUARD USED TO ASSERT THE OPPOSITE, and inverting it is the point.
     //
-    // `collectRound` is not exported and does enough — archive, sweep, refresh —
-    // that a stub complete enough to reach the end would be most of a fake
-    // driver. So this reads the source, which is a weaker check and is labelled
-    // as one: it catches the call being DELETED, not the call being wrong. The
-    // live evidence is a round's own output ("pane reloaded") and the next
-    // round's pane age in the gate, both of which a unit test cannot see.
+    // Reloading between rounds worked: round 126 was the first second round in
+    // this archive to score a first round's numbers. It also broke the session
+    // roughly one round in four. A reload of a tab with unsaved work raises
+    // PowerPoint's beforeunload prompt, and `dialog-accept` means LEAVE WITHOUT
+    // SAVING — while the sweep immediately before it GUARANTEES unsaved work,
+    // having just deleted slides. The add-in was gone from the ribbon after the
+    // reload following round 124 and again after 132, with the deck grown back
+    // to 79 slides.
+    //
+    // So the call is out until the driver can wait for the autosave and reload a
+    // clean document, which needs a way to read PowerPoint's saved state that
+    // does not exist here yet. A guard that merely stopped asserting would let
+    // it drift back in unnoticed; this one states the cost.
     const src = readFileSync(new URL("../scripts/round.mjs", import.meta.url), "utf8");
     const body = src.slice(src.indexOf("async function collectRound"));
     const end = body.indexOf("\n}\n");
     const fn = body.slice(0, end > 0 ? end : 4000);
-    expect(fn, "collectRound stopped refreshing the pane — every next round is a reused-pane round").toMatch(
-      /refreshPane\(/,
+    expect(fn, "collectRound reloads the pane again — that costs the sideload about 1 round in 4").not.toMatch(
+      /^\s*(?:if \()?await refreshPane\(/m,
     );
-    expect(fn.indexOf("sweepDeck"), "sweep must come first: it needs the pane the refresh replaces").toBeLessThan(
-      fn.indexOf("refreshPane("),
+    // And `refreshPane` itself must survive: `recover` depends on it, and it is
+    // correct there because the page it reloads has usually already crashed and
+    // has nothing left to save.
+    expect(src, "refreshPane was deleted, taking recovery's reload with it").toMatch(
+      /export async function refreshPane/,
+    );
+    expect(src.slice(src.indexOf("export async function recover")), "recover stopped using it").toMatch(
+      /refreshPane\(/,
     );
   });
 

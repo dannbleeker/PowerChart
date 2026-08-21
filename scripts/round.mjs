@@ -1577,8 +1577,30 @@ async function collectRound(sh, stamp, sleep, driverSize = null) {
   // Best-effort like everything else here: the round is already archived, and a
   // driver that turned a good round into a non-zero exit over housekeeping
   // would be worse than the housekeeping.
-  if (await refreshPane(sh, sleep)) console.log("  pane reloaded — the next round starts on a fresh one");
-  else console.error("  the pane did NOT reopen — the next round will recover before it can run");
+  // THE BETWEEN-ROUNDS RELOAD IS OFF, and this comment is the reason rather
+  // than a TODO. It worked — round 126 was the first second round in this
+  // archive to score a first round's numbers — and it cost the session roughly
+  // one round in four.
+  //
+  // The mechanism: a reload of a tab with unsaved work raises PowerPoint's
+  // beforeunload prompt, and `dialog-accept` means LEAVE WITHOUT SAVING. The
+  // sweep immediately above guarantees unsaved work — it has just deleted
+  // slides — so accepting discards it. It also appears to discard the
+  // per-document SIDELOAD: the add-in was gone from the ribbon after the reload
+  // that followed round 124 and again after round 132, and rounds 4, 5 and 6 of
+  // that batch refused with `addin-missing` against a deck that had grown back
+  // to 79 slides.
+  //
+  // Dismissing instead would cancel the reload rather than save. The real fix is
+  // to WAIT FOR THE AUTOSAVE and reload only once the document is clean, so no
+  // prompt appears at all — which needs a way to read PowerPoint's saved state
+  // that this driver does not have yet, and which must not be guessed at with a
+  // sleep on the one path whose failure costs the add-in.
+  //
+  // `refreshPane` stays: `recover` uses it, and it is correct there because the
+  // page it reloads has usually already crashed and has nothing to save.
+  // `paneAgeAtStartSeconds` stays too — the gate still reports whether a round
+  // inherited a pane, which is what makes its counters readable.
   return filed;
 }
 
