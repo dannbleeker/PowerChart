@@ -3029,3 +3029,46 @@ how many pairs had a fresh second round (14 of 34 today, rising).
 
 A statistic about a fixed problem is exactly the kind of instrument this project
 keeps having to correct: it goes on being true and stops being useful.
+
+## Rounds 127 + 128 — the 4:3 profile effect was never real
+
+The first profile comparison this project has ever made properly: same deck,
+machine idle, and — for the first time — **every round started on a fresh pane**,
+so a pair is two comparable rounds instead of a clean one and a degraded one.
+
+    round  profile  pane-age  span   cold  post  grp/ref  deck  verdict
+    124     4:3        68s    719s    11     0    20/0     16   13/13
+    125     4:3        68s    691s    11     0    20/0     16   13/13
+    126     4:3       119s    802s    11     0    20/0     16   13/13
+    127     16:9       77s    839s    10     0    20/0     16   13/13
+    128     16:9       72s    651s    11     0    20/0     16   13/13
+
+**Identical on every counter.** post-retry 0 across the board, 20 grouped and 0
+refused, a 16-shape deck, 13 of 13.
+
+**"4:3 degrades the retry" was entirely an artefact of which rounds happened to
+inherit a pane.** It was published as replicated, deck-exonerated, and
+mechanistically explained; the mechanism was invented to fit a difference that
+did not exist. Fourth theory dead, and the only one that survived contact with a
+controlled experiment is pane age.
+
+### What IS real, and profile-independent
+
+The cold re-read fails **10 to 11 times a round in all five**, at both profiles,
+on a fresh pane, with everything else clean. That fault has replicated across
+every condition this project has tested and is the one finding from the whole
+sequence that nothing has undermined.
+
+### What I nearly claimed and did not
+
+All five rounds got a control render, where the visibility gate has been blind in
+38% of the archive. That looked like a second win for the pane reload. It is not:
+
+    fresh panes    27 blind / 51 sighted    35% blind
+    reused panes   13 blind / 13 sighted    50% blind
+
+Pane age is ASSOCIATED with blindness and does not explain it. Five sighted in a
+row on fresh panes has roughly a 12% chance at the historical 35% rate — which is
+unremarkable, not evidence. The visibility gate's blindness remains unexplained
+and is the obvious next target now that the confound underneath everything else
+is gone.

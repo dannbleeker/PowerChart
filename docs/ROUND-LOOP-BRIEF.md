@@ -151,6 +151,14 @@ the pane after the sweep, so every round starts fresh. Round 126 is the first
 SECOND round in this archive to score a first round's numbers — post-retry 0, 20
 grouped / 0 refused, a 16-shape deck, 13 of 13.
 
+**And the 4:3 profile effect was never real.** Rounds 124-128 compared the two
+profiles on one deck with every round starting fresh — identical on every
+counter, post-retry 0 throughout. The profile finding, like position and
+observer load before it, was an artefact of reused panes.
+
+What survives all of it: **the cold re-read fails 10-11 times a round**, at both
+profiles, on a fresh pane, with everything else clean.
+
 Read the gate's pane-age line anyway. A recovery, a crash or a hand-run round can
 still leave a reused pane, and a reused-pane round is a degraded sample whatever
 the code says.
