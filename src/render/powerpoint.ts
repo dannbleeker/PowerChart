@@ -9706,16 +9706,31 @@ function queueGroupMembers(shape: PowerPoint.Shape): PowerPoint.ShapeScopedColle
  * that safe: a group that does not line up with the scene is refused exactly as
  * a short parts tag already is, so a wrong mapping cannot reach the writer.
  */
-function groupMembersAsParts(
-  members: PowerPoint.ShapeScopedCollection | undefined,
-  anchorId: string | undefined,
-): PowerPoint.Shape[] {
+function groupMembersAsParts(members: PowerPoint.ShapeScopedCollection | undefined): PowerPoint.Shape[] {
   const items = members ? loadedValue(() => members.items) : undefined;
-  if (!Array.isArray(items) || !items.length) return [];
-  return items.filter((s) => {
-    const id = loadedValue(() => s.id);
-    return typeof id === "string" && id.length > 0 && id !== anchorId;
-  });
+  if (!Array.isArray(items) || items.length < 2) return [];
+  // DROP THE FIRST MEMBER, because it is the anchor.
+  //
+  // The first version filtered by the TAGGED SHAPE'S id and removed nothing,
+  // because for a grouped chart the tagged shape IS THE GROUP and a group is
+  // never among its own members. Round 143 said so in five of five cases —
+  // parts 25 against nodes 24, parts 17 against nodes 16, off by exactly one
+  // every time — and the one-for-one guard refused every one of them.
+  //
+  // Nothing at update time records WHICH member is the anchor: the parts tag
+  // that would have said so is exactly what a grouped chart does not carry. So
+  // position is the only answer available, and it is the same assumption the
+  // parts tag itself is built on — `ungroupedFallback` takes `created.slice(1)`
+  // and the tag "lists the rest in drawing order".
+  //
+  // THAT ASSUMPTION IS NOT PROVEN ON THE HOST, and it is worth saying plainly:
+  // if `ShapeGroup.shapes` ever answered in some other order, the mapping would
+  // be wrong rather than absent, and a wrong mapping writes a scrambled chart
+  // instead of refusing. Two things make that survivable — the one-for-one
+  // count guard still refuses anything that does not line up, and the self-test
+  // battery edits charts and checks the result, so a scrambled write fails a
+  // scenario loudly rather than reaching a user quietly.
+  return items.slice(1);
 }
 
 async function tryInPlaceUpdate(
@@ -9781,11 +9796,7 @@ async function tryInPlaceUpdate(
   // The one-for-one check below is unchanged and is what makes this safe: a
   // group whose members do not line up with the scene is refused exactly as a
   // short parts tag already is.
-  if (!parts.length)
-    parts = groupMembersAsParts(
-      groupMembers,
-      loadedValue(() => old.id),
-    );
+  if (!parts.length) parts = groupMembersAsParts(groupMembers);
   if (!parts.length)
     return no("the chart has no parts list and no readable group members, so its nodes cannot be mapped to shapes");
   if (!tags.scene) return no("the chart carries no scene fingerprint — it was drawn by an older build");

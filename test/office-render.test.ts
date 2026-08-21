@@ -1823,6 +1823,21 @@ describe("a grouped chart can be updated in place", () => {
         refused && String(refused.data?.why ?? ""),
         "still refused a grouped chart — the group members were not read",
       ).not.toMatch(/no parts list/);
+
+      // AND THE COUNT MUST LINE UP, which is what the first version got wrong
+      // and this suite did not catch. It removed the anchor by matching the
+      // TAGGED SHAPE'S id — but for a grouped chart the tagged shape IS THE
+      // GROUP, and a group is never among its own members, so nothing was
+      // removed and every group came back one member too long.
+      //
+      // Round 143 found it in five of five cases (parts 25 against nodes 24,
+      // parts 17 against nodes 16) while 3209 tests stayed green. Asserting
+      // "not refused for a missing parts list" was too weak: the refusal simply
+      // moved to the next reason along. This asserts the number.
+      expect(
+        refused && String(refused.data?.why ?? ""),
+        "the group came back the wrong length — the anchor was not removed",
+      ).not.toMatch(/one for one/);
     } finally {
       setTracing(false);
     }
@@ -1853,7 +1868,12 @@ describe("a grouped chart can be updated in place", () => {
 
       const refused = traceLog().entries.find((e) => e.message === "not updating in place — redrawing instead");
       expect(refused, "wrote into a mapping that does not line up").toBeDefined();
-      expect(String(refused!.data?.why ?? "")).toMatch(/one for one|no parts list|no readable group/);
+      // ANY of the refusals is correct here, and which one fires is not the
+      // point — a chart whose shape changed is caught by the node-compatibility
+      // check BEFORE the one-for-one count is even reached. The assertion is
+      // that it refuses rather than guesses, because a wrong mapping writes a
+      // scrambled chart instead of falling back to the redraw.
+      expect(String(refused!.data?.why ?? "")).toMatch(/one for one|no parts list|no readable group|node-compatible/);
     } finally {
       setTracing(false);
     }
@@ -4915,8 +4935,20 @@ describe("what the per-slide shape counter counts", () => {
     expect(found.length, "the two charts did not both land").toBe(2);
     setTracing(true);
     try {
+      // A DIFFERENTLY-SHAPED SCENE, so this is genuinely a REDRAW.
+      //
+      // Until 2026-08-21 an identical scene redrew too, because a grouped chart
+      // could not be updated in place and always fell back. It can now — the
+      // update reads the group's members — so re-rendering the same config
+      // takes the fast path, issues no batches, and this test had nothing to
+      // count. The subject here is what a redraw keys on, so the fixture has to
+      // provoke one rather than rely on the fast path being broken.
+      const reshaped = buildChart({
+        ...cfg,
+        data: { categories: ["A", "B", "C", "D", "E"], series: [{ name: "S", values: [1, 2, 3, 4, 5] }] },
+      });
       await updateChartsInSlides(
-        found.map((c) => ({ scene, target: c.target, opts: { tagData: JSON.stringify(cfg) } })),
+        found.map((c) => ({ scene: reshaped, target: c.target, opts: { tagData: JSON.stringify(cfg) } })),
       );
       const batches = traceLog().entries.filter((e) => e.message === "batch issued");
       expect(batches.length, "the redraw issued no batches to check").toBeGreaterThan(1);
@@ -5221,11 +5253,24 @@ describe("updating only what changed", () => {
     const target = (await listChartsInDeck()).charts[0].target;
     setTracing(true);
     const next = { ...cfg, title: "Renamed" };
-    await updateChartInSlide(buildChart(next), target, { tagData: JSON.stringify(next) });
+    await updateChartInSlide(buildChart(next), target, {
+      tagData: JSON.stringify(next),
+      // Forces the one decline that is still correct — see below.
+      pictureBase64: "iVBORw0KGgo=",
+    });
     const said = traceLog().entries.filter((e) => e.message === "not updating in place — redrawing instead");
     expect(said.length, "a declined in-place update passed without a word").toBe(1);
-    // The grouped case, named as itself rather than as a generic refusal.
-    expect(String(said[0].data?.why)).toMatch(/parts list/);
+    // THE PICTURE CASE, named as itself rather than as a generic refusal.
+    //
+    // This fixture used a GROUPED chart until 2026-08-21, because a grouped
+    // chart was refused for want of a parts list. It is not any more — the
+    // update reads the group's members — so the fixture had to change to keep
+    // the test testing what it says: that a decline is never silent.
+    //
+    // The picture path is the decline that remains legitimate: a picture is not
+    // in the scene, so the differ has nothing to compare and refusing is the
+    // correct answer rather than a limitation.
+    expect(String(said[0].data?.why)).toMatch(/picture/);
   });
 
   it("names a missing fingerprint separately from a missing mapping", async () => {
@@ -5246,23 +5291,41 @@ describe("updating only what changed", () => {
     );
   });
 
-  it("redraws a GROUPED chart, which has no node-to-shape mapping", async () => {
-    // Its shapes are inside the group and the parts tag does not list them, so
-    // there is nothing to write to. Asserted rather than assumed: the fast path
-    // reading a short parts list as a mapping would write a bar's geometry onto
-    // whatever shape happened to be at that index.
+  it("updates a GROUPED chart through its group members", async () => {
+    // THIS TEST USED TO ASSERT THE OPPOSITE, and the reversal is the point.
+    //
+    // It read: "redraws a GROUPED chart, which has no node-to-shape mapping —
+    // its shapes are inside the group and the parts tag does not list them, so
+    // there is nothing to write to." That was true of the code and false of the
+    // host: `ShapeGroup.shapes` reaches the members at PowerPointApi 1.8, and
+    // office-js#3014's "sub-shapes cannot be reached" is a 2022 note that has
+    // gone stale.
+    //
+    // The cost of believing it was the whole feature. The in-place update had
+    // never run once in 117 archived rounds, because this host groups nearly
+    // every chart (18 of 21 in round 142) and every grouped chart was refused
+    // here.
+    //
+    // WHAT THE OLD TEST WAS REALLY PROTECTING SURVIVES, in the assertion below
+    // and in the sibling test above: a mapping that does not line up must be
+    // REFUSED, never guessed at, because writing a bar's geometry onto whatever
+    // shape sits at that index is worse than any redraw.
     const slide = makeSlide("s1");
     installHost([slide]);
     const cfg = clustered();
     await insertSceneIntoSlide(buildChart(cfg), { tagData: JSON.stringify(cfg) });
     const target = (await listChartsInDeck()).charts[0].target;
+    // The premise, pinned: this chart really is grouped and really has no parts
+    // tag. If either changes, this stops testing what it says it does.
+    expect(target.partIds?.length ?? 0, "a grouped chart should carry no parts tag").toBe(0);
     setTracing(true);
     const next = { ...cfg, title: "Renamed" };
     await updateChartInSlide(buildChart(next), target, { tagData: JSON.stringify(next) });
     expect(
       traceLog().entries.some((e) => e.message === "updated only the shapes that changed"),
-      "a grouped chart was updated through a parts list it does not have",
-    ).toBe(false);
+      "a grouped chart was NOT updated in place — the group members were not read",
+    ).toBe(true);
+    // And the update has to have actually landed, not merely been attempted.
     const found = (await listChartsInDeck()).charts;
     expect((JSON.parse(found[0].configJson) as ChartConfig).title).toBe("Renamed");
   });
