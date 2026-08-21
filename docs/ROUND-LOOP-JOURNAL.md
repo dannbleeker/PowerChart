@@ -3619,3 +3619,49 @@ Three ways out, and they are genuinely different products:
 
 Recorded rather than chosen. The gate now says the feature has never succeeded,
 so whichever is picked, the evidence for picking is on screen every round.
+
+## Rounds 143 + 144 — the mapping is solved; the wall moved
+
+    round 143   no parts list 12 -> 1,  one-for-one mismatches 5
+    round 144   no parts list      1,   one-for-one mismatches 0
+
+**The group read works and the anchor fix landed.** 143 proved the members are
+reachable — `ShapeGroup.shapes` at PowerPointApi 1.8, against office-js#3014's
+2022 note that they "cannot be reached" — and it was off by exactly one, five
+times out of five, because the anchor was being sought by the TAGGED SHAPE'S id
+and a group is never among its own members. 144, with `items.slice(1)`, has zero
+mismatches.
+
+**13 of 13 both rounds, and that matters more than the counters here.** This is
+the first change in this sequence that WRITES to a chart rather than measuring
+one. The drawing-order assumption — that the group answers in the order the
+parts tag would have recorded — is not provable from the type definitions, and a
+wrong order would scramble a chart rather than refuse. Two rounds of `edit a
+chart on the visible slide` and `an update follows a moved chart` passing is the
+evidence that it holds on this host.
+
+### Four of eleven declines are now the differ working
+
+    6x  the chart carries no scene fingerprint
+    3x  too much of the chart changed to be worth writing shape by shape
+    1x  this update draws a picture, which is not in the scene
+    1x  no parts list and no readable group members
+
+"Too much changed" and the picture case are correct refusals — the fast path
+declining work a redraw does better. Before this week none of these could even
+be reached.
+
+### The fingerprint blocker is not new, it was masked
+
+    rounds 139-142   0 fingerprint declines
+    rounds 143-144   6 each
+
+Zero before, because the parts check fired first and short-circuited. Charts now
+get past it and meet the next condition, which was always there.
+
+**And it has a shape:** charts 1/8, 2/8 and 3/8 carry a fingerprint; 4/8 through
+8/8 do not. Per-item, not per-batch — which points at the options rather than at
+the tag write, since `sceneTag` is defaulted as `{ sceneTag: sceneFingerprint(scene), ...opts }`
+and a caller-supplied `opts` overrides it.
+
+**Not chased here.** Recorded with the numbers that will start it.
