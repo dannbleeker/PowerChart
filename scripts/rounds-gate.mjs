@@ -30,6 +30,7 @@ import {
   poolProfileDisagreements,
   poolPairPosition,
   poolFallbackRates,
+  poolInPlaceUpdates,
   roundSpanSeconds,
   paneAgeAtStartSeconds,
 } from "./triage.mjs";
@@ -200,6 +201,20 @@ if (isMain(import.meta.url, process.argv[1])) {
   // THE PATHS THE CODE TOOK BECAUSE ITS FIRST CHOICE FAILED. Recorded thousands
   // of times and read by nothing until now — see `poolFallbackRates` for the
   // thirtyfold win and the 40% drift that both went unnoticed.
+  // A FEATURE THAT HAS NEVER RUN. See `poolInPlaceUpdates`.
+  const ip = poolInPlaceUpdates(rounds);
+  if (ip.fell > 0 && ip.ok === 0)
+    console.log(
+      `
+  IN-PLACE UPDATE HAS NEVER SUCCEEDED — 0 successes against ${ip.fell} fallbacks over ${ip.rounds} round(s).
+` +
+        "    #406 was titled 'The in-place update fired zero times and would not say why' and added the trace" +
+        "\n    that answers it. The answer has been sitting in every round file since. See FALLBACKS below for why.",
+    );
+  else if (ip.ok > 0)
+    console.log(`
+  in-place update: ${ip.ok} succeeded, ${ip.fell} fell back over ${ip.rounds} round(s)`);
+
   const fb = poolFallbackRates(rounds);
   if (fb.length) {
     console.log(`

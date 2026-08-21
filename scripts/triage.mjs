@@ -1618,6 +1618,40 @@ const FALLBACK_SIGNALS = {
  * `poolGroupingOutcome` needed: a "usually" from one observation is not a
  * baseline, and this project's own noise floor is the argument.
  */
+/**
+ * Has the in-place chart update EVER worked?
+ *
+ * It was added in #405 ("Change one thing, write one shape") and #406 was titled
+ * "The in-place update fired zero times and would not say why" — that PR added
+ * the fallback trace to diagnose it. THE DIAGNOSTIC HAS BEEN ANSWERING EVER
+ * SINCE AND NOBODY HAS READ IT: across 117 archived rounds the success line
+ * `updated only the shapes that changed` appears ZERO times, while the fallback
+ * fires 12-13 times a round.
+ *
+ * The reason is one reason, 12 of those 13: "the chart has no parts list, so its
+ * nodes cannot be mapped". The remaining one is the picture path, which is
+ * legitimate — a picture is not in the scene, so the scene cannot decide it.
+ *
+ * A feature that has never once run in production is not a feature; it is a
+ * branch that costs a fallback every time. This makes the gate say so.
+ */
+export function poolInPlaceUpdates(logs) {
+  let ok = 0,
+    fell = 0,
+    rounds = 0;
+  for (const log of logs ?? []) {
+    const entries = log?.trace?.entries;
+    if (!Array.isArray(entries)) continue;
+    rounds++;
+    for (const e of entries) {
+      const m = String(e.message ?? "");
+      if (m === "updated only the shapes that changed") ok++;
+      else if (m === "not updating in place — redrawing instead") fell++;
+    }
+  }
+  return { ok, fell, rounds };
+}
+
 export function poolFallbackRates(logs) {
   const per = [];
   for (const log of logs ?? []) {
