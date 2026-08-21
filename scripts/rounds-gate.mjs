@@ -29,6 +29,7 @@ import {
   poolGroupingOutcome,
   poolProfileDisagreements,
   poolPairPosition,
+  poolFallbackRates,
   roundSpanSeconds,
   paneAgeAtStartSeconds,
 } from "./triage.mjs";
@@ -194,6 +195,30 @@ if (isMain(import.meta.url, process.argv[1])) {
         `    ${ratio.toFixed(1)}x the usual. Slow rounds in this archive average roughly twice the post-retry
 ` + `    failures of fast ones — read this round's counters as a degraded sample, not as a change.`,
       );
+  }
+
+  // THE PATHS THE CODE TOOK BECAUSE ITS FIRST CHOICE FAILED. Recorded thousands
+  // of times and read by nothing until now — see `poolFallbackRates` for the
+  // thirtyfold win and the 40% drift that both went unnoticed.
+  const fb = poolFallbackRates(rounds);
+  if (fb.length) {
+    console.log(`
+  FALLBACKS TAKEN — this round against the median of ${fb[0].rounds} prior round(s)`);
+    for (const r of fb) {
+      // DRIFT FIRST, because it is the reading a median cannot give. A signal
+      // that climbs steadily looks NORMAL against its own history the whole way
+      // up: `in-place update fell back to a redraw` went from 9 to 13 per round
+      // across sixty rounds, and by the time anyone looked, "now" and "usually"
+      // were both 13. The oldest third against the newest third sees the shape
+      // a median absorbs.
+      const drift =
+        r.newest > r.oldest * 1.3 && r.newest - r.oldest >= 2
+          ? `  <- RISING, ${r.oldest} to ${r.newest} across ${r.span}-round thirds`
+          : r.oldest > r.newest * 1.3 && r.oldest - r.newest >= 2
+            ? `  <- falling, ${r.oldest} to ${r.newest}`
+            : "";
+      console.log(`    ${r.label.padEnd(38)} ${String(r.now).padStart(4)}  (usually ${r.median})${drift}`);
+    }
   }
 
   const pos = poolPairPosition(rounds);
