@@ -3323,3 +3323,64 @@ repeatedly without dissolving on its pair.
 **Not chased here.** The gap and the pane are what these rounds were run to
 settle, and starting a third investigation on the same data is how the profile
 effect got published three times. Recorded as the next question.
+
+## Chasing the selection scenario: it never failed, and I said it had
+
+`a selected shape survives an insert` across the whole archive:
+
+    rounds carrying it : 117
+    pass 114   FAIL 0   skip 3
+
+**Zero failures in 117 rounds.** I reported it yesterday as "the first scenario
+in weeks to fail repeatedly", which was wrong: my verdict counter treated
+`ok: false` as a failure, and a SKIPPED scenario is also `ok: false`. This repo
+has an explicit rule that a skip is not a flip, and I broke it with a counter.
+
+### What the skips actually say, and they are identical
+
+    the host did not finish a draw made while a shape was SELECTED — the only
+    draw in this battery made with a selection standing, and what
+    dropShapeSelection exists to avoid: PowerPoint did not respond while
+    drawing shapes 1-10 of 16 (45s)
+
+All three word-for-word the same. This is office-js#3698 territory — the web
+host cannot be relied on to insert while another shape is selected — and the
+scenario exists precisely to probe it. **A skip here is the instrument working:
+it declines to judge rather than calling a hung host a pass or a fail.**
+
+### The budget is sound, so the hang is real
+
+Pooled over 2485 timed draw batches:
+
+    p50 5571ms   p90 15405ms   p99 21431ms   max 31086ms
+    batches over 40s: 0 (0.00%)
+
+The budget is 45000ms and the slowest draw ever recorded is 31s. A draw still
+outstanding at 45s is hung, not slow.
+
+**And I nearly reported the opposite.** My first query found "zero timed draws"
+and I was about to record a missing instrument — the durations are keyed
+`prevBatchMs`, attached to the FOLLOWING batch, and I had searched for `ms`. The
+instrument was there; the query was wrong. Second time this week a conclusion of
+mine rested on a field name.
+
+### What is real and unexplained
+
+Draw stalls across the archive: rounds 28, 88, 130, 134, 141.
+
+    before round 129 :  2 of 104   (1.9%)
+    round 129 onward :  3 of 13    (23%)
+
+**`rasterGap` is NOT the cause**, and the ordering says so rather than an
+argument: the draw stall lands at 761s, 799s and 5237s while the visibility
+renders it enabled land at 815s, 871s and 5371s. The stall happens first, every
+time.
+
+No other candidate survives contact with the data, so **no mechanism is being
+proposed**. Three occurrences, a twelvefold rate change, and nothing to attach
+it to. Inventing an explanation here is exactly how the 4:3 profile effect got
+published three times.
+
+**One instrument gap, recorded not fixed:** `prevBatchMs` is carried by the NEXT
+batch, so the LAST batch of every run has no duration. The pool above is missing
+one measurement per draw sequence, which is why "max 31086ms" is a floor.
