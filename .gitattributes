@@ -1,0 +1,16 @@
+# Line endings are normalised to LF, in the repository and in the working tree.
+#
+# WHY `eol=lf` AND NOT `text=auto` ALONE. Git for Windows ships
+# `core.autocrlf=true` in its system config, so a Windows clone writes every
+# tracked text file out with CRLF. Vite's shebang strip matches `#!...\n` only,
+# so `scripts/*.mjs` land as `#!/usr/bin/env node\r\n`, the injected CJS import
+# is prepended onto the shebang's own line, and rolldown stops at
+# ``Invalid Character `!` ``. 23 test files failed to parse before a single
+# assertion ran, and every one of them names a script it imports rather than
+# anything it asserts — the checkout was broken, not the tests. `text=auto`
+# alone fixes what is stored; `eol=lf` is what fixes what is checked out.
+* text=auto eol=lf
+
+# Decks and images are bytes. Normalising them corrupts them.
+*.pptx binary
+*.png binary

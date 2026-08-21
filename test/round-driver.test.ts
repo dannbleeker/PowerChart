@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { readFileSync } from "fs";
 // @ts-expect-error — plain .mjs tool, no types.
 import * as driver from "../scripts/round.mjs";
@@ -978,8 +978,33 @@ describe("talking to the browser at all", () => {
   });
 
   it("finds the CLI entry beside node, or says it cannot", () => {
-    expect(cliEntry("C:/n/node.exe", () => true)).toContain("playwright-cli.js");
-    expect(cliEntry("C:/n/node.exe", () => false)).toBe(null);
+    // THE OVERRIDE HAS TO BE CLEARED OR THIS TEST IS ABOUT THE MACHINE.
+    // `cliEntry` reads `PLAYWRIGHT_CLI_JS` ahead of everything else, which is
+    // the whole point of it — and `scripts/pw.sh` and this driver's own comment
+    // both tell a developer whose global installs do not sit beside node to
+    // export it. npm's prefix on Windows is `%APPDATA%\npm`, so that is not an
+    // exotic layout, it is the default one. Following the instructions
+    // therefore turned the null case below into a path and failed the suite on
+    // a correctly configured box: injecting `exists` is not enough on its own,
+    // because the env is read before it is consulted.
+    vi.stubEnv("PLAYWRIGHT_CLI_JS", "");
+    try {
+      expect(cliEntry("C:/n/node.exe", () => true)).toContain("playwright-cli.js");
+      expect(cliEntry("C:/n/node.exe", () => false)).toBe(null);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("prefers PLAYWRIGHT_CLI_JS over the guess beside node", () => {
+    // The override's own behaviour, which nothing asserted while the test above
+    // was silently depending on it being unset.
+    vi.stubEnv("PLAYWRIGHT_CLI_JS", "D:/elsewhere/playwright-cli.js");
+    try {
+      expect(cliEntry("C:/n/node.exe", () => false)).toBe("D:/elsewhere/playwright-cli.js");
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it("normalises a session directory, because 8.3 short names are a different session", () => {
