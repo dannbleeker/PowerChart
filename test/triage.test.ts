@@ -50,7 +50,14 @@ const {
 // cannot be reflowed out from under it.
 // @ts-expect-error — as above.
 import * as pooled from "../scripts/triage.mjs";
-const { poolEveryDraw, poolProfileDisagreements, poolPairPosition, roundSpanSeconds, paneAgeAtStartSeconds } = pooled;
+const {
+  poolEveryDraw,
+  poolProfileDisagreements,
+  poolPairPosition,
+  roundSpanSeconds,
+  paneAgeAtStartSeconds,
+  poolFallbackRates,
+} = pooled;
 // Its own line: adding it above pushes that import over the print width, and a
 // reflowed import moves this directive off the statement it is annotating.
 // @ts-expect-error — as above.
@@ -1035,6 +1042,35 @@ describe("triage — logs that are not inserts", () => {
     expect(paneAgeAtStartSeconds({ trace: { entries: [] } })).toBeNull();
     expect(paneAgeAtStartSeconds({})).toBeNull();
     expect(paneAgeAtStartSeconds({ trace: { entries: [{}, { ms: "x" }] } }), "no usable offsets").toBeNull();
+  });
+
+  it("sees a slow drift, which a median cannot", () => {
+    // THE BLINDNESS I NEARLY SHIPPED. The first version of this instrument
+    // reported each fallback against the MEDIAN OF ALL PRIORS — and the signal
+    // that motivated it, `in-place update fell back to a redraw`, had climbed
+    // from 9 to 13 per round across sixty rounds. By the time anyone looked,
+    // "now" and "usually" were both 13, so a now-against-median check would
+    // have called it normal for as long as it kept getting worse.
+    //
+    // A median absorbs a slow climb. The oldest third against the newest third
+    // is what sees it, and this fixture is that exact shape: a signal that
+    // doubles while its all-time median stays in the middle.
+    const round = (n: number) => ({
+      trace: {
+        entries: Array.from({ length: n }, () => ({ message: "not updating in place — redrawing instead" })),
+      },
+    });
+    const rising = poolFallbackRates([...Array(6).fill(round(4)), ...Array(6).fill(round(12))]);
+    const redraw = rising.find((r: { key: string }) => r.key === "not updating in place — redrawing instead")!;
+    expect(redraw.oldest, "did not read the early history").toBe(4);
+    expect(redraw.newest, "did not read the recent history").toBe(12);
+    // AND THE MEDIAN MUST STILL BE UNHELPFUL HERE — that is the point. If this
+    // ever equals the newest reading the fixture has stopped modelling a drift.
+    expect(redraw.median, "the median should sit between and hide the climb").toBeLessThan(redraw.newest);
+
+    // TOO LITTLE HISTORY IS NOT A TREND. Same three-priors rule as every other
+    // baseline in this file; this project's noise floor is the argument.
+    expect(poolFallbackRates([round(1), round(9)]), "called two rounds a trend").toEqual([]);
   });
 
   it("counts pair position without letting ties vote", () => {

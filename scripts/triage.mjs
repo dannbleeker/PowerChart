@@ -1582,6 +1582,79 @@ export function paneAgeAtStartSeconds(log) {
 /** Under this many seconds old at a round's start, a pane counts as fresh. */
 export const FRESH_PANE_SECONDS = 200;
 
+/**
+ * The fallback and repair signals the trace records and nothing reads.
+ *
+ * 71 of the 87 distinct messages in this archive are never named by triage, the
+ * gate or the cycle. Most are narrative and that is fine. These four are not:
+ * each records a path the code took because its FIRST choice failed, thousands
+ * of times, with nobody watching the rate. Banded by round, mean per round:
+ *
+ *     rounds      tagging-failed  redraw-instead  scratch-retry  scratch-wrecked
+ *       1- 40          5.2             9.3            9.3            10.7
+ *      41- 80          6.6             9.1           14.1            11.1
+ *      81-110          0.4            12.9           14.8            11.2
+ *     111-141          0.2            13.0           14.6            10.7
+ *
+ * TWO THINGS WERE HAPPENING AND NOBODY COULD SEE EITHER. Tagging failures
+ * collapsed thirtyfold around round 81 — a real win, never verified, and if it
+ * ever regresses nothing will say so. Meanwhile in-place updates began falling
+ * back to a full redraw 40% more often, which is slower and touches more of the
+ * deck, and that drift went unremarked across sixty rounds.
+ *
+ * A count that no one reads is not observability. This makes the gate say them.
+ */
+const FALLBACK_SIGNALS = {
+  "tagging failed — charts are not re-editable until repaired": "charts left un-tagged",
+  "not updating in place — redrawing instead": "in-place update fell back to a redraw",
+  "took another scratch slide after giving up on the last": "scratch slide retried",
+  "giving up the scratch slide this question wrecked": "scratch slide wrecked",
+};
+
+/**
+ * Each fallback's count this round against the median of its priors.
+ *
+ * THREE PRIORS MINIMUM, the same rule `poolScenarioPopulations` and
+ * `poolGroupingOutcome` needed: a "usually" from one observation is not a
+ * baseline, and this project's own noise floor is the argument.
+ */
+export function poolFallbackRates(logs) {
+  const per = [];
+  for (const log of logs ?? []) {
+    const entries = log?.trace?.entries;
+    if (!Array.isArray(entries)) continue;
+    const c = {};
+    for (const key of Object.keys(FALLBACK_SIGNALS)) c[key] = 0;
+    for (const e of entries) {
+      const m = String(e.message ?? "");
+      if (m in c) c[m]++;
+    }
+    per.push(c);
+  }
+  if (per.length < MIN_PRIORS_FOR_A_BASELINE + 1) return [];
+  const now = per[per.length - 1];
+  const priors = per.slice(0, -1);
+  // DRIFT, NOT JUST TODAY. Comparing this round against the median of ALL
+  // priors cannot see a slow climb: the median absorbs it. The signal that
+  // motivated this instrument rose from 9.3 to 13.0 per round over sixty
+  // rounds, and by the time it was noticed "now" and "usually" were both 13 —
+  // so a now-against-median check would have reported it as normal for as long
+  // as it kept getting worse.
+  //
+  // The oldest third against the newest third catches exactly that shape, and
+  // is why this returns both readings rather than one.
+  const third = Math.max(1, Math.floor(per.length / 3));
+  const med = (xs) => [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)];
+  const out = [];
+  for (const [key, label] of Object.entries(FALLBACK_SIGNALS)) {
+    const median = med(priors.map((p) => p[key]));
+    const oldest = med(per.slice(0, third).map((p) => p[key]));
+    const newest = med(per.slice(-third).map((p) => p[key]));
+    out.push({ key, label, now: now[key], median, oldest, newest, rounds: priors.length, span: third });
+  }
+  return out;
+}
+
 export function poolPairPosition(logs) {
   const KIND = (m, d) => {
     const k = String(d.kind ?? "");

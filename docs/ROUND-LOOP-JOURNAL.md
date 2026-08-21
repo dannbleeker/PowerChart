@@ -3384,3 +3384,65 @@ published three times.
 **One instrument gap, recorded not fixed:** `prevBatchMs` is carried by the NEXT
 batch, so the LAST batch of every run has no duration. The pool above is missing
 one measurement per draw sequence, which is why "max 31086ms" is a floor.
+
+## What the archive records that nothing reads
+
+Asked what the rounds could teach about observability, three questions the files
+already answer:
+
+**1. 71 of the 87 distinct trace messages are never named by triage, the gate or
+the cycle.** Most are narrative and that is fine. Four are not — each records a
+path the code took because its FIRST choice failed, thousands of times, with
+nobody watching the rate. Banded by round, mean per round:
+
+    rounds      tagging-failed  redraw-instead  scratch-retry  scratch-wrecked
+      1- 40          5.2             9.3            9.3            10.7
+     41- 80          6.6             9.1           14.1            11.1
+     81-110          0.4            12.9           14.8            11.2
+    111-141          0.2            13.0           14.6            10.7
+
+**Two things were happening and nobody could see either.** Tagging failures
+collapsed THIRTYFOLD around round 81 — a real win, never verified, and if it
+regresses nothing would say so. Meanwhile in-place updates began falling back to
+a full redraw 40% more often, which is slower and touches more of the deck, and
+that drift went unremarked across sixty rounds.
+
+`poolFallbackRates` pools all four now and the gate prints them.
+
+### The instrument I nearly shipped blind
+
+The first version reported each fallback against the MEDIAN OF ALL PRIORS. Run
+against the archive it said:
+
+    in-place update fell back to a redraw    13  (usually 13)
+
+**A median absorbs a slow climb.** The signal that motivated the whole instrument
+had risen 9 to 13 across sixty rounds, and by the time anyone looked, "now" and
+"usually" were both 13 — so the check would have called it normal for exactly as
+long as it kept getting worse. A detector blind to its own motivating case.
+
+It reports the oldest third against the newest third as well now:
+
+    charts left un-tagged                     0  (usually 1)   <- falling, 8 to 0
+    in-place update fell back to a redraw    13  (usually 13)  <- RISING, 8 to 13
+
+Guarded with a fixture whose median deliberately sits between the two thirds, so
+a regression to median-only reading turns it red — and it does.
+
+**2. Five scenarios have never discriminated in 117 rounds** — always pass, never
+fail, never skip:
+
+    insert on top of an earlier run
+    which selection call wedges the host
+    edit the chart the user selected
+    stop a run part-way
+    does a rasterise poison the next draw
+
+Not necessarily vacuous: some may guard something that genuinely never breaks on
+this host. But a gate that has never gone red is a gate nobody has seen work, and
+this repo's own rule is that a test you have not watched fail is not yet
+evidence. **Recorded, not acted on** — proving which is which means mutating the
+production path each one guards, and that is its own piece of work.
+
+**3. No starved probe questions.** Every host-probe question has answered at
+least once, so nothing there is asking into the void.
