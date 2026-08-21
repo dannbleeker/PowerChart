@@ -1063,12 +1063,52 @@ describe("triage — logs that are not inserts", () => {
         ],
       },
     });
-    expect(poolInPlaceUpdates([round(0, 12), round(0, 13)])).toEqual({ ok: 0, fell: 25, rounds: 2 });
+    expect(poolInPlaceUpdates([round(0, 12), round(0, 13)])).toMatchObject({ ok: 0, fell: 25, rounds: 2 });
 
     // AND IT MUST NOTICE A SUCCESS, or the day the feature starts working the
     // gate goes on calling it dead. A detector that can only report one answer
     // is not measuring anything.
     expect(poolInPlaceUpdates([round(3, 9)])).toMatchObject({ ok: 3, fell: 9 });
+  });
+
+  it("counts a host refusal, which is the third outcome and was counted as none", () => {
+    // THE INSTRUMENT HAD THE BLIND SPOT IT WAS BUILT TO FIND. tryInPlaceUpdate
+    // declines by rule OR THROWS, and only the rule-based decline was counted.
+    // So every host-side refusal registered as neither a success nor a fallback
+    // and vanished: three InvalidArgument | errorLocation=Shape.textFrame in
+    // round 145 -- the last thing between this feature and working -- plus two
+    // more in 144 that went unread while that round was reported.
+    const threw = {
+      trace: {
+        entries: [
+          {
+            message: "in-place update refused — redrawing instead",
+            data: {
+              error:
+                'InvalidArgument | at=updating the shapes | code=InvalidArgument | debugInfo={"errorLocation":"Shape.textFrame"}',
+            },
+          },
+        ],
+      },
+    };
+    const pooled = poolInPlaceUpdates([threw]);
+    expect(pooled.threw, "a host refusal was counted as neither success nor fallback").toBe(1);
+    // Keyed by what actually failed and where, because "it threw" is not a
+    // reason -- the errorLocation is the whole diagnosis.
+    expect(pooled.reasons).toContainEqual({ why: "InvalidArgument at Shape.textFrame", n: 1 });
+  });
+
+  it("names the entries no category fits, rather than tallying them", () => {
+    // A residual bucket reported as a NUMBER reads as noise and gets skipped;
+    // reported as a line it gets opened. Entries that threw carry an `error`
+    // and no `why`, so they fall outside every named reason by construction --
+    // which is exactly where the interesting failure lives.
+    const bare = {
+      trace: { entries: [{ message: "not updating in place — redrawing instead" }] },
+    };
+    const pooled = poolInPlaceUpdates([bare]);
+    expect(pooled.unexplained, "a decline carrying no reason was silently folded into the total").toHaveLength(1);
+    expect(pooled.reasons, "an absent reason must not invent a category").toHaveLength(0);
   });
 
   it("sees a slow drift, which a median cannot", () => {

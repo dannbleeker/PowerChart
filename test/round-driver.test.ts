@@ -1667,3 +1667,36 @@ describe("the account the driver leaves of how a round ended", () => {
     expect(shouldRetry("threw", 3, 3, [])).toBe(false);
   });
 });
+
+describe("the build under test is pinned for the whole round", () => {
+  it("does not ask git for HEAD when the caller pinned it", async () => {
+    // A ROUND TESTS ONE BUILD. `attempt` used to re-read `git HEAD` on every
+    // retry, so the identity of the thing being measured could change while it
+    // was being measured — and it did: a commit made in this clone while a
+    // round was retrying moved HEAD ahead of the deployed site, and the driver
+    // then refused its own round as `site-behind` against a commit that had
+    // never been deployed and was not what it was testing. Twice on 2026-08-21.
+    //
+    // `main` reads it once and hands it down; this pins the half that carries
+    // the risk, since the other half is a single read at the top of the loop.
+    const gitCalls: string[][] = [];
+    const run = (cmd: string, args: string[]) => {
+      gitCalls.push([cmd, ...args]);
+      return { stdout: "", status: 0 };
+    };
+    const sh = Object.assign(() => "", {
+      startSweep: () => {},
+      state: { unreachable: false },
+      dir: ".",
+    });
+    await (driver as unknown as { attempt: (...a: unknown[]) => Promise<unknown> }).attempt(
+      ["--check"],
+      { run, head: "abc1234", fetchBuild: async () => "", sleep: async () => {} },
+      sh,
+    );
+    expect(
+      gitCalls.filter((c) => c[1] === "rev-parse"),
+      "attempt re-read HEAD despite being handed a pinned build",
+    ).toHaveLength(0);
+  });
+});
