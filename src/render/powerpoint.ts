@@ -9950,13 +9950,8 @@ async function tryInPlaceUpdate(
   // properties, paragraphFormat, name, tags — so "1 call" was never true, and
   // nothing ever measured the first half either. Taken at face value the
   // formula says an in-place update is cheaper whenever `changed < 2 * total`,
-  // which is ALWAYS, and that contradicted `UPDATE_SHARE_LIMIT` sitting beside
-  // it. Two unmeasured numbers disagreeing.
-  //
-  // The disagreement is settled now, and not by either of them: the archive
-  // measures the fast path at 3-4x the speed of a redraw on the real host, so
-  // the DIRECTION the formula pointed was right and its arithmetic was still
-  // made up. See `UPDATE_SHARE_LIMIT` for the readings.
+  // which is ALWAYS, and that contradicts `UPDATE_SHARE_LIMIT` sitting beside
+  // it — itself documented as untuned. Two unmeasured numbers disagreeing.
   //
   // A benefit nobody measured should not be printed as data. `changed` of `of`
   // is the measurement; anyone reading "1 of 24" can see the saving without
