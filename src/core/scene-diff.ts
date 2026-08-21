@@ -179,12 +179,19 @@ export function planSceneUpdate(prev: Scene, next: Scene): SceneUpdatePlan | nul
  * than eight redraws, because a redraw spreads its work across deletes and adds
  * that the host paces itself.
  *
- * **So the cost model is refuted and the limit still stands.** The fast path
- * wins at 4% and kills the host at 75%; the crossover is somewhere between, and
- * nothing has measured it. A smaller step — 0.6, which admits 9-of-16 and not
- * 18-of-24 — is the next experiment, and it must be run as its own round.
+ * **So the cost model is refuted and a limit still stands.** The fast path wins
+ * at 4% and kills the host at 75%; the crossover is somewhere between.
+ *
+ * 0.6 IS THAT NEXT STEP, and it is deliberately a small one. It admits the
+ * 9-of-16 edits and still declines the 18-of-24 ones, so where 0.8 handed the
+ * host eight charts writing eighteen shapes apiece — 144 extra shape-writes in
+ * a round — this hands it two charts writing nine, which is 18. If the crash
+ * was batch size, that is an eighth of the dose that caused it.
+ *
+ * Round 150 at 0.5 is the control and the host is healthy: 13/13 scenarios,
+ * `same scale across the deck` at 195928 ms against a 196-237s band.
  */
-export const UPDATE_SHARE_LIMIT = 0.5;
+export const UPDATE_SHARE_LIMIT = 0.6;
 
 export function worthUpdating(plan: SceneUpdatePlan, total: number): boolean {
   if (!total) return false;
