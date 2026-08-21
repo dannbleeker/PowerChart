@@ -3792,3 +3792,57 @@ called a shape dead because it had arrived alive by a different route.
 Landed as #646. What round 146 should show: the three `Shape.textFrame`
 refusals gone, and the first `updated only the shapes that changed` in 119
 archived rounds.
+
+## Round 146 — the in-place update ran, for the first time in 119 rounds
+
+    round 145   13 update attempts   0 in place   3 refused at Shape.textFrame
+    round 146   13 update attempts   3 in place   0 refused at Shape.textFrame
+
+    WINS: changed 1 of 24, saved 47   (x3)
+
+Both halves of the staked prediction held. The three charts that the host had
+refused are the same three that now succeed, and each one wrote a single shape
+where a redraw would have written 48.
+
+**The population is provably identical.** Thirteen update attempts in each
+round — the constant established weeks ago — and the three did not appear from
+anywhere, they moved out of the decline column. 145 was 13 declines and 0
+successes; 146 is 10 and 3.
+
+### The unclassified bucket was the interesting one, for two rounds
+
+My decline breakdown bucketed by `data.why` and let everything without one fall
+into a `?` bucket that I read as noise:
+
+    round 143   2 unclassified
+    round 144   4 unclassified   <- THREE of these were Shape.textFrame refusals
+    round 145   5 unclassified   <- and these
+
+I opened the bucket at round 145 and found the host refusals in it. **They were
+in round 144's trace too, and I had reported that round without looking.** The
+entries had no `why` for the ordinary reason that they had not declined by a
+rule — they had THROWN, and a throw carries an `error`, not a `why`.
+
+So the mining lesson is specific: **a residual bucket in a breakdown is not
+noise until it has been opened once.** The named categories are the ones already
+understood; the interesting thing is, almost by definition, the one that does
+not fit them. Two rounds of a host-side defect sat in plain sight in a bucket I
+had labelled and skipped.
+
+**And the count in that bucket is not the count of anything.** Two of round
+146's "unclassified declines" are a by-id `GeneralException` that RECOVERED
+(`asked 1, recovered 1`) — matched only because the message contains the word
+"refused". Excluding them is what makes the arithmetic exact at 13 and 13. A
+filter that greps prose will pick up prose.
+
+### What is left is the differ declining correctly
+
+    8x  too much of the chart changed     18 of 24, 9 of 16
+    1x  this update draws a picture
+    1x  no parts list and no readable group members
+
+Three quarters and better than half of a chart changed: a redraw genuinely does
+those better. The remaining two are correct by construction.
+
+13 of 13 scenarios passed. Friction — 3 errors, 2 id refusals, 1 general
+exception — all recovered.
