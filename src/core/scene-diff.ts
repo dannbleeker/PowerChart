@@ -142,41 +142,49 @@ export function planSceneUpdate(prev: Scene, next: Scene): SceneUpdatePlan | nul
  * Whether a plan is worth taking, given what the redraw would have cost.
  *
  * Kept separate from `planSceneUpdate` because it is a judgement about COST,
- * where the plan is a judgement about SAFETY — and only one of the two should
- * ever change because a measurement moved.
+ * where the plan is a judgement about SAFETY.
  *
- * THE OLD THRESHOLD WAS 0.5 AND ITS ARITHMETIC WAS WRONG. It read: "a redraw is
- * one delete plus one add per node, so an update touching more than half the
- * nodes is already doing more host calls per shape saved." That counts an
- * in-place write as ONE call per node. It is about twenty — left, top, width,
- * height, fill, lineFormat, textFrame, textRange, four font properties, and the
- * rest — as the host's own statement list showed in round 145.
+ * THE ORIGINAL ARITHMETIC WAS WRONG, AND 0.5 IS STILL THE RIGHT NUMBER. Both
+ * halves of that are measured, and they are measured separately.
  *
- * WHAT THE ARCHIVE ACTUALLY MEASURES. Rounds 143-145 redrew; 146-149 took the
- * fast path, on the same scenarios, the same deck and the same host. The step
- * is instantaneous at 146 and the populations do not overlap:
+ * The old reasoning read: "a redraw is one delete plus one add per node, so an
+ * update touching more than half is already doing more host calls per shape
+ * saved." That counts an in-place write as ONE call per node. It is about
+ * twenty, as the host's own statement list showed in round 145.
+ *
+ * AND THE FAST PATH IS MUCH FASTER, at a small share. Rounds 143-145 redrew;
+ * 146-149 took the fast path, same scenarios, same deck, same host:
  *
  *     edit a chart on the visible slide   21218 22471 25352  ->   5176  5445  6108  5409
  *     edit the chart the user selected    27459 30275 29341  ->   9494  9207  9130  9294
  *     an update follows a moved chart     27364 31637 28914  ->   8886 10491  9120  9109
  *
- * Three to four times faster, in three independent scenarios. The reason is
- * that the expensive thing on this host is CREATING a shape — the render budget
- * this project already skips dense charts over — and an in-place update creates
- * none, at any share.
+ * Three to four times faster, three scenarios, no overlap. Every one of those
+ * samples is `changed 1 of 24` — a 4% share.
  *
- * SO WHY A LIMIT AT ALL, AND WHY 0.8. Every one of those samples is `changed 1
- * of 24`: a 4% share. The measurement says nothing about 56% or 75%, which is
- * exactly where the old limit bit — all eight of its declines are one scenario,
- * `same scale across the deck`, at 18-of-24 and 9-of-16. 0.8 admits both so the
- * unmeasured region can finally be measured, and stops short of a wholesale
- * rewrite, where a redraw remains the better-tested way to get a clean chart.
+ * SO 0.8 WAS TRIED, AND IT CRASHED POWERPOINT — SIX TIMES OUT OF SIX. Round 150
+ * (`6359d83`) raised the limit to admit the 18-of-24 and 9-of-16 edits that
+ * `same scale across the deck` makes. Every one of its seven attempts died:
  *
- * This is a measured step into unmeasured ground, not a final answer. If the
- * next round makes that scenario SLOWER, the cap belongs lower and we will know
- * where — which is more than could be said for 0.5.
+ *     crashed at  255s  284s  282s  278s  257s  282s
+ *
+ * A 29-second window, six for six, on the first round after the change — and
+ * `same scale across the deck` starts at 280s (round 149) and 302s (round 147).
+ * The crash sits exactly where the one scenario the limit governs begins. No
+ * round before it had crashed more than once, and none had failed to archive.
+ *
+ * The likely mechanism is the one this project already documents elsewhere: the
+ * web host's per-slide budget, and proxy-memory exhaustion on a large batch.
+ * Eight charts writing eighteen shapes apiece in place is a far bigger batch
+ * than eight redraws, because a redraw spreads its work across deletes and adds
+ * that the host paces itself.
+ *
+ * **So the cost model is refuted and the limit still stands.** The fast path
+ * wins at 4% and kills the host at 75%; the crossover is somewhere between, and
+ * nothing has measured it. A smaller step — 0.6, which admits 9-of-16 and not
+ * 18-of-24 — is the next experiment, and it must be run as its own round.
  */
-export const UPDATE_SHARE_LIMIT = 0.8;
+export const UPDATE_SHARE_LIMIT = 0.5;
 
 export function worthUpdating(plan: SceneUpdatePlan, total: number): boolean {
   if (!total) return false;

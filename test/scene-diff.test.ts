@@ -163,41 +163,14 @@ describe("the fingerprint that decides whether the old scene is the drawn one", 
 });
 
 describe("whether a plan is worth taking", () => {
-  const upTo = (n: number) => ({ changed: Array.from({ length: n }, (_, i) => i) });
-
   it("takes a small change and declines a wholesale one", () => {
-    // THE COMMENT HERE USED TO REPEAT AN ARITHMETIC THE HOST REFUTES: "a redraw
-    // is one delete plus one add per node, so an update touching more than half
-    // is already doing more host calls per shape saved." That counts an
-    // in-place write as ONE call per node; it is about twenty.
-    //
-    // What the archive measures, same scenarios and same host, rounds 143-145
-    // redrawing against 146-149 taking the fast path:
-    //
-    //   edit a chart on the visible slide   21218 22471 25352  ->  5176 5445 6108 5409
-    //   edit the chart the user selected    27459 30275 29341  ->  9494 9207 9130 9294
-    //   an update follows a moved chart     27364 31637 28914  ->  8886 10491 9120 9109
+    // A redraw is one delete plus one add per node, so an update touching more
+    // than half is already doing more host calls per shape saved.
     expect(worthUpdating({ changed: [0] }, 24)).toBe(true);
     expect(worthUpdating({ changed: [] }, 24)).toBe(true);
-    expect(worthUpdating(upTo(12), 24)).toBe(true);
+    expect(worthUpdating({ changed: Array.from({ length: 18 }, (_, i) => i) }, 24)).toBe(false);
+    expect(worthUpdating({ changed: Array.from({ length: 12 }, (_, i) => i) }, 24)).toBe(true);
     expect(UPDATE_SHARE_LIMIT).toBeGreaterThan(0);
-  });
-
-  it("admits the share the old limit declined, which is the one that costs", () => {
-    // ALL EIGHT of the old limit's declines were one scenario — `same scale
-    // across the deck`, the longest in the battery at ~200s — at 18-of-24 (75%)
-    // and 9-of-16 (56%). Neither share has ever been measured, and admitting
-    // them is how that changes.
-    expect(worthUpdating(upTo(18), 24), "75% still declined — the round cannot measure it").toBe(true);
-    expect(worthUpdating(upTo(9), 16), "56% still declined").toBe(true);
-  });
-
-  it("still declines a near-total rewrite", () => {
-    // The cap is no longer about arithmetic, it is about risk: where nearly
-    // every node changes, a redraw remains the better-tested way to get a clean
-    // chart, and the in-place path saves proportionally less by doing it.
-    expect(worthUpdating(upTo(23), 24), "a near-total rewrite took the fast path").toBe(false);
-    expect(worthUpdating(upTo(24), 24), "a total rewrite took the fast path").toBe(false);
   });
 
   it("declines rather than dividing by zero on an empty chart", () => {
@@ -212,21 +185,18 @@ describe("whether a plan is worth taking", () => {
       return p ? worthUpdating(p, next.nodes.length) : false;
     };
     expect(take(buildChart({ ...cfg, title: "Another" })), "a retitle was not worth updating").toBe(true);
-    // A rescale moves 18 of 24. This asserted `false` under the old 0.5 limit,
-    // and asked to be revisited "as a decision rather than as a silent switch
-    // of path" — so here is the decision.
+    // A rescale moves 18 of 24 — over the line, and the redraw is the honest
+    // answer there. Recorded so a future layout change that alters the share
+    // shows up as a decision rather than as a silent switch of path.
     //
-    // This IS `same scale across the deck`, the scenario in miniature: `max:
-    // 105` is the edit it makes, eight times a round, and it is the longest
-    // scenario in the battery at ~200s. Its eight declines were every single
-    // one the old limit produced.
+    // THAT DECISION WAS MADE ONCE AND REVERSED BY THE HOST. `6359d83` raised
+    // the limit to 0.8 so this very edit would take the fast path — `max: 105`
+    // is what `same scale across the deck` does, eight times a round. Round 150
+    // then crashed PowerPoint on all seven attempts, at 255/284/282/278/257/282
+    // seconds, and that scenario starts at 280s. See `UPDATE_SHARE_LIMIT`.
     //
-    // The measurement that moved it is in `UPDATE_SHARE_LIMIT`: on the real
-    // host the fast path runs 3-4x faster in three independent scenarios, with
-    // no overlap between the populations, because the expensive thing here is
-    // CREATING a shape and an in-place update creates none. That was measured
-    // at a 4% share; 75% is the share nobody has measured, and admitting it is
-    // how that gets measured.
-    expect(take(buildChart({ ...cfg, scale: { max: 105 } })), "a full rescale was still declined").toBe(true);
+    // So this assertion is not an untested default any more. It is the measured
+    // answer for an 18-of-24 edit on this host.
+    expect(take(buildChart({ ...cfg, scale: { max: 105 } })), "a full rescale took the in-place path").toBe(false);
   });
 });

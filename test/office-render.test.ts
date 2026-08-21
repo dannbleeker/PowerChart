@@ -1819,20 +1819,10 @@ describe("a grouped chart can be updated in place", () => {
       ]);
 
       const refused = traceLog().entries.find((e) => e.message === "not updating in place — redrawing instead");
-      const why = refused ? String(refused.data?.why ?? "") : "";
-
-      // THE STRONGEST FORM, and it only became available when the share limit
-      // moved. Under the old 0.5 this edit changed too much of a small chart
-      // and fell back, so every assertion here could do was check WHICH reason
-      // it fell back for — and the test's own note below says why that is weak:
-      // the refusal just moves one reason along. At 0.8 it takes the fast path,
-      // so claim the positive outcome and let the two negatives guard the
-      // reasons in case a refusal ever returns.
       expect(
-        traceLog().entries.some((e) => e.message === "updated only the shapes that changed"),
-        "a grouped chart was not updated in place at all",
-      ).toBe(true);
-      expect(why, "still refused a grouped chart — the group members were not read").not.toMatch(/no parts list/);
+        refused && String(refused.data?.why ?? ""),
+        "still refused a grouped chart — the group members were not read",
+      ).not.toMatch(/no parts list/);
 
       // AND THE COUNT MUST LINE UP, which is what the first version got wrong
       // and this suite did not catch. It removed the anchor by matching the
@@ -1844,7 +1834,10 @@ describe("a grouped chart can be updated in place", () => {
       // parts 17 against nodes 16) while 3209 tests stayed green. Asserting
       // "not refused for a missing parts list" was too weak: the refusal simply
       // moved to the next reason along. This asserts the number.
-      expect(why, "the group came back the wrong length — the anchor was not removed").not.toMatch(/one for one/);
+      expect(
+        refused && String(refused.data?.why ?? ""),
+        "the group came back the wrong length — the anchor was not removed",
+      ).not.toMatch(/one for one/);
     } finally {
       setTracing(false);
     }
