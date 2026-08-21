@@ -5335,6 +5335,47 @@ describe("updating only what changed", () => {
     expect((JSON.parse(found[0].configJson) as ChartConfig).title).toBe("Renamed");
   });
 
+  it("writes node 0 to the group's ANCHOR, not to the group itself", async () => {
+    // THE HOST CAUGHT THIS AND THE SUITE DID NOT. Round 145 ran the in-place
+    // update on the real host for the first time and refused three charts with
+    // `InvalidArgument | errorLocation=Shape.textFrame`, every one of them
+    // `changed 1 of 24`.
+    //
+    // `shapes = [old, ...parts]` is right for a parts-list chart, where the
+    // tagged shape IS node 0. For a GROUPED chart the tagged shape is the group
+    // and node 0 is the group's first member, so node 0's properties went onto
+    // the group — which has `fill` and `lineFormat` (both navigations
+    // succeeded) but no `textFrame`, which is precisely where the host stopped.
+    //
+    // Nodes 1..n were mapped correctly the whole time, so ONLY an edit that
+    // touches node 0 can show it. A title edit is exactly that, and it is why
+    // the test above — which also edits the title — passed anyway: the fake
+    // host lets a group accept a name and a text frame, so the wrong target was
+    // invisible here while the real host refused it every time.
+    const slide = makeSlide("s1");
+    installHost([slide]);
+    const cfg = clustered();
+    await insertSceneIntoSlide(buildChart(cfg), { tagData: JSON.stringify(cfg) });
+    const target = (await listChartsInDeck()).charts[0].target;
+    expect(target.partIds?.length ?? 0, "premise: a grouped chart carries no parts tag").toBe(0);
+    setTracing(true);
+    const next = { ...cfg, title: "Renamed" };
+    await updateChartInSlide(buildChart(next), target, { tagData: JSON.stringify(next) });
+
+    const group = slide.created.find((s) => s.type === "group");
+    expect(group, "premise: the fixture did not produce a group").toBeDefined();
+    // The group must still be the group. If node 0 was written onto it, it is
+    // wearing the title node's name.
+    expect(group!.name, "node 0 was written onto the GROUP — the host refuses that at Shape.textFrame").toBe(
+      "PowerChart",
+    );
+    // …and the anchor, which is what node 0 should have gone to, carries it.
+    expect(
+      slide.created.find((s) => s.name === "title"),
+      "no shape carries the title node",
+    ).toBeDefined();
+  });
+
   it("still lands the chart when the host refuses the in-place batch", async () => {
     // Nothing has been deleted when the writes go out, so a refusal costs the
     // chart nothing but time — the redraw does the whole job. The alternative,

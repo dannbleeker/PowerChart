@@ -3710,3 +3710,85 @@ fingerprint, which a presence check would have passed.
 Landed as #645. What round 145 should show: the six `no scene fingerprint`
 declines gone, and — for the first time — `updated only the shapes that changed`
 on a chart from the deck.
+
+## Round 145 — the fingerprint fix held; the positive claim did not
+
+The prediction was staked before the round landed, in two halves, because this
+fix had a failure mode that looks like success.
+
+    rung  4  the chart carries no scene fingerprint      6 -> 0   as predicted
+    rung  7  no longer renders to the scene that was drawn  0 -> 0   as predicted
+    rung  9  too much of the chart changed to be worth it  3 -> 8
+    in-place SUCCESSES                                     0 -> 0   PREDICTION FAILED
+
+**The half that mattered held.** Rung 7 is the mismatch rung: if the value
+written into the deck were not the value `sceneFingerprint(buildChart(config))`
+produces at update time, all six declines would have migrated there and the
+total would not have moved. They did not migrate. The stored fingerprint is the
+one the update path recomputes, and #645 is a real fix rather than a cosmetic
+one.
+
+**The positive claim failed outright.** "At least one `updated only the shapes
+that changed`" was staked precisely so a smaller round could not satisfy it, and
+it came back zero. The denominator is sound — 15 declines in each of 143, 144
+and 145, and 578 / 571 / 580 trace entries — so this is a real zero, not a
+different population.
+
+### Where the six went, and what was waiting there
+
+Five of the six landed on rung 9, which is the differ correctly declining work a
+redraw does better: `changed 18 of 24` and `changed 9 of 16`, three quarters and
+better than half of the chart. Those are right.
+
+**The sixth kind reached the host and the host refused it** — three charts, all
+`changed 1 of 24`, all with the same error:
+
+    InvalidArgument | errorLocation=Shape.textFrame
+    statement: var textFrame = shape.textFrame;
+
+`changed 1 of 24` is the differ working perfectly: it isolated a single changed
+node and went to write only that. The write went to the wrong object. For a
+grouped chart `shapes = [old, ...parts]` uses the GROUP as node 0, and node 0 is
+the group's first member. A `ShapeGroup` has `fill` and `lineFormat` — both
+navigations succeeded in the host's own statement list — and no `textFrame`.
+
+### The safety argument in #643 was wrong, and precisely wrong
+
+That PR justified the positional mapping like this: *"the one-for-one guard still
+refuses anything that doesn't line up"*. It does not. **A count guard checks how
+many, and this was an error in which element means what.** `parts.length + 1`
+came to 24 against 24 nodes both before and after the defect — the guard was
+satisfied by the broken mapping and would have been satisfied by any permutation
+of it.
+
+The lesson generalises past this bug: a cardinality check is not an alignment
+check, and quoting one as protection for the other is how a wrong mapping gets
+called safe in writing.
+
+### The suite had a test for this and it was green
+
+`updates a GROUPED chart through its group members` edits the title — node 0,
+the only node that was mis-targeted — and passed the whole time. The fake host
+lets a group accept a name and a text frame, so the wrong target was invisible
+in jsdom while the real host refused it three times out of three.
+
+**The double was more permissive than the thing it doubles**, which is the same
+shape as the fake that populated values on request and hid a 56-round defect. A
+test that exercises the exact defect and passes is worse than no test: it was
+counted as coverage.
+
+The new guard asserts the TARGET rather than the outcome — after a title-only
+update the group must still be named `PowerChart` — because the outcome was
+indistinguishable in a host that accepts everything.
+
+### And one underneath it
+
+Fixing the mapping made every grouped write refuse with *"the host would not
+confirm every shape that had to change"*. `isLive` asks `isNullObject === false`,
+which is the protocol of an `…OrNullObject` lookup; a shape handed back as an
+item of a loaded collection has no such flag and reads `undefined`. The guard
+called a shape dead because it had arrived alive by a different route.
+
+Landed as #646. What round 146 should show: the three `Shape.textFrame`
+refusals gone, and the first `updated only the shapes that changed` in 119
+archived rounds.

@@ -295,6 +295,22 @@ function isLive(proxy: { isNullObject: boolean }): boolean {
 }
 
 /**
+ * Did the host answer for a shape that arrived as a COLLECTION ITEM?
+ *
+ * `isLive` asks `isNullObject === false`, and that protocol exists only for a
+ * `…OrNullObject` lookup. A shape handed back as an item of a loaded collection
+ * has no null-object flag at all — it reads `undefined`, so `isLive` calls it
+ * dead and refuses to write to a shape the host has already produced.
+ *
+ * Confirm it the way it actually arrived instead: `queueGroupMembers` asks for
+ * `items/id`, so an id is the host's positive answer that this member exists.
+ * A positive claim, not the absence of a negative one.
+ */
+function isConfirmedMember(proxy: { id: string }): boolean {
+  return Boolean(loadedValue(() => proxy.id));
+}
+
+/**
  * Did the host ANSWER for this object at all — either way?
  *
  * The other half of `isLive`, and the distinction it deliberately throws away.
@@ -9706,10 +9722,17 @@ function queueGroupMembers(shape: PowerPoint.Shape): PowerPoint.ShapeScopedColle
  * that safe: a group that does not line up with the scene is refused exactly as
  * a short parts tag already is, so a wrong mapping cannot reach the writer.
  */
-function groupMembersAsParts(members: PowerPoint.ShapeScopedCollection | undefined): PowerPoint.Shape[] {
+function groupMembersInOrder(members: PowerPoint.ShapeScopedCollection | undefined): PowerPoint.Shape[] {
   const items = members ? loadedValue(() => members.items) : undefined;
   if (!Array.isArray(items) || items.length < 2) return [];
-  // DROP THE FIRST MEMBER, because it is the anchor.
+  // THE FIRST MEMBER IS THE ANCHOR — returned, not dropped.
+  //
+  // It used to be sliced off here, which left the caller using the GROUP as
+  // node 0. Round 145 caught it on the host: a title edit changes node 0 alone,
+  // and the write went to the group, which has `fill` and `lineFormat` but no
+  // `textFrame` — `InvalidArgument | errorLocation=Shape.textFrame`, three
+  // times, every one of them `changed 1 of 24`. Nodes 1..n were right the whole
+  // time, so only an edit that touched node 0 could show it.
   //
   // The first version filtered by the TAGGED SHAPE'S id and removed nothing,
   // because for a grouped chart the tagged shape IS THE GROUP and a group is
@@ -9730,7 +9753,7 @@ function groupMembersAsParts(members: PowerPoint.ShapeScopedCollection | undefin
   // count guard still refuses anything that does not line up, and the self-test
   // battery edits charts and checks the result, so a scrambled write fails a
   // scenario loudly rather than reaching a user quietly.
-  return items.slice(1);
+  return items;
 }
 
 async function tryInPlaceUpdate(
@@ -9796,7 +9819,16 @@ async function tryInPlaceUpdate(
   // The one-for-one check below is unchanged and is what makes this safe: a
   // group whose members do not line up with the scene is refused exactly as a
   // short parts tag already is.
-  if (!parts.length) parts = groupMembersAsParts(groupMembers);
+  //
+  // AND THE ANCHOR COMES WITH THEM. For a parts-list chart the tagged shape IS
+  // node 0; for a grouped chart the tagged shape is the GROUP and node 0 is the
+  // group's first member. Using the group as node 0 wrote the anchor's
+  // properties onto the group itself — see `anchorShape` below.
+  let anchor: PowerPoint.Shape | undefined;
+  if (!parts.length) {
+    const members = groupMembersInOrder(groupMembers);
+    if (members.length) [anchor, ...parts] = members;
+  }
   if (!parts.length)
     return no("the chart has no parts list and no readable group members, so its nodes cannot be mapped to shapes");
   // States the CONDITION, not a story about how it arose. This said "it was
@@ -9828,12 +9860,21 @@ async function tryInPlaceUpdate(
       changed: plan.changed.length,
       of: it.scene.nodes.length,
     });
-  const shapes = [old, ...parts];
+  // `anchor` for a grouped chart, `old` for a parts-list chart, where the tagged
+  // shape IS node 0. Getting this wrong does not refuse — it writes node 0 onto
+  // the wrong object — so it is chosen once, here, and not re-derived.
+  const anchorShape = anchor ?? old;
+  const shapes = [anchorShape, ...parts];
   // Only shapes the host CONFIRMED. `isLive` is the same test the delete path
   // uses before touching anything, and for the same reason: writing to a shape
   // the host would not answer for is how an update comes to edit something that
   // is not ours.
-  if (plan.changed.some((n) => !isLive(shapes[n])))
+  // A grouped chart's shapes ALL came out of the group's collection, so they are
+  // confirmed by having an id; an id-resolved parts list is confirmed by not
+  // being a null object. Using the null-object test on a collection item refuses
+  // every write to a grouped chart, which is how this was first written.
+  const confirmed = anchor ? isConfirmedMember : isLive;
+  if (plan.changed.some((n) => !confirmed(shapes[n])))
     return no("the host would not confirm every shape that had to change", { changed: plan.changed.length });
   const { dx, dy } = frameOrigin(opts);
   try {
