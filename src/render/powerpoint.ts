@@ -9799,7 +9799,11 @@ async function tryInPlaceUpdate(
   if (!parts.length) parts = groupMembersAsParts(groupMembers);
   if (!parts.length)
     return no("the chart has no parts list and no readable group members, so its nodes cannot be mapped to shapes");
-  if (!tags.scene) return no("the chart carries no scene fingerprint — it was drawn by an older build");
+  // States the CONDITION, not a story about how it arose. This said "it was
+  // drawn by an older build" for six rounds about charts the current build had
+  // just drawn — the deck writer had never stamped the tag — and the journal
+  // repeated the framing back. A refusal cannot know why the tag is missing.
+  if (!tags.scene) return no("the chart carries no scene fingerprint to compare against");
   let prev: Scene;
   try {
     prev = buildChart(JSON.parse(tags.config) as ChartConfig);

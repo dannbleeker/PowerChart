@@ -5274,9 +5274,14 @@ describe("updating only what changed", () => {
   });
 
   it("names a missing fingerprint separately from a missing mapping", async () => {
-    // An older build's chart and a grouped chart both decline, and they want
-    // different responses: the first fixes itself on this very redraw, the
-    // second never will.
+    // A chart with no fingerprint and a chart with no mapping both decline, and
+    // they want different responses: the first fixes itself on this very
+    // redraw, the second never will.
+    //
+    // The assertion anchors on the CONDITION, not on why it arose. It used to
+    // match /older build/, from a message that told a story it could not know —
+    // for six rounds it said "drawn by an older build" about charts the current
+    // build had just drawn through a writer that never stamped the tag.
     const cfg = clustered();
     const slide = await drawLoose(cfg);
     const target = (await listChartsInDeck()).charts[0].target;
@@ -5286,8 +5291,8 @@ describe("updating only what changed", () => {
     await updateChartInSlide(buildChart(next), target, { tagData: JSON.stringify(next) });
     const said = traceLog().entries.filter((e) => e.message === "not updating in place — redrawing instead");
     expect(said.length).toBe(1);
-    expect(String(said[0].data?.why), "an older build's chart was reported as having no parts list").toMatch(
-      /older build/,
+    expect(String(said[0].data?.why), "a missing fingerprint was reported as having no parts list").toMatch(
+      /fingerprint/,
     );
   });
 

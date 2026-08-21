@@ -3665,3 +3665,48 @@ the tag write, since `sceneTag` is defaulted as `{ sceneTag: sceneFingerprint(sc
 and a caller-supplied `opts` overrides it.
 
 **Not chased here.** Recorded with the numbers that will start it.
+
+## The fingerprint blocker, chased — and the guess in the section above was wrong
+
+Round 144's entry closed by saying the per-item split "points at the options
+rather than at the tag write, since `sceneTag` is defaulted as
+`{ sceneTag: sceneFingerprint(scene), ...opts }` and a caller-supplied `opts`
+overrides it."
+
+**That was the wrong mechanism.** No caller was overriding anything. The split
+was per-item because the eight charts come from TWO DIFFERENT WRITERS, and only
+one of them had ever written the tag:
+
+    charts 1-3   insertSceneIntoSlide  ->  powerpoint.ts, stamps sceneTag
+    charts 4-8   the generated deck    ->  pptx-deck.ts -> ooxml.ts, never did
+
+`sceneFingerprint` was not imported in `pptx-deck.ts` at all. The default that
+looked like the suspect is on the path that already worked.
+
+**The lesson is about the shape of the evidence.** "Per-item, not per-batch"
+was read as "the items differ in their options" when it equally meant "the items
+took different code paths" — and the second reading was cheap to check and never
+made. One grep for `sceneFingerprint` in `src/render/` would have settled it
+before the theory was written down.
+
+### The decline message was lying about itself
+
+    "the chart carries no scene fingerprint - it was drawn by an older build"
+
+These charts were drawn by the CURRENT build, which had never written one. The
+message named a cause it could not know, and named it confidently enough that
+the journal repeated the framing. A refusal that reports a condition should
+report the condition, not a story about how the condition arose.
+
+### Present is not fixed
+
+`tryInPlaceUpdate` does `sceneFingerprint(buildChart(JSON.parse(tags.config)))`
+and refuses on a mismatch, so writing SOME value would have moved the refusal
+one reason along and looked like progress — the same way the parts check hid
+this one for 117 rounds. The guard therefore asserts the value equals what the
+update path recomputes, and was mutation-checked with a plausible-looking wrong
+fingerprint, which a presence check would have passed.
+
+Landed as #645. What round 145 should show: the six `no scene fingerprint`
+declines gone, and — for the first time — `updated only the shapes that changed`
+on a chart from the deck.
