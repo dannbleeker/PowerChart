@@ -3559,3 +3559,63 @@ one report turns it red.
 
 **The next round answers this.** Not a guess — the numbers will say which of the
 three it is, on the first round after this ships.
+
+## Round 142 — the instrument answered on its first run: it is grouping
+
+    WHICH EXIT
+      18x  no loose chart had siblings
+       3x  the id read-back threw
+
+    TOTALS
+      charts                21
+      groupedSoNotLoose     18
+      looseWithNoSiblings    1
+      gotPartsList           0
+
+**Not one chart in the round got a parts list, and 18 of 21 because they were
+GROUPED.** `loose` is `!grouped.has(i) && tagTargets[i]`, so a grouped chart
+collects no siblings and no parts list is written — by design, because a grouped
+chart is one shape and does not need one to be deleted as a unit.
+
+But the in-place update path REQUIRES that list to map scene nodes to shapes. So:
+
+**the in-place chart update is structurally incompatible with successful
+grouping**, and on this host grouping nearly always succeeds. That is why the
+feature has never run in 117 rounds. Not a bug in either path — a conflict
+between two designs that were never reconciled.
+
+The read-back failure is real but minor: 3 of 21, consistent with the 3.8 per
+round the archive already showed.
+
+### And the reason I rejected this yesterday was a denominator error
+
+I argued grouping could not be the cause because grouping varies while `no parts
+list` stays at exactly 12. The two counts do not share a denominator:
+
+    round  grouped  refused  update attempts  no-parts-list
+     139     15        4           13              12
+     140     12        5           13              12
+     141     10        9           13              12
+     142     18        2           13              12
+
+**Update attempts are a constant 13 whatever grouping does** — the battery makes
+a fixed number of updates. "A cause that varies while the effect stays constant
+is not the cause" was the right rule applied to the wrong pair of numbers.
+
+Third denominator error in three days: the "81% under-count", the "40% redraw
+regression", and this. The pattern is always the same — two counts compared
+without asking whether they are counts of the same thing.
+
+### The decision this leaves, which is not mine to make
+
+Three ways out, and they are genuinely different products:
+
+1. **Teach the update path to work on a grouped chart** — read the group's
+   members instead of a stored parts list. Most work, keeps both features.
+2. **Do not group charts that are meant to stay editable** — cheapest, but
+   grouping is what makes a chart behave as one object for a user.
+3. **Remove the in-place update** — it has never run; the fallback redraw is what
+   has always happened, and deleting it would cost nothing that is working today.
+
+Recorded rather than chosen. The gate now says the feature has never succeeded,
+so whichever is picked, the evidence for picking is on screen every round.
