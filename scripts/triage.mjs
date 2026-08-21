@@ -1929,16 +1929,32 @@ export function scenarioRegressions(rounds, window = 3) {
     for (const sc of r?.selftest ?? []) if (sc?.name) out.set(sc.name, sc.skipped ? null : !!sc.ok);
     return out;
   };
-  const newest = scenariosOf(rounds[rounds.length - 1]);
+  const all = rounds.map(scenariosOf);
+  const newest = all[all.length - 1];
   // The `window` rounds BEFORE the newest — the newest is what is being judged.
-  const before = rounds.slice(-1 - window, -1).map(scenariosOf);
+  const before = all.slice(-1 - window, -1);
   const out = [];
   for (const [name, ok] of newest) {
     // Passed, or did not measure — neither is a regression.
     if (ok !== false) continue;
     // Established: present AND passing in every one of the previous rounds.
     const established = before.every((r) => r.get(name) === true);
-    if (established) out.push({ name, passedIn: window });
+    if (!established) continue;
+    // LIFETIME, not the window. `passedIn` is the window SIZE — a constant that
+    // is true of every regression this function can return, so printing it as
+    // "had passed the previous 3 rounds running" said nothing at all. Whether a
+    // scenario has failed once in 124 rounds or twelve times is the difference
+    // between a blip and a habit, and it is what decides whether to chase it.
+    let ran = 0,
+      failed = 0;
+    for (const r of all) {
+      const v = r.get(name);
+      // `undefined` never ran, `null` declined to conclude. Neither is evidence.
+      if (v === undefined || v === null) continue;
+      ran++;
+      if (!v) failed++;
+    }
+    out.push({ name, passedIn: window, ran, failed });
   }
   return out.sort((a, b) => a.name.localeCompare(b.name));
 }

@@ -2147,3 +2147,57 @@ describe("a population baseline needs more than one observation", () => {
     expect(out).toEqual([{ name: "insert onto a slide", now: 2, usual: 16, ok: true, rounds: 3 }]);
   });
 });
+
+describe("a scenario regression carries its own history", () => {
+  const round = (pairs: [string, boolean][]) => ({ selftest: pairs.map(([name, ok]) => ({ name, ok })) });
+
+  it("counts lifetime failures rather than restating the window size", () => {
+    // WHAT THE GATE USED TO PRINT: "had passed the previous 3 rounds running".
+    // `passedIn` was the WINDOW SIZE — a constant true of every regression this
+    // function can return, so the sentence carried no information at all. It is
+    // the hardcoded-conclusion shape: a number presented as a measurement.
+    //
+    // Round 148 is why it matters. Two scenarios fell in the same round; one
+    // had NEVER failed in 109 rounds and the other had failed before. Those
+    // want different responses, and the old line described them identically.
+    const rounds = [
+      round([["a", true]]),
+      round([["a", false]]), // an old failure, long before the window
+      ...Array.from({ length: 5 }, () => round([["a", true]])),
+      round([["a", false]]),
+    ];
+    const [g] = scenarioRegressions(rounds) as { name: string; ran: number; failed: number }[];
+    expect(g.name).toBe("a");
+    expect(g.ran, "did not count every round the scenario actually ran in").toBe(8);
+    // Two: the old one and this one. A first-ever failure would be 1, which is
+    // the distinction the gate prints.
+    expect(g.failed, "lifetime failures were not counted").toBe(2);
+  });
+
+  it("reports a first-ever failure as exactly one", () => {
+    const rounds = [...Array.from({ length: 6 }, () => round([["a", true]])), round([["a", false]])];
+    const [g] = scenarioRegressions(rounds) as { failed: number; ran: number }[];
+    expect(g.failed, "a first-ever failure must be distinguishable from a recurring one").toBe(1);
+    expect(g.ran).toBe(7);
+  });
+
+  it("does not count a round that never ran the scenario, or one that declined to conclude", () => {
+    // `undefined` never ran it; `skipped` declined to conclude. Neither is
+    // evidence, and folding either into the denominator makes a rate that
+    // describes nothing — the denominator error this repo keeps making.
+    // The non-measuring rounds sit BEFORE the establishment window: a scenario
+    // is only "established" if it passed every one of the previous 3, and a
+    // round that declined to conclude breaks that by design.
+    const rounds = [
+      { selftest: [{ name: "b", ok: true }] },
+      { selftest: [{ name: "a", ok: false, skipped: true }] },
+      round([["a", true]]),
+      round([["a", true]]),
+      round([["a", true]]),
+      round([["a", false]]),
+    ];
+    const [g] = scenarioRegressions(rounds) as { ran: number; failed: number }[];
+    expect(g.ran, "counted a round that did not measure this scenario").toBe(4);
+    expect(g.failed).toBe(1);
+  });
+});
