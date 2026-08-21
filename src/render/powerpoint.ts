@@ -2027,7 +2027,22 @@ export async function updateChartsInSlides(
       // its load("left,top") is what put it in the sync — a REAL property,
       // which is the only kind that counts. See `queueNullCheck`.
       for (const p of parts) queueNullCheck(p);
-      return { it, old, parts, wasConfig, wasScene };
+      // A GROUPED CHART HAS NO PARTS TAG BY DESIGN — its shapes live inside the
+      // group and are deleted with it, so `ungroupedFallback` correctly writes
+      // nothing for it. The in-place update then refused every grouped chart for
+      // want of a list, which on this host is nearly all of them: 18 of 21 in
+      // round 142, and the feature had never once run in 117 rounds.
+      //
+      // The group can be read directly at PowerPointApi 1.8 — `shape.group.shapes`
+      // — which this project already requires for the rasteriser. office-js#3014
+      // says sub-shapes "cannot be reached", and that note is from 2022 and is
+      // now out of date; the type definitions carry `ShapeGroup.shapes` as a
+      // `ShapeScopedCollection`.
+      //
+      // Queued in the SAME sync as the part lookups above, so it costs no extra
+      // round trip, and only when there is no parts list to use.
+      const groupMembers = parts.length ? undefined : queueGroupMembers(old);
+      return { it, old, parts, groupMembers, wasConfig, wasScene };
     });
     // THE REFUSAL LANDS HERE, not on the proxies. A by-id lookup that this host
     // will not honour poisons the SYNC it was queued in — `InvalidParam passed
@@ -9644,18 +9659,80 @@ function strokeColor(lf: PowerPoint.ShapeLineFormat, color: string): void {
  * host refuses the batch, nothing has been deleted, this returns false, and the
  * redraw does the whole job.
  */
+/**
+ * Queue a read of a shape's group members, or nothing if it has no group.
+ *
+ * WHY THIS EXISTS. A grouped chart carries no CHART_PARTS_TAG — correctly, since
+ * its shapes live inside the group and are deleted with it — so the in-place
+ * update refused every grouped chart for want of a parts list. On this host
+ * grouping nearly always succeeds (18 of 21 charts in round 142), which is why
+ * the feature had never run once in 117 archived rounds.
+ *
+ * office-js#3014 says grouped sub-shapes "cannot be reached". THAT NOTE IS FROM
+ * 2022 AND IS OUT OF DATE: `ShapeGroup.shapes` is a `ShapeScopedCollection` in
+ * the current type definitions, reachable through `shape.group` at PowerPointApi
+ * 1.8 — the set this project already requires for `getImageAsBase64`.
+ *
+ * BEST-EFFORT AND SILENT. A shape that is not grouped has no `group`, and on a
+ * host that has not implemented it the property access itself can throw
+ * synchronously. Either way the answer is "no members", and the caller falls
+ * back to the redraw it has always done. This can only ADD updates that were
+ * previously refused; it can never make one that used to work stop working.
+ */
+function queueGroupMembers(shape: PowerPoint.Shape): PowerPoint.ShapeScopedCollection | undefined {
+  if (!supports("1.8")) return undefined;
+  try {
+    const members = (shape as unknown as { group?: { shapes?: PowerPoint.ShapeScopedCollection } }).group?.shapes;
+    if (!members) return undefined;
+    // The ids, in the group's own order — which is drawing order, the same
+    // order the parts tag records.
+    members.load("items/id");
+    return members;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * The group's members as shapes, with the chart's own anchor removed.
+ *
+ * The mapping the update path uses is positional: node 0 is the anchor, and the
+ * remaining nodes line up with the parts in drawing order. A group contains the
+ * anchor as well, so it has to come out — by id, because order alone cannot say
+ * which member it is.
+ *
+ * Returns an empty array on anything unexpected. The caller's existing
+ * one-for-one check (`prev.nodes.length !== parts.length + 1`) is what makes
+ * that safe: a group that does not line up with the scene is refused exactly as
+ * a short parts tag already is, so a wrong mapping cannot reach the writer.
+ */
+function groupMembersAsParts(
+  members: PowerPoint.ShapeScopedCollection | undefined,
+  anchorId: string | undefined,
+): PowerPoint.Shape[] {
+  const items = members ? loadedValue(() => members.items) : undefined;
+  if (!Array.isArray(items) || !items.length) return [];
+  return items.filter((s) => {
+    const id = loadedValue(() => s.id);
+    return typeof id === "string" && id.length > 0 && id !== anchorId;
+  });
+}
+
 async function tryInPlaceUpdate(
   context: PowerPoint.RequestContext,
   entry: {
     it: { scene: Scene; target: EditTarget; opts?: InsertOptions };
     old: PowerPoint.Shape;
     parts: PowerPoint.Shape[];
+    /** A grouped chart's members, read in the resolve sync. See `queueGroupMembers`. */
+    groupMembers?: PowerPoint.ShapeScopedCollection;
   },
   opts: InsertOptions,
   tags: { config?: string; scene?: string },
   step: <T>(what: string, run: () => Promise<T>) => Promise<T>,
 ): Promise<boolean> {
-  const { it, old, parts } = entry;
+  const { it, old, groupMembers } = entry;
+  let parts = entry.parts;
   // Say WHY, every time it declines.
   //
   // The first real round on a build carrying this path produced not one line —
@@ -9696,7 +9773,21 @@ async function tryInPlaceUpdate(
   // tag does not list them, so there is nothing to write to. Named separately
   // from a missing fingerprint because it is permanent for that chart, not a
   // one-off.
-  if (!parts.length) return no("the chart has no parts list, so its nodes cannot be mapped to shapes");
+  // NO PARTS TAG IS NOT NO PARTS. A grouped chart never gets a tag — its shapes
+  // live inside the group — so read them off the group instead. This is the one
+  // reason the in-place update never ran: 18 of 21 charts in round 142 were
+  // grouped, and every one of them was refused here.
+  //
+  // The one-for-one check below is unchanged and is what makes this safe: a
+  // group whose members do not line up with the scene is refused exactly as a
+  // short parts tag already is.
+  if (!parts.length)
+    parts = groupMembersAsParts(
+      groupMembers,
+      loadedValue(() => old.id),
+    );
+  if (!parts.length)
+    return no("the chart has no parts list and no readable group members, so its nodes cannot be mapped to shapes");
   if (!tags.scene) return no("the chart carries no scene fingerprint — it was drawn by an older build");
   let prev: Scene;
   try {
