@@ -87,6 +87,7 @@ import {
   deadlinesFired,
   lastStall,
   RASTERISE_OP,
+  rasterGap,
   lastLateSync,
   lastLateSyncSeq,
   waitForLateSync,
@@ -1692,6 +1693,13 @@ const chartIsVisible: Scenario = async (prefix) => {
   // the operation this scenario exists to have proven.
   // THE ONE THAT STALLS. Named so the next stall can say so instead of leaving
   // it to be inferred from where the line sits in the trace.
+  //
+  // AND NOW PRECEDED BY A GAP, because that stall is the whole reason this gate
+  // is blind in 38% of rounds. Across 104 archived rounds the correlation is
+  // exact: 40 blind rounds carry a rasterise stall, 64 sighted rounds carry
+  // none — and all 40 stalls are this call, issued immediately after the BEFORE
+  // render answered. See `rasterGap`.
+  await rasterGap();
   const again = await attempt("rasterising the same slide a second time", () =>
     slideImageBase64(slideId, 640, "the visibility CONTROL render (same slide, back to back)"),
   );

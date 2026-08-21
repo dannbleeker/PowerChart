@@ -3072,3 +3072,60 @@ row on fresh panes has roughly a 12% chance at the historical 35% rate — which
 unremarkable, not evidence. The visibility gate's blindness remains unexplained
 and is the obvious next target now that the confound underneath everything else
 is gone.
+
+## The visibility gate's blindness has one cause, and it is 40 for 40
+
+The gate is blind — no control render, so a before/after difference proves
+nothing — in 38% of the archive. Pooled over all 104 rounds that carry the
+scenario:
+
+                             blind      sighted
+    any rasterise stall     40 100%     0   0%
+
+**Perfect separation.** Every blind round carries a rasterise stall; no sighted
+round does. The code claimed this from 14 rounds (8 blind / 8 stalls, 6 sighted
+/ 0); it holds at 40 and 64.
+
+And the stall trace says the same thing all 40 times:
+
+    WHICH CALL STALLED             WHAT THE HOST LAST ANSWERED
+     34x rasterising a slide        34x rasterising a slide
+      6x the visibility CONTROL      6x the visibility BEFORE render
+
+Two rows, one event — the labels only became specific this week. The stall shape
+adds `issued immediately after the previous answer`.
+
+**So: the host answers the first rasterise of a slide and then hangs on a second
+rasterise of the SAME slide issued straight after it.** Not slowly — for the full
+20s budget, never returning. A successful render takes 941ms at the median and
+1466ms at its worst, so a call outstanding at 20s is hung, not slow.
+
+### The fix, and it is a candidate rather than a cure
+
+`rasterGap()` — three seconds before the control render, twice the slowest
+render that has ever come back.
+
+Nothing upstream describes this shape. The nearest are
+[#5022](https://github.com/OfficeDev/office-js/issues/5022) (sync hangs after
+add-then-read, already cited here) and
+[#6266](https://github.com/OfficeDev/office-js/issues/6266) (a Mac/Windows
+rendering difference, not a hang). The only guidance that exists for the family
+is to space the calls out, which is what this does.
+
+**The rounds after this are the test, and the baseline to beat is 38%.** Five
+clean rounds would not settle it: at a 35% blind rate on fresh panes, five
+sighted in a row happens 12% of the time by chance. That is the same arithmetic
+that stopped me claiming the pane reload had fixed this yesterday, and it applies
+to my own fix too.
+
+### A test that cannot see the thing it guards
+
+The gap is zeroed in `test/setup.ts` — a fake rasteriser cannot hang, and three
+real seconds per scenario put four of them over budget — so no behavioural test
+can observe this call at all. Deleting it leaves the suite green, exactly as
+deleting the pane refresh from `collectRound` did.
+
+The guard therefore reads the source and says so: it catches the call being
+removed or reordered, not the gap being the wrong length. Second time this week
+that mutation testing has caught a shipped behaviour with no guard behind it,
+and both times the behaviour was the whole point of the change.
