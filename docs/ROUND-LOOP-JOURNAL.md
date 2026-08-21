@@ -3270,3 +3270,56 @@ Each time a SCREENSHOT settled it in one call, and each time I reached for it
 only after exhausting the text queries that cannot distinguish the two states.
 
 The tree says what is rendered. It does not say what exists.
+
+## Rounds 129-141 — the blind gate is fixed, and pane age is dose-dependent
+
+**THE BLIND RATE IS SETTLED. 0 of 13.**
+
+    before the gap   fresh panes  27 blind / 51 sighted = 35%
+                     reused panes 13 blind / 13 sighted = 50%
+
+    after the gap    fresh   0 blind of 8
+                     reused  0 blind of 5
+
+    If the gap changed nothing, this run has probability 0.10%.
+
+Zero rasterise stalls across all thirteen, and the blindness/stall correlation
+never broke — it stands at 40 blind rounds with a stall, 77 sighted without one.
+`rasterGap` — three seconds before re-rasterising a slide the host has just
+rasterised — closed the fault that made this project's only mechanical evidence
+of a visible chart unavailable in 38% of rounds.
+
+The five reused-pane rounds matter most: at a 50% historical rate, those alone
+are a 3% coincidence. This is not a fresh-pane artefact.
+
+### Pane age is dose-dependent, and yesterday's split understated it
+
+    round   pane age   post-retry   grouped/refused
+    136        844s         6           16/3
+    138        891s         7           16/4
+    139       1925s         8           15/4
+    140       3037s         9           12/5
+    141       4283s        10           10/9
+
+**Monotonic on every counter.** Post-retry failures climb 6, 7, 8, 9, 10 as the
+pane ages from 14 minutes to 71; grouped charts fall 16, 16, 15, 12, 10; refused
+climb 3, 4, 4, 5, 9. Fresh-pane rounds in the same batch average 1.13 post-retry
+against 8.00 for reused.
+
+**I misread this mid-batch and said so at the time.** Seeing 139 and 140 score
+13 of 13 on a 32- and 50-minute-old pane, I suggested the pane-age effect had
+weakened. It had not: the SCENARIO VERDICTS survive because the settled retry
+still repairs enough, and the damage shows in how hard it has to work. Verdicts
+are a coarse instrument; the counters are the measurement.
+
+### `a selected shape survives an insert` failed three times in thirteen
+
+Rounds 130, 134 and 141 — at pane ages 93s, 64s and 4283s, so not pane age. It
+is the scenario that drives `setSelectedShapes`, and this host's selection layer
+has two open upstream issues against it (#3083, #3698). Three failures in
+thirteen is a rate, not a flake, and it is the first scenario in weeks to fail
+repeatedly without dissolving on its pair.
+
+**Not chased here.** The gap and the pane are what these rounds were run to
+settle, and starting a third investigation on the same data is how the profile
+effect got published three times. Recorded as the next question.
