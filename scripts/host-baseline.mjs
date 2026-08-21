@@ -53,8 +53,6 @@ export const FAKE_BASELINE = {
   "addgroup-returns-usable": "yes",
   "group-children-via-getcount": "two",
   "group-reports-its-children": "two",
-  "grouped-child-by-id-from-slide": "yes",
-  "tag-on-group-survives": "yes",
   "binding-names-shape-later": "yes",
   "getitemat-past-end": "threw",
   "picture-then-shape-read": "yes",
@@ -129,8 +127,6 @@ export const KNOWN_DIVERGENCES = {
     "The fake's happy path hands back a group usable in the sync that made it. RE-ASKED 2026-08-08 and still `unreadable`, but read the detail before calling it settled: `members via same-batch`. The strict id route could not supply members — the collection answers empty, see above — so this asked with same-batch proxies, which is the weaker form of the question. What it establishes is that the weak form fails; the strong form has still never been put on this host.",
   "group-reports-its-children":
     "The fake's happy path lists a group's children. RE-ASKED 2026-08-08 with the load queued in the sync that MADE the group — the friendliest form there is — and this host still answered `threw`, \"The property 'items' is not available\": office-js#6363's signature. Its sibling `group-children-via-getcount` was added to ask the other way and answered `unreadable`. Both routes refused, so `contentShapes` returning UNKNOWN_CONTENT for a grouped slide is the permanent answer rather than a gap.",
-  "tag-on-group-survives":
-    "WITHDRAWN, awaiting a re-run. Taken at face value the real `no` says no chart in any deck is re-editable, which the same run disproves — its repair pass landed 23 retags on grouped charts. Still owed: the 2026-08-08 round could not put this question either (`no-scratch-slide`).",
   "group-children-via-getcount":
     "The fake's happy path counts a group's children; the web host's refusal lives in a named fault rather than the default. ANSWERED 2026-08-08: `unreadable`. Read with `group-reports-its-children` above — both ways into a group's children are refused on this host. Also carried in UNSTABLE_ANSWERS, because it has been asked once and once is a sample.",
   "group-of-existing-shape-readable":
@@ -417,17 +413,6 @@ export const PENDING_QUESTIONS = {
     "says the fresh shape's own `.tags` works, every round, so the id round trip is the untested half. A question rather " +
     "than a rewrite ON PURPOSE: this path has a history of changes reverted on a theory. `threw` means stop re-fetching " +
     "and tag the creation proxy; `yes` means the 5010 comes from somewhere else and a rewrite would have been wasted.",
-  "grouped-child-by-id-from-slide":
-    "Added 2026-08-11, and it decides whether the in-place update has a future on this host. `tryInPlaceUpdate` needs a " +
-    "node-to-shape mapping and gets one from CHART_PARTS_TAG, which is written only for UNGROUPED charts — so the " +
-    "`53ec985` round declined ELEVEN times out of eleven with `the chart has no parts list`, the grouped charts having no " +
-    "tag and the ungrouped ones having had their id readback refused. But 'the parts tag does not list them' is a fact " +
-    "about our code, not about the host. If the slide's own collection still resolves a child by id, a grouped chart can " +
-    "carry a parts list written from ids the grouping pass already holds, and the fast path applies to the fourteen " +
-    "grouped charts a round produces instead of none. office-js#3014 SAID sub-shapes cannot be reached, and a no used to " +
-    "be called expected on that basis — but #3014 was closed as COMPLETED on 2025-03-03 (GitHub API, checked 2026-08-14), " +
-    "so neither answer is expected any more: a yes means the upstream fix reached this host, a no that it did not. Which " +
-    "is why it has to be a measured answer rather than an assumed one, because the whole feature turns on it.",
   "shape-resolve-held-slide-proxy":
     "Added after the fixture's build. It decides whether `deleteShapesById`, `setShapeSelection` and the selection path are bugs or merely untidy: all three resolve a slide, sync, then reach through that same handle for a shape. The write form of this is known to fail; the read form has never been asked, and the fake's windowed handle does not gate it either way.",
 };
@@ -470,8 +455,6 @@ const WHAT_IT_MEANS = {
     "Added 2026-08-08, in response to the sheet taken that day. Its sibling `group-reports-its-children` asked through `group/shapes/items/id` and this host answered `threw` — \"The property 'items' is not available\", office-js#6363's exact signature — with the load queued in the sync that MADE the group, which is the friendliest form the question has. But the same sheet says `getcount-populates-same-sync: yes, value=9`: this host COUNTS a shape collection it will not LIST. Nobody has asked whether that holds for a GROUP's collection, and the answer decides something concrete — `contentShapes` returns UNKNOWN_CONTENT for every grouped slide, which is what makes the reconcile report a slide complete without counting it. A count is all it needs.",
   "group-reports-its-children":
     "The single most load-bearing answer here. A chart IS a group, and the readback measures whether a chart survived by counting what is inside it — so a host that groups successfully and then reports no children makes every chart read back as wreckage, and the repair pass 'fixes' charts that were never broken. WITHDRAWN: the 2026-08-04 PropertyNotLoaded was a nested load queued a sync after the group was made. It is queued in the grouping batch now.",
-  "tag-on-group-survives":
-    "Where a chart's config actually lives. WITHDRAWN: the 2026-08-04 NO was the probe writing through a group proxy a sync old. Taken at face value it says no chart in any deck is re-editable, which the same run disproves — its repair pass landed 23 retags on grouped charts. The group's id is what crosses the sync now, and every use resolves its own handle.",
   "binding-names-shape-later":
     "Whether the repair pass can be given a handle that does not go through `ShapeCollection.getItem(id)`. Every 5010 this host throws is at that call, and it is what leaves a chart drawn and nameless — no group, no tag, nothing to settle one onto. A binding is made from the live Shape proxy inside the batch that created it, so it needs neither an id round trip nor a collection read, and the document persists it. A real `yes` means `settleAndTagChart` has a route it does not have today; a real `no` retires the idea. Watch the answer WORD, because five of them are different facts: `no-binding-api` is a missing 1.8 surface and says nothing about the idea; `add-threw` is `bindings.add` objecting on the spot; `commit-threw` is the host rejecting the batch that carried it, which counts as an answer ONLY because the probe commits the same batch without a binding first — see below; `unreadable` means the binding was made and then would not name its shape, the same refusal wearing a new coat; `yes` is the one that changes what can be built. FIRST REAL SIGNAL, 2026-08-09 evening (`2a44f64`): the commit came back `UnexpectedError` in 1.3 seconds while `shape-add-fresh-slide-proxy` answered `yes` in the same sheet. That points at the binding, but it is cross-question inference on a host that flaps between minutes, so the probe was given its own control arm rather than the reading being written down as fact. One sample, and the question stays open until a sheet answers it with the control in place. WHAT MICROSOFT'S OWN DOCS ADD (searched 2026-08-13, `bind-shapes-in-presentation`): the API is real and current — `bindings.add(shape, BindingType.shape, id)` and `Binding.getShape()` are both PowerPointApi 1.8, and this host reports 1.10, which is consistent with `commit-threw` rather than `no-binding-api` and means the surface is not the problem. The documented FLOW differs from the probe's in one respect worth a variant: Microsoft creates the shape, sets its fill, and retrieves through `bindings.getItem(id).getShape()` in a SEPARATE `PowerPoint.run`, whereas the probe binds inside the batch that created the shape. So `commit-threw` may be the host refusing to bind a shape the document does not yet have, rather than refusing bindings at all. A variant that binds in a LATER batch than the one that drew the shape is untried, and is the partner question this entry wants next. Do not read that as a prediction — it is the one difference between a flow Microsoft publishes and the flow that failed here.",
   "getitemat-past-end":
