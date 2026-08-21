@@ -214,9 +214,20 @@ if (isMain(import.meta.url, process.argv[1])) {
         "    #406 was titled 'The in-place update fired zero times and would not say why' and added the trace" +
         "\n    that answers it. The answer has been sitting in every round file since. See FALLBACKS below for why.",
     );
-  else if (ip.ok > 0)
+  else if (ip.ok > 0) {
     console.log(`
   in-place update: ${ip.ok} succeeded, ${ip.fell} declined, ${ip.threw} refused by the host over ${ip.rounds} round(s)`);
+    // THIS ROUND ON ITS OWN, WITH ITS DENOMINATOR. A pooled total hides the
+    // thing that makes two rounds incomparable: round 148 scored the same 3
+    // successes as 147 out of 11 attempts rather than 13, because two scenarios
+    // failed and never reached the update. "3 again" is not the same evidence.
+    const now = poolInPlaceUpdates(rounds.slice(-1));
+    const attempts = now.ok + now.fell + now.threw;
+    console.log(
+      `    this round: ${now.ok} succeeded of ${attempts} attempt(s)` +
+        (now.threw ? ` — ${now.threw} refused BY THE HOST, which is a defect, not a decline` : ""),
+    );
+  }
   // WHY, not just how many. A decline the differ made on purpose and a write the
   // host threw out read identically in a total.
   if (ip.reasons.length) {
@@ -353,7 +364,10 @@ if (isMain(import.meta.url, process.argv[1])) {
     process.exit(0);
   }
   console.error(`  ${gone.length} scenario(s) STOPPED PASSING in the newest round:`);
-  for (const g of gone) console.error(`    ${g.name} — had passed the previous ${g.passedIn} rounds running`);
+  for (const g of gone)
+    console.error(
+      `    ${g.name} — ${g.failed === 1 ? "FIRST failure" : `failed ${g.failed} times`} in ${g.ran} round(s) at this profile`,
+    );
   console.error("  A round is evidence; this is the only thing that holds a build to it. See docs/ROUNDS.md.");
   process.exit(1);
 }

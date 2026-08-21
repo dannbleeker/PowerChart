@@ -1011,18 +1011,55 @@ const FULL_STATEMENT_ENDS = 10;
  * Pure, and separate from `errorText`, so the trimming can be tested without a
  * PowerPoint anywhere near it.
  */
+/**
+ * The longest a single statement is allowed to be in a recorded error.
+ *
+ * ONE statement can carry a whole deck. Round 148's `insert on top of an
+ * earlier run` failed with `GeneralException | errorLocation=
+ * Microsoft.Office.PrivateApiService`, and the diagnosis — the location, the
+ * code, the call that failed — arrived behind ~100KB of base64, because
+ * `insertSlidesFromBase64` takes the file as an argument and Office echoes the
+ * argument back in the statement. Trimming the COUNT of statements did nothing
+ * about it: the payload was in one of the ten that were kept.
+ *
+ * The call is the diagnosis. The bytes it was handed are not, and every one of
+ * them was also being written into the round archive.
+ */
+const STATEMENT_MAX_CHARS = 200;
+
+function trimStatement(s: unknown): unknown {
+  if (typeof s !== "string" || s.length <= STATEMENT_MAX_CHARS) return s;
+  return `${s.slice(0, STATEMENT_MAX_CHARS)}… ${s.length - STATEMENT_MAX_CHARS} more char(s)`;
+}
+
 export function trimDebugInfo(info: unknown): unknown {
   if (!info || typeof info !== "object") return info;
-  const full = (info as { fullStatements?: unknown }).fullStatements;
-  if (!Array.isArray(full) || full.length <= FULL_STATEMENT_ENDS * 2 + 1) return info;
-  const dropped = full.length - FULL_STATEMENT_ENDS * 2;
+  const rec = info as Record<string, unknown>;
+  const full = Array.isArray(rec.fullStatements) ? rec.fullStatements : undefined;
+  const tooMany = full !== undefined && full.length > FULL_STATEMENT_ENDS * 2 + 1;
+  const long = (v: unknown) => typeof v === "string" && v.length > STATEMENT_MAX_CHARS;
+  const tooLong =
+    long(rec.statement) ||
+    (Array.isArray(rec.surroundingStatements) && rec.surroundingStatements.some(long)) ||
+    (full?.some(long) ?? false);
+  // UNTOUCHED WHEN THERE IS NOTHING TO TOUCH — a caller may compare identity,
+  // and "trimmed" should mean something was actually dropped.
+  if (!tooMany && !tooLong) return info;
+
+  const kept = tooMany
+    ? [
+        ...full!.slice(0, FULL_STATEMENT_ENDS),
+        `… ${full!.length - FULL_STATEMENT_ENDS * 2} statement(s) dropped from the middle`,
+        ...full!.slice(full!.length - FULL_STATEMENT_ENDS),
+      ]
+    : full;
   return {
-    ...(info as Record<string, unknown>),
-    fullStatements: [
-      ...full.slice(0, FULL_STATEMENT_ENDS),
-      `… ${dropped} statement(s) dropped from the middle`,
-      ...full.slice(full.length - FULL_STATEMENT_ENDS),
-    ],
+    ...rec,
+    ...(rec.statement !== undefined ? { statement: trimStatement(rec.statement) } : {}),
+    ...(Array.isArray(rec.surroundingStatements)
+      ? { surroundingStatements: rec.surroundingStatements.map(trimStatement) }
+      : {}),
+    ...(kept ? { fullStatements: kept.map(trimStatement) } : {}),
   };
 }
 

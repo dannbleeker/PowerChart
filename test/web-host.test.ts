@@ -2308,3 +2308,44 @@ describe("the id of a slide the user selected", () => {
     }
   });
 });
+
+describe("an error carries the call, not the payload it was handed", () => {
+  it("trims a statement long enough to be a whole deck", () => {
+    // ROUND 148, EXACTLY. `insert on top of an earlier run` failed with
+    // GeneralException | errorLocation=Microsoft.Office.PrivateApiService, and
+    // the location, the code and the failing call all arrived BEHIND ~100KB of
+    // base64 — `insertSlidesFromBase64` takes the file as an argument and
+    // Office echoes arguments back inside the statement.
+    //
+    // Trimming the COUNT of statements did nothing about it: the payload was
+    // inside one of the ten that were kept, and every byte was also written
+    // into the round archive.
+    const deck = "UEsDBAoAAAAAAL2GFV0" + "A".repeat(100_000);
+    const trimmed = trimDebugInfo({
+      code: "GeneralException",
+      errorLocation: "Microsoft.Office.PrivateApiService",
+      statement: "var root = context.root;",
+      fullStatements: ["var root = context.root;", `root.insertSlidesFromBase64("${deck}");`],
+    }) as { errorLocation: string; fullStatements: string[] };
+
+    const text = trimmed.fullStatements.join(" ");
+    expect(text.length, "the payload survived into the recorded error").toBeLessThan(1000);
+    // The CALL has to survive — it is the diagnosis.
+    expect(text, "trimmed away the call itself").toContain("insertSlidesFromBase64");
+    expect(text, "never said it had dropped anything").toMatch(/more char\(s\)/);
+    // And nothing else is disturbed.
+    expect(trimmed.errorLocation).toBe("Microsoft.Office.PrivateApiService");
+  });
+
+  it("trims the statement and its neighbours, not only the full list", () => {
+    // `statement` and `surroundingStatements` are what a reader sees FIRST, and
+    // they carry the same argument echo.
+    const long = `x("${"A".repeat(5_000)}")`;
+    const trimmed = trimDebugInfo({ statement: long, surroundingStatements: [long] }) as {
+      statement: string;
+      surroundingStatements: string[];
+    };
+    expect(trimmed.statement.length, "the headline statement kept its payload").toBeLessThan(400);
+    expect(trimmed.surroundingStatements[0].length, "a neighbour kept its payload").toBeLessThan(400);
+  });
+});
