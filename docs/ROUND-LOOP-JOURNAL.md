@@ -3898,3 +3898,59 @@ luck.
 
 The habit is the operator's; the fault is the driver's. **A round tests one
 build**, so `main` now reads HEAD once and hands it to every attempt.
+
+## Round 149 — the confirmation: 148 was the host, not the build
+
+    146   ok 3 | declined 10 | host-refused 0 | attempts 13 | scenarios 13/13
+    147   ok 3 | declined 10 | host-refused 0 | attempts 13 | scenarios 13/13
+    148   ok 3 | declined  8 | host-refused 0 | attempts 11 | scenarios 11/13
+    149   ok 3 | declined 10 | host-refused 0 | attempts 13 | scenarios 13/13
+
+Round 148's two scenario failures did not reproduce. Neither could have been
+ours: `git diff --name-only 148..147 -- src/` is empty, so the app code was
+byte-identical to the round before that scored 13/13.
+
+**The host was having a bad spell across both rounds, and only one of them
+said so.** 148 needed three attempts to start — a silent host, then a closed
+pane. 149's BROWSER DIED 245 seconds in and the driver rebuilt it. The
+difference is that 148's trouble happened before the round and left no mark on
+the round file at all.
+
+    in-place successes, three clean rounds running: 3 of 13
+
+### What 148 could not tell me, and now can
+
+A successful recovery erases its own evidence. Once `recover` works the round
+looks exactly like one that never needed it, so for all 149 archived rounds a
+run against a sick host was indistinguishable from a clean one — and "was the
+host unwell?" is the FIRST question to ask of a first-ever scenario failure.
+Rounds now carry `driverRun { attempts, recovered }`.
+
+### Four faults of one family, all found by asking that question
+
+1. **The archive threw the driver's own history away** — see above.
+2. **`FALLBACK_SIGNALS` had the same two-of-three gap `poolInPlaceUpdates`
+   had**, and the sibling sweep for that fix missed it. It tracked the
+   rule-based decline and not the throw, so the drift detector understated
+   every round in which the host refused a write. Given its own label rather
+   than merged: a write the host threw out is a different event from the differ
+   declining work a redraw does better, and drift in one must not absorb the
+   other.
+3. **Nothing checked that a detector still matches anything.** Every tool here
+   finds evidence by comparing a trace message to a string literal. Rename the
+   message in `src/` and the detector does not break — it reports zero, every
+   round, forever, and zero is what a healthy round looks like. All the current
+   literals are live; the guard is for the rename that has not happened yet.
+4. **`saved` was a fabricated number.** `nodes * 2 - changed` asserted a cost
+   model nobody measured — and the host's own statement list refutes it, since
+   writing ONE node emits about twenty statements. Taken literally it says the
+   in-place path always wins, which contradicts `UPDATE_SHARE_LIMIT` sitting
+   beside it, itself documented as untuned. Dropped. `changed` of `of` is the
+   measurement.
+
+### The archive was carrying the failure twice
+
+Round 148's file is 408 KB against ~197 KB for every clean round, and 111 KB of
+that is one `scenario FAILED` entry — the same base64 payload also stored in
+`selftest`. `trimDebugInfo` capped the COUNT of statements and not their
+LENGTH, and `insertSlidesFromBase64` puts the whole deck in one of them.

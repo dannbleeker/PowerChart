@@ -239,6 +239,20 @@ if (isMain(import.meta.url, process.argv[1])) {
       `    ${ip.unexplained.length} carried NO reason at all — open these first, they are the ones no category fits`,
     );
 
+  // WHAT IT TOOK TO GET THIS ROUND AT ALL. A successful recovery erases its own
+  // evidence — the round that follows it looks like any other — so a round run
+  // against a host that was already unwell read as clean. Round 148 took three
+  // attempts and then failed two scenarios that had not failed in 109 rounds;
+  // round 149's browser died 245 seconds in. Neither fact was archived.
+  const dr = rounds[rounds.length - 1]?.driverRun;
+  if (dr && Number(dr.attempts) > 1)
+    console.log(
+      `
+  THIS ROUND NEEDED ${dr.attempts} ATTEMPTS — recovered from: ${(dr.recovered ?? []).join(", ") || "unrecorded"}
+    A round the driver had to rescue is evidence taken from a host that was already unwell.
+    Read a scenario failure here against that, not against a clean round.`,
+    );
+
   const fb = poolFallbackRates(rounds);
   if (fb.length) {
     console.log(`

@@ -9940,10 +9940,25 @@ async function tryInPlaceUpdate(
     });
     return false;
   }
+  // `changed` and `of` ONLY. This used to also report
+  // `saved: nodes * 2 - changed`, a cost model asserting that a redraw costs two
+  // host calls per node and an in-place write one call per changed node.
+  //
+  // The host's own statement list refutes the second half. Writing ONE node
+  // emitted roughly twenty statements — left, top, width, height, fill,
+  // fill.clear, lineFormat, textFrame, textRange, text, wordWrap, four font
+  // properties, paragraphFormat, name, tags — so "1 call" was never true, and
+  // nothing ever measured the first half either. Taken at face value the
+  // formula says an in-place update is cheaper whenever `changed < 2 * total`,
+  // which is ALWAYS, and that contradicts `UPDATE_SHARE_LIMIT` sitting beside
+  // it — itself documented as untuned. Two unmeasured numbers disagreeing.
+  //
+  // A benefit nobody measured should not be printed as data. `changed` of `of`
+  // is the measurement; anyone reading "1 of 24" can see the saving without
+  // being told a number for it.
   trace("draw", "updated only the shapes that changed", {
     changed: plan.changed.length,
     of: it.scene.nodes.length,
-    saved: it.scene.nodes.length * 2 - plan.changed.length,
   });
   return true;
 }
