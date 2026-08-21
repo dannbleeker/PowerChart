@@ -4387,6 +4387,38 @@ describe("stopping work in flight", () => {
   });
 });
 
+describe("saying why a chart got no parts list", () => {
+  it("reports an outcome at every exit, not just the one that succeeds", () => {
+    // THE OBSERVABILITY GAP THIS CLOSES. The in-place chart update has never
+    // once succeeded — 0 times against 1301 fallbacks across 117 archived
+    // rounds — and the fallback's own reason is "the chart has no parts list",
+    // 12 times out of 13, every round. But nothing recorded whether a parts
+    // list was ever BUILT, so the archive could not tell apart:
+    //
+    //   never built    the chart was grouped, so it is not `loose` and no
+    //                  siblings are collected for it at all
+    //   built and lost the id read-back sync threw and the catch returns an
+    //                  all-undefined list
+    //   built, not found by the update path
+    //
+    // Three faults, three different fixes, and a day of archive mining could
+    // not separate them.
+    //
+    // `ungroupedFallback` is not exported and needs a live PowerPoint context,
+    // so this reads the source: a weaker check, and labelled as one. It catches
+    // an exit losing its report — which is the specific way this gap reopens,
+    // because two of the three exits are early returns that are easy to add to
+    // and easy to forget.
+    const src = readFileSync("src/render/powerpoint.ts", "utf8");
+    const fn = src.slice(src.indexOf("async function ungroupedFallback"));
+    const body = fn.slice(0, fn.indexOf("function tracePartsOutcome"));
+    const returns = (body.match(/return partsJson;/g) ?? []).length;
+    const reports = (body.match(/tracePartsOutcome\(/g) ?? []).length;
+    expect(returns, "the function stopped returning a parts list at all").toBeGreaterThan(1);
+    expect(reports, `${returns} exits but only ${reports} report — an exit lost its trace`).toBe(returns);
+  });
+});
+
 describe("reading the presentation's slide size", () => {
   // Cached per deck, so a value from one test would answer for the next.
   beforeEach(() => _resetSlideSizeCache());

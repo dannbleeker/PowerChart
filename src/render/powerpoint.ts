@@ -9286,7 +9286,13 @@ async function ungroupedFallback(
     ((wholeMatch?.has(i) ? freshMembers?.get(i) : undefined) ?? it.created).slice(1);
   const siblings = items.map((it, i) => (hasTags && loose(i) && it.opts.tagData ? parts(it, i) : []));
   const alt = items.map((it, i) => ({ it, i })).filter(({ it, i }) => loose(i) && wantsAltText(it.opts));
-  if (!alt.length && !siblings.some((s) => s.length)) return partsJson;
+  if (!alt.length && !siblings.some((s) => s.length)) {
+    // THE EXIT THAT LEAVES EVERY CHART WITHOUT A PARTS LIST. If this is the one
+    // being taken, the cause is upstream of the read-back entirely: no chart was
+    // loose with siblings to record.
+    tracePartsOutcome(items, grouped, tagTargets, siblings, partsJson, "no loose chart had siblings");
+    return partsJson;
+  }
   try {
     // Queueing counts as best-effort too. `s.load("id")` and `applyAltText` are
     // ordinary property access on host proxies, and on the web those can throw
@@ -9304,6 +9310,10 @@ async function ungroupedFallback(
     await boundedSync(context, "reading back an ungrouped chart's shape ids");
   } catch {
     /* no alt text or id read-back here — the chart is on the slide regardless */
+    // AND SAY SO. This exit discards a parts list that was about to be built,
+    // which is a different fault from never having had one — see
+    // `tracePartsOutcome`.
+    tracePartsOutcome(items, grouped, tagTargets, siblings, partsJson, "the id read-back threw");
     return partsJson;
   }
   siblings.forEach((shapes, i) => {
@@ -9317,7 +9327,50 @@ async function ungroupedFallback(
       .filter((id): id is string => typeof id === "string" && id.length > 0);
     if (ids.length) partsJson[i] = JSON.stringify(ids);
   });
+  tracePartsOutcome(items, grouped, tagTargets, siblings, partsJson, "read the ids back");
   return partsJson;
+}
+
+/**
+ * Say how many charts left this function with a parts list, and why the rest did
+ * not.
+ *
+ * WHY THIS EXISTS. The in-place chart update has never once succeeded — 0 times
+ * against 1301 fallbacks across 117 archived rounds — and the fallback's own
+ * reason is "the chart has no parts list", 12 times out of 13, in every round.
+ * But NOTHING RECORDS WHETHER A PARTS LIST WAS EVER BUILT, so the archive cannot
+ * tell apart:
+ *
+ *   - never built, because the chart was grouped and a grouped chart is not
+ *     `loose`, so no siblings are collected for it at all;
+ *   - built and then lost, because the id read-back sync threw and the catch
+ *     returns an all-undefined list;
+ *   - built, written, and not found again by the update path.
+ *
+ * Three different faults with three different fixes, and a day of archive
+ * mining cannot separate them. That is the definition of an observability gap:
+ * the evidence needed to choose was never written down.
+ *
+ * `where` names the exit taken, because two of the three returns above are early
+ * ones and a count without its exit cannot distinguish them either.
+ */
+function tracePartsOutcome(
+  items: Grouping[],
+  grouped: Set<number>,
+  tagTargets: (PowerPoint.Shape | undefined)[],
+  siblings: PowerPoint.Shape[][],
+  partsJson: (string | undefined)[],
+  where: string,
+): void {
+  trace("draw", "parts list outcome", {
+    where,
+    charts: items.length,
+    // The three states a chart can be in, counted rather than inferred.
+    groupedSoNotLoose: items.filter((_, i) => grouped.has(i)).length,
+    noTagTarget: items.filter((_, i) => !grouped.has(i) && !tagTargets[i]).length,
+    looseWithNoSiblings: items.filter((_, i) => !grouped.has(i) && tagTargets[i] && !siblings[i]?.length).length,
+    gotPartsList: partsJson.filter(Boolean).length,
+  });
 }
 
 function getTargetSlide(context: PowerPoint.RequestContext, slideId?: string): PowerPoint.Slide {

@@ -3505,3 +3505,57 @@ A count of zero is the hardest thing for a report to say, because nothing draws
 attention to a line that is never printed. Guarded both ways: the test pins the
 zero AND pins that a success would be noticed, so the day the feature starts
 working the gate stops calling it dead.
+
+## Chasing the parts list: the archive cannot answer, and that IS the finding
+
+The in-place update falls back with "the chart has no parts list" 12 times out of
+13, every round. Why that list is missing has three possible answers, and the
+code makes all three reachable:
+
+    never built     the chart was GROUPED, and `loose` is
+                    `!grouped.has(i) && tagTargets[i]` — a grouped chart
+                    collects no siblings at all
+    built and lost  the id read-back sync threw, and the catch returns an
+                    all-undefined list
+    built, written, and not found again by the update path
+
+**Three faults, three different fixes — and the archive cannot separate them.**
+
+    trace entries carrying a `partIds` field : 0
+
+The field exists in the code and is written to a structure nothing traces. A full
+day of archive mining could not choose between the three, because the evidence
+needed to choose was never recorded.
+
+### What the archive DOES say, and where it stops
+
+The read-back failure is real but partial: `reading back an ungrouped chart's
+shape ids` fails 3.8 times per round on average, while `no parts list` is a flat
+12 in every round from 070 onward. So the catch explains roughly a third of it at
+most, and something structural accounts for the rest.
+
+The obvious candidate is grouping — this host groups successfully (20 grouped, 0
+refused, most rounds) and a grouped chart is not `loose`. **That is a hypothesis,
+not a finding**, and it does not fit cleanly: round 141 grouped 10 and refused 9,
+and its `no parts list` count was still exactly 12. A cause that varies while the
+effect stays constant is not the cause.
+
+So it is left as a hypothesis, and the instrument is shipped instead.
+
+### The instrument
+
+`tracePartsOutcome` reports, from every one of the three exits:
+
+    charts, groupedSoNotLoose, noTagTarget, looseWithNoSiblings, gotPartsList
+
+and `where` — which exit was taken — because two of the three are early returns
+and a count without its exit cannot tell them apart either.
+
+**Guarded on the count of exits, not on the presence of one call.** The specific
+way this gap reopens is someone adding a fourth early return and not adding a
+report to it, so the test asserts that the number of `tracePartsOutcome` calls
+EQUALS the number of `return partsJson` statements. Mutation-checked: deleting
+one report turns it red.
+
+**The next round answers this.** Not a guess — the numbers will say which of the
+three it is, on the first round after this ships.
