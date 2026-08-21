@@ -5200,6 +5200,46 @@ function settle(): Promise<void> {
 }
 
 /**
+ * The gap before rasterising a slide that was JUST rasterised.
+ *
+ * THE ONE FAULT BEHIND EVERY BLIND VISIBILITY GATE. Across 104 archived rounds
+ * the correlation is exact — 40 blind rounds carry a rasterise stall, 64 sighted
+ * rounds carry none — and the stall trace says the same thing all 40 times:
+ *
+ *     WHICH CALL STALLED           WHAT THE HOST LAST ANSWERED
+ *      34x rasterising a slide      34x rasterising a slide
+ *       6x the visibility CONTROL    6x the visibility BEFORE render
+ *
+ * (Two rows, one event: the labels only became specific recently.) The stall
+ * shape adds `issued immediately after the previous answer`. So the host answers
+ * the first rasterise of a slide and then hangs — for the full 20s budget, never
+ * returning — on a second rasterise of the SAME slide issued straight after it.
+ *
+ * A successful render takes 941ms at the median and 1466ms at its worst, so a
+ * call still outstanding at 20s is hung, not slow. Three seconds is twice the
+ * slowest render that has ever come back.
+ *
+ * NOT A CURE, A CANDIDATE. Nothing upstream describes this shape — the nearest
+ * are office-js#5022 (sync hangs after add-then-read) and #6266 (a Mac/Windows
+ * rendering difference) — and the only guidance that exists for the family is
+ * to space the calls out. The rounds after this shipped are the test, and the
+ * baseline to beat is a 38% blind rate.
+ *
+ * Costs one wait per round, on the one call this gate cannot do without.
+ */
+let RASTER_GAP_MS = 3_000;
+
+/** Test-only: a suite cannot spend three real seconds proving a gap exists. */
+export function _setRasterGapForTest(ms: number): void {
+  RASTER_GAP_MS = ms;
+}
+
+/** Leave the rasteriser alone before asking it for the same slide again. */
+export function rasterGap(): Promise<void> {
+  return RASTER_GAP_MS > 0 ? new Promise((r) => setTimeout(r, RASTER_GAP_MS)) : Promise.resolve();
+}
+
+/**
  * How long to wait before asking a slide for its shapes a SECOND time, when the
  * first answer was short or empty.
  *

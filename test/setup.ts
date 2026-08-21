@@ -1,5 +1,9 @@
 import { beforeEach } from "vitest";
-import { _setReReadRetryDelayForTest, _setCountSettleDelayForTest } from "../src/render/powerpoint";
+import {
+  _setReReadRetryDelayForTest,
+  _setCountSettleDelayForTest,
+  _setRasterGapForTest,
+} from "../src/render/powerpoint";
 
 /**
  * A fake host has no lag to settle, so no suite should pay for one.
@@ -28,4 +32,10 @@ beforeEach(() => {
   // first time, so every one of those waits is dead time — and it is per
   // UPDATE, which would put four seconds on each of a dozen updates.
   _setCountSettleDelayForTest(1);
+  // And the gap before re-rasterising a slide the host has just rasterised
+  // (RASTER_GAP_MS, 3s). Same argument, and this one is spent on a fake whose
+  // rasteriser cannot hang at all: the wait exists for a real host that answers
+  // the first render and then never returns from the second. Four selftest
+  // scenarios went over their five-second budget the moment it landed.
+  _setRasterGapForTest(0);
 });

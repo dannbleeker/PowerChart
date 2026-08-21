@@ -184,8 +184,16 @@ export const KNOWN_ISSUES = {
     "the number would say 'this host is unwell' rather than 'your paste broke a chart'. `same scale across the deck` already " +
     "reports how many charts in a deck are re-editable, which is the same fact without the false precision. Recorded as a " +
     "limitation so the next person to meet an un-editable pasted chart does not go looking for it in our tag writer.",
+  6266:
+    "getImageAsBase64 behaves differently on Mac and Windows: content add-ins do not appear in the image Windows generates. " +
+    "NO EXPOSURE — nothing here embeds a content add-in in a slide it rasterises — and it is registered because it was READ AND " +
+    "REJECTED, not because it bites. Found 2026-08-21 while searching for the fault behind `rasterGap`: the host answers the " +
+    "first rasterise of a slide and then hangs for the full 20s budget on a second rasterise of the SAME slide issued straight " +
+    "after it, which is 40 of 40 blind visibility gates in the archive. THIS ISSUE IS NOT THAT. It is about the CONTENT of a " +
+    "render that succeeds, not a render that never returns, and the nearest thing upstream to the real fault remains #5022. " +
+    "Recorded so the next search does not have to re-read it to reach the same conclusion.",
   6498:
-    "Shapes inserted on PowerPoint WEB do not reflect instantly: changes may not appear without a page refresh, and — the part " +
+    "Shapes inserted on PowerPoint WEB do not reflect instantly: changes may not appear without a page refresh, and — the part" +
     "that matters here — they may appear IN THE SLIDE PREVIEW BUT NOT IN THE MAIN VIEW. Open, no Microsoft response, no " +
     "workaround offered. Triaged 2026-08-12 as a LIMIT ON WHAT ONE GATE PROVES rather than a bug to fix: `chartIsVisible` is " +
     "this project's only mechanical evidence that a chart it drew can be SEEN, and it works by rasterising the slide with " +

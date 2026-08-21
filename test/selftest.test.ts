@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { readFileSync } from "fs";
 import {
   installHost,
   makeSlide,
@@ -1385,6 +1386,34 @@ describe("scenarios that must not be able to pass without proving anything", () 
     // naming failure rides along as a caveat rather than replacing it.
     expect(unnamed.ok, unnamed.detail).toBe(true);
     expect(unnamed.detail).toMatch(/would not name the chart/);
+  });
+
+  it("waits before re-rasterising the slide it has just rasterised", () => {
+    // THE FAULT BEHIND EVERY BLIND VISIBILITY GATE, and the wiring is the fix.
+    // Across 104 archived rounds the correlation is exact — 40 blind rounds
+    // carry a rasterise stall, 64 sighted rounds carry none — and all 40 stalls
+    // are the CONTROL render, issued immediately after the BEFORE render
+    // answered, hanging for the full 20s budget. A successful render takes
+    // 941ms at the median and 1466ms at its worst, so a call outstanding at 20s
+    // is hung rather than slow.
+    //
+    // The gap is zeroed in `test/setup.ts` — a fake rasteriser cannot hang, and
+    // three real seconds per scenario put four of them over budget — which
+    // means NO BEHAVIOURAL TEST CAN SEE THIS CALL. Deleting it would leave the
+    // suite green, exactly as deleting the pane refresh from `collectRound`
+    // did. So this reads the source, and is labelled as the weaker check it is:
+    // it catches the call being removed or reordered, not the gap being wrong.
+    //
+    // The real evidence is the blind rate across future rounds, against a 38%
+    // baseline.
+    // A cwd-relative path, not `import.meta.url`: this file runs under jsdom,
+    // where `import.meta.url` is not a file:// URL and `readFileSync` refuses
+    // it outright. Vitest runs from the repo root.
+    const src = readFileSync("src/taskpane/selftest.ts", "utf8");
+    const gapAt = src.indexOf("await rasterGap()");
+    const controlAt = src.indexOf("rasterising the same slide a second time");
+    expect(gapAt, "the gap before the control render is gone — the gate goes blind again").toBeGreaterThan(0);
+    expect(gapAt, "the gap must come BEFORE the control render, or it waits after the damage").toBeLessThan(controlAt);
   });
 
   it("names the rasterise stall when the control is missing, instead of shrugging", () => {
