@@ -1302,7 +1302,7 @@ function clickRef(sh, ref) {
   return sh("eval", "el => { el.click(); return 'ok'; }", ref);
 }
 
-async function attempt(argv, deps, sh, healed = false) {
+export async function attempt(argv, deps, sh, healed = false) {
   const run = deps.run ?? spawnSync;
   const sleep = deps.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
   const fetchBuild = deps.fetchBuild ?? defaultFetchBuild;
@@ -1316,7 +1316,17 @@ async function attempt(argv, deps, sh, healed = false) {
   const wantDeck = process.env.PW_DECK || null;
   const deckFronted = wantDeck ? selectDeck(sh, wantDeck) : true;
 
-  const head = String(run("git", ["rev-parse", "--short=7", "HEAD"], { encoding: "utf8" }).stdout ?? "").trim() || null;
+  // PINNED BY THE CALLER FOR THE WHOLE ROUND, not re-read per attempt. A round
+  // tests ONE build; re-deriving its identity mid-run lets the thing under test
+  // change while it is being measured. Concretely: a commit made in this clone
+  // while a round was retrying moved HEAD ahead of the deployed site, and the
+  // driver then refused its own round as `site-behind` against a commit that had
+  // never been deployed and was not what it was testing. Happened twice on
+  // 2026-08-21. Falls back to reading it, for callers that drive `attempt`
+  // directly.
+  const head =
+    deps.head ??
+    (String(run("git", ["rev-parse", "--short=7", "HEAD"], { encoding: "utf8" }).stdout ?? "").trim() || null);
   const deployed = buildOf(await fetchBuild());
   let stamp = buildOf(sh("find", "--regex", "/[0-9a-f]{7} ·/"));
 
@@ -2186,6 +2196,10 @@ async function main(argv, deps = {}) {
   const max = retryArg === -1 ? 0 : Number(argv[retryArg + 1]) || 0;
 
   const write = deps.write ?? writeFileSync;
+  // Read ONCE, here, and handed to every attempt. See `attempt`'s `head`.
+  const pinnedHead =
+    deps.head ??
+    (String(run("git", ["rev-parse", "--short=7", "HEAD"], { encoding: "utf8" }).stdout ?? "").trim() || null);
 
   for (let n = 0; ; n++) {
     if (n) console.log(`\n  attempt ${n + 1} of ${max + 1}`);
@@ -2202,7 +2216,7 @@ async function main(argv, deps = {}) {
     // chance a crash dialog does.
     let outcome;
     try {
-      outcome = await attempt(argv, deps, sh);
+      outcome = await attempt(argv, { ...deps, head: pinnedHead }, sh);
     } catch (err) {
       console.error(`  the round threw where nothing expected it to: ${err?.message ?? err}`);
       outcome = { code: 1, reason: "threw", codes: [], threw: String(err?.message ?? err) };

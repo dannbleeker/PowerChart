@@ -3846,3 +3846,55 @@ those better. The remaining two are correct by construction.
 
 13 of 13 scenarios passed. Friction — 3 errors, 2 id refusals, 1 general
 exception — all recovered.
+
+## Round 147 — the pair confirms it
+
+    145   ok 0 | declined 10 | host-refused 3 | attempts 13 | scenarios 13/13
+    146   ok 3 | declined 10 | host-refused 0 | attempts 13 | scenarios 13/13
+    147   ok 3 | declined 10 | host-refused 0 | attempts 13 | scenarios 13/13
+
+An exact repeat, reason breakdown included. `9ef98af` differs from `2521d23`
+only by a comment and an archive, so this is the second run of a pair rather
+than a new build — and the second run is usually the WORSE one. An identical
+result is therefore the strongest form this evidence takes: three successes is
+the rate, not a lucky round.
+
+Thirteen attempts in all three rounds, which is the constant. Nothing here
+depends on a denominator that moved.
+
+### Both of these rounds were read through an instrument that could not see the failure
+
+`poolInPlaceUpdates` — the pool behind the gate's "A FEATURE THAT HAS NEVER RUN"
+banner — counted two of three outcomes:
+
+    updated only the shapes that changed        -> ok
+    not updating in place — redrawing instead   -> fell
+    in-place update refused — redrawing instead -> COUNTED AS NEITHER
+
+The third is the THROW path, which carries an `error` and no `why`. So every
+host-side refusal registered as neither a success nor a fallback and left no
+trace in the gate at all: the three `Shape.textFrame` refusals in round 145 and
+two more in 144. The tool was structurally incapable of showing the thing that
+was missed by hand, which is why looking harder would not have helped.
+
+Pooled over the archive it now reads:
+
+    in-place update: 3 succeeded, 1358 declined, 5 refused by the host over 122 round(s)
+      1197x  the chart has no parts list, so its nodes cannot be mapped to shapes
+       121x  this update draws a picture, which is not in the scene
+        19x  too much of the chart changed to be worth writing shape by shape
+         5x  InvalidArgument at Shape.textFrame
+
+And the residual is NAMED rather than tallied. A bucket reported as a number
+reads as noise and gets skipped; reported as a line it gets opened.
+
+### A measurement fault found by making it twice
+
+`attempt` re-read `git HEAD` on every retry, so committing in this clone while a
+round retried moved the build under test mid-round — the driver would then
+refuse its own round as `site-behind` against a commit that had never been
+deployed and was not what it was measuring. Both times it was harmless only by
+luck.
+
+The habit is the operator's; the fault is the driver's. **A round tests one
+build**, so `main` now reads HEAD once and hands it to every attempt.
