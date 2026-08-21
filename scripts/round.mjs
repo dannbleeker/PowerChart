@@ -38,7 +38,7 @@
  * `CLAUDE.md` "Looking at the task pane" for the browser traps this encodes.
  */
 import { spawnSync } from "child_process";
-import { readFileSync, writeFileSync, existsSync, readdirSync, realpathSync } from "fs";
+import { readFileSync, writeFileSync, existsSync, readdirSync, realpathSync, copyFileSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 import { isMain } from "./is-main.mjs";
@@ -1571,6 +1571,9 @@ export async function attempt(argv, deps, sh, healed = false) {
   console.log("  ready");
   if (checkOnly) return { code: 0, reason: "checked" };
 
+  // BEFORE THIS ROUND OVERWRITES THE LAST ONE'S REMAINS. See `keepCrashedRun`.
+  await keepCrashedRun(sh, sleep);
+
   // THE RUN BUTTON ONLY EXISTS ON THE AUTOMATION TAB, and a pane does not open
   // there. A freshly sideloaded or reopened pane comes up on `Chart`, so the
   // button is not merely hidden — it is not in the DOM at all.
@@ -1704,6 +1707,52 @@ export async function attempt(argv, deps, sh, healed = false) {
  * way to name WHICH round, and guessing "the newest file in rounds/" is the
  * assumption that already produced one wrong overwrite diagnosis in this repo.
  */
+/**
+ * Download the steps a CRASHED round managed to write, before a new one buries
+ * them.
+ *
+ * A crashed round archives nothing: it never reaches the download button, so
+ * the only thing left is the host's own console in `crashes/*.md`, which says
+ * what PowerPoint thought and nothing about what WE were doing. Round 150
+ * crashed six times in a row at 255-284s, and placing the crash needed the
+ * scenario start times of OTHER rounds to guess at it.
+ *
+ * It did not have to. `crashlog.ts` flushes every step to `localStorage` as it
+ * happens, and the next pane load calls `recoverCrashLog()` and un-hides
+ * "Download the crashed run". The driver's own recovery reopens that pane, with
+ * the same persistent profile and the same storage — so the button was sitting
+ * there after every one of those six crashes and nobody pressed it. The one
+ * crashed run in this repo's session directory was downloaded BY HAND, on
+ * 2026-08-15.
+ *
+ * Kept beside the crash report rather than filed as a round: a partial run is
+ * not a round, and `archive` is right to refuse it. Best-effort throughout —
+ * a round is not worth failing over the paperwork of the round before it.
+ */
+export async function keepCrashedRun(sh, sleep, copy = copyFileSync, exists = existsSync) {
+  try {
+    const ref = refFor(sh, "Download the crashed run", /button "Download the crashed run"/);
+    // Nothing kept, or a previous attempt already saved it — `clearCrashLog`
+    // hides the button once pressed, so this does not re-download in a loop.
+    if (!ref) return null;
+    clickRef(sh, ref);
+    await sleep(8000);
+    const from = `${sh.dir ?? "."}/.playwright-cli/powerchart-crashed-run.json`;
+    if (!exists(from)) {
+      console.error("  a crashed run was offered but its file never arrived");
+      return null;
+    }
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+    const to = `crashes/${stamp}-crashed-run.json`;
+    copy(from, to);
+    console.log(`  kept the steps of a round that never finished — ${to}`);
+    return to;
+  } catch (err) {
+    console.error(`  (could not keep the crashed run: ${err?.message ?? err})`);
+    return null;
+  }
+}
+
 async function collectRound(sh, stamp, sleep, driverSize = null, driverRun = null) {
   let filed = null;
   try {
