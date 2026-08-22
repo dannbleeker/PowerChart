@@ -1050,6 +1050,25 @@ export function poolScenarioFriction(logs) {
 }
 
 /** Open predictions, judged against the newest round given. */
+/**
+ * Is this entry stamped with a day and no time, on a claim that has no build in
+ * the archive to anchor it?
+ *
+ * `stampDate` compares lexicographically and a bare `2026-08-22` means the
+ * START of that day, so a claim staked at 22:55 is judged against every round
+ * taken earlier the same day — including the rounds that motivated it. The
+ * first rule this ledger is built on is that a prediction is never judged
+ * against the round that prompted it, and a date-only stamp walks around it.
+ *
+ * ONLY WHEN THE BUILD IS ABSENT. A `afterBuild` that IS in the archive pins the
+ * position exactly and the date is never consulted, so warning there would be
+ * noise on every correctly-staked entry.
+ */
+export function stakedWithoutATime(prediction, logs, buildOf) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(prediction?.madeOn ?? ""))) return false;
+  return !(logs ?? []).some((l) => buildOf(l) === prediction.afterBuild);
+}
+
 function reportPredictions(logs, load = readFileSync) {
   let ledger;
   try {
@@ -1074,6 +1093,24 @@ function reportPredictions(logs, load = readFileSync) {
     // an OLDER one — round 27 standing in for a round 29 that does not exist
     // yet. Rounds are ordered oldest-first, so anything at or before the
     // prompting round cannot test the change.
+    // A DATE WITHOUT A TIME MEANS THE START OF THAT DAY, and that is a foot-gun
+    // rather than a convenience. `stampDate` compares lexicographically, so a
+    // claim staked at 22:55 with a bare `2026-08-22` is judged against every
+    // round taken earlier the same day — INCLUDING the rounds that motivated it.
+    // The first rule this ledger is built on is that a prediction is never
+    // judged against the round that prompted it, and a date-only stamp walks
+    // straight around it. #684 did exactly that on the evening it was written
+    // and came out `BOTH`, on evidence recorded before the change existed.
+    //
+    // Warned rather than refused: the entries from 2026-08-16 onward carry
+    // date-only stamps and are correctly judged, because the rounds that would
+    // confuse them were taken on other days.
+    if (stakedWithoutATime(p, logs, buildOf))
+      console.log(
+        `    ^ NOTE  ${p.id} is stamped with a day and no time, so it is judged from the START of\n` +
+          `            ${p.madeOn} — any round taken earlier that day counts as evidence, including the\n` +
+          `            ones that prompted it. Stake with a time (\`YYYY-MM-DD HH:MM\`).`,
+      );
     const eligible = roundsToJudgeOn(logs, p.afterBuild, buildOf, p.madeOn);
     if (!eligible.length) {
       console.log(`    no round yet   ${p.id}  (${p.madeIn}, made on ${p.afterBuild})`);
