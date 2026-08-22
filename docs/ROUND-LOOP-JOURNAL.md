@@ -4135,3 +4135,90 @@ nine seconds it appears to save.**
 
 Not the default yet. One round is enough to show the mechanism works and not
 enough to adopt on.
+
+## Rounds 156-157 — a prediction that held twenty times and read as FAILED
+
+    154            ok 11 | declined 2 | 13/13 | same scale 159662 ms | attempts 2
+    155  --fresh   ok 11 | declined 2 | 13/13 | same scale 150740 ms | attempts 1
+    156            ok 11 | declined 2 | 13/13 | same scale 153799 ms | attempts 3
+    157            ok 11 | declined 2 | 13/13 | same scale 185389 ms | attempts 2
+
+The verdicts are a flat line across four rounds and seven driver fixes, which is
+what those fixes were for: they change how a round STARTS, not what it measures.
+
+### The timing claim from round 155 is now refuted, by its own successor
+
+Round 155 recorded 150740 ms and this journal wrote that the mechanism was
+plausible and the claim was not being made. Round 157 came in at **185389 ms —
+23% slower — on a build whose only diff from 156 is `scripts/round.mjs`, a test
+file, and an archived round.** No src/ change whatever. So the same application
+code, twice, produced 153799 and 185389.
+
+**`same scale across the deck` has a noise band of at least ±20%.** Every timing
+comparison in this archive that quoted a difference smaller than that quoted
+noise, this journal's own nine-second observation included. Good that it was
+staked as unclaimed; the discipline earned its keep four rounds later.
+
+### The find: #520 held in 20 rounds and the ledger printed FAILED
+
+`the-refused-group-is-what-kills-the-tag` was staked on 2026-08-18 and has sat
+OPEN ever since, reported as FAILED whenever triage looked at it. Pooling the
+probe across the whole archive rather than reading the newest round:
+
+    does-a-failed-group-poison-the-tag   present in 114 of 133 rounds
+      no-refusal   94   "the refusal was never provoked"    <- the question was never put
+      tags-gone    20   ".tags was undefined after the refused group"  <- the claim, exactly
+
+**Twenty confirmations, zero refutations, and a verdict of FAILED.** Three
+separate defects stacked, and all three are this project's house defect wearing
+different clothes:
+
+1. **`no-refusal` is a never-put question scored as a refutation.** The probe
+   says so in its own words. It is a THIRD category and is deliberately NOT
+   folded into `NOT_ASKED`: not "the harness could not set it up" (ours to fix),
+   not "the host would not answer" (a fact about the host), but "the precondition
+   did not occur". A **conditional probe**, whose question exists only when the
+   host misbehaves in a particular way. `UNPROVOKED` now names it.
+
+2. **The claim matched on strings the probe cannot emit.**
+   `InvalidParam|5010|GeneralException` against a probe whose vocabulary is
+   `no-refusal`/`tags-gone` plus prose. Even the 20 firings would have read
+   FAILED. Round 102 taught precisely this lesson from the trace side — *a claim
+   is only as good as the set of strings the thing it watches can produce* — and
+   it did not carry across to the probe side. Claims now match the answer KEY, an
+   enum the probe picks, as well as the detail a later commit can reword.
+
+3. **The reading was n=1.** `roundToJudgeOn` handed the judge the newest round.
+   For a probe that fires 18% of the time, that is an 82% chance of being judged
+   on a round that measured nothing. triage.mjs spends a page arguing that a
+   single round's verdict is a fact about the code AND the host's mood that
+   afternoon — and the prediction ledger was the one reader ignoring it.
+   Predictions are judged across every eligible round now and print the split.
+
+`BOTH` is a verdict in its own right. When the decided rounds disagree about
+code that did not change, that is a finding about the host, not a tie to break
+quietly.
+
+### Sibling sweep
+
+All 38 probe ids, every distinct `answer` value across 133 rounds. Only
+`no-refusal` qualifies. `no-group-id` ("the host would not name the group it
+just made"), `no-id` ("the fresh shape would not report an id"), `none` and
+`unreadable` are the host DECLINING a question that WAS put — findings, not
+starved probes — and they stay where they are.
+
+### What it means for the product
+
+The diagnosis behind #520 is **confirmed**: the grouping attempt this host
+refuses 5010 is what takes the tag with it, and the tag-anchor change merged
+beside it in August was aimed one level too low. The fix belongs at the context,
+not at the handle. That has been true and recorded for 130 rounds.
+
+### Doctrine
+
+An instrument that reports a verdict for a question it never asked is the same
+defect as one that hardcodes its conclusion. Both print a sentence with no
+measurement under it, and both keep printing after they stop being true. The new
+rule: **before believing a probe's verdict, pool its answers over the archive and
+check the denominator.** A claim judged on one round is a claim about one
+afternoon.

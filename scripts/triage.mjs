@@ -602,6 +602,19 @@ export function poolEveryDraw(logs) {
  */
 export function judgePrediction(prediction, log) {
   const NOT_ASKED = new Set(["no-scratch-slide", "no-scratch-shape", "not-asked"]);
+  // A THIRD CATEGORY, and keeping it out of NOT_ASKED is the point. A
+  // CONDITIONAL probe's question only exists when the host misbehaves in a
+  // particular way, and on a round where it behaved there is nothing to
+  // measure — which is neither "the harness could not set it up" (ours to fix)
+  // nor "the host would not answer" (a fact about the host).
+  //
+  // `does-a-failed-group-poison-the-tag` is why this exists. It answers
+  // `no-refusal` — "the host grouped through a slide handle two syncs old, so
+  // the refusal was never provoked", its own words — in 94 of the 114 rounds
+  // that carry it, and `tags-gone` in the other 20. `no-refusal` fell through
+  // to the pattern test, matched nothing, and was reported FAILED: the house
+  // defect exactly, an unmeasured thing reported as a negative measurement.
+  const UNPROVOKED = new Set(["no-refusal"]);
   const answers = log?.hostAnswers?.answers;
   const byId = new Map((Array.isArray(answers) ? answers : []).map((a) => [a.id, a]));
   const c = prediction.claim ?? {};
@@ -696,8 +709,20 @@ export function judgePrediction(prediction, log) {
     // A never-put question has no detail worth matching, and calling that a
     // failure would blame the prediction for the host refusing the question.
     if (NOT_ASKED.has(a.answer)) return { verdict: "undetermined", why: `${c.id} was never put (${a.answer})` };
-    const hit = new RegExp(c.pattern, "i").test(String(a.detail ?? ""));
-    return { verdict: hit ? "held" : "FAILED", why: String(a.detail ?? "").slice(0, 90) };
+    if (UNPROVOKED.has(a.answer))
+      return { verdict: "undetermined", why: `${c.id}'s precondition did not occur this round (${a.answer})` };
+    // THE ANSWER KEY AS WELL AS THE PROSE. An `answer` is a stable enum the
+    // probe picks; a `detail` is a sentence someone rewords. #520 was staked on
+    // `InvalidParam|5010|GeneralException` — error codes this probe has never
+    // once emitted in 114 rounds — so on the 20 rounds where it DID fire and
+    // report `.tags was undefined after the refused group`, the exact outcome
+    // the prediction claimed, the ledger would still have printed FAILED.
+    //
+    // Round 102 taught the same lesson from the trace side: a claim is only as
+    // good as the set of strings the thing it watches can produce. Matching the
+    // key gives a claim something to anchor on that a rewrite cannot move.
+    const hit = new RegExp(c.pattern, "i").test(`${a.answer ?? ""} ${a.detail ?? ""}`);
+    return { verdict: hit ? "held" : "FAILED", why: `${a.answer} — ${String(a.detail ?? "").slice(0, 90)}` };
   }
   return { verdict: "undetermined", why: `unknown claim kind ${String(c.kind)}` };
 }
@@ -716,12 +741,37 @@ export function judgePrediction(prediction, log) {
  * that has never been run came out `held` on evidence recorded before it
  * existed.
  *
- * That is the same defect the comment below already describes ("round 27
+ * That is the same defect `roundsToJudgeOn` already describes ("round 27
  * standing in for a round 29 that does not exist yet"), reached through the
  * not-found branch instead of through inequality. A prediction whose build has
  * not been rounded has NO round to judge on, and saying so is the whole answer.
  */
 export function roundToJudgeOn(logs, afterBuild, buildOf, madeOn) {
+  // THE NEWEST OF THE ELIGIBLE ROUNDS, and everything about WHICH rounds are
+  // eligible now lives in `roundsToJudgeOn` with the code that decides it.
+  // Prefer that one: taking the last of a population is exactly the n=1 reading
+  // that let #520 sit open for 130 rounds, and it survives here only because
+  // the single-round claim kinds have no population to pool.
+  return roundsToJudgeOn(logs, afterBuild, buildOf, madeOn).slice(-1)[0];
+}
+
+/**
+ * EVERY round a prediction may be judged on, newest last — the population
+ * `roundToJudgeOn` takes the last of.
+ *
+ * A single round is n=1, and this file spends a page arguing that a single
+ * round's verdict is a fact about the code AND the host's mood that afternoon.
+ * The prediction ledger was the one reader that ignored it: `roundToJudgeOn`
+ * hands back the newest round and the verdict is whatever that afternoon said.
+ *
+ * For a CONDITIONAL probe that is not a rounding error, it is the whole answer.
+ * `does-a-failed-group-poison-the-tag` puts its question in 20 of 114 rounds,
+ * so the newest round is 82% likely to carry no measurement at all — and the
+ * one time in five it does, that reading stands alone against nineteen others
+ * nobody looks at. #520 sat OPEN for 130 rounds with its answer recorded
+ * twenty times.
+ */
+export function roundsToJudgeOn(logs, afterBuild, buildOf, madeOn) {
   // THE LAST ROUND ON THAT BUILD, NOT THE FIRST. `findIndex` stopped at the
   // earliest one, and the cycle archives two rounds at 16:9 plus one at 4:3 on
   // a single build — so `slice(madeAt + 1)` still held the prompting build's own
@@ -745,9 +795,31 @@ export function roundToJudgeOn(logs, afterBuild, buildOf, madeOn) {
   // an entry that says when it was made can be judged on any round taken after
   // that day. The build match stays first: it is exact, and dates are only as
   // good as the stamp.
-  const since =
-    madeAt !== -1 ? logs.slice(madeAt + 1) : madeOn ? logs.filter((l) => stampDate(l, buildOf) > madeOn) : [];
-  return since[since.length - 1];
+  return madeAt !== -1 ? logs.slice(madeAt + 1) : madeOn ? logs.filter((l) => stampDate(l, buildOf) > madeOn) : [];
+}
+
+/**
+ * The verdict across every eligible round, and the split that produced it.
+ *
+ * THE SPLIT IS THE POINT, not the headline. A probe that answers sometimes
+ * gives a population, and a population can disagree with itself — which is a
+ * finding about the host, not a tie to be broken quietly. So when the decided
+ * rounds say both things, this says so rather than picking one.
+ */
+export function judgeAcross(prediction, rounds, buildOf) {
+  const held = [];
+  const failed = [];
+  let undecided = 0;
+  for (const r of rounds) {
+    const { verdict, why } = judgePrediction(prediction, r);
+    if (verdict === "held") held.push({ build: buildOf(r), why });
+    else if (verdict === "FAILED") failed.push({ build: buildOf(r), why });
+    else undecided++;
+  }
+  const decided = held.length + failed.length;
+  const verdict = !decided ? "undetermined" : held.length && failed.length ? "BOTH" : held.length ? "held" : "FAILED";
+  const last = (failed.length ? failed : held).slice(-1)[0];
+  return { verdict, held: held.length, failed: failed.length, undecided, decided, rounds: rounds.length, last };
 }
 
 /** When a round was taken, out of its build stamp, or "" when it does not carry one. */
@@ -981,14 +1053,23 @@ function reportPredictions(logs, load = readFileSync) {
     // an OLDER one — round 27 standing in for a round 29 that does not exist
     // yet. Rounds are ordered oldest-first, so anything at or before the
     // prompting round cannot test the change.
-    const judged = roundToJudgeOn(logs, p.afterBuild, buildOf, p.madeOn);
-    if (!judged) {
+    const eligible = roundsToJudgeOn(logs, p.afterBuild, buildOf, p.madeOn);
+    if (!eligible.length) {
       console.log(`    no round yet   ${p.id}  (${p.madeIn}, made on ${p.afterBuild})`);
       continue;
     }
-    const { verdict, why } = judgePrediction(p, judged);
-    console.log(`    ${verdict.padEnd(13)} ${p.id}  (${p.madeIn}) — judged on ${buildOf(judged)}`);
-    if (why) console.log(`                  ${why}`);
+    // ACROSS THE POPULATION, not on whichever round happened to be newest.
+    const t = judgeAcross(p, eligible, buildOf);
+    const where = t.decided
+      ? `judged on ${t.rounds} round(s), ${t.decided} of which measured it`
+      : `no round measured it`;
+    console.log(`    ${t.verdict.padEnd(13)} ${p.id}  (${p.madeIn}) — ${where}`);
+    if (t.decided) console.log(`                  held ${t.held} · FAILED ${t.failed} · never put ${t.undecided}`);
+    if (t.last) console.log(`                  latest reading, ${t.last.build}: ${t.last.why}`);
+    if (t.verdict === "BOTH")
+      console.log(
+        `                  the archive says BOTH about code that did not change. Read the split, not a headline.`,
+      );
   }
   console.log(
     `    A prediction that came out is only half of it — record what happened in\n` +
