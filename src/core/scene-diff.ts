@@ -190,6 +190,27 @@ export function planSceneUpdate(prev: Scene, next: Scene): SceneUpdatePlan | nul
  *
  * Round 150 at 0.5 is the control and the host is healthy: 13/13 scenarios,
  * `same scale across the deck` at 195928 ms against a 196-237s band.
+ *
+ * ROUND 151 MEASURED IT AND 0.6 IS THE CEILING. It completed, 13/13, with
+ * declines 8 to 6 and successes 3 to 5, and that scenario ran 164518 ms — 31
+ * seconds below the MINIMUM of its five prior observations, on the same eight
+ * charts and the same thirteen attempts.
+ *
+ * There is no rung above it. This battery produces exactly two shares, 9-of-16
+ * and 18-of-24, so 0.7 would admit nothing new; and any limit that admits
+ * 18-of-24 also admits 9-of-16, which is precisely the dose 0.8 died on six
+ * times. 0.75 is not untested — it is tested, and it kills the host.
+ *
+ *     0.5    0 extra shape-writes    safe
+ *     0.6    18 extra                safe, and 31s faster
+ *     0.75+  162 extra               fatal, six times over
+ *
+ * THE SHARE IS A PROXY FOR THE WRONG THING. What the host refuses is shapes per
+ * BATCH, and this update writes every changed shape of every chart into one
+ * batch and syncs once. The demo deck hit the same wall and was fixed by
+ * chunking — one `PowerPoint.run` per slide (#112) — not by a threshold.
+ * Chunking the in-place writes would make this constant irrelevant, and is a
+ * better answer than raising a number until something dies.
  */
 export const UPDATE_SHARE_LIMIT = 0.6;
 

@@ -3954,3 +3954,53 @@ Round 148's file is 408 KB against ~197 KB for every clean round, and 111 KB of
 that is one `scenario FAILED` entry — the same base64 payload also stored in
 `selftest`. `trimDebugInfo` capped the COUNT of statements and not their
 LENGTH, and `insertSlidesFromBase64` puts the whole deck in one of them.
+
+## Round 151 — 0.6 holds, and the ladder has no more rungs
+
+    149  0.5   ok 3 | declined 10 | 13/13 | same scale 237048 ms
+    150  0.5   ok 3 | declined 10 | 13/13 | same scale 195928 ms   (control, host healthy)
+    151  0.6   ok 5 | declined  8 | 13/13 | same scale 164518 ms
+
+Every point of the staked prediction held: declines 8 to 6, successes 3 to 5,
+13 of 13, and the round COMPLETED — which was the part that mattered, because
+0.8 crashed PowerPoint on all seven attempts of the round before.
+
+**164518 ms is 31 seconds below the MINIMUM of the five prior observations** of
+that scenario (197426, 201182, 204085, 237048, 195928), and 31.4s faster than
+the control run immediately before it. Same eight charts, same thirteen update
+attempts, so nothing about the denominator moved.
+
+### The ladder is finished, and not because it succeeded
+
+The obvious next step would be 0.7. It would do NOTHING: the only two shares
+this battery produces are 9-of-16 (0.5625) and 18-of-24 (0.75), and there is
+nothing between 0.6 and 0.75 to admit.
+
+And any limit that admits 18-of-24 also admits 9-of-16, because 0.5625 is below
+it. So a limit of 0.76 hands the host exactly what 0.8 did — eight charts
+writing eighteen shapes plus two writing nine — and 0.8's six crashes ARE the
+answer for 0.75. There is no experiment left to run at this granularity.
+
+    0.5   ->  0 extra shape-writes    safe, measured
+    0.6   ->  18 extra                safe, measured, 31s faster
+    0.75+ ->  162 extra               fatal, measured six times
+
+**So 0.6 is the ceiling for a limit expressed as a share.** Not because 0.75 is
+untested — because it is tested, and it kills the host.
+
+### What would actually unlock the rest
+
+The crash is a batch-size problem, and this project already solved a batch-size
+problem once: the demo deck renders ONE `PowerPoint.run` PER SLIDE because a
+chunk of four dense charts piled 400-500 shapes into a single context and the
+host's per-slide budget refused it (#112).
+
+The in-place update has no such chunking. It writes every changed shape of
+every chart into one batch and syncs once. At 0.6 that is 18 extra writes and
+fine; at 0.75 it is 162 and fatal.
+
+**Chunking the in-place writes is the change that would make the share limit
+irrelevant**, and it is a better fix than any threshold: a limit expressed as a
+share is a proxy for a cost the host measures in shapes per batch. That is the
+next product step, and it is worth doing properly rather than by raising a
+number until something dies.
