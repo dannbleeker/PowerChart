@@ -1704,6 +1704,40 @@ export function poolInPlaceUpdates(logs) {
   };
 }
 
+/**
+ * What the driver had to do before each round would start.
+ *
+ * A successful recovery erases its own evidence — the round that follows looks
+ * like one that never needed rescuing — so `driverRun` records the attempts and
+ * the stops behind them. This pools that across the archive.
+ *
+ * REPORTED AS COUNTS, NOT A RATE, and deliberately. `driverRun` is only as old
+ * as round 150, so most of the archive carries nothing, and a percentage over a
+ * denominator of four would be a number with a decimal point and no meaning.
+ * `rounds` is the rounds that CARRY the field; anything older is not a clean
+ * round, it is an unmeasured one.
+ */
+export function poolDriverRuns(logs) {
+  let rounds = 0,
+    clean = 0;
+  const causes = new Map();
+  const attempts = new Map();
+  for (const log of logs ?? []) {
+    const dr = log?.driverRun;
+    if (!dr || typeof dr.attempts !== "number") continue;
+    rounds++;
+    attempts.set(dr.attempts, (attempts.get(dr.attempts) ?? 0) + 1);
+    if (dr.attempts <= 1) clean++;
+    for (const c of dr.recovered ?? []) causes.set(String(c), (causes.get(String(c)) ?? 0) + 1);
+  }
+  return {
+    rounds,
+    clean,
+    attempts: [...attempts].sort((a, b) => a[0] - b[0]).map(([n, of]) => ({ attempts: n, rounds: of })),
+    causes: [...causes].sort((a, b) => b[1] - a[1]).map(([cause, n]) => ({ cause, n })),
+  };
+}
+
 export function poolFallbackRates(logs) {
   const per = [];
   for (const log of logs ?? []) {

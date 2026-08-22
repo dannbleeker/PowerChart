@@ -1820,3 +1820,34 @@ describe("the steps a crashed round managed to write", () => {
     expect(copied).toHaveLength(0);
   });
 });
+
+describe("what a retry recovered from", () => {
+  it("names the stops, rather than bucketing them as not-ready", () => {
+    // FOUR ROUNDS RUNNING RECORDED {"attempts":2,"recovered":["not-ready"]}.
+    // That reads as "the host needed rescuing" and mostly does not mean it:
+    // round 153's first attempt refused for `pane-stale` — a build had just
+    // been deployed and the pane held the previous one, which is a property of
+    // how rounds are RUN — and for `host-silent`, which is host health.
+    //
+    // Folded into one word they cannot be told apart, so any claim about the
+    // host getting better or worse would be drawn from a bucket. This is the
+    // residual-bucket mistake made inside the field added to stop it.
+    expect(driver.recoveryLabel("not-ready", ["host-silent", "pane-stale"])).toBe("not-ready:host-silent+pane-stale");
+  });
+
+  it("sorts them, so the same pair counts as the same thing every round", () => {
+    // Unsorted, `host-silent+pane-stale` and `pane-stale+host-silent` are two
+    // different strings describing one situation, and pooling them across the
+    // archive would report two causes where there is one.
+    expect(driver.recoveryLabel("not-ready", ["pane-stale", "host-silent"])).toBe(
+      driver.recoveryLabel("not-ready", ["host-silent", "pane-stale"]),
+    );
+  });
+
+  it("falls back to the bare reason when there are no codes", () => {
+    // `crashed` and `browser-gone` carry no codes — they are not readiness
+    // stops. A trailing colon would make them look truncated.
+    expect(driver.recoveryLabel("crashed", [])).toBe("crashed");
+    expect(driver.recoveryLabel("browser-gone", undefined)).toBe("browser-gone");
+  });
+});

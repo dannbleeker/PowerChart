@@ -59,6 +59,7 @@ const {
   roundSpanSeconds,
   paneAgeAtStartSeconds,
   poolFallbackRates,
+  poolDriverRuns,
   poolInPlaceUpdates,
 } = pooled;
 // Its own line: adding it above pushes that import over the print width, and a
@@ -2236,5 +2237,40 @@ describe("a detector keyed to a message that no longer exists", () => {
       expect(app, `no source file emits "${message}" any more — its detector now reports zero forever`).toContain(
         message,
       );
+  });
+});
+
+describe("what it took to start each round", () => {
+  it("counts only the rounds that actually carry the field", () => {
+    // AN ABSENT READING IS NOT A CLEAN ONE. `driverRun` is newer than most of
+    // the archive, so 149 of the rounds on file say nothing about what it took
+    // to start them. Counting those as first-time starts would invent a history
+    // of healthy rounds out of a field that did not exist yet — the same shape
+    // as reading a missing count as a zero.
+    const pooled = poolDriverRuns([
+      { driverRun: { attempts: 1, recovered: [] } },
+      { driverRun: { attempts: 2, recovered: ["not-ready:host-silent+pane-stale"] } },
+      {}, // an older round: no driverRun at all
+      { driverRun: { attempts: 3, recovered: ["crashed", "not-ready:pane-stale"] } },
+    ]);
+    expect(pooled.rounds, "counted a round that never reported").toBe(3);
+    expect(pooled.clean, "an absent reading was counted as a clean start").toBe(1);
+  });
+
+  it("tallies the causes, so a deploy is not read as a sick host", () => {
+    // `pane-stale` after a deploy is a property of how rounds are RUN;
+    // `host-silent` is host health. They were one word — "not-ready" — for four
+    // rounds, and any claim about the host getting better or worse would have
+    // been drawn from that bucket.
+    const pooled = poolDriverRuns([
+      { driverRun: { attempts: 2, recovered: ["not-ready:pane-stale"] } },
+      { driverRun: { attempts: 2, recovered: ["not-ready:pane-stale"] } },
+      { driverRun: { attempts: 2, recovered: ["crashed"] } },
+    ]);
+    expect(pooled.causes[0], "the commonest cause was not surfaced first").toEqual({
+      cause: "not-ready:pane-stale",
+      n: 2,
+    });
+    expect(pooled.causes.map((c: { cause: string }) => c.cause)).toContain("crashed");
   });
 });

@@ -1729,6 +1729,31 @@ export async function attempt(argv, deps, sh, healed = false) {
  * not a round, and `archive` is right to refuse it. Best-effort throughout —
  * a round is not worth failing over the paperwork of the round before it.
  */
+/**
+ * What a retry actually recovered FROM, named rather than bucketed.
+ *
+ * `reason` for a readiness stop is always the single word "not-ready", and four
+ * rounds running recorded exactly that — which reads as "the host needed
+ * rescuing" and mostly does not mean it.
+ *
+ * Round 153's first attempt refused for TWO reasons. `pane-stale`, because a
+ * build had just been deployed and the pane still held the previous one; and
+ * `host-silent`, because the editing session had dropped while the browser sat
+ * idle between rounds. The first is a property of how rounds are RUN and says
+ * nothing about the host. The second is host health. Folded into one word they
+ * cannot be told apart, and any claim about the host getting better or worse is
+ * then drawn from a bucket.
+ *
+ * That is the residual-bucket mistake, made inside a field added three rounds
+ * earlier to stop exactly that.
+ *
+ * Sorted, so the same pair of stops reads the same way in every round and can
+ * be counted across the archive.
+ */
+export function recoveryLabel(reason, codes) {
+  return Array.isArray(codes) && codes.length ? `${reason}:${[...codes].sort().join("+")}` : String(reason);
+}
+
 export async function keepCrashedRun(sh, sleep, copy = copyFileSync, exists = existsSync) {
   try {
     const ref = refFor(sh, "Download the crashed run", /button "Download the crashed run"/);
@@ -2306,7 +2331,21 @@ async function main(argv, deps = {}) {
     // The REASON, recorded before the recovery that hides it. Once `recover`
     // succeeds the round looks like any other, and the only evidence it was ever
     // in trouble is this list.
-    recovered.push(reason);
+    // THE CODES, NOT JUST THE BUCKET. `reason` for a readiness stop is always
+    // the single word "not-ready", and four rounds running recorded exactly
+    // that — which reads as "the host needed rescuing" and mostly is not.
+    //
+    // Round 153's first attempt refused for TWO reasons: `pane-stale`, because
+    // a build had just been deployed and the pane still held the old one, and
+    // `host-silent`, because the editing session had dropped while the browser
+    // sat idle between rounds. The first is a property of how rounds are run
+    // and says nothing about the host; the second is host health. Folded into
+    // one word they cannot be told apart, and any claim about whether the host
+    // is getting better or worse is drawn from a bucket.
+    //
+    // This is the residual-bucket mistake made inside a field added three
+    // rounds ago to stop exactly that.
+    recovered.push(recoveryLabel(reason, codes));
     await recover(sh, sleep);
   }
 }

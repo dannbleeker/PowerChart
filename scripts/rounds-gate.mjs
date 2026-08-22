@@ -30,6 +30,7 @@ import {
   poolProfileDisagreements,
   poolPairPosition,
   poolFallbackRates,
+  poolDriverRuns,
   poolInPlaceUpdates,
   roundSpanSeconds,
   paneAgeAtStartSeconds,
@@ -252,6 +253,19 @@ if (isMain(import.meta.url, process.argv[1])) {
     A round the driver had to rescue is evidence taken from a host that was already unwell.
     Read a scenario failure here against that, not against a clean round.`,
     );
+
+  // WHAT IT TOOK TO GET THE ROUNDS AT ALL, pooled. One round's `driverRun` says
+  // whether THAT round was rescued; this says whether rescuing is normal, and
+  // names what from — `pane-stale` after a deploy is a property of how rounds
+  // are run, `host-silent` is host health, and they were one word until now.
+  const starts = poolDriverRuns(rounds);
+  if (starts.rounds) {
+    console.log(`
+  WHAT IT TOOK TO START — ${starts.clean} of ${starts.rounds} round(s) started first time`);
+    for (const c of starts.causes.slice(0, 6))
+      console.log(`      ${String(c.n).padStart(3)}x  recovered from ${c.cause}`);
+    console.log("    Counts, not a rate: driverRun is newer than most of the archive.");
+  }
 
   const fb = poolFallbackRates(rounds);
   if (fb.length) {
