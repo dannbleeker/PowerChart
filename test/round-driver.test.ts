@@ -1851,3 +1851,44 @@ describe("what a retry recovered from", () => {
     expect(driver.recoveryLabel("browser-gone", undefined)).toBe("browser-gone");
   });
 });
+
+describe("starting a round from a fresh session", () => {
+  it("closes the browser BEFORE recovering, not after", () => {
+    // ORDER IS THE WHOLE THING. `recover` only opens a browser when there is
+    // not one — `if (noBrowser(...))` — so recovering into a live browser
+    // reloads the stale session instead of replacing it, which is exactly what
+    // this exists to avoid. Recovering first and closing after would leave no
+    // browser at all.
+    const order: string[] = [];
+    const sh = ((...args: string[]) => {
+      order.push(args[0]);
+      return "";
+    }) as never;
+    return driver
+      .startFresh(
+        sh,
+        (async () => {}) as never,
+        (async () => {
+          order.push("recover");
+        }) as never,
+      )
+      .then(() => {
+        expect(order, "the browser was not closed before the rebuild").toEqual(["close", "recover"]);
+      });
+  });
+
+  it("waits after closing, because the process does not go away instantly", async () => {
+    // `close` returns before the browser is gone, and `recover` decides whether
+    // to open one by asking whether a browser is there. Racing them reads the
+    // dying session as a live one and reloads it.
+    let waited = 0;
+    await driver.startFresh(
+      (() => "") as never,
+      (async (ms: number) => {
+        waited += ms;
+      }) as never,
+      (async () => {}) as never,
+    );
+    expect(waited, "closed and rebuilt in the same breath").toBeGreaterThan(0);
+  });
+});
