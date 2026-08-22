@@ -2439,22 +2439,64 @@ describe("what it took to start each round", () => {
     //
     // The house defect in its plainest costume: an experiment whose ARM was not
     // recorded, while everything else about it was.
-    const round = (fresh: boolean | undefined, refused: number) => ({
+    // `paneAgeAtStartSeconds` reads the SMALLEST `ms` in the trace, so the
+    // fixture has to carry one — the pane's age is a property of the trace, not
+    // of `driverRun`, and it has been in every round file all along.
+    const round = (fresh: boolean | undefined, paneSeconds: number, refused: number) => ({
       driverRun: fresh === undefined ? { attempts: 1, recovered: [] } : { attempts: 1, recovered: [], fresh },
       trace: {
-        entries: Array.from({ length: refused }, () => ({
-          message: "not grouping: no member handle this host will accept",
-        })),
+        entries: [
+          { message: "round starting", ms: paneSeconds * 1000 },
+          ...Array.from({ length: refused }, () => ({
+            message: "not grouping: no member handle this host will accept",
+            ms: paneSeconds * 1000 + 1,
+          })),
+        ],
       },
     });
-    const pooled = poolDriverRuns([round(true, 0), round(true, 0), round(false, 1), round(undefined, 1)]);
-    expect(pooled.arms).toEqual({ fresh: 2, freshRefusedNone: 2, aged: 1, agedRefusedNone: 0, unlabelled: 1 });
+    const pooled = poolDriverRuns([
+      round(true, 60, 0),
+      round(true, 60, 0),
+      round(false, 700, 1),
+      round(undefined, 700, 1),
+    ]);
+    expect(pooled.arms).toMatchObject({ fresh: 2, freshRefusedNone: 2, aged: 2, agedRefusedNone: 0 });
 
-    // `unlabelled` IS PART OF THE ANSWER, not a gap. Every round before the flag
-    // existed is in neither arm, and a split over four rounds read as a split
-    // over the archive would be the same overreach the ledger was just fixed to
-    // stop. A round with no `driverRun` at all counts in neither.
-    expect(poolDriverRuns([round(undefined, 0), {}]).arms).toMatchObject({ fresh: 0, aged: 0, unlabelled: 1 });
+    // AND THE SPLIT IS ON THE PANE, NOT ON THE FLAG. Round 167 showed the
+    // difference inside a single pair: 166 ran WITHOUT `--fresh` and started on
+    // a 69-second pane anyway, because a merge preceded it and recovery reloads
+    // a stale pane. The flag is one way to get a fresh pane, not the variable.
+    // Splitting on it files a fresh-pane round under "aged" and makes both arms
+    // mean nothing — the house defect, in an instrument built hours earlier to
+    // fix the same defect: measuring the PROXY instead of the thing.
+    //
+    // ASSERTED ON WHICH ROUND LANDED IN WHICH ARM, not on the arm SIZES — the
+    // sizes are 1 and 1 under either split, so a count-only assertion passes
+    // with the defect restored. It did: the first mutation of this test put
+    // `dr.fresh` back and stayed green. A count guard is not an alignment
+    // guard.
+    //
+    // The two rounds are deliberately crossed: the flag says fresh where the
+    // pane says aged, and vice versa. Under the PANE split the 60-second round
+    // (which refused nothing) is the fresh one, so `freshRefusedNone` is 1 and
+    // `agedRefusedNone` is 0. Under the FLAG split they swap.
+    const disagreeing = poolDriverRuns([round(false, 60, 0), round(true, 700, 1)]);
+    expect(disagreeing.arms, "the arms were filled by the flag, not the pane").toMatchObject({
+      fresh: 1,
+      freshRefusedNone: 1,
+      aged: 1,
+      agedRefusedNone: 0,
+    });
+    expect(disagreeing.arms.flagDisagreed, "the proxy parting company with the variable went unreported").toBe(2);
+
+    // A round with no readable pane age is in neither arm. `unlabelled` is part
+    // of the answer, not a gap: a split over a handful read as a split over the
+    // archive is the overreach this ledger was just fixed to stop.
+    expect(poolDriverRuns([{ driverRun: { attempts: 1, recovered: [] } }]).arms).toMatchObject({
+      fresh: 0,
+      aged: 0,
+      unlabelled: 1,
+    });
   });
 
   it("tallies the causes, so a deploy is not read as a sick host", () => {

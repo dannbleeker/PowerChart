@@ -286,17 +286,21 @@ if (isMain(import.meta.url, process.argv[1])) {
     for (const c of starts.causes.slice(0, 6))
       console.log(`      ${String(c.n).padStart(3)}x  recovered from ${c.cause}`);
     console.log("    Counts, not a rate: driverRun is newer than most of the archive.");
-    // THE ARM, over the rounds that record one. Until 2026-08-22 nothing in a
-    // round file said whether it was launched with `--fresh`, so the whole
-    // fresh-pane argument rested on the shell history of whoever typed it.
-    // `unlabelled` is printed beside the arms so a rate over four rounds is
-    // never read as a rate over the archive.
+    // THE ARM, SPLIT ON THE PANE RATHER THAN ON THE FLAG. Round 166 ran without
+    // `--fresh` and started on a 69-second pane anyway, because a merge preceded
+    // it. The flag is one way to get a fresh pane, not the variable itself, and
+    // splitting on it filed a fresh-pane round under "aged".
     const a = starts.arms;
-    if (a && a.fresh + a.aged > 0)
+    if (a && a.fresh + a.aged > 0) {
       console.log(
-        `    --fresh ${a.freshRefusedNone}/${a.fresh} round(s) refused no group · ` +
-          `not fresh ${a.agedRefusedNone}/${a.aged} · ${a.unlabelled} round(s) predate the flag being recorded`,
+        `    fresh pane ${a.freshRefusedNone}/${a.fresh} round(s) refused no group · ` +
+          `aged pane ${a.agedRefusedNone}/${a.aged}`,
       );
+      if (a.flagDisagreed)
+        console.log(
+          `      --fresh disagreed with the pane in ${a.flagDisagreed} of them — the flag is not the variable`,
+        );
+    }
   }
 
   const fb = poolFallbackRates(rounds);
