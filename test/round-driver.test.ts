@@ -1892,3 +1892,54 @@ describe("starting a round from a fresh session", () => {
     expect(waited, "closed and rebuilt in the same breath").toBeGreaterThan(0);
   });
 });
+
+describe("recovering when the browser lives but the deck does not", () => {
+  /** Records every CLI verb, and answers whatever the caller says. */
+  const shFor = (answers: Record<string, string>) => {
+    const calls: string[][] = [];
+    const fn = ((...args: string[]) => {
+      calls.push(args);
+      return answers[args[0]] ?? "";
+    }) as unknown as ((...a: string[]) => string) & { dir?: string; state?: Record<string, unknown> };
+    fn.dir = ".pw";
+    fn.state = {};
+    return { fn, calls };
+  };
+  const sleep = (async () => {}) as never;
+
+  it("opens the deck when a browser is up but no tab holds it", async () => {
+    // THE BUG THIS FIXES COST SEVEN ATTEMPTS. The deck-opening block sat inside
+    // `if (noBrowser(...))`, which assumed a living browser implies an open
+    // deck. It does not — after a tab crash, or anything that reopens the
+    // browser on OneDrive's home, `recover` skipped the deck entirely, reloaded
+    // the wrong page and hunted for a pane that had never been opened. Every
+    // attempt reported "could not read the pane's build stamp" with
+    // `deck ? slide(s)` beside it, while the deck sat in the file list.
+    const { fn, calls } = shFor({
+      list: "- default:\n  - status: open",
+      "tab-list": "- 0: (current) [Home - OneDrive](https://onedrive.live.com/)",
+    });
+    await driver.recover(fn, sleep);
+    // It has to go LOOKING for the deck. Without this the whole recovery is a
+    // reload of whatever page happened to be in front.
+    expect(
+      calls.some((c) => c[0] === "find" && c.some((a) => a.includes(driver.DECK_NAME))),
+      "a browser was up, the deck was not, and recover never went looking for it",
+    ).toBe(true);
+  });
+
+  it("does not open a second tab on a deck that is already open", async () => {
+    // A deck tab that is present needs SELECTING, not opening again. Clicking
+    // the file a second time is how a recovery leaves two tabs on one document,
+    // and the driver then measures whichever one it happens to front.
+    const { fn, calls } = shFor({
+      list: "- default:\n  - status: open",
+      "tab-list": `- 0: (current) [${driver.DECK_NAME}.pptx](https://x)`,
+    });
+    await driver.recover(fn, sleep);
+    expect(
+      calls.some((c) => c[0] === "find" && c.some((a) => a.includes(driver.DECK_NAME))),
+      "went hunting for a deck that was already open",
+    ).toBe(false);
+  });
+});
