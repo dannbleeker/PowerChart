@@ -147,9 +147,31 @@ export function readiness({
             : ""),
       ],
     };
-  // A READ THAT COULD NOT RUN IS NOT AN ABSENCE, and this must come before
-  // every judgement below because all of them are taken from the same empty
-  // string a failed call returns.
+  // Before the sign-in check and everything under it: a browser that is not
+  // there answers every read with nothing, and "is the add-in open?" is the
+  // wrong question to send anyone to. See `noBrowser`.
+  //
+  // AND BEFORE `readsFailed`, which is the more general fact and therefore the
+  // less useful one. With no browser EVERY call exits non-zero — "The browser
+  // 'default' is not open" — so a `readsFailed` check placed first swallows
+  // this one and reports "a read could not be RUN" for a condition that has a
+  // name, a cause and a recovery. Ordering the vague stop ahead of the specific
+  // one is the same defect as reporting an absence for an unmeasured thing,
+  // committed one layer up; it went in and out of this file within the hour.
+  if (browserGone)
+    return {
+      ok: false,
+      codes: ["browser-gone"],
+      stop: [
+        "there is no browser — the process died, taking the tab with it. The persistent profile still " +
+          "holds the sign-in, so this is recoverable without a password: " +
+          "`pw open --persistent --profile=C:/devtools/pw-profile --headed https://onedrive.live.com/`, " +
+          "then open the deck, select its tab, and reopen the pane from Home ▸ Add-ins ▸ Insert chart.",
+      ],
+    };
+  // A READ THAT COULD NOT RUN IS NOT AN ABSENCE — but only once the browser has
+  // been ruled out above, because a missing browser makes every call fail and
+  // has a far better answer than this one.
   //
   // `spawnSync` on this machine intermittently answers ENOENT for a node.exe
   // that is plainly there — eight consecutive calls succeeded minutes later. On
@@ -169,20 +191,6 @@ export function readiness({
           "Nothing below was measured, so none of it can be reported as missing. Trying again.",
       ],
       codes: ["reads-failed"],
-    };
-  // Before the sign-in check and everything under it: a browser that is not
-  // there answers every read with nothing, and "is the add-in open?" is the
-  // wrong question to send anyone to. See `noBrowser`.
-  if (browserGone)
-    return {
-      ok: false,
-      codes: ["browser-gone"],
-      stop: [
-        "there is no browser — the process died, taking the tab with it. The persistent profile still " +
-          "holds the sign-in, so this is recoverable without a password: " +
-          "`pw open --persistent --profile=C:/devtools/pw-profile --headed https://onedrive.live.com/`, " +
-          "then open the deck, select its tab, and reopen the pane from Home ▸ Add-ins ▸ Insert chart.",
-      ],
     };
   // THE WEDGE, by its real name. Rounds 24, 25, 29 and 30 each spent most of an
   // hour on this and none of them said what it was: the host's editing session

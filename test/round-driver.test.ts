@@ -2176,3 +2176,26 @@ describe("pruning the profile caches", () => {
     ).toBe(true);
   });
 });
+
+describe("which stop wins when several are true", () => {
+  it("names the missing browser rather than the reads it made fail", () => {
+    // ORDERING IS A DIAGNOSIS. With no browser EVERY call exits non-zero —
+    // "The browser 'default' is not open" — so `readsFailed` is true too. The
+    // first version of that guard sat ABOVE this one and swallowed it,
+    // reporting "a read could not be RUN" for a condition that has a name, a
+    // cause and a recovery.
+    //
+    // Putting the vague stop ahead of the specific one is the same defect as
+    // reporting an absence for an unmeasured thing, one layer up. It went into
+    // this file and out again within the hour.
+    const out = readiness({ ...READY, browserGone: true, readsFailed: true, stamp: null, slides: null });
+    expect(out.codes, "the vaguer stop won").toContain("browser-gone");
+    expect(out.codes, "reported a failed read for a browser that is simply not there").not.toContain("reads-failed");
+  });
+
+  it("still reports a failed read when the browser IS there", () => {
+    // The stop has to survive the reordering, or the fix it exists for is gone.
+    const out = readiness({ ...READY, browserGone: false, readsFailed: true, stamp: null, slides: null });
+    expect(out.codes).toContain("reads-failed");
+  });
+});
