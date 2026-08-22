@@ -1717,6 +1717,42 @@ export function poolInPlaceUpdates(logs) {
  * `rounds` is the rounds that CARRY the field; anything older is not a clean
  * round, it is an unmeasured one.
  */
+/**
+ * Trace signals a round RECORDS that no tool READS.
+ *
+ * This repo has found the same thing by hand twice. `poolFallbackRates` exists
+ * because the fallback lines had been "recorded thousands of times and read by
+ * nothing"; `poolInPlaceUpdates` because the in-place diagnostic "has been
+ * answering ever since and nobody has read it". Both were discovered by someone
+ * scrolling a round file, months after the data started arriving.
+ *
+ * Round 153 records 49 distinct messages and 35 of them are read by nothing.
+ * Most of those are noise and should stay unread — the point is not to pool
+ * them all, it is to stop the next `poolFallbackRates` waiting months for
+ * someone to notice it by hand.
+ *
+ * A FLOOR, NOT A COUNT, and the gate says so. "Read" here means the tool source
+ * mentions the message verbatim, so a matcher built by concatenation reads as
+ * unread. That errs toward offering too much rather than hiding something, and
+ * a detector that reports a floor must say which it is — see
+ * `poolFallbackRates` and the dead-detector guard in the tests.
+ */
+export function unreadSignals(log, toolSource, top = 6) {
+  const entries = log?.trace?.entries;
+  if (!Array.isArray(entries)) return [];
+  const counts = new Map();
+  for (const e of entries) {
+    const m = String(e?.message ?? "");
+    if (m) counts.set(m, (counts.get(m) ?? 0) + 1);
+  }
+  const src = String(toolSource ?? "");
+  return [...counts]
+    .filter(([m]) => !src.includes(m))
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, top)
+    .map(([message, n]) => ({ message, n }));
+}
+
 export function poolDriverRuns(logs) {
   let rounds = 0,
     clean = 0;

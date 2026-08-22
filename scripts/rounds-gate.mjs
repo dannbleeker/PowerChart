@@ -31,6 +31,7 @@ import {
   poolPairPosition,
   poolFallbackRates,
   poolDriverRuns,
+  unreadSignals,
   poolInPlaceUpdates,
   roundSpanSeconds,
   paneAgeAtStartSeconds,
@@ -258,6 +259,26 @@ if (isMain(import.meta.url, process.argv[1])) {
   // whether THAT round was rescued; this says whether rescuing is normal, and
   // names what from — `pane-stale` after a deploy is a property of how rounds
   // are run, `host-silent` is host health, and they were one word until now.
+  // WHAT THIS ROUND RECORDED THAT NOTHING READS. Twice now a signal has sat in
+  // every round file for months before someone noticed it by hand —
+  // `poolFallbackRates` and `poolInPlaceUpdates` are both that story. Most of
+  // this list is noise and should stay unread; the point is that the next one
+  // does not have to be found by scrolling.
+  try {
+    const src =
+      readFileSync(new URL("./triage.mjs", import.meta.url), "utf8") +
+      readFileSync(new URL("./rounds-gate.mjs", import.meta.url), "utf8");
+    const unread = unreadSignals(rounds[rounds.length - 1], src);
+    if (unread.length) {
+      console.log(`
+  RECORDED, AND READ BY NOTHING — the busiest signals no tool matches on`);
+      for (const u of unread) console.log(`      ${String(u.n).padStart(4)}x  ${u.message}`);
+      console.log("    A FLOOR, not a count: a matcher built by concatenation reads as unread here.");
+    }
+  } catch {
+    /* the gate is not worth failing over its own footnote */
+  }
+
   const starts = poolDriverRuns(rounds);
   if (starts.rounds) {
     console.log(`
