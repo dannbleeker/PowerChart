@@ -2199,3 +2199,79 @@ describe("which stop wins when several are true", () => {
     expect(out.codes).toContain("reads-failed");
   });
 });
+
+describe("a browser this session cannot reach", () => {
+  /** `list` sees it; every session-keyed call exits non-zero. */
+  const unreachable = () => {
+    const calls: string[][] = [];
+    const fn = ((...args: string[]) => {
+      calls.push(args);
+      if (args[0] === "list") {
+        fn.state.lastFailed = false;
+        return "### Browsers\n- default:\n  - status: open";
+      }
+      fn.state.lastFailed = true;
+      return "";
+    }) as unknown as ((...a: string[]) => string) & { dir?: string; state: Record<string, unknown> };
+    fn.state = { lastFailed: false, lastError: null };
+    fn.dir = ".pw";
+    return { fn, calls };
+  };
+
+  it("is not reachable, however healthy `list` looks", () => {
+    // `list` enumerates every browser the daemon knows, whatever session it
+    // belongs to; every other command is session-keyed, and the daemon keys
+    // sessions by the working-directory STRING. A browser opened from a shell
+    // whose cwd was `C:/devtools/...` is invisible to a driver whose cwd is
+    // `C:\devtools\...` — same folder, different string.
+    const { fn } = unreachable();
+    expect(driver.browserReachable(fn), "called a browser reachable that answers nothing").toBe(false);
+  });
+
+  it("trusts the failure flag over the output, if the two ever disagree", () => {
+    // TODAY `cli` returns "" whenever the call exits non-zero, so the emptiness
+    // check alone would catch this and the flag is belt-and-braces. Pinned
+    // anyway: the day `cli` returns partial output on a failed call — a
+    // truncated read, a half-written answer — the flag is the only thing that
+    // still tells the truth, and a reachability check that believed the bytes
+    // would call a broken session healthy.
+    const fn = ((..._args: string[]) => "- 0: [something](https://x)") as unknown as ((...a: string[]) => string) & {
+      state: Record<string, unknown>;
+    };
+    fn.state = { lastFailed: true, lastError: null };
+    expect(driver.browserReachable(fn), "believed the output over the failure flag").toBe(false);
+  });
+
+  it("gets closed so one can be opened here", async () => {
+    // A browser we cannot use STILL HOLDS THE PROFILE, and `open` refuses with
+    // "Browser is already in use". `--isolated` is no use: a fresh profile has
+    // no sign-in, and the sign-in is the one thing this loop cannot recreate.
+    const { fn, calls } = unreachable();
+    await driver.recover(fn, (async () => {}) as never);
+    const closed = calls.findIndex((c) => c[0] === "close-all");
+    const opened = calls.findIndex((c) => c[0] === "open");
+    expect(closed, "left an unusable browser holding the profile").toBeGreaterThanOrEqual(0);
+    expect(opened, "never opened a browser this session can use").toBeGreaterThanOrEqual(0);
+    expect(closed, "opened before closing — the profile would still be locked").toBeLessThan(opened);
+  });
+
+  it("does not close anything when there is simply no browser", async () => {
+    // The ordinary path must not pay for a close it does not need.
+    const calls: string[][] = [];
+    const fn = ((...args: string[]) => {
+      calls.push(args);
+      return args[0] === "list" ? "  (no browsers)" : "";
+    }) as unknown as ((...a: string[]) => string) & { dir?: string; state: Record<string, unknown> };
+    fn.state = { lastFailed: false, lastError: null };
+    fn.dir = ".pw";
+    await driver.recover(fn, (async () => {}) as never);
+    expect(
+      calls.some((c) => c[0] === "close-all"),
+      "closed browsers when there were none",
+    ).toBe(false);
+    expect(
+      calls.some((c) => c[0] === "open"),
+      "never opened one",
+    ).toBe(true);
+  });
+});

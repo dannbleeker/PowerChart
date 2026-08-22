@@ -1317,6 +1317,32 @@ export function noBrowser(listOutput) {
 }
 
 /**
+ * Can THIS driver actually use a browser — not, is there one somewhere.
+ *
+ * `list` enumerates every browser the daemon knows about, whatever session it
+ * belongs to. Every other command is SESSION-KEYED, and the daemon keys its
+ * sessions by the working-directory STRING. So a browser opened from a shell
+ * whose cwd was `C:/devtools/PowerChart/.pw-session` is invisible to a driver
+ * whose cwd is `C:\devtools\PowerChart\.pw-session` — same folder, different
+ * string, different session. `sessionDir` normalises the driver's own path and
+ * cannot do anything about a browser opened from outside it.
+ *
+ * On 2026-08-22 that produced a driver that could SEE a browser and not talk to
+ * it: `list` succeeded while `tab-list`, `find` and every read exited non-zero.
+ * `noBrowser` answered false, so `recover` never opened one it could use, and
+ * seven attempts ran against a browser it was structurally unable to reach.
+ *
+ * Asked by making a session-keyed call and seeing whether it worked, because
+ * that is the capability every later read depends on. An empty answer counts as
+ * unreachable: `tab-list` on a live session always names at least one tab.
+ */
+export function browserReachable(sh) {
+  const out = sh("tab-list");
+  if (sh.state?.lastFailed || sh.state?.lastError) return false;
+  return String(out ?? "").trim().length > 0;
+}
+
+/**
  * Did `find` actually FIND it, or is it echoing the query back?
  *
  * `playwright-cli find` answers a miss with `No matches found for "<query>"` —
@@ -1413,7 +1439,12 @@ export async function attempt(argv, deps, sh, healed = false) {
   // happen, reported as a measurement that came back negative.
   const readsFailed = stampFailed || listFailed;
 
-  const browserGone = noBrowser(sh("list"));
+  // UNREACHABLE COUNTS AS GONE, for readiness's purposes. A browser this
+  // session cannot issue a read against is worth exactly as much to the round
+  // as no browser at all, and `recover` clears both the same way — see
+  // `browserReachable`. Reported under the same stop so the driver retries
+  // rather than reporting the absences the unusable browser would produce.
+  const browserGone = noBrowser(sh("list")) || !browserReachable(sh);
   // Read ONCE. Two `tab-list` calls could straddle the popup opening or closing
   // and produce a message describing neither state.
   const tabs = sh("tab-list");
@@ -2362,7 +2393,21 @@ export async function recover(sh, sleep, profile = PROFILE_DIR) {
   // Reopening is the loop's to do, not the owner's. The persistent profile still
   // holds the sign-in — a dead browser is not a lost sign-in — so it needs no
   // password, and the alternative is a ten-hour run ending in its first hour.
-  if (noBrowser(sh("list"))) {
+  // REACHABLE, not merely present. See `browserReachable` — `list` sees every
+  // browser the daemon knows, including one belonging to another session that
+  // this driver cannot issue a single read against.
+  if (!browserReachable(sh)) {
+    // A BROWSER WE CANNOT USE STILL HOLDS THE PROFILE, and `open` refuses with
+    // "Browser is already in use for <profile>, use --isolated". Isolated is no
+    // use here: a fresh profile has no sign-in, and the sign-in is the one
+    // thing this loop cannot recreate. So the unusable session has to go first.
+    //
+    // Guarded on there BEING one, so the ordinary "no browser at all" path does
+    // not pay for a close it does not need.
+    if (!noBrowser(sh("list"))) {
+      console.log("  a browser is open that this session cannot reach — closing it so one can be opened here");
+      sh("close-all");
+    }
     sh("open", ...roundConfigArg(), "--persistent", `--profile=${profile}`, "--headed", "https://onedrive.live.com/");
     await sleep(15000);
   }
