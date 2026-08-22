@@ -38,7 +38,7 @@
  * `CLAUDE.md` "Looking at the task pane" for the browser traps this encodes.
  */
 import { spawnSync } from "child_process";
-import { readFileSync, writeFileSync, existsSync, readdirSync, realpathSync, copyFileSync } from "fs";
+import { readFileSync, writeFileSync, existsSync, readdirSync, realpathSync, copyFileSync, statSync, rmSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 import { isMain } from "./is-main.mjs";
@@ -1855,9 +1855,136 @@ export async function attempt(argv, deps, sh, healed = false) {
  * `driverRun.attempts` can answer, and it should be answered before it becomes
  * the default.
  */
-export async function startFresh(sh, sleep, recoverFn = recover) {
+/**
+ * The only directories `pruneProfileCaches` will ever delete.
+ *
+ * Caches, and nothing else. What must SURVIVE, and why:
+ *
+ *   Network/         Chrome's cookie store — this IS the sign-in. Deleting it
+ *                    means the owner signing in again by hand, which is the one
+ *                    thing this loop cannot do for itself.
+ *   Local Storage/   the session's own state, `crashlog.ts`'s flushed steps —
+ *                    the only evidence a crashed round leaves behind — AND THE
+ *                    SIDELOADED MANIFEST ITSELF. Microsoft's sideloading docs
+ *                    say it outright: "when you sideload an add-in on the web,
+ *                    the add-in's manifest is stored in the browser's local
+ *                    storage, so if you clear the browser's cache... you have
+ *                    to sideload the add-in again" (learn.microsoft.com,
+ *                    testing/sideload-office-add-ins-for-testing, read
+ *                    2026-08-22). Deleting this directory is how a cache tidy
+ *                    turns into a lost add-in.
+ *   Preferences      profile settings.
+ *
+ * Named explicitly rather than derived by excluding those, because a list of
+ * things to keep is one rename away from deleting something new, and a list of
+ * things to delete is not.
+ */
+export const PROFILE_CACHE_DIRS = ["Service Worker/CacheStorage", "Code Cache", "Cache", "GPUCache"];
+
+/** Prune only when the profile is genuinely large; the caches cost time to rebuild. */
+export const PROFILE_PRUNE_ABOVE_BYTES = 1_000_000_000;
+
+/**
+ * Bytes under `dir`, giving up as soon as the total passes `cap`.
+ *
+ * The point is the THRESHOLD, not the number, and a full walk of a 1.6GB
+ * profile is tens of thousands of stat calls for a figure nobody reads.
+ */
+export function bytesAtLeast(dir, cap, { readdir = readdirSync, stat = statSync } = {}) {
+  let total = 0;
+  const stack = [dir];
+  while (stack.length) {
+    const at = stack.pop();
+    let entries;
+    try {
+      entries = readdir(at, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const e of entries) {
+      const p = `${at}/${e.name}`;
+      if (e.isDirectory()) stack.push(p);
+      else {
+        try {
+          total += stat(p).size;
+        } catch {
+          /* a file Chrome removed mid-walk is not a measurement failure */
+        }
+        if (total > cap) return total;
+      }
+    }
+  }
+  return total;
+}
+
+/**
+ * Delete the caches a persistent profile accumulates, keeping the sign-in.
+ *
+ * `C:/devtools/pw-profile` reached 1.6GB in nine days, and 1.55GB of it was
+ * cache: 805MB of service-worker CacheStorage, 401MB of V8 Code Cache, 337MB of
+ * HTTP cache. It is PowerPoint Web doing it, not this project — our own site
+ * appears in that cache zero times while `officeapps.live.com` appears 136
+ * times. Every round loads the full editor, Microsoft ships new bundles often,
+ * and a persistent profile never evicts the old ones.
+ *
+ * ONLY WITH THE BROWSER CLOSED. Chrome rewrites these files while it runs, and
+ * deleting underneath it corrupts a profile that holds a sign-in only the owner
+ * can replace.
+ *
+ * ONLY WHEN IT IS WORTH IT. The caches cost real time to rebuild — PowerPoint
+ * re-downloads and re-JITs its bundles on the next round — so this is a
+ * once-in-a-while reclaim, not a per-round tidy.
+ */
+export function pruneProfileCaches(profile, { browserOpen, rm = rmSync, exists = existsSync, sizeOf } = {}) {
+  if (browserOpen) return null;
+  const root = `${profile}/Default`;
+  if (!exists(root)) return null;
+  const measure = sizeOf ?? ((d) => bytesAtLeast(d, PROFILE_PRUNE_ABOVE_BYTES));
+  let total = 0;
+  for (const d of PROFILE_CACHE_DIRS) {
+    const at = `${root}/${d}`;
+    if (exists(at)) total += measure(at);
+    if (total > PROFILE_PRUNE_ABOVE_BYTES) break;
+  }
+  if (total <= PROFILE_PRUNE_ABOVE_BYTES) return null;
+  const removed = [];
+  for (const d of PROFILE_CACHE_DIRS) {
+    const at = `${root}/${d}`;
+    if (!exists(at)) continue;
+    try {
+      rm(at, { recursive: true, force: true });
+      removed.push(d);
+    } catch {
+      /* a cache that will not delete is not worth failing a night over */
+    }
+  }
+  return { removed, bytes: total };
+}
+
+/**
+ * `prune` is INJECTABLE, and that is not decoration.
+ *
+ * It defaults to the real thing, which deletes real directories with real
+ * `rmSync`. A test that exercised this function without overriding it walked
+ * `C:/devtools/pw-profile` and pruned 1.5GB of live caches — from a unit test,
+ * in a suite run. The sign-in and the sideloaded manifest survived because the
+ * exclusion list held, which is the design working; the call happening at all
+ * is the design failing.
+ *
+ * Anything with a destructive real-filesystem default has to be reachable only
+ * through a seam a test can close.
+ */
+export async function startFresh(sh, sleep, recoverFn = recover, profile = PROFILE_DIR, prune = pruneProfileCaches) {
   sh("close");
   await sleep(3000);
+  // HERE, and only here: the browser is closed and has not been rebuilt yet,
+  // which is the one moment in a round when these files are nobody's.
+  const pruned = prune(profile, { browserOpen: false });
+  if (pruned)
+    console.log(
+      `  pruned ${pruned.removed.length} profile cache(s) — over ${Math.round(PROFILE_PRUNE_ABOVE_BYTES / 1e9)}GB, ` +
+        "sign-in and crash log untouched",
+    );
   await recoverFn(sh, sleep);
 }
 

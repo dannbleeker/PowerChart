@@ -1883,6 +1883,11 @@ describe("starting a round from a fresh session", () => {
         (async () => {
           order.push("recover");
         }) as never,
+        // The no-op prune is REQUIRED, not tidiness. The real default deletes
+        // real directories, and this test walked C:/devtools/pw-profile and
+        // pruned 1.5GB of live caches before the seam was injectable.
+        "C:/unused",
+        (() => null) as never,
       )
       .then(() => {
         expect(order, "the browser was not closed before the rebuild").toEqual(["close", "recover"]);
@@ -1900,6 +1905,8 @@ describe("starting a round from a fresh session", () => {
         waited += ms;
       }) as never,
       (async () => {}) as never,
+      "C:/unused",
+      (() => null) as never,
     );
     expect(waited, "closed and rebuilt in the same breath").toBeGreaterThan(0);
   });
@@ -2103,5 +2110,69 @@ describe("a read that could not run", () => {
       readsFailed: false,
     });
     expect(out.codes, "softened away the stop that exists to catch a real problem").toContain("addin-missing");
+  });
+});
+
+describe("pruning the profile caches", () => {
+  it("never names a directory that holds the sign-in or the add-in", () => {
+    // THE ONE MISTAKE THAT MATTERS. `Network/` is Chrome's cookie store, which
+    // is the sign-in — and only the owner can replace that. `Local Storage`
+    // holds crashlog.ts's flushed steps AND the sideloaded manifest itself:
+    // Microsoft's docs say "the add-in's manifest is stored in the browser's
+    // local storage, so if you clear the browser's cache... you have to
+    // sideload the add-in again".
+    //
+    // Asserted against the LIST rather than the behaviour, because the list is
+    // the whole safety argument: a deny-list is one rename away from deleting
+    // something new, an allow-list is not.
+    const forbidden = ["Network", "Local Storage", "Cookies", "Preferences", "IndexedDB", "Sessions"];
+    for (const dir of driver.PROFILE_CACHE_DIRS)
+      for (const f of forbidden)
+        expect(dir.includes(f), `${dir} would delete ${f}, which holds the sign-in or the add-in`).toBe(false);
+  });
+
+  it("does nothing at all while a browser is open", () => {
+    // Chrome rewrites these files as it runs, and deleting underneath it
+    // corrupts a profile whose sign-in only the owner can restore.
+    const removed: string[] = [];
+    expect(
+      driver.pruneProfileCaches("C:/p", {
+        browserOpen: true,
+        rm: ((p: string) => removed.push(p)) as never,
+        exists: (() => true) as never,
+        sizeOf: () => 9e9,
+      }),
+    ).toBeNull();
+    expect(removed, "deleted cache files with the browser still holding them").toHaveLength(0);
+  });
+
+  it("leaves a small profile alone, because the caches cost time to rebuild", () => {
+    // PowerPoint re-downloads and re-JITs its bundles after a prune, so this is
+    // a once-in-a-while reclaim and not a per-round tidy.
+    const removed: string[] = [];
+    expect(
+      driver.pruneProfileCaches("C:/p", {
+        browserOpen: false,
+        rm: ((p: string) => removed.push(p)) as never,
+        exists: (() => true) as never,
+        sizeOf: () => 1000,
+      }),
+    ).toBeNull();
+    expect(removed).toHaveLength(0);
+  });
+
+  it("prunes when the profile is genuinely large", () => {
+    const removed: string[] = [];
+    const out = driver.pruneProfileCaches("C:/p", {
+      browserOpen: false,
+      rm: ((p: string) => removed.push(p)) as never,
+      exists: (() => true) as never,
+      sizeOf: () => 9e9,
+    });
+    expect(out?.removed.length, "found a 9GB profile and pruned nothing").toBeGreaterThan(0);
+    expect(
+      removed.every((p) => p.includes("/Default/")),
+      "deleted something outside the profile",
+    ).toBe(true);
   });
 });
