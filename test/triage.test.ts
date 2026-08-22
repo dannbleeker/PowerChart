@@ -892,6 +892,33 @@ describe("triage — logs that are not inserts", () => {
     expect(f.freshGrouped, "a fresh slide CAN group — the claim is a rate, not a law").toBe(1);
   });
 
+  it("reports the CURRENT grouping rate beside the all-time one, which is known to be unreadable", async () => {
+    // THE REPORT SAID SO ITSELF AND PRINTED THE NUMBER ANYWAY: "pooled over 39
+    // rounds that predate the retry, so it will climb slowly and should not be
+    // read as the current rate". A figure a reader is told to mentally discount
+    // is a figure nobody can use. All-time says 66% of charts on a freshly added
+    // slide group; over the last 20 rounds it is 81%.
+    // @ts-expect-error — plain .mjs tool, no types.
+    const { recentFreshVsEstablished, RECENT_ROUNDS } = await import("../scripts/triage.mjs");
+    const chart = (name: string, onSlide: number, grouped: boolean) => [
+      { message: "batch issued", data: { chart: name, onSlide } },
+      { message: grouped ? "grouped the chart's shapes" : "not grouping: refused", data: { chart: name } },
+    ];
+    const round = (grouped: boolean) => ({ trace: { entries: chart("c", 0, grouped) } });
+
+    // An old era that never grouped, then a recent one that always does.
+    const logs = [...Array(30).fill(round(false)), ...Array(RECENT_ROUNDS).fill(round(true))];
+    expect(recentFreshVsEstablished(logs)).toMatchObject({ fresh: RECENT_ROUNDS, freshGrouped: RECENT_ROUNDS });
+    expect(poolFreshVsEstablished(logs).freshGrouped, "the all-time figure still carries the dead era").toBe(
+      RECENT_ROUNDS,
+    );
+
+    // BELOW THE WINDOW IT REFUSES TO ANSWER. A rate from five rounds is exactly
+    // the thing this exists to stop, and printing one would repeat the defect
+    // in the other direction.
+    expect(recentFreshVsEstablished([round(true), round(true)]), "a rate from two rounds is not a rate").toBeNull();
+  });
+
   it("separates the charts that got grouped from the ones that did not", () => {
     // THE QUESTION NOBODY ASKED FOR ELEVEN ROUNDS, and the archive held the
     // answer throughout: pooled over every round, 64 grouped charts lost 1 tag

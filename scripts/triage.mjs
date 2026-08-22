@@ -1355,6 +1355,31 @@ export function poolFreshVsEstablished(logs) {
 }
 
 /**
+ * How long a window counts as "now".
+ *
+ * Long enough to be a rate rather than one afternoon, short enough that nothing
+ * before the settled retry (rounds 064/065) can be inside it.
+ */
+export const RECENT_ROUNDS = 20;
+
+/**
+ * The fresh-versus-established split over recent rounds only.
+ *
+ * WHY IT EXISTS. The all-time number is known to be unreadable and the report
+ * said so in prose and printed it anyway: "pooled over 39 rounds that predate
+ * the retry, so it will climb slowly and should not be read as the current
+ * rate". A figure a reader is told to mentally discount is a figure nobody can
+ * use, and the answer to a stale window is not a caveat — it is a second
+ * window. All-time 66%; last 20 rounds, 81%.
+ *
+ * `null` below the window rather than a short-window figure, because a rate
+ * from five rounds is the thing this exists to stop.
+ */
+export function recentFreshVsEstablished(logs, n = RECENT_ROUNDS) {
+  return (logs?.length ?? 0) > n ? poolFreshVsEstablished(logs.slice(-n)) : null;
+}
+
+/**
  * Charts that cannot follow a drag — the failure a passing scenario was hiding.
  *
  * WHY IT NEEDED ITS OWN NUMBER. `an update follows a moved chart` passes, and it
@@ -2385,13 +2410,31 @@ function reportFreshVsEstablished(logs) {
   console.log(
     `    freshly added, empty      ${String(f.fresh).padStart(3)} chart(s), ${String(f.freshGrouped).padStart(3)} grouped = ${pct(f.freshGrouped, f.fresh)}`,
   );
+  // THE CURRENT RATE, because the pooled one is known to be unreadable and this
+  // report said so in prose and printed it anyway: "pooled over 39 rounds that
+  // predate the retry, so it will climb slowly and should not be read as the
+  // current rate". A number a reader is told to mentally discount is a number
+  // nobody can use — and the answer is not a caveat, it is a second window.
+  //
+  // 20 rounds: long enough to be a rate rather than an afternoon, short enough
+  // that nothing before the settled retry (rounds 064/065) is in it.
+  const r = recentFreshVsEstablished(logs);
+  if (r && (r.established || r.fresh)) {
+    console.log(`    last ${RECENT_ROUNDS} round(s) — the rate that is actually current:`);
+    console.log(
+      `      slide already had shapes  ${String(r.established).padStart(3)} chart(s), ${String(r.establishedGrouped).padStart(3)} grouped = ${pct(r.establishedGrouped, r.established)}`,
+    );
+    console.log(
+      `      freshly added, empty      ${String(r.fresh).padStart(3)} chart(s), ${String(r.freshGrouped).padStart(3)} grouped = ${pct(r.freshGrouped, r.fresh)}`,
+    );
+  }
   if (f.established && f.fresh)
     console.log(
       `    A chart on a freshly added slide USED NOT TO GROUP: its pre-grouping re-read came\n` +
         `    back short or empty, so it fell through ungrouped and lost its config. Since the\n` +
         `    settled retry those charts DO group — rounds 064 and 065, both, on the same two\n` +
-        `    charts. The percentage above is pooled over 39 rounds that predate the retry, so\n` +
-        `    it will climb slowly and should not be read as the current rate.\n` +
+        `    charts. The all-time percentage above is pooled over 39 rounds that predate the\n` +
+        `    retry and cannot be read as the current rate; the recent window is what to quote.\n` +
         `    What such a chart still loses is the TAG, refused through the GROUP handle: the\n` +
         `    group hangs off a slide handle Office has rewritten to slides.getItem(id), and a\n` +
         `    freshly added slide's id does not round-trip on this host.\n` +
