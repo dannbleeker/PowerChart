@@ -206,13 +206,31 @@ export function planSceneUpdate(prev: Scene, next: Scene): SceneUpdatePlan | nul
  *     0.75+  162 extra               fatal, six times over
  *
  * THE SHARE IS A PROXY FOR THE WRONG THING. What the host refuses is shapes per
- * BATCH, and this update writes every changed shape of every chart into one
- * batch and syncs once. The demo deck hit the same wall and was fixed by
+ * BATCH, and this update used to write every changed shape of every chart into
+ * one batch and sync once. The demo deck hit the same wall and was fixed by
  * chunking — one `PowerPoint.run` per slide (#112) — not by a threshold.
- * Chunking the in-place writes would make this constant irrelevant, and is a
- * better answer than raising a number until something dies.
+ *
+ * SO THE BATCH IS BOUNDED NOW, and this is 0.8 again on purpose.
+ * `IN_PLACE_WRITES_PER_SYNC` caps a write at six shapes per sync, and round 152
+ * measured that cap as free: 164626 ms against 164518 ms unchunked, 0.07% on a
+ * 164-second scenario, with successes and declines unmoved.
+ *
+ * 0.8 is the value that crashed PowerPoint six times at 255-284s, and it is
+ * deliberately the value used again, because it is the only one that
+ * discriminates between the two explanations that round left standing:
+ *
+ *     it completes  ->  the crash was per-SYNC size. Chunking is the fix and
+ *                       this constant stops being load-bearing.
+ *     it crashes    ->  the crash is per-CONTEXT accumulation: every chart's
+ *                       proxies and queued work in one `PowerPoint.run`.
+ *                       Chunking cannot touch that, and the fix is a fresh
+ *                       context per chart — #112 again, one run per slide.
+ *
+ * Both answers end the guessing. Revert on a crash, a failed scenario, or a
+ * round that does not complete — a direction is not a criterion, which is what
+ * let round 150 through.
  */
-export const UPDATE_SHARE_LIMIT = 0.6;
+export const UPDATE_SHARE_LIMIT = 0.8;
 
 export function worthUpdating(plan: SceneUpdatePlan, total: number): boolean {
   if (!total) return false;

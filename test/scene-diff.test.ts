@@ -164,27 +164,41 @@ describe("the fingerprint that decides whether the old scene is the drawn one", 
 
 describe("whether a plan is worth taking", () => {
   it("takes a small change and declines a wholesale one", () => {
-    // A redraw is one delete plus one add per node, so an update touching more
-    // than half is already doing more host calls per shape saved.
+    // The old comment here read "a redraw is one delete plus one add per node,
+    // so an update touching more than half is already doing more host calls per
+    // shape saved". That counted an in-place write as ONE call per node; it is
+    // about twenty, and the real cost is shapes per BATCH — which is bounded
+    // directly now. See `UPDATE_SHARE_LIMIT`.
     expect(worthUpdating({ changed: [0] }, 24)).toBe(true);
     expect(worthUpdating({ changed: [] }, 24)).toBe(true);
-    expect(worthUpdating({ changed: Array.from({ length: 18 }, (_, i) => i) }, 24)).toBe(false);
+    expect(worthUpdating({ changed: Array.from({ length: 22 }, (_, i) => i) }, 24)).toBe(false);
     expect(worthUpdating({ changed: Array.from({ length: 12 }, (_, i) => i) }, 24)).toBe(true);
     expect(UPDATE_SHARE_LIMIT).toBeGreaterThan(0);
   });
 
-  it("admits 9-of-16 and still declines 18-of-24 — the two edges of 0.6", () => {
+  it("admits both edits the battery makes, now that the batch is bounded", () => {
     // BOTH EDGES, because the whole point of this number is which side of it
     // two real edits fall on. `same scale across the deck` makes exactly these:
     // 18-of-24 six times a round and 9-of-16 twice.
     //
-    // 0.8 admitted both and PowerPoint died on all seven attempts of round 150,
-    // at 255/284/282/278/257/282s. 0.6 admits the smaller one only: two charts
-    // writing nine shapes rather than eight charts writing eighteen — 18 extra
-    // shape-writes against 144, an eighth of the dose.
+    // The history is the argument. 0.8 admitted both with an UNBOUNDED batch
+    // and PowerPoint died on all seven attempts of round 150, at
+    // 255/284/282/278/257/282s. 0.6 admitted the smaller one only and was safe.
+    // `IN_PLACE_WRITES_PER_SYNC` now caps a write at six shapes per sync, and
+    // round 152 measured that cap as free — 0.07% on a 164-second scenario —
+    // so 0.8 is back to ask whether the crash was ever about the share.
     const upTo = (n: number) => ({ changed: Array.from({ length: n }, (_, i) => i) });
-    expect(worthUpdating(upTo(9), 16), "9-of-16 declined — the 0.6 step does nothing at all").toBe(true);
-    expect(worthUpdating(upTo(18), 24), "18-of-24 admitted — that is the share that killed the host").toBe(false);
+    expect(worthUpdating(upTo(9), 16), "9-of-16 declined").toBe(true);
+    expect(worthUpdating(upTo(18), 24), "18-of-24 declined — the round cannot test the bounded batch").toBe(true);
+  });
+
+  it("still declines a near-total rewrite", () => {
+    // A cap survives, and it is no longer about arithmetic. Where nearly every
+    // node changes there is little left to save, and a redraw remains the
+    // better-tested way to get a clean chart.
+    const upTo = (n: number) => ({ changed: Array.from({ length: n }, (_, i) => i) });
+    expect(worthUpdating(upTo(22), 24), "a near-total rewrite took the fast path").toBe(false);
+    expect(worthUpdating(upTo(24), 24), "a total rewrite took the fast path").toBe(false);
   });
 
   it("declines rather than dividing by zero on an empty chart", () => {
@@ -209,8 +223,13 @@ describe("whether a plan is worth taking", () => {
     // then crashed PowerPoint on all seven attempts, at 255/284/282/278/257/282
     // seconds, and that scenario starts at 280s. See `UPDATE_SHARE_LIMIT`.
     //
-    // So this assertion is not an untested default any more. It is the measured
-    // answer for an 18-of-24 edit on this host.
-    expect(take(buildChart({ ...cfg, scale: { max: 105 } })), "a full rescale took the in-place path").toBe(false);
+    // AND REVERSED AGAIN, deliberately, once the real cost was bounded. Round
+    // 150 crashed with an UNBOUNDED batch: eight charts writing eighteen shapes
+    // apiece into one sync each. `IN_PLACE_WRITES_PER_SYNC` caps that at six,
+    // and round 152 measured the cap as free (0.07% on a 164-second scenario).
+    //
+    // So this edit takes the fast path again, and the round says whether the
+    // crash was per-SYNC size (fixed) or per-CONTEXT accumulation (not).
+    expect(take(buildChart({ ...cfg, scale: { max: 105 } })), "a full rescale was still declined").toBe(true);
   });
 });
