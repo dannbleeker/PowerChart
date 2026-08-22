@@ -1994,3 +1994,69 @@ describe("selecting a deck tab that is already open", () => {
     ).toBe(false);
   });
 });
+
+describe("a sign-in popup that outlived its flow", () => {
+  const TABS =
+    "### Result\n" +
+    "- 0: [Home - OneDrive](https://onedrive.live.com/)\n" +
+    "- 1: (current) [Presentation64.pptx](https://onedrive.live.com/personal/x/doc.aspx)\n" +
+    "- 2: [Microsoft account](https://login.live.com/oauth20_authorize.srf?client_id=abc)";
+  const shFor = (tabs: string) => {
+    const calls: string[][] = [];
+    const fn = ((...args: string[]) => {
+      calls.push(args);
+      return args[0] === "tab-list" ? tabs : "";
+    }) as never;
+    return { fn, calls };
+  };
+
+  it("closes it once the host has answered, which is the proof it is superfluous", () => {
+    // MSAL opens the sign-in in a popup and closes it when the flow finishes.
+    // On 2026-08-22 one did not: it sat as a third tab for three hours while
+    // the deck worked normally beside it. Office.js answering is what proves
+    // nothing is waiting on that window.
+    const { fn, calls } = shFor(TABS);
+    expect(driver.closeStaleAuthPopups(fn, { hostAnswered: true })).toEqual([2]);
+    expect(calls).toContainEqual(["tab-close", "2"]);
+  });
+
+  it("closes NOTHING when the host has not answered", () => {
+    // THE GATE THAT MATTERS. Without a live host there is no evidence the flow
+    // is finished, and a sign-in window that might still be live is the one
+    // surface this loop must not touch.
+    const { fn, calls } = shFor(TABS);
+    expect(driver.closeStaleAuthPopups(fn, { hostAnswered: false })).toEqual([]);
+    expect(
+      calls.some((c) => c[0] === "tab-close"),
+      "closed a sign-in window with no proof it was done",
+    ).toBe(false);
+  });
+
+  it("never closes the tab a person is looking at", () => {
+    // A FRONTED sign-in window may be one someone is part-way through, and the
+    // driver has no way to tell a finished flow from a half-typed one.
+    const fronted =
+      "- 0: [Home - OneDrive](https://onedrive.live.com/)\n" +
+      "- 1: (current) [Microsoft account](https://login.live.com/oauth20_authorize.srf?x=1)";
+    const { fn } = shFor(fronted);
+    expect(driver.closeStaleAuthPopups(fn, { hostAnswered: true })).toEqual([]);
+  });
+
+  it("leaves every other tab alone", () => {
+    // Only the two sign-in hosts, matched on the URL. A deck tab closed by
+    // mistake would end the round it belongs to.
+    const { fn } = shFor(
+      "- 0: [Home - OneDrive](https://onedrive.live.com/)\n- 1: (current) [x](https://example.com/)",
+    );
+    expect(driver.closeStaleAuthPopups(fn, { hostAnswered: true })).toEqual([]);
+  });
+
+  it("closes the highest index first, because closing renumbers the rest", () => {
+    const many =
+      "- 0: (current) [deck](https://onedrive.live.com/x)\n" +
+      "- 1: [Microsoft account](https://login.live.com/a)\n" +
+      "- 2: [Microsoft account](https://login.microsoftonline.com/b)";
+    const { fn } = shFor(many);
+    expect(driver.closeStaleAuthPopups(fn, { hostAnswered: true })).toEqual([2, 1]);
+  });
+});
