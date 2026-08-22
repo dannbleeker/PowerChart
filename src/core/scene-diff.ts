@@ -219,16 +219,24 @@ export function planSceneUpdate(prev: Scene, next: Scene): SceneUpdatePlan | nul
  * deliberately the value used again, because it is the only one that
  * discriminates between the two explanations that round left standing:
  *
- *     it completes  ->  the crash was per-SYNC size. Chunking is the fix and
- *                       this constant stops being load-bearing.
- *     it crashes    ->  the crash is per-CONTEXT accumulation: every chart's
- *                       proxies and queued work in one `PowerPoint.run`.
- *                       Chunking cannot touch that, and the fix is a fresh
- *                       context per chart — #112 again, one run per slide.
+ * ROUND 153 ANSWERED IT: THE CRASH WAS PER-SYNC SIZE. It completed, 13/13, at
+ * the same 0.8 that died six times unbounded.
  *
- * Both answers end the guessing. Revert on a crash, a failed scenario, or a
- * round that does not complete — a direction is not a criterion, which is what
- * let round 150 through.
+ *     150  0.5  unchunked   ok  3 | declined 10 | same scale 195928 ms
+ *     151  0.6  unchunked   ok  5 | declined  8 | same scale 164518 ms
+ *     152  0.6  CHUNKED     ok  5 | declined  8 | same scale 164626 ms
+ *     153  0.8  CHUNKED     ok 11 | declined  2 | same scale 157403 ms
+ *
+ * `too much of the chart changed` went from six a round to NONE. The two
+ * declines left are the correct ones: a picture, which is not in the scene, and
+ * a chart with no parts list and no readable group members. Eleven of thirteen
+ * is every attempt this battery can produce.
+ *
+ * SO THIS CONSTANT IS NO LONGER WHAT HOLDS THE HOST UP — `IN_PLACE_WRITES_PER_SYNC`
+ * is. What survives here is a risk cap, not a cost model: where nearly every
+ * node changes there is little left to save, and a redraw is the better-tested
+ * way to a clean chart. Move it only on a round, and never without the batch
+ * bound moving with it.
  */
 export const UPDATE_SHARE_LIMIT = 0.8;
 

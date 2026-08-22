@@ -4044,3 +4044,56 @@ limit again, WITH the batch bounded at six, asks the question directly:
 
 A crash would cost a round and a recovery. It would also end the guessing, and
 it is the only remaining way to find out.
+
+## Round 153 — the crash was per-SYNC size, and the feature is now at its ceiling
+
+    150  0.5  unchunked   ok  3 | declined 10 | 13/13 | same scale 195928 ms
+    151  0.6  unchunked   ok  5 | declined  8 | 13/13 | same scale 164518 ms
+    152  0.6  CHUNKED     ok  5 | declined  8 | 13/13 | same scale 164626 ms
+    153  0.8  CHUNKED     ok 11 | declined  2 | 13/13 | same scale 157403 ms
+
+**0.8 is the value that crashed PowerPoint six times at 255-284s, and it
+completed.** The only thing that changed between those two rounds is that a
+write now goes out six shapes at a time. So of the two explanations round 150
+left standing, it was the first: per-SYNC statement volume, not per-context
+accumulation. A fresh `PowerPoint.run` per chart is not needed.
+
+### The decline column is finished
+
+`too much of the chart changed` went from six a round to none. What is left is
+two refusals that are correct by construction:
+
+    1x  this update draws a picture, which is not in the scene the differ compares
+    1x  the chart has no parts list and no readable group members
+
+**Eleven of thirteen is every attempt this battery can produce.** The feature
+that had never run once in 119 archived rounds now runs on everything it is
+allowed to.
+
+### What the numbers do and do not support
+
+The counts are deterministic and not in doubt: 6 declines to 0, 5 successes to
+11. The timing is weaker evidence and should be read as such — 157403 ms
+against 164626, one observation each. The 0.6 pair is unusually tight (164518
+and 164626, 108ms apart), which makes a 7.2-second drop look real, but n=1 is
+n=1. The honest claim is the 195928 to 157403 span across the whole sequence:
+**20% off the longest scenario in the battery**, with three intermediate points
+that move in the right direction each time.
+
+### The constant that mattered was never the one being tuned
+
+`UPDATE_SHARE_LIMIT` spent this entire investigation being raised, crashed,
+reverted, raised again — and it was a proxy the whole time. The thing holding
+the host up was `IN_PLACE_WRITES_PER_SYNC`, which did not exist until round 152.
+What survives in the share limit is a risk cap, not a cost model.
+
+### Every round of this sequence needed two attempts
+
+    150  {"attempts":2,"recovered":["not-ready"]}
+    151  {"attempts":2,"recovered":["not-ready"]}
+    152  {"attempts":2,"recovered":["not-ready"]}
+    153  {"attempts":2,"recovered":["not-ready"]}
+
+Four for four, always `not-ready`, always recovered. That is a minute or two
+per round spent on a first attempt that never had a chance, and it has been
+invisible for the whole archive — `driverRun` is three rounds old. Chased next.
