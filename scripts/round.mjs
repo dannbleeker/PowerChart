@@ -2099,6 +2099,21 @@ export async function recover(sh, sleep, profile = PROFILE_DIR) {
   if (noBrowser(sh("list"))) {
     sh("open", ...roundConfigArg(), "--persistent", `--profile=${profile}`, "--headed", "https://onedrive.live.com/");
     await sleep(15000);
+  }
+  // THE DECK TAB, WHETHER OR NOT THE BROWSER IS NEW.
+  //
+  // This block used to sit inside the `noBrowser` branch above, which assumed a
+  // living browser implies an open deck. It does not. A browser sitting on
+  // OneDrive's home — after a tab crash, or after anything reopened the browser
+  // without the deck — made `recover` skip the deck entirely, reload the wrong
+  // page, and then hunt for a pane that had never been opened. Seven attempts
+  // in a row reported "could not read the pane's build stamp — is the add-in
+  // open?" with `deck ? slide(s)` beside it, while the deck sat in the file
+  // list four minutes old.
+  //
+  // Asked of the TAB LIST rather than of the browser, because "is the deck
+  // open" is the actual question and the browser's existence never answered it.
+  {
     // The deck, and then ITS tab. Clicking the file opens a NEW tab while the
     // CLI stays on the old one, and skipping that is how a healthy setup reads
     // as a closed pane.
@@ -2109,16 +2124,21 @@ export async function recover(sh, sleep, profile = PROFILE_DIR) {
     // and then failed to find anything, silently, in exactly the situation this
     // function exists for. `PW_DECK` overrides it for a deck named anything else.
     const deckName = process.env.PW_DECK ?? DECK_NAME;
-    const deckPattern = new RegExp(`link "${deckName}`);
-    const deck = refFor(sh, deckName, deckPattern);
-    if (deck) clickRef(sh, deck);
-    await sleep(25000);
-    const line = sh("tab-list")
-      .split("\n")
-      .find((l) => l.includes(deckName));
-    const n = line ? /(\d+):/.exec(line)?.[1] : null;
-    if (n) sh("tab-select", n);
-    await sleep(20000);
+    // Only when it is not already open. A deck tab that is present needs
+    // selecting, not opening again, and clicking the file a second time is how
+    // a recovery leaves two tabs on one document.
+    if (!sh("tab-list").includes(deckName)) {
+      const deckPattern = new RegExp(`link "${deckName}`);
+      const deck = refFor(sh, deckName, deckPattern);
+      if (deck) clickRef(sh, deck);
+      await sleep(25000);
+      const line = sh("tab-list")
+        .split("\n")
+        .find((l) => l.includes(deckName));
+      const n = line ? /(\d+):/.exec(line)?.[1] : null;
+      if (n) sh("tab-select", n);
+      await sleep(20000);
+    }
   }
   const dialog = /dialog \[ref=([a-z0-9]+)\]/.exec(sh("find", "Sorry, we ran into a problem"))?.[1];
   if (dialog)
