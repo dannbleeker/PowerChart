@@ -1238,17 +1238,42 @@ const PROBES: Probe[] = [
     id: "shape-resolve-held-slide-proxy",
     resample: true,
     question: "Can a shape be RESOLVED (not added) through a slide proxy resolved a sync ago?",
-    // The half of the held-handle rule nobody has asked about, and three
-    // production sites rest on it: `deleteShapesById`, `setShapeSelection` and
-    // the selection path all resolve a slide, sync, and then reach through that
-    // same handle for `shapes.getItemOrNullObject(...)`.
+    // The half of the held-handle rule nobody has asked about. It has never
+    // once been answered — 133 rounds, 133 `no-scratch-shape` — and the reason
+    // is in the body below.
     //
-    // `shape-add-held-slide-proxy` proves the host refuses a WRITE through such
-    // a handle, and the error it gave — `errorLocation: SlideCollection.getItem`
-    // — points at the slide lookup rather than at the add, which would mean
-    // reads fail too. That is a reading, not an answer: every read the last
-    // sheet got right used a handle of its own. So ask, because the answer
-    // decides whether those three sites are bugs or merely untidy.
+    // ONE PRODUCTION SITE RESTS ON IT, NOT THREE. This comment used to name
+    // `deleteShapesById`, `setShapeSelection` and the selection path, and two of
+    // those three no longer do the thing (corrected 2026-08-22):
+    //
+    //   - the in-place update path takes a DELIBERATELY FRESH handle for its
+    //     lookups and says so at the call site — see `powerpoint.ts`, "A FRESH
+    //     handle for the lookups, not the one the liveness check above just
+    //     resolved";
+    //   - `setShapeSelection` never resolves a SHAPE through the aged handle at
+    //     all. It calls `setSelectedShapes(ids)` ON the slide, which is a
+    //     different question — a method on an aged slide, not a by-id lookup
+    //     through one.
+    //
+    // Which leaves `deleteShapesById`, and only when there is wreckage to sweep.
+    // Its trace has not fired once in 133 rounds, because a healthy round leaves
+    // no strays — so that site cannot answer this either, and now says so
+    // positively rather than by silence.
+    //
+    // AND PRODUCTION HAS ALREADY ANSWERED THE OTHER HALF, unread for 133 rounds.
+    // `setShapeSelection` resolves a slide, syncs, checks liveness, and then
+    // calls `setSelectedShapes` on that one-sync-old handle — and `which
+    // selection call wedges the host` reports "the host answered all 7 rung(s)"
+    // in every round of the archive. So "this host refuses an aged slide handle"
+    // is too broad a rule to carry around: it refuses `shapes.add*` through one
+    // (`shape-add-held-slide-proxy`, threw in 128 of 133) and accepts
+    // `setSelectedShapes` through one, every round, without exception.
+    //
+    // `shape-add-held-slide-proxy`'s error named `errorLocation:
+    // SlideCollection.getItem`, which points at the slide lookup rather than at
+    // the add and would mean reads fail too. Against 133 rounds of selection
+    // working through the same kind of handle, that reading is now the weaker
+    // one. The question below is what would settle it.
     ask: async (ctx) => {
       // REACHED FOR POSITIONALLY, BECAUSE THE ID ROUTE IS CLOSED ON THIS HOST.
       //

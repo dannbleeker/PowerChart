@@ -1957,6 +1957,19 @@ export async function deleteShapesById(slideId: string, ids: string[]): Promise<
       // clean, and Stop's promise that nothing is left behind rests on it —
       // and all three used to be handed a bare number that could not say
       // whether it meant "nothing to do" or "could not touch any of it".
+      // THE POSITIVE, not just the failure. This loop is the only place left in
+      // production that resolves a shape by id through a slide handle resolved
+      // a SYNC AGO, and `shape-resolve-held-slide-proxy` — the probe that asks
+      // whether this host permits that — has answered `no-scratch-shape` in all
+      // 133 archived rounds and will keep doing so: it needs an id for a fresh
+      // shape, which this host refuses to give.
+      //
+      // So this sweep is the only witness, and until now it testified only
+      // against: a line when the host would not resolve, nothing at all when it
+      // did. An absent failure line is not an answer — a healthy round sweeps no
+      // wreckage and produces the same silence.
+      if (gone)
+        trace("insert", "resolved a shape by id through a slide handle a sync old", { slideId, resolved: gone });
       if (unresolved) trace("insert", "wreckage the host would not resolve", { slideId, unresolved, swept: gone });
       return gone;
     });
