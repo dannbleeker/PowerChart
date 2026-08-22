@@ -4489,3 +4489,65 @@ vs 159320, and 512s vs 542s, are close enough that a 666-second pane did not mov
 them much. But **158/159 and 160/161 are not clean pairs**, and the two anomalies
 in them (a lost tag, a refused group) both sit on the aged half. Neither is
 evidence about the build. The next pair will be.
+
+## Rounds 162 and 163 — the first clean pair in the archive
+
+    round  158   159   160   161   162   163
+    pane    67   696    70   666    70    65
+    group  9/9   7/8   9/9   7/8   9/9   9/9
+    ms     152k  159k  157k  158k  154k  166k
+
+163 is the first true second-round in this archive to start on a fresh pane. It
+ran with `--fresh`, per the rule written down after 161, and it grouped **9 of
+9** where 159 and 161 — its counterparts in the two preceding pairs, both on a
+~670-second pane — each grouped 7 of 8.
+
+**Both aged-pane rounds refused a group. All four fresh-pane rounds refused
+none.** That is 2 against 4 and it is not proof; what makes it worth acting on
+is the prior, which was already written down: PAIR POSITION says the second
+round is worse 20x against better 2x over 39 pairs, and pane age separates
+post-retry 0.4 from 4.6.
+
+So it is **staked, not claimed** — `a-fresh-second-round-stops-refusing-groups`,
+open in the ledger, judged on the next `--fresh` second-round. FAILED would mean
+pane age is not the cause and the PAIR POSITION explanation this project has
+carried for dozens of rounds needs replacing rather than acting on. That is the
+more valuable half.
+
+### What `--fresh` costs
+
+One extra attempt. The browser closes and reopens, the deck loads, and the pane
+comes back CLOSED — recovery reopens it from the ribbon and the round starts on
+attempt 2. The sideload survived, which is the whole reason this route was
+chosen over reloading the pane. Cheap against a 670-second pane.
+
+### The stake itself was staked wrongly, and the ledger caught it
+
+Written at 22:55 with `madeOn: "2026-08-22"`. `stampDate` compares
+lexicographically and a bare date means the START of that day — so the entry was
+immediately judged against **all twelve rounds already taken that day, including
+159 and 161, the two that motivated it**. It came out `BOTH` (held 10, FAILED
+2) on evidence recorded before the change existed.
+
+The first rule this ledger is built on is that a prediction is never judged
+against the round that prompted it. A date-only stamp walks straight around it,
+and nothing said so. It is now stamped `2026-08-22 23:00` and reads
+`no round yet`, which is the truth.
+
+`stakedWithoutATime` warns on the next one. Only when `afterBuild` is absent
+from the archive: a build that IS there pins the position exactly and the date
+is never consulted, so warning then would be noise on most of the ledger.
+
+Worth noting what caught it: **the population judge built four hours earlier.**
+The old single-round judge would have printed one verdict off one round and
+nothing would have looked wrong. `held 10 · FAILED 2` is what made the
+back-dating visible.
+
+### The remaining in-place decline now carries its evidence
+
+`the chart has no parts list and no readable group members` has fired exactly
+once per round since round 151 — deterministic, twelve rounds — and every trace
+carried the sentence and nothing else. `groupMembersInOrder` returns `[]` for
+three different reasons (no collection queued, items unreadable, fewer than two
+members) and nothing could tell them apart. It now records `collection`,
+`members`, `nodes` and the target ids. The next round says which.

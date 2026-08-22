@@ -96,6 +96,33 @@ describe("judging across the population instead of on whichever round was newest
     expect(t.last.why).toContain("tags-kept");
   });
 
+  it("warns when a claim is stamped with a day and no time", async () => {
+    // WHAT IT COST, the evening it was written. #684 was staked at 22:55 with a
+    // bare `2026-08-22`, and `stampDate` compares lexicographically — so a bare
+    // date means the START of that day and the entry was judged against all
+    // twelve rounds already taken, INCLUDING 159 and 161, the two that motivated
+    // it. It came out `BOTH` on evidence recorded before the change existed.
+    //
+    // The first rule this ledger is built on is that a prediction is never
+    // judged against the round that prompted it. A date-only stamp walks
+    // straight around it, and nothing said so.
+    // @ts-expect-error — plain .mjs tool, no types.
+    const { stakedWithoutATime } = await import("../scripts/triage.mjs");
+    const logs = [{ build: "aaaaaaa · 2026-08-22 09:00Z" }];
+    const bare = { madeOn: "2026-08-22", afterBuild: "zzzzzzz" };
+    expect(stakedWithoutATime(bare, logs, buildOf)).toBe(true);
+    expect(stakedWithoutATime({ ...bare, madeOn: "2026-08-22 23:00" }, logs, buildOf)).toBe(false);
+
+    // AND SILENT WHEN THE BUILD PINS IT. An `afterBuild` present in the archive
+    // fixes the position exactly and the date is never consulted, so warning
+    // there would be noise on every correctly-staked entry — which is most of
+    // the ledger.
+    expect(
+      stakedWithoutATime({ ...bare, afterBuild: "aaaaaaa · 2026-08-22 09:00Z" }, logs, buildOf),
+      "warned about an entry whose build anchors it",
+    ).toBe(false);
+  });
+
   it("hands back every round after the staking build, newest last", () => {
     const logs = [{ build: "a" }, { build: "b" }, { build: "c" }];
     expect(roundsToJudgeOn(logs, "a", buildOf).map(buildOf)).toEqual(["b", "c"]);
