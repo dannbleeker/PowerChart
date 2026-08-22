@@ -4097,3 +4097,41 @@ What survives in the share limit is a risk cap, not a cost model.
 Four for four, always `not-ready`, always recovered. That is a minute or two
 per round spent on a first attempt that never had a chance, and it has been
 invisible for the whole archive — `driverRun` is three rounds old. Chased next.
+
+## Round 155 — the first round in the archive to start first time
+
+    153            ok 11 | declined 2 | 13/13 | driverRun {"attempts":2,"recovered":["not-ready"]}
+    154            ok 11 | declined 2 | 13/13 | driverRun {"attempts":2,"recovered":["not-ready:host-silent+pane-stale"]}
+    155  --fresh   ok 11 | declined 2 | 13/13 | driverRun {"attempts":1,"recovered":[]}
+
+**Attempts 2 to 1, and `recovered` empty.** Every round before this one started
+from whatever the last had left behind, gone stale, and paid a failed attempt
+plus a recovery for it. The label added in round 154 is what made the fix
+obvious: `host-silent` is the editing session dropping while the browser sits
+idle, `pane-stale` is a build deployed since the pane loaded, and a session
+opened a moment ago has neither problem.
+
+The counts did not move — 11, 2, 13/13 — which is the requirement. A fresh
+browser changes how a round STARTS, not what it measures, and any movement
+there would have meant an unintended change.
+
+### The timing is suggestive and is not being claimed
+
+`same scale across the deck` came in at 150740 ms against 159662 and 157403.
+That is 9 seconds under the round before it, and there is a plausible mechanism
+— a fresh session carries no accumulated state, and pane age is the best
+explanation this archive has for "the second round of a pair is worse". But it
+is ONE observation, and the honest position is that the attempts claim is
+established and the timing claim is not.
+
+### What this fixes that is not speed
+
+Every cross-round comparison in this archive rests on rounds beginning the same
+way. They did not: each one began from a different amount of leftover state,
+depending on how long the gap had been and what had been deployed. The
+195928-to-157403 sequence, the 108ms chunking measurement and the 0.6 pair were
+all read against that. **Making the start deterministic is worth more than the
+nine seconds it appears to save.**
+
+Not the default yet. One round is enough to show the mechanism works and not
+enough to adopt on.
