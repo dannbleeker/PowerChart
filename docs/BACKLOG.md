@@ -1882,3 +1882,44 @@ The `no-scratch-*` split in the older entry still stands for the four remaining
 starved questions. Retiring two of the six is not a fix for the harness; it
 removes two questions that could never pay, and gives their slide back to the
 ones that might.
+
+## The slide-size ladder's first rung hangs about twice as often as it answers
+
+**Measured 2026-08-23, over all 147 archived rounds. Not acted on, because the
+numbers do not yet say which way to act.**
+
+`slideSize()` rung 1 reads `presentation.pageSetup` directly, bounded by
+`SELECTION_TIMEOUT_MS` (4000ms). Across the archive:
+
+    slide size read, by source:  pageSetup 22 · exportedSlide 22
+    gave up waiting on "reading the slide size":  44 rounds
+
+So rung 1 **is not a dead rung** — it answers 22 times — and it hangs roughly
+twice as often, first seen in round 117 and in 26 of the last 30 rounds. Every
+hang costs a flat four seconds before rung 2 exports a slide and answers.
+
+The trace already names the shape precisely, and it is worth quoting because it
+rules out "the host was busy":
+
+    "THIS CALL ALONE is stuck — the host answered something else 3845ms AFTER
+     this call"
+
+**Why this is recorded rather than fixed.** The obvious change is to lower the
+bound, and the obvious change is not obviously right:
+
+- rung 2 exports a slide, and nothing has measured what THAT costs. Trading a
+  4-second wait for an unmeasured export is not known to be a saving.
+- 4000ms is `SELECTION_TIMEOUT_MS`, shared with the selection path. Lowering it
+  here means either a separate constant or a change to a budget something else
+  depends on — see the 0.5→0.8 `UPDATE_SHARE_LIMIT` episode for what happens
+  when a shared budget is raised on a good measurement of the wrong thing.
+- the cost is ~4s in a ~490s round, under one percent. It is worth knowing and
+  it is not worth a blind change.
+
+**What would settle it:** time rung 2 on the rounds where rung 1 hangs. Both
+already trace; neither carries a duration. One field on each, and the next round
+answers whether a lower bound saves anything at all.
+
+Found by the archive sweep of 2026-08-23. The sweep reported it as "every round
+eats a 4-second timeout — 38 of 38, never zero", which is the recent era and not
+the archive: it is 44 of 147 overall, and universal only since round 117.
