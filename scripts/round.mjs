@@ -1574,6 +1574,12 @@ export async function attempt(argv, deps, sh, healed = false) {
       (slideOk === null ? "" : slideOk ? " · slide 1 resolved" : " · slide 1 REFUSED") +
       (state.crashed ? " · PowerPoint's crash dialog is up" : ""),
   );
+  // HERE, and only here, because the line above is the proof. A host that just
+  // answered has a valid session, so any sign-in popup still open belongs to a
+  // flow that finished — see `closeStaleAuthPopups` for the other three gates.
+  const shut = closeStaleAuthPopups(sh, { hostAnswered: !!ping?.answered });
+  if (shut.length)
+    console.log(`  closed ${shut.length} sign-in popup(s) left over from a finished flow — the host is answering`);
   // SWEEP IT RATHER THAN REFUSE, when the deck is the only thing wrong. See
   // `onlyDirtyDeck` — this is the one stop the driver can clear better than a
   // person, and the person doing it by hand is what emptied a deck entirely.
@@ -1802,6 +1808,53 @@ export async function startFresh(sh, sleep, recoverFn = recover) {
   sh("close");
   await sleep(3000);
   await recoverFn(sh, sleep);
+}
+
+/**
+ * Hosts that serve a sign-in popup. Nothing else is ever closed by the function
+ * below, and the list is deliberately short and explicit.
+ */
+const AUTH_POPUP_HOSTS = /login\.live\.com|login\.microsoftonline\.com/;
+
+/**
+ * Close a sign-in popup that outlived the flow it belonged to.
+ *
+ * MSAL opens `login.live.com/oauth20_authorize.srf` in a popup and closes it
+ * when the flow finishes. On 2026-08-22 one did not: it sat as a third tab for
+ * three hours while the deck worked normally beside it, and every `tab-list`
+ * the driver read carried it.
+ *
+ * FOUR GATES, because a sign-in window is the one surface this loop must never
+ * meddle with:
+ *
+ *   1. THE HOST MUST HAVE ANSWERED. That is the proof the popup is superfluous
+ *      — Office.js answering means the session is valid, so nothing is waiting
+ *      on that window. Without it this closes nothing, which is the right
+ *      answer for a flow that might still be live.
+ *   2. NEVER THE CURRENT TAB. A fronted sign-in window may be one a PERSON is
+ *      part-way through, and the driver cannot tell.
+ *   3. ONLY these hosts, matched on the URL.
+ *   4. NOTHING IS READ, TYPED OR CLICKED inside it. The only action is
+ *      `tab-close` on an index. Closing a stale WINDOW is not the same as
+ *      interacting with a credential PROMPT, and this must never become that.
+ *
+ * Highest index first, because closing a tab renumbers the ones after it.
+ */
+export function closeStaleAuthPopups(sh, { hostAnswered } = {}) {
+  if (!hostAnswered) return [];
+  const indices = [];
+  for (const line of String(sh("tab-list") ?? "").split("\n")) {
+    if (/\(current\)/.test(line)) continue;
+    if (!AUTH_POPUP_HOSTS.test(line)) continue;
+    const n = /^\s*-\s*(\d+):/.exec(line)?.[1];
+    if (n !== undefined) indices.push(Number(n));
+  }
+  const closed = [];
+  for (const n of indices.sort((a, b) => b - a)) {
+    sh("tab-close", String(n));
+    closed.push(n);
+  }
+  return closed;
 }
 
 export function recoveryLabel(reason, codes) {
