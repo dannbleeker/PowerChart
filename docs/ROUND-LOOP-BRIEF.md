@@ -111,6 +111,26 @@ So: **two rounds per build minimum, three where a claim depends on it.** A merge
 between rounds costs a Pages wait, a pane reload, and — far worse — it makes the
 pair incomparable. Land fixes in batches between pairs, not between rounds.
 
+**Run the second round of a pair with `--fresh`.** Not optional, and not the
+same reason `--fresh` was added. The driver does NOT freshen the pane between
+rounds — reloading it raises a beforeunload prompt over unsaved work, and
+accepting that has cost the sideload twice. What freshens the pane is a MERGE,
+which makes it stale so recovery reloads it. So the pair discipline and the
+fresh-pane discipline are in direct conflict: **the moment you stop merging
+between rounds, the second one inherits an aged pane**, and pane age separates
+post-retry 0.4 from 4.6.
+
+Measured on 2026-08-22. Rounds 148-158, each taken after a merge, started with a
+pane 62-76s old. Rounds 159 and 161 — the only true second-rounds in that
+stretch — started at 696s and 666s, and both were the worse half of their pair:
+159 lost a chart's tag, 161 refused a group and left a 17-shape slide. That is
+the PAIR POSITION direction (second round worse 20x, better 2x) reproducing
+twice in one evening with the cause visible.
+
+`--fresh` closes the BROWSER, which the persistent profile survives, rather than
+reloading the page holding unsaved work. It is the only route to a fresh pane
+that does not risk the add-in.
+
 `npm run rounds` prints the per-build table and the measured noise floor. Read it
 before believing any difference.
 

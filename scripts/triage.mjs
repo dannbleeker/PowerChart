@@ -960,7 +960,28 @@ export function poolGroupingOutcome(logs) {
     priors.length >= MIN_PRIORS_FOR_A_BASELINE
       ? priors.map((p) => p.refused).sort((a, b) => a - b)[Math.floor(priors.length / 2)]
       : null;
-  return { now, refusedMedian, rounds: priors.length };
+  // THE DENOMINATOR, AND THE ONLY READING THAT SURVIVES A CHANGE OF POPULATION.
+  //
+  // `grouped` per round ran 15-20 for the whole archive and then halved to 9 at
+  // round 153, and nothing here could say why — or that it had happened. The
+  // cause is benign and complete: the in-place update started working. Six more
+  // charts per round are updated in place, an in-place update never redraws, and
+  // a chart that is not redrawn is never regrouped. 15 - 9 = 6 and 11 - 5 = 6,
+  // exactly, in the round it changed.
+  //
+  // Benign, and it silently rebased every grouping figure in this file. "0
+  // refused (usually 2)" reads as an improvement when half the attempts stopped
+  // happening — fewer refusals out of fewer tries. The RATE is the reading that
+  // holds across the change: round 160 grouped 9 of 9 attempts, round 141
+  // grouped 10 of 19. Same instrument, and only one of those two numbers can be
+  // compared to the other.
+  //
+  // This is the `same scale across the deck` trap again — "6 of 6" and "8 of 8"
+  // are both a pass — and this file argues it at length one screen up while
+  // reporting a bare count here.
+  const attempts = now.grouped + now.refused;
+  const recent = per.slice(-RECENT_IN_A_ROW).map((p) => p.grouped + p.refused);
+  return { now, refusedMedian, rounds: priors.length, attempts, recent };
 }
 
 /**
@@ -1357,8 +1378,15 @@ export function poolFreshVsEstablished(logs) {
 /**
  * How long a window counts as "now".
  *
- * Long enough to be a rate rather than one afternoon, short enough that nothing
- * before the settled retry (rounds 064/065) can be inside it.
+ * A GUESS ABOUT WHERE THE LAST REGIME BOUNDARY IS, and it should be read as
+ * one. 20 was chosen to exclude everything before the settled retry (rounds
+ * 064/065) — and it does, while sitting straight across a second boundary
+ * nobody had found: rounds 137-142 failed to group 1,4,4,5,9,2 charts and
+ * rounds 143-160 failed 3 in eighteen. So the "current rate" this produced was
+ * itself smeared by a dead era, which is the exact defect it was written to
+ * fix, one level down and in my own hand.
+ *
+ * Hence `recentSequence` below. A window is a guess; a sequence is evidence.
  */
 export const RECENT_ROUNDS = 20;
 
@@ -1370,13 +1398,34 @@ export const RECENT_ROUNDS = 20;
  * the retry, so it will climb slowly and should not be read as the current
  * rate". A figure a reader is told to mentally discount is a figure nobody can
  * use, and the answer to a stale window is not a caveat — it is a second
- * window. All-time 66%; last 20 rounds, 81%.
+ * window.
+ *
+ * READ IT WITH `recentFreshSequence`, NEVER ALONE. Over successive windows this
+ * same population reads 80% at 30 rounds, 91% at 20, 100% at 12 — and at 8
+ * there are no fresh-slide charts in it at all, because the in-place update now
+ * handles those charts and a chart that is not redrawn never lands on a fresh
+ * slide. A percentage over an emptying population is the thing to watch for
+ * here, and only the sequence shows it emptying.
  *
  * `null` below the window rather than a short-window figure, because a rate
  * from five rounds is the thing this exists to stop.
  */
 export function recentFreshVsEstablished(logs, n = RECENT_ROUNDS) {
   return (logs?.length ?? 0) > n ? poolFreshVsEstablished(logs.slice(-n)) : null;
+}
+
+/**
+ * Fresh-slide charts per round, and how many of them grouped — in sequence.
+ *
+ * The reading no window can give. A rate needs a population, and this one is
+ * shrinking for a reason that has nothing to do with grouping: the in-place
+ * update took the charts. `0/0` rounds are the signal, not a gap.
+ */
+export function recentFreshSequence(logs, n = RECENT_IN_A_ROW) {
+  return (logs ?? []).slice(-n).map((log) => {
+    const f = poolFreshVsEstablished([log]);
+    return `${f.freshGrouped}/${f.fresh}`;
+  });
 }
 
 /**
@@ -2442,6 +2491,13 @@ function reportFreshVsEstablished(logs) {
     console.log(
       `      freshly added, empty      ${String(r.fresh).padStart(3)} chart(s), ${String(r.freshGrouped).padStart(3)} grouped = ${pct(r.freshGrouped, r.fresh)}`,
     );
+    // A WINDOW IS A GUESS, A SEQUENCE IS EVIDENCE — and this population is
+    // emptying, which no percentage can show. Over successive windows it reads
+    // 80% at 30 rounds, 91% at 20, 100% at 12, and at 8 there are no fresh-slide
+    // charts left to measure: the in-place update took them, and a chart that is
+    // not redrawn never lands on a fresh slide. `0/0` rounds are the signal.
+    const seq = recentFreshSequence(logs);
+    if (seq.length) console.log(`      grouped/landed on a fresh slide, per round: [${seq.join(" ")}]`);
   }
   if (f.established && f.fresh)
     console.log(

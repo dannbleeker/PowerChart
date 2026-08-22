@@ -919,6 +919,35 @@ describe("triage — logs that are not inserts", () => {
     expect(recentFreshVsEstablished([round(true), round(true)]), "a rate from two rounds is not a rate").toBeNull();
   });
 
+  it("shows the fresh-slide population EMPTYING, which no percentage can", async () => {
+    // A WINDOW IS A GUESS ABOUT WHERE THE LAST REGIME BOUNDARY IS, and 20 was
+    // the wrong guess. It excluded everything before the settled retry, and sat
+    // straight across a second boundary nobody had found: rounds 137-142 failed
+    // to group 1,4,4,5,9,2 charts and rounds 143-160 failed 3 in eighteen. The
+    // "current rate" it produced was smeared by a dead era — the exact defect it
+    // was written to fix, one level down.
+    //
+    // The same population reads 80% at 30 rounds, 91% at 20, 100% at 12 — and at
+    // 8 there are NO fresh-slide charts in it at all, because the in-place
+    // update took those charts and a chart that is not redrawn never lands on a
+    // fresh slide. A percentage over an emptying population is what to watch
+    // for, and only the sequence shows it emptying.
+    // @ts-expect-error — plain .mjs tool, no types.
+    const { recentFreshSequence } = await import("../scripts/triage.mjs");
+    const chart = (name: string, onSlide: number, grouped: boolean) => [
+      { message: "batch issued", data: { chart: name, onSlide } },
+      { message: grouped ? "grouped the chart's shapes" : "not grouping: refused", data: { chart: name } },
+    ];
+    const busy = { trace: { entries: [...chart("a", 0, true), ...chart("b", 0, false)] } };
+    const empty = { trace: { entries: chart("c", 5, true) } };
+
+    expect(recentFreshSequence([busy, busy, empty, empty], 4)).toEqual(["1/2", "1/2", "0/0", "0/0"]);
+    // `0/0` IS THE SIGNAL, not a gap to be tidied away. A round with no
+    // fresh-slide chart is the in-place update working, and dropping it would
+    // hide the very thing this exists to show.
+    expect(recentFreshSequence([empty, empty], 4), "an empty population must still be printed").toEqual(["0/0", "0/0"]);
+  });
+
   it("separates the charts that got grouped from the ones that did not", () => {
     // THE QUESTION NOBODY ASKED FOR ELEVEN ROUNDS, and the archive held the
     // answer throughout: pooled over every round, 64 grouped charts lost 1 tag
@@ -2136,6 +2165,40 @@ describe("grouping, which no scenario verdict reports", () => {
     // baseline flags LESS, and this line is a reason to read, not a verdict.
     expect(out).toMatchObject({ now: { grouped: 15, refused: 4 }, refusedMedian: 2, rounds: 3 });
     expect(out?.now.deck, "the deck is printed as corroboration, not derived from").toEqual([0, 4, 2, 17, 24, 24, 24]);
+  });
+
+  it("carries the DENOMINATOR, because the population halved and nothing said so", () => {
+    // `grouped` per round ran 15-20 for the whole archive and halved to 9 at
+    // round 153. The cause is benign and complete — the in-place update started
+    // working, an in-place update never redraws, and a chart that is not redrawn
+    // is never regrouped: 15 - 9 = 6 and 11 - 5 = 6, exactly, in the round it
+    // changed. Benign, and it silently rebased every grouping figure in triage.
+    //
+    // "0 refused (usually 2)" reads as an improvement when half the attempts
+    // stopped happening. The RATE is the only reading that survives the change:
+    // 9 of 9 attempts and 10 of 19 are comparable, 9 and 10 are not. Same trap
+    // as `same scale across the deck` scoring "6 of 6" and "8 of 8" both a pass.
+    const out = poolGroupingOutcome([
+      round("a", 10, 9, [1]),
+      round("a", 18, 2, [1]),
+      round("a", 15, 0, [1]),
+      round("a", 9, 0, [1]),
+    ]);
+    expect(out?.attempts, "9 grouped of 9 attempted — a rate, not a bare count").toBe(9);
+    expect(out?.recent, "attempts per round in sequence, so a halving is visible").toEqual([19, 20, 15, 9]);
+
+    // AND A ROUND WHERE THE TWO DIFFER, because the assertion above cannot tell
+    // `grouped + refused` from `grouped` when the newest round refused nothing —
+    // which is every recent round, and would have let the denominator quietly
+    // become the numerator again.
+    const refusing = poolGroupingOutcome([
+      round("a", 10, 9, [1]),
+      round("a", 18, 2, [1]),
+      round("a", 15, 0, [1]),
+      round("a", 6, 3, [1]),
+    ]);
+    expect(refusing?.attempts, "a refused chart was still an attempt").toBe(9);
+    expect(refusing?.now.grouped, "and it is NOT the same number as the successes").toBe(6);
   });
 
   it("refuses to name a usual until three rounds have been seen", () => {
