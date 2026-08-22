@@ -9446,11 +9446,18 @@ async function ungroupedFallback(
  * Say how many charts left this function with a parts list, and why the rest did
  * not.
  *
- * WHY THIS EXISTS. The in-place chart update has never once succeeded — 0 times
- * against 1301 fallbacks across 117 archived rounds — and the fallback's own
- * reason is "the chart has no parts list", 12 times out of 13, in every round.
- * But NOTHING RECORDS WHETHER A PARTS LIST WAS EVER BUILT, so the archive cannot
- * tell apart:
+ * WHY THIS EXISTS — AND WHAT IT HAS SINCE ANSWERED.
+ *
+ * Written when the in-place chart update had never once succeeded: 0 times
+ * against 1301 fallbacks across 117 archived rounds, its own stated reason "the
+ * chart has no parts list" 12 times out of 13. **That is no longer true** — the
+ * update now runs 11 of 13 attempts every round (see `groupMembersInOrder`,
+ * which reads a grouped chart's members instead of demanding a parts list). The
+ * sentence is kept in corrected form rather than deleted because the counters
+ * below were built to settle it and did.
+ *
+ * At the time, NOTHING RECORDED WHETHER A PARTS LIST WAS EVER BUILT, so the
+ * archive could not tell apart:
  *
  *   - never built, because the chart was grouped and a grouped chart is not
  *     `loose`, so no siblings are collected for it at all;
@@ -9464,6 +9471,20 @@ async function ungroupedFallback(
  *
  * `where` names the exit taken, because two of the three returns above are early
  * ones and a count without its exit cannot distinguish them either.
+ *
+ * THE ANSWER, over 607 events across 29 rounds, once `poolPartsListOutcome` was
+ * finally written to read them:
+ *
+ *   346  grouped, so not loose — correct by design, a group needs no parts list
+ *   223  no charts in the call at all
+ *    36  the id read-back THREW — the real failure, about 1.2 per round
+ *     2  reached the normal exit and still produced nothing
+ *
+ * `gotPartsList` is 0 on all 607, and taken alone that reads as a path that has
+ * never once worked. 569 of the 607 are cases where a parts list is not WANTED.
+ * The counter that separates them is `where`, and it sat unread in the same
+ * object for 29 rounds — which is the fault this instrument was built to cure,
+ * committed against the instrument itself.
  */
 function tracePartsOutcome(
   items: Grouping[],

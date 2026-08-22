@@ -2426,6 +2426,54 @@ describe("what it took to start each round", () => {
     expect(pooled.clean, "an absent reading was counted as a clean start").toBe(1);
   });
 
+  it("separates the three reasons a chart has no parts list, which one counter cannot", async () => {
+    // `tracePartsOutcome` was built to tell three faults apart — never built
+    // because the chart was grouped; built and lost to a throwing read-back;
+    // built and not found again — and it has recorded all four counters on
+    // every one of its 607 events across 29 rounds. No script ever read them.
+    //
+    // AND THE OBVIOUS READING IS WRONG. `gotPartsList` is 0 on all 607, which
+    // taken alone says a production path has never once worked. 569 of the 607
+    // are cases where a parts list is not WANTED: 346 grouped charts, which need
+    // none by design, and 223 calls with no charts at all. The genuine failure
+    // is 36 throwing read-backs, about 1.2 a round. The counter that separates
+    // them is `where`, and it sat in the same object the whole time.
+    // @ts-expect-error — plain .mjs tool, no types.
+    const { poolPartsListOutcome } = await import("../scripts/triage.mjs");
+    const ev = (data: Record<string, unknown>) => ({ message: "parts list outcome", data });
+    const pooled = poolPartsListOutcome([
+      {
+        trace: {
+          entries: [
+            ev({ where: "no loose chart had siblings", charts: 1, groupedSoNotLoose: 1, gotPartsList: 0 }),
+            ev({ where: "no loose chart had siblings", charts: 0, groupedSoNotLoose: 0, gotPartsList: 0 }),
+            ev({ where: "the id read-back threw", charts: 1, groupedSoNotLoose: 0, gotPartsList: 0 }),
+            ev({ where: "read the ids back", charts: 1, groupedSoNotLoose: 0, gotPartsList: 0 }),
+          ],
+        },
+      },
+      { trace: { entries: [{ message: "drew a chart" }] } },
+    ]);
+    expect(pooled).toMatchObject({
+      grouped: 1,
+      noCharts: 1,
+      threw: 1,
+      builtNothing: 1,
+      gotList: 0,
+      events: 4,
+      rounds: 1,
+    });
+
+    // A GROUPED CHART IS NOT A FAILURE, and folding it in with the throws is
+    // exactly the reading that made this look like a dead path. The two must
+    // never land in the same bucket.
+    const allGrouped = poolPartsListOutcome([
+      { trace: { entries: [ev({ where: "no loose chart had siblings", charts: 2, groupedSoNotLoose: 2 })] } },
+    ]);
+    expect(allGrouped.grouped).toBe(1);
+    expect(allGrouped.threw, "a grouped chart was counted as a failure").toBe(0);
+  });
+
   it("reads the deck inventory the gate has printed all along", async () => {
     // EIGHT OF THE LAST THIRTY ROUNDS ended with a slide holding between 11 and
     // 48 shapes, and every one of them reported 13 of 13 scenarios passed —
