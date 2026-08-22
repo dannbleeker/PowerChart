@@ -5370,6 +5370,45 @@ describe("updating only what changed", () => {
     expect((JSON.parse(found[0].configJson) as ChartConfig).title).toBe("Renamed");
   });
 
+  it("records WHAT IT SAW when a grouped chart has no readable members, not only the conclusion", async () => {
+    // TWELVE ROUNDS OF A DEFECT WITH NO EVIDENCE ATTACHED TO ANY OF THEM. This
+    // decline has fired exactly once per round since round 151 — deterministic
+    // and reproducible — and every one of those traces carried the sentence and
+    // nothing else. There was no way to tell which of three things had happened.
+    //
+    // `groupMembersInOrder` returns `[]` for three different reasons and only
+    // the trace can separate them: no member collection was queued at all (the
+    // chart was not read as grouped), the host would not load the collection's
+    // items, or it loaded and held fewer than two — which cannot be a chart.
+    // Three different next steps, one silent sentence. The house defect, in the
+    // product's own instrument.
+    const slide = makeSlide("s1");
+    installHost([slide]);
+    const cfg = clustered();
+    await insertSceneIntoSlide(buildChart(cfg), { tagData: JSON.stringify(cfg) });
+    const target = (await listChartsInDeck()).charts[0].target;
+    expect(target.partIds?.length ?? 0, "this fixture needs a GROUPED chart").toBe(0);
+    // The collection is queued and answers — with nothing in it. That is the
+    // case a bare sentence cannot distinguish from the host refusing to answer.
+    const group = slide.created.find((s) => s.id === target.shapeId)!;
+    expect(group.grouped?.length ?? 0, "the premise: this really is a group with members").toBeGreaterThan(1);
+    group.grouped = [];
+    setTracing(true);
+    try {
+      const next = { ...cfg, title: "Renamed" };
+      await updateChartInSlide(buildChart(next), target, { tagData: JSON.stringify(next) });
+      const said = traceLog().entries.filter((e) => e.message === "not updating in place — redrawing instead");
+      expect(said.length).toBe(1);
+      const d = said[0].data as { why: string; collection: string; members: number | null; nodes: number };
+      expect(String(d.why)).toMatch(/no readable group members/);
+      expect(d.collection, "could not say whether a collection was even asked for").toBe("queued");
+      expect(d.members, "an empty collection and an unreadable one read identically").toBe(0);
+      expect(d.nodes, "the scene's size, so a mismatch can be reasoned about").toBeGreaterThan(0);
+    } finally {
+      setTracing(false);
+    }
+  });
+
   it("writes node 0 to the group's ANCHOR, not to the group itself", async () => {
     // THE HOST CAUGHT THIS AND THE SUITE DID NOT. Round 145 ran the in-place
     // update on the real host for the first time and refused three charts with

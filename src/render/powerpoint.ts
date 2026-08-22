@@ -9912,7 +9912,26 @@ async function tryInPlaceUpdate(
     if (members.length) [anchor, ...parts] = members;
   }
   if (!parts.length)
-    return no("the chart has no parts list and no readable group members, so its nodes cannot be mapped to shapes");
+    return no("the chart has no parts list and no readable group members, so its nodes cannot be mapped to shapes", {
+      // WHAT WAS OBSERVED, not only what was concluded. This decline has fired
+      // exactly once per round since round 151 — deterministic, reproducible,
+      // and completely undiagnosable, because the trace carried the sentence and
+      // nothing else. Twelve rounds of a known defect with no evidence attached
+      // to any of them.
+      //
+      // `groupMembersInOrder` returns `[]` for three different reasons and this
+      // is where they have to be told apart: the resolve sync queued no member
+      // collection at all (`collection: "absent"` — the chart was not read as
+      // grouped), the host would not load the collection's items
+      // (`members: null`), or it loaded and held fewer than two
+      // (`members: 0` or `1`, which cannot be a chart). Three different next
+      // steps, one silent sentence.
+      collection: groupMembers ? "queued" : "absent",
+      members: groupMembers ? (loadedValue(() => groupMembers.items)?.length ?? null) : null,
+      nodes: it.scene.nodes.length,
+      slideId: it.target.slideId,
+      shapeId: it.target.shapeId,
+    });
   // States the CONDITION, not a story about how it arose. This said "it was
   // drawn by an older build" for six rounds about charts the current build had
   // just drawn — the deck writer had never stamped the tag — and the journal
