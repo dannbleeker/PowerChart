@@ -2124,21 +2124,26 @@ export async function recover(sh, sleep, profile = PROFILE_DIR) {
     // and then failed to find anything, silently, in exactly the situation this
     // function exists for. `PW_DECK` overrides it for a deck named anything else.
     const deckName = process.env.PW_DECK ?? DECK_NAME;
-    // Only when it is not already open. A deck tab that is present needs
-    // selecting, not opening again, and clicking the file a second time is how
-    // a recovery leaves two tabs on one document.
+    // OPENING AND SELECTING ARE TWO JOBS, and conflating them was a regression
+    // this function shipped with for one commit. Guarding the whole block on
+    // "the deck tab is absent" meant a deck that WAS open but not fronted never
+    // got selected — so `reload` below refreshed whatever tab happened to be
+    // current, usually OneDrive's home, and every attempt then reported
+    // `deck ? slide(s)` with the deck sitting one tab away.
+    //
+    // Click the file only when no tab holds it; select it either way.
     if (!sh("tab-list").includes(deckName)) {
       const deckPattern = new RegExp(`link "${deckName}`);
       const deck = refFor(sh, deckName, deckPattern);
       if (deck) clickRef(sh, deck);
       await sleep(25000);
-      const line = sh("tab-list")
-        .split("\n")
-        .find((l) => l.includes(deckName));
-      const n = line ? /(\d+):/.exec(line)?.[1] : null;
-      if (n) sh("tab-select", n);
-      await sleep(20000);
     }
+    const line = sh("tab-list")
+      .split("\n")
+      .find((l) => l.includes(deckName));
+    const n = line ? /(\d+):/.exec(line)?.[1] : null;
+    if (n) sh("tab-select", n);
+    await sleep(20000);
   }
   const dialog = /dialog \[ref=([a-z0-9]+)\]/.exec(sh("find", "Sorry, we ran into a problem"))?.[1];
   if (dialog)

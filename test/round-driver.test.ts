@@ -1943,3 +1943,42 @@ describe("recovering when the browser lives but the deck does not", () => {
     ).toBe(false);
   });
 });
+
+describe("selecting a deck tab that is already open", () => {
+  const shFor = (answers: Record<string, string>) => {
+    const calls: string[][] = [];
+    const fn = ((...args: string[]) => {
+      calls.push(args);
+      return answers[args[0]] ?? "";
+    }) as unknown as ((...a: string[]) => string) & { dir?: string; state?: Record<string, unknown> };
+    fn.dir = ".pw";
+    fn.state = {};
+    return { fn, calls };
+  };
+
+  it("fronts a deck tab it did not have to open", async () => {
+    // MY OWN REGRESSION, one commit old. Guarding the whole block on "the deck
+    // tab is absent" meant a deck that WAS open but not fronted never got
+    // selected, so the reload below refreshed whatever tab happened to be
+    // current — OneDrive's home — and every attempt reported `deck ? slide(s)`
+    // with the deck sitting one tab away.
+    //
+    // Opening and selecting are two jobs. Click the file only when no tab holds
+    // it; select it either way.
+    const { fn, calls } = shFor({
+      list: "- default:\n  - status: open",
+      "tab-list": `- 0: (current) [Home - OneDrive](https://onedrive.live.com/)\n- 1: [${driver.DECK_NAME}.pptx](https://x)`,
+    });
+    await driver.recover(fn, (async () => {}) as never);
+    expect(
+      calls.some((c) => c[0] === "tab-select" && c[1] === "1"),
+      "the deck was open on tab 1 and never fronted",
+    ).toBe(true);
+    // …and it must not click the file again, which is how one document ends up
+    // with two tabs and the driver measures whichever it fronts.
+    expect(
+      calls.some((c) => c[0] === "find" && c.some((a) => a.includes(driver.DECK_NAME))),
+      "re-opened a deck that was already open",
+    ).toBe(false);
+  });
+});
