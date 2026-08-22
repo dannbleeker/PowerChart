@@ -299,13 +299,32 @@ if (isMain(import.meta.url, process.argv[1])) {
       // across sixty rounds, and by the time anyone looked, "now" and "usually"
       // were both 13. The oldest third against the newest third sees the shape
       // a median absorbs.
-      const drift =
-        r.newest > r.oldest * 1.3 && r.newest - r.oldest >= 2
-          ? `  <- RISING, ${r.oldest} to ${r.newest} across ${r.span}-round thirds`
-          : r.oldest > r.newest * 1.3 && r.oldest - r.newest >= 2
-            ? `  <- falling, ${r.oldest} to ${r.newest}`
-            : "";
-      console.log(`    ${r.label.padEnd(38)} ${String(r.now).padStart(4)}  (usually ${r.median})${drift}`);
+      const rising = r.newest > r.oldest * 1.3 && r.newest - r.oldest >= 2;
+      const falling = r.oldest > r.newest * 1.3 && r.oldest - r.newest >= 2;
+      // AND WHEN THE LAST FEW ROUNDS SAY OTHERWISE, SAY SO. A thirds reading is
+      // still a summary over 44 rounds, so a step inside the newest third is
+      // invisible to it — and it goes on asserting a direction after that
+      // direction has reversed. This row printed `now 2` beside `RISING, 8 to
+      // 13` on a signal that had read 2 for five rounds running: a conclusion
+      // that outlived its evidence, which is the defect this whole gate exists
+      // to catch elsewhere.
+      const med = (xs) => [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)];
+      const last = r.recent?.length ? med(r.recent) : null;
+      const stale =
+        last !== null && ((rising && last < r.oldest) || (falling && last > r.oldest))
+          ? ` — but the last ${r.recent.length} rounds median ${last}, so the thirds are describing an era that ended`
+          : "";
+      const drift = rising
+        ? `  <- RISING, ${r.oldest} to ${r.newest} across ${r.span}-round thirds${stale}`
+        : falling
+          ? `  <- falling, ${r.oldest} to ${r.newest}${stale}`
+          : "";
+      // THE SEQUENCE BESIDE THE SUMMARIES, because a median cannot see a step
+      // and this row proved it: `now 2` printed next to `usually 12` and
+      // `RISING, 8 to 13`, on a signal that has read 2 for five rounds running.
+      // All three summaries were describing an era that had ended.
+      const seq = r.recent?.length ? `  [${r.recent.join(",")}]` : "";
+      console.log(`    ${r.label.padEnd(38)} ${String(r.now).padStart(4)}  (usually ${r.median})${drift}${seq}`);
     }
   }
 

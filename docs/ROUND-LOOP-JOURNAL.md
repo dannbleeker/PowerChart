@@ -4283,3 +4283,80 @@ Both of these were found the same way, and it is worth stating as a habit:
 **when a report tells you to do something, check that the thing is still there.**
 An instrument that names work is making a claim about the present, and nothing
 about a stale claim looks stale.
+
+## Rounds 158 and 159 — the first real pair in seven rounds
+
+    155  --fresh   ok 11 | declined 2 | 13/13 | same scale 150740 ms | attempts 1
+    156            ok 11 | declined 2 | 13/13 | same scale 153799 ms | attempts 3
+    157            ok 11 | declined 2 | 13/13 | same scale 185389 ms | attempts 2
+    158  2897681   ok 11 | declined 2 | 13/13 | same scale 152821 ms | attempts 2
+    159  2897681   ok 11 | declined 2 | 13/13 | same scale 159320 ms | attempts 1
+
+**Rounds 152-157 were each a single round on their own build.** The brief says
+two per build minimum and warns that a merge between them makes the pair
+incomparable, and that rule quietly lapsed for six rounds while driver fixes
+were landing one per round. 158 and 159 are one build run twice with nothing
+merged between them, and it paid for itself immediately.
+
+### What the pair settled
+
+**The timing noise floor.** 152821 against 159320 — a 4% spread on identical
+code. Round 157's 185389 was an OUTLIER, not a trend: four builds with no
+relevant src change read 150.7k, 153.8k, 185.4k, 152.8k. This retires round
+155's suggestion that a fresh session saves nine seconds; nine seconds is
+comfortably inside a spread that reaches twenty percent.
+
+**A tag failure that is mood, not regression.** 159 carried
+`tagging failed — charts are not re-editable until repaired`, 1 chart,
+`ErrorPointer` at `BindingCollection.add` — the first non-zero
+`charts left un-tagged` in eight rounds, and it would have read as a fresh
+regression from the evening's work. **158 has none, on the same build.** The
+signature is known: 19 of 134 rounds, always 2 or 4 entries, last seen in round
+139. The pair is what makes that a shrug instead of an investigation.
+
+**159 started FIRST TIME** — attempts 1, nothing recovered. Second such start in
+the archive; 155 was the first, and it needed `--fresh` to get there.
+
+### Two more instruments describing eras that had ended
+
+**The grouping rate.** `WHICH SLIDE THE CHART LANDED ON` printed "66% of charts
+on a freshly added slide group" and then told the reader not to believe it —
+"pooled over 39 rounds that predate the retry ... should not be read as the
+current rate". A figure a reader is told to mentally discount is a figure nobody
+can use, and the answer to a stale window is a second window, not a caveat.
+
+Over the last 20 rounds it is **81%**, and that number had been unavailable for
+the seventy rounds since the settled retry landed. It also surfaces a live
+defect the pooled figure was muddying: **13 of 68 charts on a freshly added
+slide still fail to group**, in the current build, and the table directly below
+says an ungrouped chart loses its config 44% of the time.
+
+**The fallback drift arrow.** `in-place update fell back to a redraw` printed
+`now 2` beside `usually 12` and `RISING, 8 to 13` — three summaries, all
+describing an era that ended five rounds ago, two of them contradicting the
+number sitting next to them. The signal actually read 13,13,11,10,10,8,8,2,2,2,2,2
+across twelve rounds: the in-place update started working and the fallback
+collapsed.
+
+**A shorter window is not the fix.** The last-20 median is 10, which is just as
+wrong — a median over ANY fixed window smears a step by construction. The gate
+now prints the last eight values in sequence beside the summaries, and says so
+outright when the recent run contradicts the arrow:
+
+    in-place update fell back to a redraw  2  (usually 12)  <- RISING, 8 to 13 across
+    45-round thirds — but the last 8 rounds median 2, so the thirds are describing an
+    era that ended  [8,2,2,2,2,2,2,2]
+
+### Doctrine
+
+Three nights running, the same defect in three different reports: **a summary
+that outlived the regime it summarised.** The prediction ledger judged on one
+round, the starved-question report counted retired probes, the grouping rate
+pooled a dead era, and the drift arrow read thirds of an archive whose newest
+third was itself half history.
+
+They share a tell worth naming: **the report knew.** Two of the four said so in
+their own prose — "should not be read as the current rate", "Counts, not a rate"
+— and printed the number anyway. A caveat next to a figure is an admission that
+the figure is wrong, not a fix for it. Print the window that answers the
+question, or print the sequence and let the reader see the shape.

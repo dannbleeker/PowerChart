@@ -1235,6 +1235,18 @@ describe("triage — logs that are not inserts", () => {
     // TOO LITTLE HISTORY IS NOT A TREND. Same three-priors rule as every other
     // baseline in this file; this project's noise floor is the argument.
     expect(poolFallbackRates([round(1), round(9)]), "called two rounds a trend").toEqual([]);
+
+    // AND A MEDIAN CANNOT SEE A STEP — over any window, which is why the answer
+    // is not a shorter one. This same signal read 13,13,11,10,10,8,8,2,2,2,2,2
+    // over twelve rounds when the in-place update started working, and all
+    // three summaries missed it: all-time median 12, last-20 median 10, thirds
+    // "RISING, 8 to 13". The gate printed `now 2` beside `RISING` — a
+    // conclusion that had outlived its evidence. The sequence is what settles
+    // it, and it costs eight numbers.
+    const stepped = poolFallbackRates([...Array(8).fill(round(12)), ...Array(5).fill(round(2))]);
+    const after = stepped.find((r: { key: string }) => r.key === "not updating in place — redrawing instead")!;
+    expect(after.recent, "the last rounds in order, not summarised").toEqual([12, 12, 12, 2, 2, 2, 2, 2]);
+    expect(after.median, "the median still cannot see the step — that is the point").toBe(12);
   });
 
   it("counts pair position without letting ties vote", () => {

@@ -1880,6 +1880,9 @@ export function poolDriverRuns(logs) {
   };
 }
 
+/** How many rounds of a signal to print in sequence, so a step is visible. */
+export const RECENT_IN_A_ROW = 8;
+
 export function poolFallbackRates(logs) {
   const per = [];
   for (const log of logs ?? []) {
@@ -1912,7 +1915,19 @@ export function poolFallbackRates(logs) {
     const median = med(priors.map((p) => p[key]));
     const oldest = med(per.slice(0, third).map((p) => p[key]));
     const newest = med(per.slice(-third).map((p) => p[key]));
-    out.push({ key, label, now: now[key], median, oldest, newest, rounds: priors.length, span: third });
+    // THE LAST FEW VALUES IN SEQUENCE, because every summary above is a median
+    // and A MEDIAN CANNOT SEE A STEP. `in-place update fell back to a redraw`
+    // reads 13,13,11,10,10,8,8,2,2,2,2,2 over the last twelve rounds — the
+    // feature started working and the fallback collapsed — and all three
+    // readings miss it: all-time median 12, last-20 median 10, and the thirds
+    // say "RISING, 8 to 13". A reader is told to chase a regression that ended
+    // five rounds ago, next to a `now` of 2 that contradicts it.
+    //
+    // A wider window is not the fix; a median over ANY fixed window smears a
+    // step by construction. The sequence is the evidence, and it costs eight
+    // numbers.
+    const recent = per.slice(-RECENT_IN_A_ROW).map((p) => p[key]);
+    out.push({ key, label, now: now[key], median, oldest, newest, recent, rounds: priors.length, span: third });
   }
   return out;
 }
