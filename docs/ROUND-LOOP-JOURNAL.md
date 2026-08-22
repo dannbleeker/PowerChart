@@ -4004,3 +4004,43 @@ irrelevant**, and it is a better fix than any threshold: a limit expressed as a
 share is a proxy for a cost the host measures in shapes per batch. That is the
 next product step, and it is worth doing properly rather than by raising a
 number until something dies.
+
+## Round 152 — chunking costs nothing, which is what makes the next round worth running
+
+    151  0.6, unchunked   ok 5 | declined 8 | 13/13 | same scale 164518 ms
+    152  0.6, CHUNKED     ok 5 | declined 8 | 13/13 | same scale 164626 ms
+
+Every point of the staked prediction held. It completed, 13/13, and the success
+and decline counts did not move — the point worth watching, because chunking
+changes HOW a write is sent and not WHETHER it is attempted, so any movement
+there would have meant an unintended change.
+
+**108 milliseconds on a 164-second scenario: 0.07%.** Two 9-shape writes now go
+out as 6+3 with an extra sync each, and the cost of those extra round trips is
+lost in the noise.
+
+### Why that matters more than it looks
+
+It removes the obvious objection to chunking — that more syncs must cost more
+time — and it makes the real experiment cheap. If bounding a batch is free at
+this size, there is no reason not to bound it at every size, and the share
+limit can be tested against the thing it was always a proxy for.
+
+### The next round discriminates between two hypotheses, and both answers are useful
+
+0.8 crashed PowerPoint six times at 255-284s. Two explanations survive that
+round, and the existing data cannot separate them because both grew together:
+
+    per-SYNC statements     8 charts x 18 shapes = ~360 statements per sync
+    per-CONTEXT accumulation  every chart's proxies and queued work in one PowerPoint.run
+
+Chunking fixes the first and does nothing about the second. So raising the
+limit again, WITH the batch bounded at six, asks the question directly:
+
+    it completes  ->  the crash was per-sync size, and chunking is the fix
+    it crashes    ->  the crash is context accumulation, and the fix is a fresh
+                      `PowerPoint.run` per chart — which is exactly what #112
+                      did for the demo deck, one run PER SLIDE
+
+A crash would cost a round and a recovery. It would also end the guessing, and
+it is the only remaining way to find out.
