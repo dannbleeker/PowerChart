@@ -944,10 +944,32 @@ export async function waitForRef(sh, sleep, query, pattern, budgetMs, every = 30
  * PERSON and made commands invisible to the DRIVER. The window is not a
  * measurement surface, so it must not be allowed to vary.
  *
- * 1600 is comfortably above the width that collapsed and below the width that
- * worked; the resize below asks for far more than either.
+ * 1600 WAS BELOW A WINDOW THAT WAS GENUINELY CRAMPED, and the same false
+ * "the add-in is gone" came back on 2026-08-22 because of it. Four measured
+ * points now bracket the boundary:
+ *
+ *     1237   cramped   hid `Insert chart` (the 2026-08-21 incident)
+ *     1996   cramped   hid it again, and 1996 >= 1600 so this said "wide
+ *                      enough" and the driver reported the add-in MISSING
+ *     2375   roomy     what brought the command back on 2026-08-21
+ *     3800   roomy     what brought it back on 2026-08-22
+ *
+ * So the boundary is between 1996 and 2375, and the old threshold sat below
+ * the highest width KNOWN to collapse. Chosen at the lowest width measured to
+ * work rather than padded past it: a threshold above the evidence is a guess
+ * in the safe direction, and this file has already paid for one guess.
+ *
+ * The number is in `window.innerWidth`, which on this machine is twice the
+ * width `resize` is asked for — 1900 produced 3800. Do not compare it against
+ * a figure taken from the resize call.
+ *
+ * IT WILL BE WRONG AGAIN ON ANOTHER MONITOR. A fixed pixel threshold is a
+ * proxy for "can the ribbon show its commands", and the honest guard is that
+ * being narrow is RECOVERABLE — `ensureRibbonRoom` widens and the next attempt
+ * re-reads. What must never happen is the fatal `addin-missing` branch being
+ * taken on a window that was never wide enough to judge.
  */
-export const MIN_RIBBON_WIDTH = 1600;
+export const MIN_RIBBON_WIDTH = 2375;
 
 /**
  * Is the window wide enough for an absent command to MEAN something?

@@ -433,6 +433,18 @@ describe("talking to the browser at all", () => {
     // anything the round measures, so the driver fixes it instead of stopping.
     expect(RECOVERABLE_STOPS.has("ribbon-cramped"), "a cramped ribbon must not end the night").toBe(true);
 
+    // 1996 IS THE WIDTH THAT GOT THROUGH, and it is pinned by number because a
+    // threshold is only worth what the widest CRAMPED observation says. On
+    // 2026-08-22 a 1996px window hid `Insert chart` exactly as 1237 had, but
+    // 1996 cleared the old 1600 limit — so this branch was skipped, the fatal
+    // `addin-missing` was taken instead, and the driver spent an evening
+    // sideloading into a deck that had the add-in the whole time.
+    expect(
+      readiness({ ...READY, stamp: null, canOpenPane: false, commandPresent: false, slides: 1, ribbonRoom: 1996 })
+        .codes,
+      "1996px was called wide enough to judge, and it hides the command",
+    ).toContain("ribbon-cramped");
+
     // AN UNREADABLE WIDTH IS NOT A WIDE ONE. A reader that cannot measure the
     // window cannot tell a missing add-in from a hidden one.
     expect(
