@@ -60,6 +60,7 @@ const {
   paneAgeAtStartSeconds,
   poolFallbackRates,
   poolDriverRuns,
+  unreadSignals,
   poolInPlaceUpdates,
 } = pooled;
 // Its own line: adding it above pushes that import over the print width, and a
@@ -2272,5 +2273,32 @@ describe("what it took to start each round", () => {
       n: 2,
     });
     expect(pooled.causes.map((c: { cause: string }) => c.cause)).toContain("crashed");
+  });
+});
+
+describe("signals a round records that nothing reads", () => {
+  const round = (messages: string[]) => ({ trace: { entries: messages.map((message) => ({ message })) } });
+
+  it("offers the busiest unread signal, and hides the ones a tool already matches", () => {
+    // THIS REPO HAS FOUND THE SAME THING BY HAND TWICE. `poolFallbackRates`
+    // exists because the fallback lines had been "recorded thousands of times
+    // and read by nothing"; `poolInPlaceUpdates` because the in-place
+    // diagnostic "has been answering ever since and nobody has read it". Both
+    // were noticed by someone scrolling a round file months later.
+    const log = round(["asking", "asking", "asking", "grouped the chart's shapes", "grouped the chart's shapes"]);
+    const found = unreadSignals(log, 'if (m === "grouped the chart\'s shapes") grouped++;');
+    expect(found, "a signal a tool already reads was offered as unread").toEqual([{ message: "asking", n: 3 }]);
+  });
+
+  it("ranks by how often it fires, since a signal seen once is not a missed instrument", () => {
+    const found = unreadSignals(round(["rare", "common", "common", "common"]), "");
+    expect(found[0]).toEqual({ message: "common", n: 3 });
+  });
+
+  it("says nothing at all about a round with no trace", () => {
+    // A round that never ran records nothing, and an empty list is the honest
+    // answer — not a claim that every signal is read.
+    expect(unreadSignals({}, "")).toEqual([]);
+    expect(unreadSignals({ trace: {} }, "")).toEqual([]);
   });
 });
