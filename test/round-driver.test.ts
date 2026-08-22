@@ -2060,3 +2060,48 @@ describe("a sign-in popup that outlived its flow", () => {
     expect(driver.closeStaleAuthPopups(fn, { hostAnswered: true })).toEqual([2, 1]);
   });
 });
+
+describe("a read that could not run", () => {
+  it("is not reported as an absence", () => {
+    // THE HOUSE DEFECT IN ITS PUREST FORM. `spawnSync` on this machine
+    // intermittently answers ENOENT for a node.exe that is plainly there —
+    // eight consecutive calls succeeded minutes later — and a failed spawn
+    // returns "". Every reading is taken from that empty string.
+    //
+    // On 2026-08-22 one such failure was reported as `pane ?`, `deck ?
+    // slide(s)`, "could not read the pane's build stamp" and finally "the
+    // add-in is gone from this document". The deck was open, the stamp was
+    // findable and `Insert chart` was in the ribbon throughout.
+    const out = readiness({
+      ...READY,
+      stamp: null,
+      slides: null,
+      canOpenPane: false,
+      commandPresent: false,
+      readsFailed: true,
+    });
+    expect(out.ok).toBe(false);
+    expect(out.codes, "a call that never ran was reported as a missing add-in").not.toContain("addin-missing");
+    expect(out.codes, "a call that never ran was reported as a closed pane").not.toContain("pane-closed");
+    expect(out.codes).toContain("reads-failed");
+    // RECOVERABLE: the next attempt's calls usually run, so trying again is
+    // exactly the right response — unlike `addin-missing`, which only a person
+    // can clear.
+    expect(RECOVERABLE_STOPS.has("reads-failed"), "a transient spawn failure must not end the night").toBe(true);
+  });
+
+  it("does not fire when the reads ran and simply found nothing", () => {
+    // THE REAL REFUSALS MUST SURVIVE. An add-in that is genuinely absent, read
+    // by calls that genuinely ran, still has to stop the round.
+    const out = readiness({
+      ...READY,
+      stamp: null,
+      slides: 1,
+      canOpenPane: false,
+      commandPresent: false,
+      ribbonRoom: 3800,
+      readsFailed: false,
+    });
+    expect(out.codes, "softened away the stop that exists to catch a real problem").toContain("addin-missing");
+  });
+});

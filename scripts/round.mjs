@@ -95,6 +95,14 @@ export function readiness({
   // clicked. Defaults true so an absent argument cannot invent a missing add-in.
   commandPresent = true,
   /**
+   * Did a read that feeds this judgement FAIL TO RUN?
+   *
+   * Not "did it come back empty" — did the call itself never happen. Defaults
+   * false so an absent argument cannot invent a failure, and when true nothing
+   * below may be read as an absence, because nothing below was measured.
+   */
+  readsFailed = false,
+  /**
    * The page's width when the ribbon was read, or null if it could not be read.
    *
    * PowerPoint hides trailing ribbon commands in an overflow on a narrow
@@ -138,6 +146,29 @@ export function readiness({
             ? `\n      the call that could not be spawned: \`${unreachableAt.args}\` — ${unreachableAt.error}`
             : ""),
       ],
+    };
+  // A READ THAT COULD NOT RUN IS NOT AN ABSENCE, and this must come before
+  // every judgement below because all of them are taken from the same empty
+  // string a failed call returns.
+  //
+  // `spawnSync` on this machine intermittently answers ENOENT for a node.exe
+  // that is plainly there — eight consecutive calls succeeded minutes later. On
+  // 2026-08-22 one such failure was reported as `pane ?`, `deck ? slide(s)`,
+  // "could not read the pane's build stamp" and finally "the add-in is gone
+  // from this document". The deck was open, the stamp was findable and `Insert
+  // chart` was in the ribbon throughout. It cost an evening and a sideload walk
+  // against a document that never needed one.
+  //
+  // RECOVERABLE, because the next attempt's reads usually run: this is the one
+  // stop where trying again is exactly the right response.
+  if (readsFailed)
+    return {
+      ok: false,
+      stop: [
+        "a read that this judgement depends on could not be RUN — not empty, never executed. " +
+          "Nothing below was measured, so none of it can be reported as missing. Trying again.",
+      ],
+      codes: ["reads-failed"],
     };
   // Before the sign-in check and everything under it: a browser that is not
   // there answers every read with nothing, and "is the add-in open?" is the
@@ -1351,9 +1382,28 @@ export async function attempt(argv, deps, sh, healed = false) {
     (String(run("git", ["rev-parse", "--short=7", "HEAD"], { encoding: "utf8" }).stdout ?? "").trim() || null);
   const deployed = buildOf(await fetchBuild());
   let stamp = buildOf(sh("find", "--regex", "/[0-9a-f]{7} ·/"));
+  // CAPTURED AGAINST THE CALL THAT PRODUCED IT, exactly as the poll loop in
+  // `collectRound` does for `dl`. `sh.state` belongs to the MOST RECENT call, so
+  // reading it any later judges this find's emptiness against a different call.
+  const stampFailed = !!(sh.state.lastFailed || sh.state.lastError);
 
   const listRef = refFor(sh, "Slide List", /listbox "Slide List"/);
+  const listFailed = !!(sh.state.lastFailed || sh.state.lastError);
   const slides = listRef ? (sh("snapshot", listRef).match(/option "Slide"/g) ?? []).length : null;
+  // A READ THAT COULD NOT RUN IS NOT AN ABSENCE.
+  //
+  // `spawnSync` on this machine intermittently answers ENOENT for a node.exe
+  // that is plainly there — eight consecutive calls succeeded minutes later —
+  // and a failed spawn returns "". Every reading below is taken from that empty
+  // string, so on 2026-08-22 a transient failure was reported as `pane ?`,
+  // `deck ? slide(s)`, "could not read the pane's build stamp", and finally
+  // "the add-in is gone from this document". None of it was true: the deck was
+  // open, the stamp was findable and `Insert chart` was in the ribbon the whole
+  // time. It cost an evening.
+  //
+  // This is the house defect in its purest form — a measurement that did not
+  // happen, reported as a measurement that came back negative.
+  const readsFailed = stampFailed || listFailed;
 
   const browserGone = noBrowser(sh("list"));
   // Read ONCE. Two `tab-list` calls could straddle the popup opening or closing
@@ -1549,6 +1599,7 @@ export async function attempt(argv, deps, sh, healed = false) {
     canOpenPane,
     commandPresent,
     ribbonRoom,
+    readsFailed,
   };
   const { ok, stop, codes } = readiness(state);
   console.log(
@@ -2009,6 +2060,11 @@ export const RECOVERABLE_STOPS = new Set([
   // tab reconnects or a reload clears it — and it used to be reported as
   // `addin-missing`, which recovery is forbidden to retry.
   "host-disconnected",
+  // A call that never RAN. The reading it would have produced is unknown, not
+  // negative, and the next attempt's calls usually run — a transient ENOENT
+  // from `spawnSync` cost an evening on 2026-08-22 by being read as an absent
+  // pane, an absent deck and finally an absent add-in.
+  "reads-failed",
 ]);
 
 /**
