@@ -30,6 +30,8 @@ import {
   poolProfileDisagreements,
   poolPairPosition,
   poolFallbackRates,
+  poolFullestSlide,
+  CLEAN_SLIDE_CEILING,
   poolDriverRuns,
   unreadSignals,
   poolInPlaceUpdates,
@@ -407,6 +409,25 @@ if (isMain(import.meta.url, process.argv[1])) {
     // attempts stopped happening.
     if (recent?.length) console.log(`    attempts per round, last ${recent.length}: [${recent.join(",")}]`);
     console.log(`    the deck ended holding ${now.deck.join(",")} shape(s) per slide`);
+    // AND WHETHER THAT IS NORMAL, which nothing has ever said. A clean round's
+    // fullest slide holds five; eight of the last thirty rounds ended with one
+    // holding 11 to 48, and every one of them reported 13 of 13. A chart that
+    // fails to group is left as its loose shapes, and no scenario verdict looks
+    // at the deck — `does a rasterise poison the next draw` asks whether the
+    // CALL came back, not whether a chart survived, so it passes with eight
+    // loose shapes sitting where a chart should be.
+    //
+    // Printed as a sequence and never as a failure: the gate's own rule is that
+    // it does not cry wolf on a host whose mood swings, and this is a reason to
+    // read the round rather than a verdict on the build.
+    const fullest = poolFullestSlide(rounds);
+    if (fullest.length) {
+      const over = fullest.filter((n) => n > CLEAN_SLIDE_CEILING).length;
+      console.log(
+        `    fullest slide per round, last ${fullest.length}: [${fullest.join(",")}]` +
+          (over ? `  <- ${over} above ${CLEAN_SLIDE_CEILING}, so a chart was left as loose shapes` : ""),
+      );
+    }
     if (now.refused > 0)
       console.log(
         [

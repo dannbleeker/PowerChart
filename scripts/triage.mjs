@@ -2062,6 +2062,42 @@ export function poolIdChurn(logs) {
   };
 }
 
+/**
+ * The fullest slide each round left behind.
+ *
+ * A CLEAN ROUND ENDS `0,4,1,2,5,1,1` — nothing above five. Eight of the last
+ * thirty rounds ended with a slide holding between 11 and 48, and **every one
+ * of them reported 13 of 13 scenarios passed**, including rounds 159, 161 and
+ * 167. A chart that fails to group is left as its loose shapes, and no scenario
+ * verdict looks at the deck.
+ *
+ * `does a rasterise poison the next draw` is the clearest case: it draws four
+ * charts and its verdict is `all four draws landed`, which is literally true and
+ * narrower than any reader takes it. It asks whether the CALL came back, not
+ * whether a chart survived — so it passes with eight loose shapes sitting where
+ * a chart should be.
+ *
+ * The gate has printed the inventory all along. Nothing compared it to
+ * anything, which is the difference between a number being on screen and a
+ * number being read.
+ */
+export function poolFullestSlide(logs, n = RECENT_IN_A_ROW) {
+  return (logs ?? []).slice(-n).map((log) => {
+    const counts = (log?.deck?.inventory ?? []).map((s) => Number(s?.count ?? s?.shapes?.length ?? 0));
+    return counts.length ? Math.max(...counts) : 0;
+  });
+}
+
+/**
+ * Above this many shapes on one slide, a chart did not group.
+ *
+ * Five is what a clean round's fullest slide holds — one grouped chart per
+ * probe slide, and the four one-batch charts the rasterise scenario adds beside
+ * one of them. A loose chart contributes eight or more on its own, so there is
+ * no near-miss band to argue about.
+ */
+export const CLEAN_SLIDE_CEILING = 6;
+
 /** How many rounds of a signal to print in sequence, so a step is visible. */
 export const RECENT_IN_A_ROW = 8;
 
