@@ -2292,6 +2292,44 @@ export function poolStarvedQuestions(logs) {
 }
 
 /** The dead questions, named, so a starved probe stops reading as bad luck. */
+/**
+ * What PRODUCTION has seen of the question `shape-resolve-held-slide-proxy`
+ * cannot ask.
+ *
+ * That probe has answered `no-scratch-shape` in all 133 archived rounds and
+ * structurally cannot do better: it needs an id for a freshly added shape and
+ * this host refuses to give one. The one production site that still resolves a
+ * shape by id through a slide handle a sync old is `deleteShapesById`, so this
+ * pools what that sweep saw.
+ *
+ * BOTH DIRECTIONS, and that is the point. The sweep used to trace only its
+ * failures, so the archive held 133 rounds of silence that could mean either
+ * "the host resolved everything" or "the sweep never ran" — and in fact it
+ * means the second, which nothing could say until the positive line existed.
+ */
+export function poolAgedHandleResolves(logs) {
+  let resolved = 0;
+  let refused = 0;
+  let rounds = 0;
+  for (const log of logs ?? []) {
+    const entries = log?.trace?.entries;
+    if (!Array.isArray(entries)) continue;
+    let any = false;
+    for (const e of entries) {
+      const m = String(e.message ?? "");
+      if (m === "resolved a shape by id through a slide handle a sync old") {
+        resolved += Number(e.data?.resolved ?? 0) || 0;
+        any = true;
+      } else if (m === "wreckage the host would not resolve") {
+        refused += Number(e.data?.unresolved ?? 0) || 0;
+        any = true;
+      }
+    }
+    if (any) rounds++;
+  }
+  return { resolved, refused, rounds, of: (logs ?? []).length };
+}
+
 function reportStarvedQuestions(logs) {
   const dead = poolStarvedQuestions(logs);
   if (!dead.length) return;
@@ -2308,6 +2346,19 @@ function reportStarvedQuestions(logs) {
     live.filter((d) => d.never >= d.unanswerable),
     "Move it into production instrumentation or retire it; it costs a scratch slide either way.",
   );
+  // THE PRODUCTION WITNESS for the one question above that will never answer
+  // itself. Printed under the row that raises it, because a reader told to
+  // "move it into production instrumentation" deserves to see whether that has
+  // already happened and what it found.
+  if (live.some((d) => d.id === "shape-resolve-held-slide-proxy")) {
+    const w = poolAgedHandleResolves(logs);
+    console.log(
+      `      ^ production witness (deleteShapesById): ${w.resolved} resolved, ${w.refused} refused, ` +
+        `across ${w.rounds} of ${w.of} round(s)`,
+    );
+    if (!w.rounds)
+      console.log(`        The sweep only runs when a round leaves wreckage, and none has. Still unanswered.`);
+  }
   show(
     "asked, and the host would not answer (a fact ABOUT the host)",
     live.filter((d) => d.unanswerable > d.never),

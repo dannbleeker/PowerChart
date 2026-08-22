@@ -1252,6 +1252,34 @@ describe("looking away while a chart redraws", () => {
     }
   });
 
+  it("records that a shape resolved by id through a slide handle a sync old, not only that one did not", async () => {
+    // THE ONLY WITNESS LEFT. This sweep is the last place in production that
+    // resolves a shape by id through a slide handle resolved a SYNC AGO, and the
+    // probe that asks whether this host permits that —
+    // `shape-resolve-held-slide-proxy` — has answered `no-scratch-shape` in all
+    // 133 archived rounds and structurally cannot do better: it needs an id for
+    // a freshly added shape, which this host will not give.
+    //
+    // Until 2026-08-22 the sweep testified only AGAINST: a line when the host
+    // would not resolve, and nothing at all when it did. A healthy round sweeps
+    // no wreckage and produces exactly the same silence, so the archive held 133
+    // rounds of nothing and no way to tell the two apart.
+    const slide = makeSlide("s1");
+    installHost([slide]);
+    const a = slide.shapes.addGeometricShape("rectangle", { left: 0, top: 0, width: 5, height: 5 });
+    setTracing(true);
+    try {
+      expect(await deleteShapesById("s1", [a.id])).toBe(1);
+      const line = traceLog().entries.find((e) =>
+        /resolved a shape by id through a slide handle a sync old/.test(e.message),
+      );
+      expect(line, "the sweep resolved a shape through an aged handle and said nothing about it").toBeTruthy();
+      expect((line as unknown as { data?: { resolved?: number } }).data?.resolved).toBe(1);
+    } finally {
+      setTracing(false);
+    }
+  });
+
   it("takes back a scratch slide whose id it cannot verify", async () => {
     // `addScratchSlide` refuses to hand out an id it could not resolve — but
     // the slide landed, so refusing without also removing it would leave a

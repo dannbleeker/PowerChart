@@ -803,6 +803,32 @@ describe("triage — logs that are not inserts", () => {
     expect((dead as Dead[]).some((d) => (d as Dead & { retired: boolean }).retired)).toBe(false);
   });
 
+  it("pools what production saw of a question the probe sheet cannot ask", async () => {
+    // `shape-resolve-held-slide-proxy` has answered `no-scratch-shape` in all
+    // 133 archived rounds and structurally cannot do better — it needs an id for
+    // a freshly added shape and this host refuses to give one. The one
+    // production site that still resolves a shape by id through a slide handle a
+    // sync old is `deleteShapesById`, and until 2026-08-22 it traced only its
+    // FAILURES: 133 rounds of silence that could mean "the host resolved
+    // everything" or "the sweep never ran", with no way to tell.
+    // @ts-expect-error — plain .mjs tool, no types.
+    const { poolAgedHandleResolves } = await import("../scripts/triage.mjs");
+    const round = (entries: { message: string; data?: Record<string, number> }[]) => ({ trace: { entries } });
+
+    expect(
+      poolAgedHandleResolves([round([{ message: "drew a chart" }]), round([])]),
+      "silence is not a resolve and must not be counted as one",
+    ).toMatchObject({ resolved: 0, refused: 0, rounds: 0, of: 2 });
+
+    expect(
+      poolAgedHandleResolves([
+        round([{ message: "resolved a shape by id through a slide handle a sync old", data: { resolved: 3 } }]),
+        round([{ message: "wreckage the host would not resolve", data: { unresolved: 2, swept: 1 } }]),
+        round([{ message: "drew a chart" }]),
+      ]),
+    ).toMatchObject({ resolved: 3, refused: 2, rounds: 2, of: 3 });
+  });
+
   it("marks a starved question RETIRED once the build stops asking it", () => {
     // WHAT IT COST: `grouped-child-by-id-from-slide` and `tag-on-group-survives`
     // were retired on 2026-08-21 and last appear in round 149. For the eight
