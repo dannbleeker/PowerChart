@@ -5295,6 +5295,25 @@ function settle(): Promise<void> {
  *
  * Costs one wait per round, on the one call this gate cannot do without.
  */
+/**
+ * How many shapes an in-place update writes before it syncs.
+ *
+ * SIX, because nine is the largest write this host has been MEASURED to take.
+ * Round 151 at `UPDATE_SHARE_LIMIT` 0.6 wrote nine shapes per chart, completed
+ * 13/13 and ran 31 seconds faster than its control; round 150 at 0.8 wrote
+ * eighteen and crashed PowerPoint six times over.
+ *
+ * Six is UNDER the measured-safe figure rather than at it, and deliberately
+ * low enough to bite at 0.6 — a chunk size nothing ever reaches is not a
+ * mechanism, it is a comment, and the next round could not tell whether
+ * chunking works at all.
+ *
+ * A HOST-PACING number, like `RASTER_GAP_MS`. Neither is tuned; both are the
+ * smallest step observed to work, and both should move only when a round says
+ * so.
+ */
+const IN_PLACE_WRITES_PER_SYNC = 6;
+
 let RASTER_GAP_MS = 3_000;
 
 /** Test-only: a suite cannot spend three real seconds proving a gap exists. */
@@ -9928,10 +9947,37 @@ async function tryInPlaceUpdate(
     return no("the host would not confirm every shape that had to change", { changed: plan.changed.length });
   const { dx, dy } = frameOrigin(opts);
   try {
-    for (const n of plan.changed) applyNodeInPlace(shapes[n], it.scene.nodes[n], dx, dy, opts);
+    // IN CHUNKS, because what this host refuses is size, not share.
+    //
+    // `UPDATE_SHARE_LIMIT` is a proxy: it caps how much of a chart may change,
+    // to keep the write small. Round 150 showed what happens when the proxy is
+    // loosened without the thing it stands for changing — eight charts writing
+    // eighteen shapes apiece crashed PowerPoint on all seven attempts, at
+    // 255-284s. Nine shapes apiece, at 0.6, is measured safe and 31s faster.
+    //
+    // This project solved the same problem once before by chunking rather than
+    // by a threshold: the demo deck renders one `PowerPoint.run` PER SLIDE
+    // because four dense charts piled 400-500 shapes into one context (#112).
+    // So bound the write directly, and let the share limit stop being the thing
+    // holding the host up.
+    //
+    // A PARTIAL WRITE IS SAFE HERE, and only because of where this sits. A
+    // chunk that throws leaves the chart half-updated and returns false, and
+    // the caller's next move is the redraw — which deletes every one of those
+    // shapes and draws the whole chart again. Nothing has been deleted at this
+    // point, which is the same reason the whole attempt is made before the
+    // delete rather than after it.
+    for (let i = 0; i < plan.changed.length; i += IN_PLACE_WRITES_PER_SYNC) {
+      for (const n of plan.changed.slice(i, i + IN_PLACE_WRITES_PER_SYNC))
+        applyNodeInPlace(shapes[n], it.scene.nodes[n], dx, dy, opts);
+      await step("updating the shapes a chart actually changed", () => context.sync());
+    }
+    // The tags LAST, and in their own sync. They are what makes the chart
+    // re-editable, so committing them before the shapes they describe would
+    // leave a chart whose config claims an edit its shapes have not taken.
     old.tags.add(CHART_TAG, it.opts.tagData);
     old.tags.add(CHART_SCENE_TAG, sceneFingerprint(it.scene));
-    await step("updating the shapes a chart actually changed", () => context.sync());
+    await step("writing the chart's tags after an in-place update", () => context.sync());
   } catch (err) {
     trace("draw", "in-place update refused — redrawing instead", {
       changed: plan.changed.length,
