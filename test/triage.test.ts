@@ -796,6 +796,46 @@ describe("triage — logs that are not inserts", () => {
     // A question seen only once is not yet a pattern, and calling it dead would
     // put every newly-added probe into a report about waste on its first round.
     expect(poolStarvedQuestions([round([{ id: "brand-new", answer: "no-scratch-slide" }])])).toEqual([]);
+
+    // BOTH ARE STILL ASKED here — they appear in the newest round — so neither
+    // is retired and both stay actionable. Retirement is the sibling case, and
+    // it has its own test below.
+    expect((dead as Dead[]).some((d) => (d as Dead & { retired: boolean }).retired)).toBe(false);
+  });
+
+  it("marks a starved question RETIRED once the build stops asking it", () => {
+    // WHAT IT COST: `grouped-child-by-id-from-slide` and `tag-on-group-survives`
+    // were retired on 2026-08-21 and last appear in round 149. For the eight
+    // rounds after that, this report kept listing them at "125 round(s)" under
+    // "OURS to fix" — telling the reader to do work that was already done. A
+    // count pooled over the whole archive cannot tell a live starving probe
+    // from a dead one, which is the same defect as a hardcoded conclusion: it
+    // keeps printing after it stops being true.
+    const round = (answers: { id: string; answer: string }[]) => ({ hostAnswers: { answers } });
+    const dropped = { id: "dropped", answer: "no-scratch-slide" };
+    const kept = { id: "kept", answer: "no-scratch-slide" };
+    type Dead = { id: string; retired: boolean };
+    const byId = (logs: ReturnType<typeof round>[]) =>
+      Object.fromEntries((poolStarvedQuestions(logs) as Dead[]).map((d) => [d.id, d.retired]));
+
+    expect(byId([round([dropped, kept]), round([dropped, kept]), round([kept]), round([kept]), round([kept])])).toEqual(
+      { dropped: true, kept: false },
+    );
+
+    // A WINDOW, NOT THE NEWEST ROUND ALONE. One short sheet means the host died
+    // mid-probe, not that the question was retired — and reading it as a
+    // retirement would quietly empty the actionable bucket.
+    expect(byId([round([dropped, kept]), round([dropped, kept]), round([kept])])).toEqual({
+      dropped: false,
+      kept: false,
+    });
+
+    // An empty sheet carries no evidence either way and must not consume the
+    // window: a round the host never answered would otherwise retire the lot.
+    expect(byId([round([dropped, kept]), round([dropped, kept]), round([]), round([]), round([])])).toEqual({
+      dropped: false,
+      kept: false,
+    });
   });
 
   it("separates a chart on a fresh slide from one on a slide that already had shapes", () => {

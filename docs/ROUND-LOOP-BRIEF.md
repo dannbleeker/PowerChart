@@ -121,6 +121,12 @@ before believing any difference.
    then WAIT for the notification. The driver now recovers a crash, a silent
    host, a refused slide, a closed or stale pane and a dirty deck on its own;
    only a stop it cannot fix ends the run.
+   **Add `--wait-for-deploy` when the round follows a merge**, and never hand-roll
+   the Pages wait at the shell. The hand-written loop was retyped every round and
+   on 2026-08-22 it carried two silent faults at once — the pre-July
+   `dannbleeker.github.io` URL, which Pages 301s to the custom domain, and a
+   `.commit` field the document does not have. Both print the same tick as "not
+   deployed yet", and a round waited ten minutes after its deploy had landed.
 3. Click `Download run log`, then
    `node scripts/round.mjs --archive .pw-session/.playwright-cli/powerchart-run-log.json`
 4. `node scripts/triage.mjs rounds/0NN-<build>.json`, then `npm run rounds` for

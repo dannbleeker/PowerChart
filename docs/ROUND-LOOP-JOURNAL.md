@@ -4222,3 +4222,64 @@ measurement under it, and both keep printing after they stop being true. The new
 rule: **before believing a probe's verdict, pool its answers over the archive and
 check the denominator.** A claim judged on one round is a claim about one
 afternoon.
+
+## Between 157 and 158 — two reports that kept demanding work already done
+
+Neither of these is a round finding. Both are instruments that went on printing
+after they stopped being true, which is the same defect #677 fixed in the
+prediction ledger, and both were found by asking the same question of a
+different report: **what is the denominator, and is the thing still there?**
+
+### The starved-question report named two probes retired eight rounds earlier
+
+`grouped-child-by-id-from-slide` and `tag-on-group-survives` were retired on
+2026-08-21 and last appear in round 149. Since then the report has listed them
+at "125 round(s)" under **OURS to fix** — telling the reader to retire two
+probes that were already gone, in a bucket whose entire purpose is to name
+actionable waste.
+
+A count pooled over the whole archive cannot tell a live starving probe from a
+dead one. `poolStarvedQuestions` now marks a question `retired` when the build
+has stopped asking it, and the report gives them their own section rather than
+dropping them — a row that vanishes reads as lost, a row that says "already
+retired" reads as finished.
+
+**A window of three non-empty sheets, not the newest round.** One short sheet
+means the host died mid-probe; reading that as a retirement would quietly empty
+the actionable bucket, which is the failure that matters here. Empty sheets do
+not consume the window.
+
+**What is left in that bucket is now exactly one live item:**
+`shape-resolve-held-slide-proxy`, starved 133 of 133 rounds. That is the real
+backlog entry, and it was previously buried among two closed ones.
+
+### The Pages wait was hand-rolled every round, and tonight it lied twice at once
+
+Every round is launched behind a "wait until the site serves HEAD" loop, retyped
+at the shell each time. Tonight's copy carried two independent faults:
+
+- it polled `dannbleeker.github.io`, which Pages has **301'd to the custom
+  domain since July** — the driver's own `defaultFetchBuild` has used the
+  canonical URL all along;
+- it read `.commit` from a document whose only field is `build`.
+
+Either fault alone prints `?`. So does a deploy that has not landed. **Ten
+identical `?` lines are indistinguishable from patience**, and round 158 sat in
+that loop for ten minutes after its deploy had already landed at 19:16Z.
+
+`--wait-for-deploy` now lives in the driver, using the driver's own fetch and
+its own `buildOf`. A caller that has to re-derive the URL or the field name can
+get one of them wrong, and the failure looks like waiting. The poll prints the
+build it actually read, so "could not read a stamp" and "read an old hash" are
+different lines — the distinction the tick collapsed.
+
+It does not throw on giving up. `readiness` is what judges a stale site: it
+names the hash, names the fix, and `--retry` recovers from it. Dying here would
+replace a diagnosis with a stack trace.
+
+### Doctrine
+
+Both of these were found the same way, and it is worth stating as a habit:
+**when a report tells you to do something, check that the thing is still there.**
+An instrument that names work is making a claim about the present, and nothing
+about a stale claim looks stale.

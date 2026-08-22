@@ -2245,6 +2245,22 @@ function reportBatchSpanVsGroup(logs) {
 export function poolStarvedQuestions(logs) {
   const NEVER = /^no-scratch/;
   const UNANSWERABLE = /^unreadable/;
+  // WHICH QUESTIONS THE BUILD STILL ASKS. This report tells the reader to fix
+  // or retire something, and for eight rounds it named two questions that had
+  // ALREADY BEEN RETIRED — `grouped-child-by-id-from-slide` and
+  // `tag-on-group-survives`, dropped on 2026-08-21 and last seen in round 149,
+  // still listed at "125 round(s)" and still filed under OURS TO FIX. A pooled
+  // count over the whole archive cannot tell a live starving probe from a dead
+  // one, and a report that demands action on work already done is the same
+  // defect as a conclusion hardcoded into an instrument: it keeps printing
+  // after it stops being true.
+  //
+  // A WINDOW, not the newest round alone. A single sheet can be short because
+  // the host died mid-probe, which would read a live question as retired; three
+  // non-empty sheets is enough that a genuinely live probe appears in one, and
+  // few enough that a retirement shows up within a round or two of landing.
+  const recent = logs.filter((l) => (l?.hostAnswers?.answers ?? []).length).slice(-3);
+  const live = new Set(recent.flatMap((l) => (l.hostAnswers.answers ?? []).map((a) => a?.id)));
   const seen = new Map();
   for (const log of logs) {
     for (const a of log?.hostAnswers?.answers ?? []) {
@@ -2264,10 +2280,15 @@ export function poolStarvedQuestions(logs) {
   }
   // Only the ones that have NEVER produced an answer. A question that answers
   // sometimes is doing its job and does not belong in a report about waste.
-  return [...seen.entries()]
-    .filter(([, t]) => t.answered === 0 && t.rounds > 1)
-    .map(([id, t]) => ({ id, ...t }))
-    .sort((a, b) => b.rounds - a.rounds || a.id.localeCompare(b.id));
+  return (
+    [...seen.entries()]
+      .filter(([, t]) => t.answered === 0 && t.rounds > 1)
+      // `retired` rather than dropped: the archive still holds the rounds these
+      // starved in, and a reader comparing an old report to this one deserves to
+      // see WHY a row moved rather than find it simply gone.
+      .map(([id, t]) => ({ id, ...t, retired: !live.has(id) }))
+      .sort((a, b) => b.rounds - a.rounds || a.id.localeCompare(b.id))
+  );
 }
 
 /** The dead questions, named, so a starved probe stops reading as bad luck. */
@@ -2281,15 +2302,23 @@ function reportStarvedQuestions(logs) {
     for (const r of rows) console.log(`      ${r.id.padEnd(44)} ${String(r.rounds).padStart(3)} round(s)  ${r.last}`);
     console.log(`      ${note}`);
   };
+  const live = dead.filter((d) => !d.retired);
   show(
     "never asked — the harness could not set the question up (OURS to fix)",
-    dead.filter((d) => d.never >= d.unanswerable),
+    live.filter((d) => d.never >= d.unanswerable),
     "Move it into production instrumentation or retire it; it costs a scratch slide either way.",
   );
   show(
     "asked, and the host would not answer (a fact ABOUT the host)",
-    dead.filter((d) => d.unanswerable > d.never),
+    live.filter((d) => d.unanswerable > d.never),
     "Leave it. An unanswerable question is a finding, not a failure.",
+  );
+  // ALREADY DONE, and said so. These rows sat in the OURS-TO-FIX bucket for
+  // eight rounds after the work landed.
+  show(
+    "already retired — the archive remembers them, the build no longer asks",
+    dead.filter((d) => d.retired),
+    "Nothing to do. Here so a row that vanished reads as finished rather than as lost.",
   );
 }
 
