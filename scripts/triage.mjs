@@ -1837,19 +1837,24 @@ export const FALLBACK_SIGNALS = {
 /**
  * Has the in-place chart update EVER worked?
  *
- * It was added in #405 ("Change one thing, write one shape") and #406 was titled
- * "The in-place update fired zero times and would not say why" — that PR added
- * the fallback trace to diagnose it. THE DIAGNOSTIC HAS BEEN ANSWERING EVER
- * SINCE AND NOBODY HAS READ IT: across 117 archived rounds the success line
- * `updated only the shapes that changed` appears ZERO times, while the fallback
- * fires 12-13 times a round.
+ * IT DOES NOW, AND THIS PARAGRAPH IS KEPT BECAUSE IT IS WHY. It was added in
+ * #405 ("Change one thing, write one shape") and #406 was titled "The in-place
+ * update fired zero times and would not say why" — that PR added the fallback
+ * trace to diagnose it. THE DIAGNOSTIC HAD BEEN ANSWERING EVER SINCE AND NOBODY
+ * HAD READ IT: across 117 archived rounds the success line `updated only the
+ * shapes that changed` appeared ZERO times while the fallback fired 12-13 times
+ * a round, one reason 12 times of 13 — "the chart has no parts list, so its
+ * nodes cannot be mapped".
  *
- * The reason is one reason, 12 of those 13: "the chart has no parts list, so its
- * nodes cannot be mapped". The remaining one is the picture path, which is
- * legitimate — a picture is not in the scene, so the scene cannot decide it.
+ * Reading it is what fixed it. A grouped chart never has a parts list by
+ * design, and this host groups nearly every chart; `groupMembersInOrder` reads
+ * the group's members instead. **The update now runs 11 of 13 attempts every
+ * round**, and the fallback count fell 13 → 2 at round 153.
  *
  * A feature that has never once run in production is not a feature; it is a
- * branch that costs a fallback every time. This makes the gate say so.
+ * branch that costs a fallback every time. This makes the gate say so — and it
+ * is the reason the gate now prints the fallback SEQUENCE as well as its
+ * median, because a median cannot see the step this fix produced.
  */
 /**
  * The in-place update has THREE outcomes and this counted two.
@@ -2097,6 +2102,48 @@ export function poolFullestSlide(logs, n = RECENT_IN_A_ROW) {
  * no near-miss band to argue about.
  */
 export const CLEAN_SLIDE_CEILING = 6;
+
+/**
+ * Why a chart left the draw without a parts list.
+ *
+ * `tracePartsOutcome` was built to separate three faults that a day of archive
+ * mining could not tell apart — never built because the chart was grouped;
+ * built and lost to a throwing read-back; built and not found again. It has
+ * recorded all four counters on every one of its 607 events across 29 rounds,
+ * and **no script has ever read them.**
+ *
+ * Reading them answers the question it was built for, and the answer is mostly
+ * reassuring:
+ *
+ *   346  grouped, so not loose — correct by design, a group needs no parts list
+ *   223  no charts in the call at all
+ *    36  the id read-back THREW — the real failure, ~1.2 per round
+ *     2  reached the normal exit and still produced nothing
+ *
+ * WHICH REFUTES THE OBVIOUS READING. `gotPartsList` is 0 on all 607, and taken
+ * alone that says a production path has never once worked. 569 of the 607 are
+ * cases where a parts list is not wanted. The counter that matters is `where`,
+ * and it was sitting in the same object the whole time.
+ */
+export function poolPartsListOutcome(logs) {
+  const out = { grouped: 0, noCharts: 0, threw: 0, builtNothing: 0, gotList: 0, events: 0, rounds: 0 };
+  for (const log of logs ?? []) {
+    let any = false;
+    for (const e of log?.trace?.entries ?? []) {
+      if (!/parts list outcome/.test(String(e.message ?? ""))) continue;
+      const d = e.data ?? {};
+      any = true;
+      out.events++;
+      out.gotList += Number(d.gotPartsList) || 0;
+      if (!Number(d.charts)) out.noCharts++;
+      else if (Number(d.groupedSoNotLoose) === Number(d.charts)) out.grouped++;
+      else if (/threw/.test(String(d.where))) out.threw++;
+      else out.builtNothing++;
+    }
+    if (any) out.rounds++;
+  }
+  return out;
+}
 
 /** How many rounds of a signal to print in sequence, so a step is visible. */
 export const RECENT_IN_A_ROW = 8;
@@ -2611,6 +2658,27 @@ function reportIdChurn(logs) {
       `    archive existed and said the count was always two. It is not, and the split is by deck
 ` +
       `    size — a hand sample cannot notice that its own conclusion is a function of the deck.`,
+  );
+}
+
+/** Why a chart left the draw without a parts list — the four counters, read. */
+function reportPartsListOutcome(logs) {
+  const o = poolPartsListOutcome(logs);
+  if (!o.events) return;
+  console.log(`
+  WHY A CHART HAD NO PARTS LIST — ${o.events} event(s) over ${o.rounds} round(s)`);
+  console.log(
+    `    ${String(o.grouped).padStart(4)}  grouped, so not loose — correct by design, a group needs no parts list`,
+  );
+  console.log(`    ${String(o.noCharts).padStart(4)}  no charts in the call at all`);
+  console.log(`    ${String(o.threw).padStart(4)}  the id read-back THREW — the real failure`);
+  console.log(`    ${String(o.builtNothing).padStart(4)}  reached the normal exit and still produced nothing`);
+  console.log(
+    `    \`gotPartsList\` is 0 on every event, and taken alone that reads as a path that has never once
+` +
+      `    worked. It is not: ${o.grouped + o.noCharts} of ${o.events} are cases where a parts list is not WANTED. The counter
+` +
+      `    that separates them is \`where\`, and it has been in the same object since round 142.`,
   );
 }
 
@@ -3438,6 +3506,7 @@ if (invokedDirectly) {
     reportScenarioFriction(pooled);
     reportStarvedQuestions(pooled);
     reportIdChurn(pooled);
+    reportPartsListOutcome(pooled);
     reportTagFaults(pooled);
     reportPool(pooled);
     process.exit(failed ? 1 : 0);
@@ -3486,6 +3555,7 @@ if (invokedDirectly) {
     reportOriginTagLosses(pooled);
     reportStarvedQuestions(pooled);
     reportIdChurn(pooled);
+    reportPartsListOutcome(pooled);
     reportTagFaults(pooled);
     reportPool(pooled);
     if (!results.length && !selftest.length && !log?.trace)
