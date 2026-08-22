@@ -2,8 +2,7 @@
   "browser": {
     "browserName": "chromium",
     "launchOptions": {
-      "channel": "chrome",
-      "ignoreDefaultArgs": ["--disable-blink-features=AutomationControlled"]
+      "channel": "chrome"
     },
     "contextOptions": {
       "viewport": null
