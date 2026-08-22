@@ -111,7 +111,17 @@ describe("judging across the population instead of on whichever round was newest
     const logs = [{ build: "aaaaaaa · 2026-08-22 09:00Z" }];
     const bare = { madeOn: "2026-08-22", afterBuild: "zzzzzzz" };
     expect(stakedWithoutATime(bare, logs, buildOf)).toBe(true);
-    expect(stakedWithoutATime({ ...bare, madeOn: "2026-08-22 23:00" }, logs, buildOf)).toBe(false);
+
+    // AND A TIME WITH NO ZONE, which is the mistake made while fixing the one
+    // above. #684 was re-stamped `2026-08-22 23:00` — local — while every round
+    // stamp is UTC (`c7e2876 · 2026-08-22 21:14Z`). Lexicographically "21:14Z"
+    // sorts BEFORE "23:00", so the two rounds taken to judge the claim read as
+    // older than the claim itself and the ledger said `no round yet`. Failing
+    // toward "still waiting" is the worst direction available.
+    expect(stakedWithoutATime({ ...bare, madeOn: "2026-08-22 23:00" }, logs, buildOf), "a zoneless time").toBe(true);
+    expect(stakedWithoutATime({ ...bare, madeOn: "2026-08-22 21:30Z" }, logs, buildOf), "UTC is the safe form").toBe(
+      false,
+    );
 
     // AND SILENT WHEN THE BUILD PINS IT. An `afterBuild` present in the archive
     // fixes the position exactly and the date is never consulted, so warning

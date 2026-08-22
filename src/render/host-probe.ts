@@ -3011,6 +3011,24 @@ export async function runHostProbes(source: string, build: string): Promise<Host
       deckBefore,
       deckAfter,
     });
+    // EVERY SLIDE THIS RUN PUT IN THE DECK, named once and shared by everything
+    // downstream that needs a denominator.
+    //
+    // It was written out twice, 24 lines apart, and the two copies disagreed:
+    // the sweep was licensed with `outstanding.length + unnamedLeftBehind` and
+    // the verdict was scored against `outstanding.length`. The numerator then
+    // counted slides the denominator did not know existed, `left` came out
+    // NEGATIVE, and 25 of 140 archived rounds graded a clean handback as `some`
+    // and printed sentences like "98 of 94 scratch slide(s) deleted; -4 never
+    // landed".
+    //
+    // ONE BINDING RATHER THAN A TEST THAT THE TWO MATCH. A guard comparing two
+    // expressions can only fail after someone has already written the second
+    // one; there is nothing to keep in step if there is only one. `byId` above
+    // keeps its own `outstanding.length` deliberately — its question is whether
+    // delete-by-id returned the slides it could NAME, and the unnamed ones have
+    // no id for it to try.
+    const added = outstanding.length + unnamedLeftBehind;
     // The sweep, and ONLY when delete-by-id left something behind. On a host
     // where the ids work this never runs and nothing about the old path
     // changes; on this one it is the only thing that can work, because the ids
@@ -3022,8 +3040,9 @@ export async function runHostProbes(source: string, build: string): Promise<Host
         deckNow: deckAfter,
         // The unnamed ones have no id to delete by, so they are not in
         // `outstanding` — but they ARE in the deck, and the clamp is what
-        // decides whether the sweep may reach them.
-        added: outstanding.length + unnamedLeftBehind,
+        // decides whether the sweep may reach them. Same binding the verdict
+        // below is scored against; see `added`.
+        added,
         alreadyDeleted: byId.actually,
       });
       if (plan) {
@@ -3048,17 +3067,20 @@ export async function runHostProbes(source: string, build: string): Promise<Host
     // the deck lost overall rather than what either mechanism claimed.
     const { actually, left, shrankBy } = slidesActuallyReturned({
       claimed: returned + swept,
-      added: outstanding.length,
+      added,
       deckBefore,
       deckAfter,
     });
     answers.push({
       id: SCRATCH_CLEANUP_ID,
       question: "Does the host give back the scratch slides this probe added?",
-      answer: !scratchIds.length ? "none-added" : !left ? "all" : actually ? "some" : "none",
+      answer: scratchCleanupAnswer({ addedAny: scratchIds.length > 0, left, actually }),
       ms: Date.now() - cleanupStarted,
       detail:
-        `${actually + returnedEarly.size} of ${scratchIds.length} scratch slide(s) deleted` +
+        // `added`, not `scratchIds.length` — the same correction as `left`
+        // above, and the half a reader sees first. "98 of 94" is what an
+        // unnamed add looks like in a denominator that does not count it.
+        `${actually + returnedEarly.size} of ${added} scratch slide(s) deleted` +
         // "left in the deck" is a claim about the deck, and round 029 caught it
         // being false: `left=73` beside `deckBefore=1 deckAfter=1
         // stillListed=0`. Seventy-three slides were counted as abandoned while
@@ -3078,11 +3100,11 @@ export async function runHostProbes(source: string, build: string): Promise<Host
         // the slide, and `swallowAdds` does not get there — a test written
         // against it asserted nothing and was deleted rather than kept as
         // decoration. The evidence for this branch is round 029 itself.
-        (left
-          ? stillListed === 0 && deckAfter !== undefined && deckBefore !== undefined && deckAfter <= deckBefore
-            ? `; ${left} never landed — the host took the add and the deck never listed them`
-            : `; ${left} left in the deck`
-          : "") +
+        // EXTRACTED so the branch above can finally be tested. It was inline in
+        // a 200-line probe reachable only through a host that accepts an add and
+        // then never lists the slide, which is why it went 25 rounds printing a
+        // negative number inside a sentence that means the opposite.
+        scratchLeftSentence({ left, stillListed, deckBefore, deckAfter }) +
         // Only when some came back before the clean-up ran. Silent otherwise, so
         // the sentence a reader has seen a hundred times does not change shape
         // for a number that is zero.
@@ -3297,6 +3319,68 @@ export function positionalSweepPlan(o: {
  */
 export function outstandingScratch(taken: readonly string[], returnedEarly: ReadonlySet<string>): string[] {
   return taken.filter((id) => !returnedEarly.has(id));
+}
+
+/**
+ * The scratch clean-up's verdict.
+ *
+ * `left <= 0` IS A COMPLETE HANDBACK, not just `left === 0`. Grading on `!left`
+ * meant a clean-up that removed every slide it added could never say "all" the
+ * moment the count went negative — which it did in **25 of 140 archived
+ * rounds**, every one of them graded `some` while the deck came back to the size
+ * it started at. 25 of the 30 `some` verdicts in the whole archive are that
+ * inversion rather than a shortfall.
+ *
+ * The cause was two denominators 24 lines apart: the positional sweep was
+ * licensed with `outstanding.length + unnamedLeftBehind` and the verdict was
+ * scored against `outstanding.length`, so the numerator counted slides the
+ * denominator did not know existed. That is fixed at the call site. This keeps
+ * the sharp edge off, so a future off-by-one costs the wording and not the
+ * meaning.
+ */
+export function scratchCleanupAnswer(o: { addedAny: boolean; left: number; actually: number }): string {
+  if (!o.addedAny) return "none-added";
+  if (o.left <= 0) return "all";
+  return o.actually ? "some" : "none";
+}
+
+/**
+ * The clause describing what the clean-up did not get back.
+ *
+ * A NEGATIVE `left` GETS ITS OWN SENTENCE and never one of the other two. Both
+ * of those describe slides that are MISSING, so a negative number in either says
+ * the opposite of what happened: the archive holds `-4 never landed — the host
+ * took the add and the deck never listed them` (round 088, beside a deck that
+ * ended exactly where it started) and `-1 left in the deck` printed directly
+ * beside `the deck still lists 1` (round 073).
+ *
+ * The denominator fix should make the negative branch unreachable. It is kept
+ * because the condition is real — a sweep that reached past this run's own
+ * slides would produce it — and named rather than clamped, because clamping a
+ * number into a sentence that cannot hold it is exactly how the last one
+ * survived 25 rounds. **Name the condition, never the cause.**
+ *
+ * WHICH SENTENCE THE DECK CHOOSES, for the positive case: round 029 recorded
+ * `left=73` beside `deckBefore=1 deckAfter=1 stillListed=0`. Seventy-three
+ * slides were counted as abandoned while the deck stood at one the whole time
+ * and listed none of their ids — they never landed at all, which is a different
+ * bug from a clean-up that missed something and wants a different fix. Five
+ * attempts were reverted trying to stop a leak that was this sentence.
+ */
+export function scratchLeftSentence(o: {
+  left: number;
+  stillListed?: number;
+  deckBefore?: number;
+  deckAfter?: number;
+}): string {
+  if (o.left < 0)
+    return `; the deck lost ${-o.left} MORE slide(s) than this run can account for — read the sweep plan, not this line`;
+  if (!o.left) return "";
+  const neverLanded =
+    o.stillListed === 0 && o.deckAfter !== undefined && o.deckBefore !== undefined && o.deckAfter <= o.deckBefore;
+  return neverLanded
+    ? `; ${o.left} never landed — the host took the add and the deck never listed them`
+    : `; ${o.left} left in the deck`;
 }
 
 export function slidesActuallyReturned(o: {

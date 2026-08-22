@@ -286,6 +286,17 @@ if (isMain(import.meta.url, process.argv[1])) {
     for (const c of starts.causes.slice(0, 6))
       console.log(`      ${String(c.n).padStart(3)}x  recovered from ${c.cause}`);
     console.log("    Counts, not a rate: driverRun is newer than most of the archive.");
+    // THE ARM, over the rounds that record one. Until 2026-08-22 nothing in a
+    // round file said whether it was launched with `--fresh`, so the whole
+    // fresh-pane argument rested on the shell history of whoever typed it.
+    // `unlabelled` is printed beside the arms so a rate over four rounds is
+    // never read as a rate over the archive.
+    const a = starts.arms;
+    if (a && a.fresh + a.aged > 0)
+      console.log(
+        `    --fresh ${a.freshRefusedNone}/${a.fresh} round(s) refused no group · ` +
+          `not fresh ${a.agedRefusedNone}/${a.aged} · ${a.unlabelled} round(s) predate the flag being recorded`,
+      );
   }
 
   const fb = poolFallbackRates(rounds);
