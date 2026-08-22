@@ -2426,6 +2426,38 @@ describe("what it took to start each round", () => {
     expect(pooled.clean, "an absent reading was counted as a clean start").toBe(1);
   });
 
+  it("reads the deck inventory the gate has printed all along", async () => {
+    // EIGHT OF THE LAST THIRTY ROUNDS ended with a slide holding between 11 and
+    // 48 shapes, and every one of them reported 13 of 13 scenarios passed —
+    // rounds 140, 141, 142, 147, 150, 159, 161 and 167. A clean round's fullest
+    // slide holds five. A chart that fails to group is left as its loose
+    // shapes, and NO SCENARIO VERDICT LOOKS AT THE DECK.
+    //
+    // `does a rasterise poison the next draw` is the clearest case. It draws
+    // four charts and reports `all four draws landed`, which is literally true
+    // and narrower than any reader takes it: it asks whether the CALL came
+    // back, not whether a chart survived. It passes with eight loose shapes
+    // sitting where a chart should be.
+    //
+    // The gate has printed the inventory since the beginning. Nothing compared
+    // it to anything — which is the difference between a number being on screen
+    // and a number being read, and it is why I called round 167 clean tonight.
+    // @ts-expect-error — plain .mjs tool, no types.
+    const { poolFullestSlide, CLEAN_SLIDE_CEILING } = await import("../scripts/triage.mjs");
+    const deck = (...counts: number[]) => ({ deck: { inventory: counts.map((count) => ({ count })) } });
+    expect(poolFullestSlide([deck(0, 4, 1, 2, 5, 1, 1), deck(0, 4, 1, 2, 17, 1, 1)], 8)).toEqual([5, 17]);
+    expect(17).toBeGreaterThan(CLEAN_SLIDE_CEILING);
+    expect(5, "a clean round must sit at or below the ceiling, or it fires every round").toBeLessThanOrEqual(
+      CLEAN_SLIDE_CEILING,
+    );
+
+    // A round with no inventory reads 0 rather than dropping out, so the
+    // sequence stays aligned with the rounds it describes.
+    expect(poolFullestSlide([{}, deck(3)], 8)).toEqual([0, 3]);
+    // And the window is the last N, not the first.
+    expect(poolFullestSlide([deck(9), deck(1), deck(2)], 2)).toEqual([1, 2]);
+  });
+
   it("pools how badly the host renumbers, which the trace recorded and nothing read", async () => {
     // RECORDED SINCE ROUND 041 AND READ BY NOTHING. `claimed the appended slide
     // though the id list churned` carries `before`, `after` and `fresh` on all

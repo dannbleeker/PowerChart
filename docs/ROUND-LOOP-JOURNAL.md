@@ -4623,3 +4623,64 @@ in this repo and it still took a mutation to notice.
 `left: 0` — so this round had no unnamed adds and never reached the branch #685
 repaired. A regression check on the clean path, not a confirmation of the fix.
 The negative case fires in about 18% of rounds; it will show up on its own.
+
+## Rounds 168 and 169 — 13 of 13 has been hiding loose shapes, including tonight
+
+    168  059b4b2  fresh=false  pane 64s  grouped 9/9  13/13
+    169  059b4b2  fresh=true   pane 64s  grouped 9/9  13/13
+
+A clean pair. The finding is about every round before it.
+
+### A slide holding 48 shapes, and the battery said 13 of 13
+
+**Eight of the last thirty rounds ended with a slide holding between 11 and 48
+shapes. Every one of them reported 13 of 13 scenarios passed.**
+
+    140  [2,4,25,46,24,24,24]   ok
+    141  [2,3,48,29,24,24,24]   ok
+    142  [2,4,2,11,1,1,24]      ok
+    147  [2,4,2,11,1,1,1]       ok
+    150  [0,4,2,11,1,1,1]       ok
+    159  [0,4,1,2,17,1,1]       ok
+    161  [0,4,1,2,17,1,1]       ok
+    167  [0,4,1,2,11,1,1]       ok
+
+A clean round ends `0,4,1,2,5,1,1` — nothing above five. A chart that fails to
+group is left as its loose shapes, and **no scenario verdict looks at the deck.**
+
+`does a rasterise poison the next draw` is the clearest case. It draws four
+charts and reports `all four draws landed`, which is literally true and
+narrower than any reader takes it: it asks whether the CALL came back, not
+whether a chart survived. It passes with eight loose shapes sitting where a
+chart should be.
+
+**Round 167 is in that list, and I called it clean in this journal a few hours
+ago.** The gate printed `the deck ended holding 0,4,1,2,11,1,1` on the same
+screen I read the verdict from. Nothing compared that line to anything, and
+neither did I — which is the whole difference between a number being on screen
+and a number being read.
+
+    fullest slide per round, last 8: [5,5,5,5,5,11,5,5]  <- 1 above 6, so a chart was left as loose shapes
+
+Printed as a sequence and never as a failure. The gate's own rule is that it
+does not cry wolf on a host whose mood swings 4-of-5 to 1-of-5, and this is a
+reason to read a round rather than a verdict on a build.
+
+### Where it came from
+
+A five-lens sweep over the archive, 25 agents, each finding checked by a
+verifier told to refute it by default and to re-derive every number rather than
+trust the one quoted. It returned 19 confirmed findings and 1 refuted, which is
+a suspiciously high rate for adversarial verification and worth saying out loud.
+
+Two have now been checked by hand against the archive. The negative-`left`
+finding reproduced exactly and its verifier found the root cause the reporter
+had missed. **This one did not reproduce as stated** — the claim was "2 of its 4
+charts are left as loose shapes", and round 169 has all four grouped. What is
+real is the weaker, older, and more useful version: the verdict CANNOT SEE the
+failure, so it passes whenever grouping fails, which is what rounds 159, 161 and
+167 did.
+
+So the verifier's REAL was right about the mechanism and wrong about the
+present tense. An agent's finding is a lead, not a result — the same rule this
+project applies to its own instruments.
