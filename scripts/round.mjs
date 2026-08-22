@@ -2629,6 +2629,49 @@ export function outcomeReceipt({ reason, codes, roundFile, build, size, threw, a
   };
 }
 
+/**
+ * Block until the site serves the commit under test.
+ *
+ * WHY IT LIVES HERE. A round is worthless against a stale deploy — `readiness`
+ * says so and stops — so every round is launched behind a wait loop, and that
+ * loop has been retyped by hand at the shell each time. On 2026-08-22 the
+ * hand-written one had TWO silent faults at once: it polled
+ * `dannbleeker.github.io`, which GitHub Pages has 301'd to the custom domain
+ * since July, and it read `.commit` from a document whose only field is
+ * `build`. Either alone prints `?`; so does a deploy that has not landed. Ten
+ * identical `?` lines are indistinguishable from patience, and the round sat
+ * there for ten minutes after the deploy had already landed.
+ *
+ * The driver already knows the URL and already knows how to read the stamp.
+ * A caller that has to re-derive either can get one of them wrong, and the
+ * failure looks like waiting.
+ *
+ * Reports the served build every poll rather than a bare tick, so a poll that
+ * cannot read anything is visibly different from one reading an old hash — the
+ * distinction the `?` collapsed.
+ */
+export async function waitForDeploy(
+  head,
+  { fetchBuild = defaultFetchBuild, sleep, log = console.log, every = 20_000, max = 40 } = {},
+) {
+  log(`  waiting for ${head} to deploy`);
+  for (let i = 1; i <= max; i++) {
+    const served = buildOf(await fetchBuild());
+    log(`    poll ${i}: ${served ?? "site did not answer with a build stamp"}`);
+    if (served === head) {
+      log("  deployed");
+      return true;
+    }
+    if (i < max) await sleep(every);
+  }
+  // NOT A THROW. A round against a stale build is a bad round, and `readiness`
+  // is the thing that decides that — it names the stale pane, it names the
+  // hash, and `--retry` recovers from it. Dying here would replace a diagnosis
+  // with a stack trace.
+  log(`  gave up waiting after ${max} poll(s) — running anyway, and readiness will say if the site is behind`);
+  return false;
+}
+
 async function main(argv, deps = {}) {
   const run = deps.run ?? spawnSync;
   const sleep = deps.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
@@ -2653,6 +2696,11 @@ async function main(argv, deps = {}) {
   const pinnedHead =
     deps.head ??
     (String(run("git", ["rev-parse", "--short=7", "HEAD"], { encoding: "utf8" }).stdout ?? "").trim() || null);
+
+  // AFTER the head is pinned, so the wait and the round agree on what is under
+  // test. See `waitForDeploy` for what a hand-rolled version of this cost.
+  if (argv.includes("--wait-for-deploy") && pinnedHead)
+    await (deps.waitForDeploy ?? waitForDeploy)(pinnedHead, { fetchBuild: deps.fetchBuild, sleep });
 
   for (let n = 0; ; n++) {
     if (n) console.log(`\n  attempt ${n + 1} of ${max + 1}`);
