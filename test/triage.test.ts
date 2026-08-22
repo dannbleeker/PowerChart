@@ -2426,6 +2426,50 @@ describe("what it took to start each round", () => {
     expect(pooled.clean, "an absent reading was counted as a clean start").toBe(1);
   });
 
+  it("pools how badly the host renumbers, which the trace recorded and nothing read", async () => {
+    // RECORDED SINCE ROUND 041 AND READ BY NOTHING. `claimed the appended slide
+    // though the id list churned` carries `before`, `after` and `fresh` on all
+    // 119 of its occurrences across 63 rounds, and no script ever matched on it.
+    //
+    // The comment in powerpoint.ts that describes the behaviour was written on
+    // 2026-08-10, before the round archive existed, from seven hand-collected
+    // observations — and it said the count was ALWAYS two. It is not: 97 events
+    // read 2 and 22 read 3, and the two populations separate almost cleanly by
+    // DECK SIZE (median 12 against 77). All seven originals were taken at
+    // before=3..37, where fresh=3 is nearly absent.
+    //
+    // A hand-collected sample cannot notice that its own conclusion is a
+    // function of a variable it never varied. The archive can.
+    // @ts-expect-error — plain .mjs tool, no types.
+    const { poolIdChurn } = await import("../scripts/triage.mjs");
+    const churn = (events: { fresh: number; before: number }[]) => ({
+      trace: {
+        entries: events.map((e) => ({
+          message: "claimed the appended slide though the id list churned",
+          data: { before: e.before, after: e.before + 1, fresh: e.fresh },
+        })),
+      },
+    });
+    const pooled = poolIdChurn([
+      churn([
+        { fresh: 2, before: 10 },
+        { fresh: 2, before: 14 },
+      ]),
+      churn([{ fresh: 3, before: 77 }]),
+      { trace: { entries: [{ message: "drew a chart" }] } },
+    ]);
+    expect(pooled.rounds, "a round with no churn event is not a round that churned").toBe(2);
+    expect(pooled.kinds).toEqual([
+      { fresh: 2, events: 2, medianDeck: 14 },
+      { fresh: 3, events: 1, medianDeck: 77 },
+    ]);
+
+    // THE DECK SIZE IS THE POINT, not decoration: it is the variable the
+    // original seven observations held nearly constant, and dropping it would
+    // leave the pooled version making the same mistake with more data.
+    expect(pooled.kinds.every((k: { medianDeck?: number }) => k.medianDeck !== undefined)).toBe(true);
+  });
+
   it("records WHICH ARM a round was in, which the archive could not say", () => {
     // WHAT IT COST. Six rounds on 2026-08-22 established that a second-round-of-
     // a-pair on an aged pane refuses a group and one on a fresh pane does not —

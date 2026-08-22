@@ -7203,19 +7203,30 @@ export async function addScratchSlide(
     // deleting one later would then delete the user's work.
     //
     // On this host "more than one" means something else entirely, and it is
-    // common. Seven observations across four rounds, every single one the same
-    // arithmetic: the deck grows by exactly ONE and TWO ids read as new.
+    // common. One id has to leave the list for the arithmetic to add up:
+    // appending a slide makes this host RENUMBER an existing one. Nothing else
+    // is adding slides — the probe is the only caller — so refusing both cost
+    // the question and left the slide behind anyway. On 2026-08-10 it took the
+    // probe's whole second pass: three attempts, five questions never re-asked.
     //
-    //   before=20 after=21 fresh=2      before=37 after=38 fresh=2
-    //   before=21 after=22 fresh=2      before=3  after=4  fresh=2
-    //   before=18 after=19 fresh=2      before=19 after=20 fresh=2
-    //   before=20 after=21 fresh=2
+    // THE ORIGINAL SEVEN OBSERVATIONS SAID "always exactly two", and they were
+    // everything there was: this comment was written on 2026-08-10 in 6f9ee01,
+    // and `git ls-tree 6f9ee01 rounds/` is empty — the round archive did not
+    // exist yet. 119 events across 63 archived rounds now say otherwise:
     //
-    // One id has to leave the list for that to add up: appending a slide makes
-    // this host RENUMBER an existing one. Nothing else is adding slides — the
-    // probe is the only caller — so refusing both cost the question and left the
-    // slide behind anyway. On 2026-08-10 it took the probe's whole second pass:
-    // three attempts, three `fresh=2`, five questions never re-asked.
+    //   fresh=2   97 events   deck before: min 3,  median 12, max 77
+    //   fresh=3   22 events   deck before: min 16, median 77, max 95
+    //
+    // So ONE APPEND IN FIVE RENUMBERS TWO, and the churn scales with the deck:
+    // the two populations barely overlap, and every one of the original seven
+    // was taken at before=3..37 — small decks, where fresh=3 is nearly absent.
+    // The honest rule is "at least one id leaves the list, more on a big deck",
+    // not "exactly one".
+    //
+    // Nothing below branches on the count, so this is a correction to what the
+    // host DOES rather than to what the code does. It matters because the next
+    // person to reason about delete-by-id here will reason from this paragraph.
+    // `poolIdChurn` reads the trace line so the numbers stay current.
     //
     // So claim by POSITION rather than by set difference, and only in the case
     // the evidence actually covers. `slides.add()` APPENDS, so the slide we just

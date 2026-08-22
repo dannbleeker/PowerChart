@@ -2016,6 +2016,52 @@ export function poolDriverRuns(logs) {
   };
 }
 
+/**
+ * How badly this host renumbers its slide ids when one is appended.
+ *
+ * RECORDED SINCE ROUND 041 AND READ BY NOTHING. `claimed the appended slide
+ * though the id list churned` carries `before`, `after` and `fresh` on every
+ * occurrence — 119 of them across 63 rounds — and no script has ever matched on
+ * it. The comment in `powerpoint.ts` that describes the behaviour was written
+ * before the archive existed, from seven hand-collected observations, and said
+ * the count was ALWAYS two.
+ *
+ * It is not. 97 events read `fresh=2` and 22 read `fresh=3` — one append in
+ * five renumbers two — and the two populations separate almost cleanly by deck
+ * size: `fresh=2` has median `before` 12, `fresh=3` has median 77. The original
+ * seven were all taken at before=3..37, where `fresh=3` is nearly absent.
+ *
+ * Which is why this is pooled rather than left in a paragraph: a hand-collected
+ * sample cannot notice that its own conclusion is a function of deck size, and
+ * the archive can.
+ */
+export function poolIdChurn(logs) {
+  const byFresh = new Map();
+  let rounds = 0;
+  for (const log of logs ?? []) {
+    let any = false;
+    for (const e of log?.trace?.entries ?? []) {
+      if (!/claimed the appended slide/.test(String(e.message ?? ""))) continue;
+      const fresh = Number(e.data?.fresh);
+      const before = Number(e.data?.before);
+      if (!Number.isFinite(fresh)) continue;
+      any = true;
+      const t = byFresh.get(fresh) ?? { fresh, events: 0, befores: [] };
+      t.events++;
+      if (Number.isFinite(before)) t.befores.push(before);
+      byFresh.set(fresh, t);
+    }
+    if (any) rounds++;
+  }
+  const median = (xs) => (xs.length ? [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)] : undefined);
+  return {
+    rounds,
+    kinds: [...byFresh.values()]
+      .sort((a, b) => a.fresh - b.fresh)
+      .map((t) => ({ fresh: t.fresh, events: t.events, medianDeck: median(t.befores) })),
+  };
+}
+
 /** How many rounds of a signal to print in sequence, so a step is visible. */
 export const RECENT_IN_A_ROW = 8;
 
@@ -2504,6 +2550,32 @@ export function poolAgedHandleResolves(logs) {
     if (any) rounds++;
   }
   return { resolved, refused, rounds, of: (logs ?? []).length };
+}
+
+/**
+ * How badly the host renumbers, printed so the paragraph in `powerpoint.ts`
+ * stops being the only account of it.
+ */
+function reportIdChurn(logs) {
+  const c = poolIdChurn(logs);
+  if (!c.kinds.length) return;
+  const total = c.kinds.reduce((n, k) => n + k.events, 0);
+  console.log(`
+  IDS THAT LEAVE THE LIST WHEN A SLIDE IS APPENDED — ${total} event(s) over ${c.rounds} round(s)`);
+  for (const k of c.kinds)
+    console.log(
+      `    ${String(k.events).padStart(4)} event(s) read ${k.fresh} id(s) as new` +
+        (k.medianDeck === undefined ? "" : `, median deck ${k.medianDeck} slide(s) before the add`),
+    );
+  console.log(
+    `    One id has to leave the list for "grew by 1, ${c.kinds[0]?.fresh ?? 2} read as new" to add up. The
+` +
+      `    comment in powerpoint.ts was written from SEVEN hand-collected observations before this
+` +
+      `    archive existed and said the count was always two. It is not, and the split is by deck
+` +
+      `    size — a hand sample cannot notice that its own conclusion is a function of the deck.`,
+  );
 }
 
 function reportStarvedQuestions(logs) {
@@ -3329,6 +3401,7 @@ if (invokedDirectly) {
     reportUpdateShortfalls(pooled);
     reportScenarioFriction(pooled);
     reportStarvedQuestions(pooled);
+    reportIdChurn(pooled);
     reportTagFaults(pooled);
     reportPool(pooled);
     process.exit(failed ? 1 : 0);
@@ -3376,6 +3449,7 @@ if (invokedDirectly) {
     reportBatchSpanVsGroup(pooled);
     reportOriginTagLosses(pooled);
     reportStarvedQuestions(pooled);
+    reportIdChurn(pooled);
     reportTagFaults(pooled);
     reportPool(pooled);
     if (!results.length && !selftest.length && !log?.trace)
