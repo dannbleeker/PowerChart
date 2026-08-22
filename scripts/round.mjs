@@ -1750,6 +1750,38 @@ export async function attempt(argv, deps, sh, healed = false) {
  * Sorted, so the same pair of stops reads the same way in every round and can
  * be counted across the archive.
  */
+/**
+ * Close the browser and build a new one, before a round is attempted.
+ *
+ * EVERY ROUND SO FAR HAS STARTED FROM WHATEVER THE LAST ONE LEFT BEHIND, gone
+ * stale. Four rounds running needed a second attempt, and round 154 finally
+ * named both reasons rather than bucketing them:
+ *
+ *     driverRun {"attempts":2,"recovered":["not-ready:host-silent+pane-stale"]}
+ *
+ * `host-silent` is the editing session dropping while the browser sits idle
+ * between rounds. `pane-stale` is a build having been deployed since the pane
+ * loaded. A fresh session should answer both — a new session is not silent, and
+ * a pane loaded a moment ago is not stale.
+ *
+ * The argument is DETERMINISM, not speed. A round that starts from the previous
+ * round's leftovers is a round whose starting conditions are a variable, and
+ * every cross-round comparison in this archive rests on those being stable.
+ *
+ * CLOSE FIRST, THEN RECOVER. `recover` only opens a browser when there is not
+ * one — `if (noBrowser(...))` — so recovering into a live browser reloads the
+ * stale session instead of replacing it, which is the thing being avoided.
+ *
+ * Opt-in for now (`--fresh`). Whether it earns its place is a question
+ * `driverRun.attempts` can answer, and it should be answered before it becomes
+ * the default.
+ */
+export async function startFresh(sh, sleep, recoverFn = recover) {
+  sh("close");
+  await sleep(3000);
+  await recoverFn(sh, sleep);
+}
+
 export function recoveryLabel(reason, codes) {
   return Array.isArray(codes) && codes.length ? `${reason}:${[...codes].sort().join("+")}` : String(reason);
 }
@@ -2276,6 +2308,11 @@ async function main(argv, deps = {}) {
   // took three attempts and then failed two scenarios that had never failed in
   // 109 rounds, and no archived field could connect those two facts.
   const recovered = [];
+  // A fresh browser before the first attempt, when asked for. See `startFresh`.
+  if (argv.includes("--fresh")) {
+    console.log("  closing the browser — this round starts from a fresh session");
+    await startFresh(sh, sleep);
+  }
   // Read ONCE, here, and handed to every attempt. See `attempt`'s `head`.
   const pinnedHead =
     deps.head ??
