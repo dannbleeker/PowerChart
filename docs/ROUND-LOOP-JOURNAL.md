@@ -4360,3 +4360,132 @@ their own prose — "should not be read as the current rate", "Counts, not a rat
 — and printed the number anyway. A caveat next to a figure is an admission that
 the figure is wrong, not a fix for it. Print the window that answers the
 question, or print the sequence and let the reader see the shape.
+
+## Round 160 — a correction to the entry above, and the population that halved
+
+    160  e2b3f7d  ok 11 | declined 2 | 13/13 | 512s | attempts 2
+
+### CORRECTION: "13 of 68 fresh-slide charts still fail to group" was wrong
+
+That claim is in the entry above and in #680's commit message, and it named a
+live product defect that is not live. Every one of those 13 failures comes from
+rounds 137-142, an era that ended:
+
+    137  1   138  4   139  4   140  5   141  9   142  2
+    143-160: three failures in eighteen rounds
+
+Over the last twelve rounds the fresh-slide rate is **20 of 20**, and over the
+last eight there are no fresh-slide charts at all. The reason is the same one
+running through everything else here: the in-place update took those charts, and
+a chart that is not redrawn never lands on a fresh slide.
+
+**The window I chose to fix a stale window was itself stale.** 20 rounds was
+picked to exclude everything before the settled retry (rounds 064/065). It does
+— and it sits straight across a second boundary I had not found. The same
+population reads 80% at 30 rounds, 91% at 20, 100% at 12, and at 8 it is empty.
+
+That is the lesson, sharper than the one in the entry above: **a window is a
+guess about where the last regime boundary is, and you do not know where they
+all are.** A sequence does not need the guess. So the fresh-slide block now
+prints one, and `0/0` rounds are the signal rather than a gap:
+
+    grouped/landed on a fresh slide, per round: [0/0 0/0 0/0 0/0 0/0 0/0 0/0 0/0]
+
+A percentage over an emptying population is what to watch for, and only the
+sequence shows it emptying.
+
+### The grouping population halved at round 153 and nothing said so
+
+Charts grouped per round ran 15-20 for the whole archive, then:
+
+    round  151  152  153  154  155  156  157  158  159  160
+    grouped 15   15    9    9    9    9    9    9    7    9
+    in-place 5    5   11   11   11   11   11   11   11   11
+
+**15 - 9 = 6 and 11 - 5 = 6, exactly, in the round it changed.** The cause is
+complete and benign: an in-place update never redraws, and a chart that is not
+redrawn is never regrouped.
+
+Benign, and it silently rebased every grouping figure in triage. The gate line
+read `9 chart(s) grouped, 0 refused (usually 2 over 135 prior round(s))` — and
+"0 refused, usually 2" reads as an improvement when half the attempts stopped
+happening. Fewer refusals out of fewer tries.
+
+The rate is the only reading that survives a change of population: round 160
+grouped **9 of 9 attempts**, round 141 grouped **10 of 19**. Those two are
+comparable; 9 and 10 are not. This is the `same scale across the deck` trap
+again — "6 of 6" and "8 of 8" are both a pass — argued at length one screen up
+in this same file while a bare count was printed here.
+
+### Doctrine, revised
+
+The entry above said: print the window that answers the question, or print the
+sequence. Round 160 says the first half of that is not safe advice. **Print the
+sequence.** A window has to be chosen, and choosing it requires knowing where
+the regime boundaries are — which is the thing you are trying to find out.
+
+And when a count moves, ask what happened to its denominator before asking what
+happened to the thing being counted. Twice tonight the answer was "a different
+subsystem started working".
+
+## Round 161 — the pair discipline and the fresh-pane discipline are in conflict
+
+    160  e2b3f7d  ok 11 | declined 2 | 13/13 | 512s | grouped 9 of 9 | pane  70s
+    161  e2b3f7d  ok 11 | declined 2 | 13/13 | 542s | grouped 7 of 8 | pane 666s
+
+Second round of the pair, same build, nothing merged between them — and it
+refused a group, left a slide holding **17 shapes** against 160's five, and
+started with a pane **666 seconds old**.
+
+### The measurement
+
+    round  148 149 150 151 152 153 154 155 156 157 158 | 159 | 160 | 161
+    pane    76  67  67  62  64  62  72  64  65  63  67 | 696 |  70 | 666
+
+Rounds 148-158 were each taken after a merge. Rounds 159 and 161 are the only
+true second-rounds in that stretch. **Both inherited a ~670-second pane, and
+both were the worse half of their pair** — 159 lost a chart's tag
+(`ErrorPointer` at `BindingCollection.add`), 161 refused a group. That is the
+PAIR POSITION direction — second round worse 20x, better 2x — reproducing twice
+in one evening with the cause visible in the same table.
+
+### Why, and it is not what the gate said
+
+The gate has been claiming *"The driver reloads it between rounds now, so this
+count is mostly history."* **It does not reload it, and the reason is recorded
+in `round.mjs` itself:** reloading the pane raises a beforeunload prompt over
+unsaved work, and accepting that prompt appears to discard the per-document
+SIDELOAD — the add-in was gone from the ribbon after round 124 and again after
+round 132. The reload was deliberately removed. The note describing it was not.
+
+What actually freshens the pane is **a merge**: it makes the pane stale, so
+recovery reloads it as part of clearing `pane-stale`. Every fresh-pane round in
+the archive got there that way.
+
+Which puts the two disciplines in direct conflict. **The pair exists so that
+nothing is merged between the two rounds — and the merge is the only thing
+freshening the pane.** Run a proper pair and you guarantee the second round is
+taken on an aged pane, i.e. you control for the build and lose control of the
+confound that this archive says matters most.
+
+Six rounds of merging-between-rounds hid it: 148-158 were all first rounds by
+construction, so the pane was always fresh and PAIR POSITION looked like history.
+
+### The fix
+
+**Run the second round of a pair with `--fresh`.** It closes the BROWSER — which
+the persistent profile survives, sign-in and sideload both — rather than
+reloading the page that holds unsaved work. It is the only route to a fresh pane
+that does not risk the add-in, and round 155 already demonstrated it: pane 64s,
+attempts 1, nothing recovered.
+
+Written into ROUND-LOOP-BRIEF as part of the pair rule rather than left as a
+finding, because the next pair will otherwise repeat it.
+
+### What this costs the two pairs taken tonight
+
+They are still the best evidence in the archive for the timing question — 152821
+vs 159320, and 512s vs 542s, are close enough that a 666-second pane did not move
+them much. But **158/159 and 160/161 are not clean pairs**, and the two anomalies
+in them (a lost tag, a refused group) both sit on the aged half. Neither is
+evidence about the build. The next pair will be.

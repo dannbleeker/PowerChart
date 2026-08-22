@@ -340,11 +340,27 @@ if (isMain(import.meta.url, process.argv[1])) {
       console.log(
         `    ${pos.worse} of the ${moved} pairs that moved went the same way. That is a direction, not a mood.
 ` +
-          `    THE CAUSE IS THE PANE, not the position: a second round used to INHERIT the first round's
+          `    THE CAUSE IS THE PANE, not the position: a second round INHERITS the first round's
 ` +
-          `    pane, and pane age separates post-retry 0.4 from 4.6. The driver reloads it between rounds
+          `    pane, and pane age separates post-retry 0.4 from 4.6. ${pos.secondFresh} of ${pos.pairs} pairs had a
 ` +
-          `    now, so this count is mostly history — ${pos.secondFresh} of ${pos.pairs} pairs had a fresh second round.`,
+          `    fresh second round — and NOT because the driver freshens one. It does not: reloading the
+` +
+          `    pane raises a beforeunload prompt over unsaved work, and accepting it has cost the
+` +
+          `    SIDELOAD twice (rounds 124 and 132). What freshens the pane is a MERGE, which makes it
+` +
+          `    stale so recovery reloads it. So a pair run properly — nothing merged between the two
+` +
+          `    rounds, which is the whole point of a pair — is exactly the case that inherits an aged
+` +
+          `    pane. Measured: rounds 148-158, each after a merge, started at 62-76s; rounds 159 and 161,
+` +
+          `    the only true second-rounds in that stretch, started at 696s and 666s, and both were the
+` +
+          `    worse half of their pair. Run the second round with --fresh: it closes the BROWSER, which
+` +
+          `    the persistent profile survives, instead of reloading the page that holds unsaved work.`,
       );
   }
 
@@ -359,15 +375,22 @@ if (isMain(import.meta.url, process.argv[1])) {
 
   const grouping = poolGroupingOutcome(rounds);
   if (grouping) {
-    const { now, refusedMedian, rounds: priorRounds } = grouping;
+    const { now, refusedMedian, rounds: priorRounds, attempts, recent } = grouping;
     console.log(
-      `  GROUPING, which no scenario verdict reports: ${now.grouped} chart(s) grouped, ` +
+      `  GROUPING, which no scenario verdict reports: ${now.grouped} of ${attempts} attempt(s) grouped, ` +
         // NO BASELINE IS NOT A BASELINE OF ZERO. This used to print `usually 0`
         // when there was no history at all, which reads as "clean until now".
         (refusedMedian === null
           ? `${now.refused} refused (no baseline — ${priorRounds} prior round(s) is too few to say what is usual)`
           : `${now.refused} refused (usually ${refusedMedian} over ${priorRounds} prior round(s))`),
     );
+    // THE POPULATION, BESIDE THE COUNT. Attempts per round ran 15-20 for the
+    // whole archive and halved to 9 at round 153 — benign (the in-place update
+    // started working, and a chart that is not redrawn is never regrouped) and
+    // completely invisible, while silently rebasing every grouping figure in
+    // triage. "0 refused (usually 2)" reads as an improvement when half the
+    // attempts stopped happening.
+    if (recent?.length) console.log(`    attempts per round, last ${recent.length}: [${recent.join(",")}]`);
     console.log(`    the deck ended holding ${now.deck.join(",")} shape(s) per slide`);
     if (now.refused > 0)
       console.log(
