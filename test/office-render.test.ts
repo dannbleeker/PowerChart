@@ -75,6 +75,7 @@ const ADDS_TO_DEFEAT_ONE_SLIDE = 1 + MAX_ADD_RETRY_ROUNDS;
 import { readFileSync } from "fs";
 import { onTrace, setTracing, traceLog } from "../src/core/trace";
 import { planReconcile } from "../src/core/reconcile";
+import { planSceneUpdate, worthUpdating } from "../src/core/scene-diff";
 import { buildChart, DEFAULT_SIZE } from "../src/core/chart";
 import { estimateOfficeShapes } from "../src/core/scene";
 import { sampleConfig, CHART_KINDS } from "../src/core/samples";
@@ -5895,5 +5896,58 @@ describe("the style a deck carries", () => {
     installHost([makeSlide("s1")], [], undefined, (v) => Number(v) < 1.7);
     expect(await writeDeckStyle({ fontSize: 12 })).toBe(false);
     expect(await readDeckStyle()).toBeNull();
+  });
+});
+
+describe("an in-place update writes in chunks", () => {
+  const CATS = ["a", "b", "c", "d", "e", "f", "g", "h"];
+  const base: ChartConfig = {
+    kind: "clustered",
+    ...DEFAULT_SIZE,
+    title: "A",
+    data: { categories: CATS, series: [{ name: "S", values: [10, 20, 30, 40, 50, 60, 70, 80] }] },
+  };
+  const withValues = (v: number[]): ChartConfig => ({
+    ...base,
+    data: { categories: CATS, series: [{ name: "S", values: v }] },
+  });
+
+  /** Syncs spent updating one chart with `next`, from a freshly installed host. */
+  const syncsToUpdate = async (next: ChartConfig) => {
+    const slide = makeSlide("s1");
+    installHost([slide], [], slide, () => true);
+    await insertSceneIntoSlide(buildChart(base), { tagData: JSON.stringify(base), left: 60, top: 90 });
+    const target = (await listChartsInDeck()).charts[0].target;
+    const before = trips.syncs;
+    await updateChartInSlide(buildChart(next), target, { tagData: JSON.stringify(next) });
+    return trips.syncs - before;
+  };
+
+  it("splits a write too big for one batch, and does not split a small one", async () => {
+    // WHAT THE HOST REFUSES IS SIZE, NOT SHARE. Round 150 raised
+    // UPDATE_SHARE_LIMIT to 0.8 so eight charts would write eighteen shapes
+    // apiece, and PowerPoint crashed on all seven attempts at 255-284s. At 0.6
+    // the same scenario writes nine apiece, completes 13/13, and runs 31s
+    // faster. The limit is a proxy for a cost the host measures in shapes per
+    // batch, and this bounds that cost directly.
+    //
+    // THE PREMISE, PINNED. These two edits are chosen for their changed-node
+    // counts, not their labels: if a layout change alters either, this test
+    // stops testing what it says it does.
+    const b = buildChart(base);
+    const small = planSceneUpdate(b, buildChart({ ...base, title: "Renamed" }));
+    const big = planSceneUpdate(b, buildChart(withValues([11, 21, 31, 41, 50, 60, 70, 80])));
+    expect(small?.changed.length, "the small edit is no longer one node").toBe(1);
+    expect(big?.changed.length, "the big edit no longer spans more than one chunk").toBe(8);
+    // Both must still be TAKEN, or the comparison is between two redraws.
+    expect(worthUpdating(small!, b.nodes.length) && worthUpdating(big!, b.nodes.length)).toBe(true);
+
+    const oneChunk = await syncsToUpdate({ ...base, title: "Renamed" });
+    const twoChunks = await syncsToUpdate(withValues([11, 21, 31, 41, 50, 60, 70, 80]));
+    // A relative claim, deliberately: the resolve and tag syncs around the
+    // write are the same for both, so the DIFFERENCE is the extra chunk and
+    // nothing else. An absolute count would break every time the surrounding
+    // path gained or lost a sync.
+    expect(twoChunks, "eight shapes went out in one batch — the write is not chunked").toBeGreaterThan(oneChunk);
   });
 });
