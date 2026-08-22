@@ -2426,6 +2426,37 @@ describe("what it took to start each round", () => {
     expect(pooled.clean, "an absent reading was counted as a clean start").toBe(1);
   });
 
+  it("records WHICH ARM a round was in, which the archive could not say", () => {
+    // WHAT IT COST. Six rounds on 2026-08-22 established that a second-round-of-
+    // a-pair on an aged pane refuses a group and one on a fresh pane does not —
+    // the whole argument for running the second round with `--fresh`. Then the
+    // claim could not be entered in the prediction ledger, because NOTHING IN A
+    // ROUND FILE SAID WHICH ROUNDS WERE RUN WITH `--fresh`. `driverRun` carried
+    // `attempts` and `recovered` and not the flag, so the argument rested on the
+    // shell history of whoever typed the command. Rounds 163 and 165 are
+    // labelled `--fresh` in this project's journal on nothing but one agent's
+    // word, and no later reader can check it.
+    //
+    // The house defect in its plainest costume: an experiment whose ARM was not
+    // recorded, while everything else about it was.
+    const round = (fresh: boolean | undefined, refused: number) => ({
+      driverRun: fresh === undefined ? { attempts: 1, recovered: [] } : { attempts: 1, recovered: [], fresh },
+      trace: {
+        entries: Array.from({ length: refused }, () => ({
+          message: "not grouping: no member handle this host will accept",
+        })),
+      },
+    });
+    const pooled = poolDriverRuns([round(true, 0), round(true, 0), round(false, 1), round(undefined, 1)]);
+    expect(pooled.arms).toEqual({ fresh: 2, freshRefusedNone: 2, aged: 1, agedRefusedNone: 0, unlabelled: 1 });
+
+    // `unlabelled` IS PART OF THE ANSWER, not a gap. Every round before the flag
+    // existed is in neither arm, and a split over four rounds read as a split
+    // over the archive would be the same overreach the ledger was just fixed to
+    // stop. A round with no `driverRun` at all counts in neither.
+    expect(poolDriverRuns([round(undefined, 0), {}]).arms).toMatchObject({ fresh: 0, aged: 0, unlabelled: 1 });
+  });
+
   it("tallies the causes, so a deploy is not read as a sick host", () => {
     // `pane-stale` after a deploy is a property of how rounds are RUN;
     // `host-silent` is host health. They were one word — "not-ready" — for four

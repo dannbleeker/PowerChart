@@ -2718,9 +2718,35 @@ async function main(argv, deps = {}) {
     let outcome;
     try {
       // WHAT THE DRIVER HAD TO DO TO GET A ROUND AT ALL. See `driverRun`.
+      //
+      // AND HOW THE ROUND WAS LAUNCHED, which the archive could not say. On
+      // 2026-08-22 six rounds established that a second-round-of-a-pair on an
+      // aged pane refuses a group and one on a fresh pane does not — the whole
+      // argument for running the second round with `--fresh`. Then the claim
+      // could not be entered in the prediction ledger, because **nothing in the
+      // round file records which arm a round was in.** `paneAgeAtStartSeconds`
+      // gives the symptom; the flag that caused it was known only from the shell
+      // history of whoever typed it.
+      //
+      // `recovered: ["not-ready:pane-closed"]` correlates — a `--fresh` round
+      // closes the browser, so the pane comes back closed — but a correlate is
+      // not the fact, and rounds 163 and 165 are labelled `--fresh` in this
+      // project's journal on nothing but my word.
+      //
+      // The house defect wearing its plainest costume: an experiment whose ARM
+      // was not recorded. Everything else about those rounds was.
       outcome = await attempt(
         argv,
-        { ...deps, head: pinnedHead, driverRun: { attempts: n + 1, recovered: [...recovered] } },
+        {
+          ...deps,
+          head: pinnedHead,
+          driverRun: {
+            attempts: n + 1,
+            recovered: [...recovered],
+            fresh: argv.includes("--fresh"),
+            waitedForDeploy: argv.includes("--wait-for-deploy"),
+          },
+        },
         sh,
       );
     } catch (err) {

@@ -1065,7 +1065,21 @@ export function poolScenarioFriction(logs) {
  * noise on every correctly-staked entry.
  */
 export function stakedWithoutATime(prediction, logs, buildOf) {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(prediction?.madeOn ?? ""))) return false;
+  const madeOn = String(prediction?.madeOn ?? "");
+  // A DAY WITH NO TIME, or a time with no ZONE. Both make the comparison mean
+  // something other than what the writer meant, and both fail quietly.
+  //
+  // The zone half was found immediately after the day half was fixed, by
+  // stepping straight into it. #684 was re-stamped `2026-08-22 23:00` — local
+  // time — while every round stamp is UTC (`c7e2876 · 2026-08-22 21:14Z`).
+  // Lexicographically "21:14Z" < "23:00", so the two rounds that were taken to
+  // judge it read as older than the claim and the entry said `no round yet`.
+  // That is the worst direction to fail in: `no round yet` reads as patience.
+  const bare = /^\d{4}-\d{2}-\d{2}$/.test(madeOn);
+  const zoneless = /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}$/.test(madeOn);
+  if (!bare && !zoneless) return false;
+  // Only when the build is absent: a build that IS in the archive pins the
+  // position exactly and the date is never consulted.
   return !(logs ?? []).some((l) => buildOf(l) === prediction.afterBuild);
 }
 
@@ -1107,9 +1121,11 @@ function reportPredictions(logs, load = readFileSync) {
     // confuse them were taken on other days.
     if (stakedWithoutATime(p, logs, buildOf))
       console.log(
-        `    ^ NOTE  ${p.id} is stamped with a day and no time, so it is judged from the START of\n` +
-          `            ${p.madeOn} — any round taken earlier that day counts as evidence, including the\n` +
-          `            ones that prompted it. Stake with a time (\`YYYY-MM-DD HH:MM\`).`,
+        `    ^ NOTE  ${p.id} is stamped \`${p.madeOn}\`, which the judge cannot compare safely.\n` +
+          `            A day with no time is read from the START of that day, so rounds taken earlier —\n` +
+          `            including the ones that prompted the claim — count as evidence. A time with no\n` +
+          `            zone is compared against UTC round stamps, so a local-time stamp silently\n` +
+          `            back-dates or forward-dates itself. Stake as \`YYYY-MM-DD HH:MMZ\`, in UTC.`,
       );
     const eligible = roundsToJudgeOn(logs, p.afterBuild, buildOf, p.madeOn);
     if (!eligible.length) {
@@ -1950,6 +1966,14 @@ export function poolDriverRuns(logs) {
     clean = 0;
   const causes = new Map();
   const attempts = new Map();
+  // THE ARM OF THE EXPERIMENT, which the archive could not name until
+  // 2026-08-22. Six rounds established that a second-round-of-a-pair on an aged
+  // pane refuses a group and one on a fresh pane does not, and the claim could
+  // not be entered in the prediction ledger because nothing in the round file
+  // said which rounds were run with `--fresh`. `unlabelled` counts the rounds
+  // from before the flag was recorded, so a rate over the labelled ones is never
+  // quoted as if it covered the whole archive.
+  const arms = { fresh: 0, freshRefusedNone: 0, aged: 0, agedRefusedNone: 0, unlabelled: 0 };
   for (const log of logs ?? []) {
     const dr = log?.driverRun;
     if (!dr || typeof dr.attempts !== "number") continue;
@@ -1957,10 +1981,23 @@ export function poolDriverRuns(logs) {
     attempts.set(dr.attempts, (attempts.get(dr.attempts) ?? 0) + 1);
     if (dr.attempts <= 1) clean++;
     for (const c of dr.recovered ?? []) causes.set(String(c), (causes.get(String(c)) ?? 0) + 1);
+    if (typeof dr.fresh !== "boolean") {
+      arms.unlabelled++;
+      continue;
+    }
+    const refusedNone = !(log?.trace?.entries ?? []).some((e) => /^not grouping/.test(String(e.message ?? "")));
+    if (dr.fresh) {
+      arms.fresh++;
+      if (refusedNone) arms.freshRefusedNone++;
+    } else {
+      arms.aged++;
+      if (refusedNone) arms.agedRefusedNone++;
+    }
   }
   return {
     rounds,
     clean,
+    arms,
     attempts: [...attempts].sort((a, b) => a[0] - b[0]).map(([n, of]) => ({ attempts: n, rounds: of })),
     causes: [...causes].sort((a, b) => b[1] - a[1]).map(([cause, n]) => ({ cause, n })),
   };

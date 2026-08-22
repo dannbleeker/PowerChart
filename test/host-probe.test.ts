@@ -1971,6 +1971,47 @@ describe("what the scratch clean-up may claim", () => {
     expect(r.shrankBy).toBe(0);
   });
 
+  it("grades a clean handback ALL even when the count runs past its own denominator", async () => {
+    // 25 OF 140 ARCHIVED ROUNDS, and 25 of the 30 `some` verdicts in the whole
+    // archive. The positional sweep was licensed with
+    // `outstanding.length + unnamedLeftBehind` and the verdict was scored
+    // against `outstanding.length` — two denominators 24 lines apart — so the
+    // numerator counted slides the denominator did not know existed and `left`
+    // came out NEGATIVE.
+    //
+    // `!left` is false for -4, so a clean handback was graded `some`. Round 088,
+    // verbatim: "98 of 94 scratch slide(s) deleted; -4 never landed — the host
+    // took the add and the deck never listed them" — 104% of its own
+    // denominator, reported as a shortfall, beside a deck that came back to
+    // exactly the size it started at.
+    const { scratchCleanupAnswer, scratchLeftSentence } = await import("../src/render/host-probe");
+    expect(scratchCleanupAnswer({ addedAny: true, left: -4, actually: 98 })).toBe("all");
+    expect(scratchCleanupAnswer({ addedAny: true, left: 0, actually: 42 })).toBe("all");
+    // AND THE POSITIVE CASES ARE UNTOUCHED — a real shortfall must still grade
+    // as one, or this "fix" would be a clamp that hides the defect it was
+    // written for.
+    expect(scratchCleanupAnswer({ addedAny: true, left: 4, actually: 90 })).toBe("some");
+    expect(scratchCleanupAnswer({ addedAny: true, left: 4, actually: 0 })).toBe("none");
+    expect(scratchCleanupAnswer({ addedAny: false, left: 0, actually: 0 })).toBe("none-added");
+
+    // A NEGATIVE `left` GETS ITS OWN SENTENCE and never one of the other two.
+    // Both of those describe slides that are MISSING, so a negative number in
+    // either says the opposite of what happened. Round 073 printed
+    // "-1 left in the deck" directly beside "the deck still lists 1".
+    const negative = scratchLeftSentence({ left: -4, stillListed: 0, deckBefore: 99, deckAfter: 1 });
+    expect(negative).toMatch(/MORE slide\(s\) than this run can account for/);
+    expect(negative, "a negative count rode inside a sentence that means the opposite").not.toMatch(/never landed/);
+    expect(negative).not.toMatch(/left in the deck/);
+    expect(negative, "the magnitude is reported unsigned, so the sentence reads").toMatch(/lost 4 MORE/);
+
+    // The two positive sentences still split on what the DECK says, which is
+    // what round 029 bought: 73 slides counted as abandoned while the deck stood
+    // at one the whole time and listed none of their ids.
+    expect(scratchLeftSentence({ left: 73, stillListed: 0, deckBefore: 1, deckAfter: 1 })).toMatch(/never landed/);
+    expect(scratchLeftSentence({ left: 1, stillListed: 1, deckBefore: 1, deckAfter: 2 })).toMatch(/left in the deck/);
+    expect(scratchLeftSentence({ left: 0 }), "a complete handback says nothing at all").toBe("");
+  });
+
   it("still reports success when the deck agrees", () => {
     const r = slidesActuallyReturned({ claimed: 42, added: 42, deckBefore: 99, deckAfter: 57 });
     expect(r.actually).toBe(42);
