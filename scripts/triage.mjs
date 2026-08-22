@@ -1966,14 +1966,24 @@ export function poolDriverRuns(logs) {
     clean = 0;
   const causes = new Map();
   const attempts = new Map();
-  // THE ARM OF THE EXPERIMENT, which the archive could not name until
-  // 2026-08-22. Six rounds established that a second-round-of-a-pair on an aged
-  // pane refuses a group and one on a fresh pane does not, and the claim could
-  // not be entered in the prediction ledger because nothing in the round file
-  // said which rounds were run with `--fresh`. `unlabelled` counts the rounds
-  // from before the flag was recorded, so a rate over the labelled ones is never
-  // quoted as if it covered the whole archive.
-  const arms = { fresh: 0, freshRefusedNone: 0, aged: 0, agedRefusedNone: 0, unlabelled: 0 };
+  // THE ARM OF THE EXPERIMENT — SPLIT ON THE PANE, NOT ON THE FLAG.
+  //
+  // The first version of this split on `driverRun.fresh`, and round 167 showed
+  // within one pair why that is wrong: 166 ran WITHOUT `--fresh` and started on
+  // a 69-second pane anyway, because a merge preceded it and recovery reloads a
+  // stale pane. The flag and the pane are different variables, and the whole
+  // PAIR POSITION argument is about the pane — `--fresh` is merely one way to
+  // get a fresh one. Splitting on the flag files a fresh-pane round under
+  // "aged" and makes both arms mean nothing.
+  //
+  // The house defect, in an instrument built four hours earlier to fix the same
+  // defect: measuring the PROXY instead of the thing.
+  //
+  // `flagDisagreed` counts rounds where the two answers differ, so the proxy's
+  // unreliability is on the page rather than assumed away. `unlabelled` counts
+  // rounds from before either was recorded, so a rate over a handful is never
+  // quoted as if it covered the archive.
+  const arms = { fresh: 0, freshRefusedNone: 0, aged: 0, agedRefusedNone: 0, unlabelled: 0, flagDisagreed: 0 };
   for (const log of logs ?? []) {
     const dr = log?.driverRun;
     if (!dr || typeof dr.attempts !== "number") continue;
@@ -1981,12 +1991,15 @@ export function poolDriverRuns(logs) {
     attempts.set(dr.attempts, (attempts.get(dr.attempts) ?? 0) + 1);
     if (dr.attempts <= 1) clean++;
     for (const c of dr.recovered ?? []) causes.set(String(c), (causes.get(String(c)) ?? 0) + 1);
-    if (typeof dr.fresh !== "boolean") {
+    const age = paneAgeAtStartSeconds(log);
+    if (typeof age !== "number") {
       arms.unlabelled++;
       continue;
     }
+    const paneWasFresh = age < FRESH_PANE_SECONDS;
+    if (typeof dr.fresh === "boolean" && dr.fresh !== paneWasFresh) arms.flagDisagreed++;
     const refusedNone = !(log?.trace?.entries ?? []).some((e) => /^not grouping/.test(String(e.message ?? "")));
-    if (dr.fresh) {
+    if (paneWasFresh) {
       arms.fresh++;
       if (refusedNone) arms.freshRefusedNone++;
     } else {

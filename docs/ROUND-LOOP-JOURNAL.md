@@ -4551,3 +4551,75 @@ carried the sentence and nothing else. `groupMembersInOrder` returns `[]` for
 three different reasons (no collection queued, items unreadable, fewer than two
 members) and nothing could tell them apart. It now records `collection`,
 `members`, `nodes` and the target ids. The next round says which.
+
+## Rounds 166 and 167 — the arm was never missing; I was calling the flag the arm
+
+    166  36dc5ec  fresh=false  pane 69s  grouped 9/9
+    167  36dc5ec  fresh=true   pane 69s  grouped 8/8
+
+The first pair where both halves record how they were launched. It refuted the
+instrument that recorded it.
+
+### The flag is not the variable
+
+**166 ran WITHOUT `--fresh` and started on a 69-second pane anyway**, because a
+merge preceded it and recovery reloads a stale pane. So the two rounds differ in
+the FLAG and agree on the PANE — and the whole PAIR POSITION argument is about
+the pane. `--fresh` is one way to get a fresh one, not the thing itself.
+
+Splitting the arms on `driverRun.fresh` therefore filed a fresh-pane round under
+"aged" and made both arms mean nothing. The house defect, in an instrument built
+four hours earlier to fix the same defect: **measuring the proxy instead of the
+thing.**
+
+Split on pane age instead, over all 18 rounds carrying `driverRun`:
+
+    fresh pane 15/16 round(s) refused no group · aged pane 0/2
+      --fresh disagreed with the pane in 1 of them — the flag is not the variable
+
+### And the arm had been in the file all along
+
+`paneAgeAtStartSeconds` reads the smallest `ms` in the trace. Every round has
+one. **The arm was never missing** — #685 added `driverRun.fresh` to fix "the
+archive cannot say which arm a round was in", and the archive could say, because
+the arm is the pane and the pane was always recorded. What was wrong was my
+description of the experiment, not the instrumentation.
+
+The flag is kept: it is free, and `flagDisagreed` is now the standing
+measurement of how often the proxy and the variable part company. Once in
+eighteen so far.
+
+### The prediction: undetermined, and the ledger said held
+
+`a-fresh-second-round-stops-refusing-groups` came out `held 2 · FAILED 0`. Both
+halves of that are wrong.
+
+**The claim could not select its own population.** It is about a `--fresh`
+SECOND round; `trace-line-present` knows nothing about arms and judged every
+eligible round. Round 166 — not `--fresh`, first of its pair — was counted as
+evidence for a claim about `--fresh`. A first round on a fresh pane trivially
+refuses no group.
+
+**And the absolute form is already refuted by the archive.** Round 150 started
+on a 67-second pane and refused a group. `a fresh round refuses no group` is
+false as a law; what the archive supports is a rate — 15 of 16 against 0 of 2.
+Staking an absolute where the data supports a rate produces an entry that will
+one day FAIL for the wrong reason.
+
+Recorded `undetermined` and **not re-staked**. The finding is a rate with a
+denominator and the gate line is its right home. Forcing a rate into an
+absence-shaped claim kind is what produced the entry.
+
+### A count guard is not an alignment guard, again
+
+The first mutation of the new test — putting `dr.fresh` back — **passed**. The
+assertion checked arm SIZES, and the sizes are 1 and 1 under either split. Only
+asserting which round landed in which arm catches it. That rule is written down
+in this repo and it still took a mutation to notice.
+
+### Round 166 on the scratch fix
+
+`scratch: all | 83 of 83 scratch slide(s) deleted`, and its trace says
+`left: 0` — so this round had no unnamed adds and never reached the branch #685
+repaired. A regression check on the clean path, not a confirmation of the fix.
+The negative case fires in about 18% of rounds; it will show up on its own.
