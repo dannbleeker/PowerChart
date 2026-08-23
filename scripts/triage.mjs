@@ -2824,6 +2824,64 @@ function reportTagRoutes(logs) {
     );
 }
 
+/**
+ * What the settle retry buys, split by which ask it was.
+ *
+ * THE RETRY IS LOAD-BEARING AND NOTHING MEASURED IT. Pooled over 161 rounds
+ * before #709: 1,057 retry passes fired and 97 failures survived them — a 90.8%
+ * rescue rate. The first read of the shape collection fails on roughly half the
+ * charts this loop sees, and a pause plus a fresh slide handle fixes nine in
+ * ten. The 4.3% quoted all over this project is what is LEFT after the retry,
+ * not the failure rate of the read.
+ *
+ * #709 raised `REREAD_ATTEMPTS` from 1 to 2 to reach the 97. Whether that does
+ * anything is only visible if the trace says WHICH ASK a pass was — five passes
+ * in a round is either five first asks from five update calls, or four firsts
+ * and a second, and those are opposite readings of the same number. Rounds
+ * before the `attempt` field cannot be told apart and are counted as
+ * `unlabelled` rather than folded in.
+ */
+export function poolSettleAsks(logs) {
+  const out = { rounds: 0, first: 0, second: 0, later: 0, unlabelled: 0, survivors: 0, charts: 0 };
+  for (const log of logs ?? []) {
+    let any = false;
+    for (const e of log?.trace?.entries ?? []) {
+      const m = String(e.message ?? "");
+      if (/settle delay/.test(m)) {
+        any = true;
+        out.charts += Number(e.data?.charts) || 0;
+        const a = e.data?.attempt;
+        if (typeof a !== "number") out.unlabelled++;
+        else if (a <= 1) out.first++;
+        else if (a === 2) out.second++;
+        else out.later++;
+      } else if (/re-read named none/.test(m)) {
+        any = true;
+        out.survivors++;
+      }
+    }
+    if (any) out.rounds++;
+  }
+  return out;
+}
+
+/** The settle asks, and whether the second one ever fires. */
+function reportSettleAsks(logs) {
+  const a = poolSettleAsks(logs);
+  if (!a.rounds) return;
+  console.log("\n  THE SETTLE RETRY — over " + a.rounds + " round(s)");
+  console.log("    " + String(a.first).padStart(5) + "  first ask");
+  console.log("    " + String(a.second).padStart(5) + "  SECOND ask (added in #709 to reach the survivors)");
+  if (a.later) console.log("    " + String(a.later).padStart(5) + "  later asks");
+  if (a.unlabelled)
+    console.log("    " + String(a.unlabelled).padStart(5) + "  unlabelled — rounds before the attempt field");
+  console.log("    " + String(a.survivors).padStart(5) + "  failures that survived every ask");
+  if (!a.second && !a.unlabelled)
+    console.log(
+      "    The second ask has NEVER FIRED. Either the first always succeeds now, or the change is inert —\n    and a round with no survivors cannot tell those apart.",
+    );
+}
+
 function reportStarvedQuestions(logs) {
   const dead = poolStarvedQuestions(logs);
   if (!dead.length) return;
@@ -3650,6 +3708,7 @@ if (invokedDirectly) {
     reportIdChurn(pooled);
     reportPartsListOutcome(pooled);
     reportPositionalGuess(pooled);
+    reportSettleAsks(pooled);
     reportTagRoutes(pooled);
     reportTagFaults(pooled);
     reportPool(pooled);

@@ -2569,6 +2569,49 @@ describe("what it took to start each round", () => {
     expect(allGrouped.threw, "a grouped chart was counted as a failure").toBe(0);
   });
 
+  it("separates a SECOND settle ask from a first, which one number cannot", async () => {
+    // THE RETRY IS LOAD-BEARING AND NOTHING MEASURED IT. Over 161 rounds before
+    // #709: 1,057 retry passes fired and 97 failures survived — a 90.8% rescue
+    // rate. The first read of the shape collection fails on roughly half the
+    // charts this loop sees; the 4.3% quoted all over this project is what is
+    // LEFT after the retry, not the failure rate of the read.
+    //
+    // #709 raised REREAD_ATTEMPTS 1 -> 2 to reach those 97. Round 187 then
+    // recorded FIVE retry passes and zero survivors — and nothing could say
+    // whether any was a second ask or whether all five were firsts from five
+    // separate update calls. The change reads as working and as inert on
+    // identical evidence, which is the house defect aimed at a change made to
+    // cure it.
+    // @ts-expect-error — plain .mjs tool, no types.
+    const { poolSettleAsks } = await import("../scripts/triage.mjs");
+    const pass = (attempt: number | undefined, charts: number) => ({
+      message: "re-reading the slide's shapes again after a settle delay",
+      data: attempt === undefined ? { charts } : { attempt, charts },
+    });
+    const pooled = poolSettleAsks([
+      {
+        trace: {
+          entries: [
+            pass(1, 3),
+            pass(1, 2),
+            pass(2, 1),
+            { message: "the re-read named none of the chart's shapes", data: {} },
+          ],
+        },
+      },
+      // A round from before the field existed: counted apart, never folded in.
+      { trace: { entries: [pass(undefined, 4)] } },
+    ]);
+    expect(pooled).toMatchObject({ rounds: 2, first: 2, second: 1, unlabelled: 1, survivors: 1, charts: 10 });
+
+    // AN UNLABELLED PASS IS NOT A FIRST ASK. Folding the old rounds in would
+    // make the second ask look like it had never fired across an archive that
+    // could not have recorded it either way.
+    const old = poolSettleAsks([{ trace: { entries: [pass(undefined, 1), pass(undefined, 1)] } }]);
+    expect(old.first, "a pass from before the field was counted as a first ask").toBe(0);
+    expect(old.unlabelled).toBe(2);
+  });
+
   it("reads the deck inventory the gate has printed all along", async () => {
     // EIGHT OF THE LAST THIRTY ROUNDS ended with a slide holding between 11 and
     // 48 shapes, and every one of them reported 13 of 13 scenarios passed —
