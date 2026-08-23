@@ -2963,7 +2963,15 @@ export const EMPTY_ROUNDTRIP_MS = 5; // driver ping: slides.getCount() + one syn
 function reportDrawCostCurve(logs) {
   const c = poolDrawCostCurve(logs);
   if (!c.rows.length) return;
-  console.log("\n  WHAT A BATCH OF SHAPES COSTS — the product's biggest latency number");
+  // NOT THE PRODUCT'S BIGGEST LATENCY NUMBER, which is what this headline said
+  // when it was committed earlier today. `same scale across the deck` is the
+  // most expensive scenario in the round — 166s median, 38% of it — and it
+  // issues NOT ONE `batch issued` line: eight charts, all of them through the
+  // in-place update path. So everything below covers the DRAW path and misses
+  // the largest cost entirely. Claiming otherwise was a scope error of exactly
+  // the kind this section already carries two warnings about.
+  console.log("\n  WHAT A BATCH OF SHAPES COSTS — on the DRAW path only");
+  console.log("    (the in-place update path issues no batches; see `updated only the shapes that changed`)");
   console.log("    shapes this run already drew here    median batch    n");
   for (const r of c.rows) {
     const band = r.hi === Infinity ? r.lo + "+" : r.lo + "-" + r.hi;

@@ -6116,3 +6116,40 @@ expensive to interleave. The round is a measurement of the HOST, and a
 measurement taken while the measuring machine is saturated is a measurement of
 the machine.
 
+
+### A prediction that held, and half of what it promised never arrived
+
+Today's host blind spot has a four-day-old entry in the ledger, and they should
+be read together.
+
+`the-round-file-can-finally-say-which-host-it-ran-on` (#599, judged on round
+096) is marked **held**, correctly: the claim was `trace-line-present` for
+`environment`, the line appears, and it replicated across the pair. Nothing about
+that judgement is wrong.
+
+But the sentence that motivated it says more than the claim tested:
+
+> HELD means the next round is the first in the project's history to record
+> **which host, platform and Office version it ran on**, and the deck-style
+> replay finally has a route into the archive.
+
+The line records host and platform. The version is `0.0.0.0` — in all 172
+rounds, one distinct value archive-wide, because Office Online does not version
+itself to an add-in. **A third of what the prediction promised is a placeholder,
+and the ledger reads as though all three arrived.**
+
+This is not a mis-judgement. The claim kind was `trace-line-present` and the
+line is present; a claim that tested the CONTENT would have needed a different
+kind and a value to test against. It is the gap between what a prediction
+asserts and what its prose says it will buy — and the prose is what a reader
+remembers four days later.
+
+Worth noticing because it cost time today. "Did the host change at round 180?"
+was a reasonable question to put to an archive advertised as recording the
+Office version, and the answer is that it cannot be asked here at all.
+
+**The judged entry is left exactly as it is.** Predictions are the record of what
+was believed and when, and editing one after the fact to reflect what was
+learned later is the one thing that would make the ledger worthless. The note
+belongs here instead.
+

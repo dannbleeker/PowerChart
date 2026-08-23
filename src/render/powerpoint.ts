@@ -10255,6 +10255,19 @@ async function tryInPlaceUpdate(
 ): Promise<boolean> {
   const { it, old, groupMembers } = entry;
   let parts = entry.parts;
+  // WHAT THIS PATH COSTS, which nothing has ever recorded.
+  //
+  // `same scale across the deck` is the most expensive scenario in the round —
+  // 166s median, 38% of it — and it runs entirely through here: eight charts,
+  // eight `updated only the shapes that changed` lines, and NOT ONE `batch
+  // issued`. So the draw path's batch timings, which this repo now pools across
+  // 2,900 samples, do not cover the product's largest latency cost at all.
+  //
+  // The comment on the trace below is right that a computed "saving" must not be
+  // printed as data. Elapsed time is not a computed saving — it is the
+  // measurement that comment is asking for, and it is what `UPDATE_SHARE_LIMIT`
+  // needs to stop being, in its own words, untuned.
+  const startedAt = Date.now();
   // Say WHY, every time it declines.
   //
   // The first real round on a build carrying this path produced not one line —
@@ -10439,6 +10452,10 @@ async function tryInPlaceUpdate(
   trace("draw", "updated only the shapes that changed", {
     changed: plan.changed.length,
     of: it.scene.nodes.length,
+    // Measured, not inferred. `changed` of `of` says how much work was skipped;
+    // this says what the work that remained actually took. Together they are the
+    // only numbers from which the threshold above could ever be tuned.
+    ms: Date.now() - startedAt,
   });
   return true;
 }
