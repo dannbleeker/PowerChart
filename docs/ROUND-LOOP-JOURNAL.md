@@ -5581,3 +5581,237 @@ every round across the boundary — so whatever moved, it did not move by the
 work going away. That is the only load-bearing fact here, and it is enough to
 keep watching without being enough to conclude anything.
 
+
+## The biggest user-facing number in the project, and the model under it is unmeasured
+
+Chasing the product question rather than the harness for once. Scenario
+medians over 169 rounds:
+
+    same scale across the deck                166s   <- 38% of the round
+    does a rasterise poison the next draw      50s
+    insert onto a slide that already has …     48s
+    …
+    13 scenarios, medians summing to 431s per round
+
+166s looks like a Set-Same-Scale problem and is not one. It reports
+"8 of 8 charts carry the shared scale" — eight redraws, ~20s each. And the
+single-chart scenarios cost the same: 23s to edit the selected chart, 18s to
+edit one on the visible slide. **Nothing is wrong with same-scale. One chart
+redraw costs about twenty seconds, and that scenario does eight of them.**
+
+That is the number a user feels, on every edit.
+
+### The instrument existed and had never been pooled
+
+`batch issued` carries `prevBatchMs`. 2,913 measured batches:
+
+    LIVE (visible slide)   n=  336   median 12283ms per batch
+    OFF-SCREEN slide       n= 2577   median  5330ms per batch
+
+A batch on the slide the user is looking at costs **2.3x** one that is not,
+which is the repaint the code already suspects. ~140s of every round is spent
+inside these batches.
+
+### A wrong answer I published to myself for ten minutes
+
+The first cut of this said **10 shapes and 20 shapes cost the same, so the
+payload is free and the batch size should go up.** It was wrong, and wrong in
+the way that is hardest to see: `upTo` is a RUNNING TOTAL, not a batch size.
+The `"20 shapes"` bucket was the second batch of ten. Every batch in the
+archive is ten. There is no size variation in 169 rounds at all, so **the
+archive cannot compare batch sizes** — the comparison I thought I had was two
+samples of the same size, one later in a sequence than the other.
+
+Retracted before it reached a commit, by reading the raw records instead of
+the aggregate. An aggregate over a misread field is confident and clean and
+says nothing.
+
+### What the constant rests on
+
+Two docstrings justify the batch sizes, and both price a round-trip the same way:
+
+> Ten is comfortably under the last known-good (18) and still coarse enough
+> that **the round-trips (~0.1s each)** disappear next to the drawing.
+
+> a stacked chart at 10 shapes takes 4 syncs, at 40 it takes 1; **the extra
+> round-trips (~0.1s each) dominate** a 60-slide run's wall clock.
+
+**These cannot both be true.** Three extra trips at 0.1s is 0.3s; 0.3s does not
+dominate a 60-slide run, and it does not need justifying against drawing
+either. One sentence uses the figure to argue the trips are negligible and the
+other uses the same figure to argue they are decisive.
+
+And nothing here settles it. A batch's `prevBatchMs` is **trip plus draw**, so
+12.3s live is consistent with a 0.1s trip and 12.2s of drawing, and equally
+consistent with the reverse. The measurement does not refute the model; it
+shows the model has never been measured.
+
+**So: the constant governing 38% of a round's wall clock, and every second a
+user waits on an edit, rests on a cost split nobody has ever separated.**
+
+### What NOT to do, written down because it is the obvious move
+
+Raise `SHAPES_PER_SYNC`. Ten sits under a measured ceiling of about eighteen —
+"a 30-shape butterfly never commits in 90 seconds" — and this project has
+already raised a threshold on a 4% measured win and crashed PowerPoint 6 runs
+out of 6. A batch that is too big does not get slower, it stops answering, and
+nothing lands at all. The headroom is real and it is not free.
+
+The next step is the instrument, not the constant: time `context.sync()` apart
+from the statements queued before it. The adds are local and the sync is the
+trip, so the two ARE separable — which means the 0.1s claim is testable, and
+until it is tested the batch size is not a decision anyone can defend.
+
+
+### Settled the same hour, by a number already printed on every round
+
+The entry above said the two docstrings could not both be true and that
+nothing here separated trip from draw. The second half was wrong — the
+separation was already being measured, and printed on the console line above
+every round the loop has ever run.
+
+The driver's readiness ping is:
+
+    PowerPoint.run(async (c) => { c.presentation.slides.getCount(); await c.sync(); })
+
+A real Office.js round-trip carrying essentially nothing. It answers in
+**4-7ms** — `host answered in 5ms`, every round, for months.
+
+    round-trip, empty payload          ~5ms
+    batch of 10, off-screen slide     5330ms
+    batch of 10, visible slide       12283ms
+
+**The round-trip is about a tenth of one percent of a batch.** Drawing is the
+whole cost, and the ~0.1s figure in both docstrings is itself 20x too high.
+
+So the two sentences resolve, and not evenly:
+
+- The LIVE one is right, and understates its own case. Round-trips do not
+  merely disappear next to the drawing; they are invisible.
+- **The OFF-SCREEN one is wrong.** "The extra round-trips (~0.1s each) dominate
+  a 60-slide run's wall clock" — at 5ms, going from 4 syncs to 1 saves about
+  15ms on a chart that takes five seconds to draw. Three hundredths of one
+  percent. It is the stated justification for `SHAPES_PER_SYNC_OFFSCREEN = 40`,
+  a value chosen to buy a saving that does not exist, sitting nearer a
+  documented wedge ceiling than the live constant is.
+
+### The optimization I was circling is dead, and that is the useful part
+
+Raising `SHAPES_PER_SYNC` cannot speed anything up. The cost is per-shape
+server-side drawing, so the same shapes cost the same whether they cross in
+one sync or four. Batching is not a latency lever on this host **at all** —
+and the crash history says a bigger batch's downside is not slowness but
+silence. All risk, no return, now measured rather than suspected.
+
+### Where the lever actually is
+
+    off-screen    533ms per shape
+    visible      1228ms per shape      2.3x
+
+Drawing onto the slide the user is looking at costs **2.3x** drawing onto one
+they are not, per shape, at identical batch size. That is the repaint the live
+docstring already suspected — and it is the only lever these 2,913 batches
+point at: draw off-screen, then reveal. A 20s chart edit becomes about 9s.
+
+**Caveat, stated rather than buried:** the two buckets are different scenarios
+(n=336 visible, n=2577 not), so the shapes inside those batches may differ in
+complexity. Batch size is pinned at ten in both, so the comparison is fair on
+payload count and NOT proven fair on payload content. It is a strong lead, not
+a measured 2.3x for one identical chart, and the way to settle it is to draw
+the same chart both ways.
+
+### And the reason this took an hour
+
+Three separate instruments in this file measure something and reach nobody:
+`unmatchedReReads` (fixed in cc6d7b7), `prevBatchMs` (2,913 samples, never
+pooled until today), and the ping's own latency (printed on every round for
+months, never once compared against a batch). The number that settled a
+question about the product's biggest latency cost was on screen the entire
+time, one line above the round it was needed for.
+
+
+## Four product claims, checked at last. None of them held.
+
+Four claims had been made from round data and never verified. Thirteen agents
+located each one's ORIGINAL wording in the session transcript, re-derived it
+from the archive, and had two adversarial lenses attack the derivation. Every
+verdict survived its attackers. Every claim failed.
+
+    readers or writers, never both (8s a round)      OVERSTATED
+    one deterministic 24-shape redraw per round      OVERSTATED
+    the second chart is ~7x more dangerous           REFUTED
+    file path beats shape path 15x / 300x            OVERSTATED
+
+**Three of the four paraphrases I supplied were themselves wrong**, which is
+its own lesson: the claims had decayed in my own retelling between being made
+and being checked. The 15x/300x one was never "two multipliers for one
+comparison" — it was 15x on SPEED and 300x on RELIABILITY, two metrics
+deliberately. The 7x one was about a second chart ON A SLIDE, not at insert
+position 2. Checking a paraphrase would have produced four confident answers
+to questions nobody asked.
+
+### The one that mattered: the 8s is real and the user never pays it
+
+Re-derived here, not taken on report:
+
+    settle sleeps, last 40 rounds   199  =  4.97 per round  =  7,462ms
+    as a share of scenario time                                2.0%
+    rescue rate   1,103 sleeps, 97 survivors                  91.2%
+
+The arithmetic behind "8s a round" reproduces. What does not survive is the
+sentence around it — "roughly eight seconds of every render is the add-in
+sleeping". Attributing every sleep to its enclosing scenario:
+
+    4.00 /round   does a rasterise poison the next draw
+    0.97 /round   explode a degraded picture
+    0.00 /round   insert onto a slide that already has content
+    0.00 /round   insert on top of an earlier run
+    0.00 /round   edit the chart the user selected
+    0.00 /round   edit a chart on the visible slide
+    0.00 /round   same scale across the deck        (+ 7 more at zero)
+
+**Two of thirteen scenarios pay it, and every mainline user path pays nothing.**
+A user inserting or editing a chart waits zero of that 8s. The proposed fix was
+to split every draw into two contexts and delete the settle-retry family —
+a large, risky rewrite, to recover a cost users do not pay, by removing a
+mechanism that rescues 91% of what it catches.
+
+The STRUCTURAL half of the same claim confirms and is stronger than stated:
+pure-read deck scans are 3,833 of 3,833 complete, while the probe that writes
+then reads in one context is 0-for-465 honest, and the read fails on the FIRST
+attempt 394 of 394 times — not degradation over time. Contexts here really are
+readers or writers. That was right; the price tag on it was not.
+
+### And one number the check itself under-reported
+
+The file-vs-shape speed half was pooled as 15.8x — 47,911ms against 3,025ms
+across the two isolating arms. Their details:
+
+    insert on top of an earlier run          3s   deck grew by 4   (4 charts)
+    insert onto a slide that already has …  48s   2 charts drawn onto the visible slide
+
+**Four charts against two.** Per chart that is 0.75s against 24s — about 32x,
+twice the pooled figure, because the pooled figure divided two totals without
+normalising for how much each arm did.
+
+That correction does not make it a clean 32x measurement of the PATH, and the
+reason matters more than the number: the fast arm grows the deck, so it draws
+onto NEW slides. The slow arm draws onto the slide already on screen. **You
+cannot hand the host a file to add shapes to an existing slide** — the file
+path is structurally unavailable exactly where the user spends their time.
+So the arms differ in path AND in placement AND in count, and the honest read
+is a strong lead about the combination rather than an isolated path result.
+
+It also lines up with the batch measurement from earlier today: visible-slide
+drawing costs 2.3x off-screen drawing per shape. Placement alone explains part
+of the gap; it does not explain 32x.
+
+### What this session's product answer actually is
+
+Every fast thing this add-in does, it does onto a slide the user is not looking
+at. Every slow thing it does, it does onto one they are. That is the shape of
+all of it — the 2.3x per shape, the 24s chart on the visible slide against
+0.75s on a new one, and a file path that is only available where the user is
+not. **Draw off-screen, then reveal** is the one direction the evidence keeps
+pointing at, and nothing in 169 rounds has tested it.
+

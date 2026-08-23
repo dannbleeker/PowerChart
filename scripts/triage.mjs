@@ -2842,6 +2842,132 @@ function reportTagRoutes(logs) {
  * `unlabelled` rather than folded in.
  */
 /**
+ * What a batch of shapes costs on this host, split by whether the slide is the
+ * one the user is LOOKING at.
+ *
+ * `batch issued` has carried `prevBatchMs` for the whole archive — 2,913 samples
+ * across 169 rounds — and nothing had ever pooled it. It is the only instrument
+ * that prices the product's biggest latency cost: a chart redraw takes about
+ * twenty seconds, and the scenario that redraws eight of them is 38% of a round.
+ *
+ * READ `upTo` CAREFULLY. It is a RUNNING TOTAL, not a batch size, and the first
+ * cut of this reader treated it as a size:
+ *
+ *     {upTo: 10, total: 16}                    <- ten sent so far
+ *     {upTo: 16, total: 16, prevBatchMs: 9731} <- six more; 9731ms timed the FIRST
+ *
+ * Bucketing by `upTo` produced a tidy table showing 10-shape and 20-shape batches
+ * costing the same, and therefore that payload was free and the batch size
+ * should go up. Both buckets were batches of ten; the second was simply later in
+ * a sequence. **There is no size variation anywhere in the archive** — every
+ * batch is ten — so this data cannot compare batch sizes and must not be used
+ * to. An aggregate over a misread field is clean, confident, and empty.
+ *
+ * `prevBatchMs` times the batch described by the PRECEDING line, so the size it
+ * belongs to is that line's delta, not this one's.
+ */
+export function poolBatchCost(logs) {
+  const visible = [];
+  const offscreen = [];
+  for (const log of logs ?? []) {
+    let prev = null;
+    let cum = 0;
+    for (const e of log?.trace?.entries ?? []) {
+      if (String(e.message ?? "") !== "batch issued") continue;
+      const d = e.data ?? {};
+      if (typeof d.prevBatchMs === "number" && prev && prev.size > 0)
+        (prev.visible ? visible : offscreen).push({ ms: d.prevBatchMs, size: prev.size });
+      if (typeof d.upTo !== "number") {
+        prev = null;
+        cum = 0;
+        continue;
+      }
+      // A new chart restarts the count, so a smaller upTo means a fresh run.
+      const size = d.upTo > cum ? d.upTo - cum : d.upTo;
+      prev = { visible: String(d.onSlideKey ?? "") === "(visible)", size };
+      cum = d.upTo;
+    }
+  }
+  const median = (a) => {
+    if (!a.length) return null;
+    const b = [...a].sort((x, y) => x - y);
+    return b[Math.floor(b.length / 2)];
+  };
+  const side = (rows) => {
+    const sizes = new Set(rows.map((r) => r.size));
+    return {
+      n: rows.length,
+      median: median(rows.map((r) => r.ms)),
+      perShape: median(rows.filter((r) => r.size > 0).map((r) => r.ms / r.size)),
+      sizes: [...sizes].sort((a, b) => a - b),
+    };
+  };
+  return { visible: side(visible), offscreen: side(offscreen) };
+}
+
+/**
+ * The empty round-trip, for scale.
+ *
+ * Without it a batch median is a number with nothing to be big compared to —
+ * and this project spent an hour arguing about whether round-trips dominate
+ * drawing while the answer was printed above every round.
+ */
+export const EMPTY_ROUNDTRIP_MS = 5; // driver ping: slides.getCount() + one sync
+
+/**
+ * What a batch costs BY WHERE IT DRAWS, pooled over every round.
+ *
+ * Not to be confused with `reportBatchCost` further down, which is older and
+ * asks a different question: that one takes ONE round and looks for two
+ * populations in its batch times. This one pools the archive and splits on
+ * whether the slide was the one the user is looking at. Both are wanted; the
+ * name collision was mine, and it is recorded here so the next reader does not
+ * assume one supersedes the other.
+ */
+function reportBatchCostByPlace(logs) {
+  const b = poolBatchCost(logs);
+  if (!b.visible.n && !b.offscreen.n) return;
+  console.log("\n  WHAT A BATCH OF SHAPES COSTS — the product's biggest latency number");
+  const row = (name, s) => {
+    if (!s.n) return;
+    console.log(
+      "    " +
+        name.padEnd(22) +
+        String(s.n).padStart(5) +
+        " batches   median " +
+        String(Math.round(s.median) + "ms").padStart(8) +
+        "   " +
+        Math.round(s.perShape) +
+        "ms/shape",
+    );
+  };
+  row("on the visible slide", b.visible);
+  row("off-screen", b.offscreen);
+  console.log("    " + "an empty round-trip".padEnd(22) + "            " + EMPTY_ROUNDTRIP_MS + "ms");
+  if (b.visible.n && b.offscreen.n && b.offscreen.perShape > 0) {
+    const ratio = b.visible.perShape / b.offscreen.perShape;
+    console.log(
+      "    Drawing where the user is looking costs " +
+        ratio.toFixed(1) +
+        "x per shape. That is the only latency lever here:",
+    );
+    console.log(
+      "    batching is not one — the round-trip is " + EMPTY_ROUNDTRIP_MS + "ms against a batch of thousands.",
+    );
+  }
+  // AND SAY WHEN THE DATA CANNOT ANSWER THE OBVIOUS QUESTION. Every batch in
+  // the archive is the same size, so nothing here compares batch sizes — a
+  // reader who takes these medians as evidence about SHAPES_PER_SYNC is
+  // reading a constant, not a result.
+  const sizes = new Set([...b.visible.sizes, ...b.offscreen.sizes]);
+  if (sizes.size <= 1)
+    console.log(
+      "    Every batch here is " +
+        [...sizes][0] +
+        " shapes, so this says NOTHING about batch size — there is no second size to compare.",
+    );
+}
+/**
  * The build that first carried the SECOND SETTLE ASK (#709, `REREAD_ATTEMPTS` 1 -> 2).
  *
  * A round records its build, not the pull requests inside it, so this is the
@@ -3848,6 +3974,7 @@ if (invokedDirectly) {
     reportPartsListOutcome(pooled);
     reportPositionalGuess(pooled);
     reportSettleAsks(pooled);
+    reportBatchCostByPlace(pooled);
     reportTagRoutes(pooled);
     reportTagFaults(pooled);
     reportPool(pooled);

@@ -2669,6 +2669,62 @@ describe("what it took to start each round", () => {
     expect(c.changeLandedAgo, "an era was invented for rounds that never ran the build").toBeNull();
     expect(c.sinceLastSurvivor).toBe(0);
   });
+  it("sizes a batch by its DELTA, because upTo is a running total", async () => {
+    // WHAT THIS COST: a wrong product conclusion, caught before it was committed.
+    //
+    // `batch issued` records {upTo, total, prevBatchMs}. `upTo` is how many
+    // shapes have been sent SO FAR, and `prevBatchMs` times the batch described
+    // by the PRECEDING line. Bucketing by `upTo` reads the second batch of ten
+    // as a batch of twenty, and produced this:
+    //
+    //     10 shapes  n=1831  median 5778ms
+    //     20 shapes  n=1082  median 5592ms
+    //
+    // — from which "doubling the payload is free, so raise SHAPES_PER_SYNC".
+    // Both buckets were batches of ten. Every batch in the archive is ten, so
+    // the data cannot compare batch sizes at all, and the tidy table showing
+    // that it could was an artifact of one misread field.
+    // @ts-expect-error — plain .mjs tool, no types.
+    const { poolBatchCost } = await import("../scripts/triage.mjs");
+    const issued = (upTo: number, onSlideKey: string, prevBatchMs?: number) => ({
+      message: "batch issued",
+      data: prevBatchMs === undefined ? { upTo, onSlideKey } : { upTo, onSlideKey, prevBatchMs },
+    });
+
+    // A 16-shape chart off-screen: ten, then six. One timing, for the ten.
+    const pooled = poolBatchCost([{ trace: { entries: [issued(10, "s1"), issued(16, "s1", 4000)] } }]);
+    expect(pooled.offscreen.n).toBe(1);
+    expect(pooled.offscreen.sizes, "upTo was read as a batch size").toEqual([10]);
+    expect(pooled.offscreen.perShape, "4000ms over ten shapes").toBe(400);
+
+    // And the visible/off-screen split is on the slide key, not on order.
+    const split = poolBatchCost([
+      {
+        trace: {
+          entries: [
+            issued(10, "(visible)"),
+            issued(20, "(visible)", 12000), // times the FIRST ten, on the visible slide
+            issued(10, "s2"),
+            issued(20, "s2", 4000), //         times a ten off-screen
+          ],
+        },
+      },
+    ]);
+    expect(split.visible.n).toBe(1);
+    expect(split.offscreen.n).toBe(1);
+    expect(split.visible.perShape).toBe(1200);
+    expect(split.offscreen.perShape).toBe(400);
+    // The whole point of the split: the two must not be pooled into one number.
+    expect(split.visible.perShape).not.toBe(split.offscreen.perShape);
+
+    // A second chart restarts the count. Read as a running total across charts,
+    // the restart looks like a negative batch and the sample is silently lost.
+    const restart = poolBatchCost([
+      { trace: { entries: [issued(10, "s1"), issued(20, "s1", 4000), issued(10, "s1", 4000)] } },
+    ]);
+    expect(restart.offscreen.n, "the batch after a restart was dropped").toBe(2);
+    expect(restart.offscreen.sizes).toEqual([10]);
+  });
   it("reads the deck inventory the gate has printed all along", async () => {
     // EIGHT OF THE LAST THIRTY ROUNDS ended with a slide holding between 11 and
     // 48 shapes, and every one of them reported 13 of 13 scenarios passed —

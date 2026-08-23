@@ -8168,10 +8168,42 @@ export function needsPreGroupRefresh(created: PowerPoint.Shape[], opts: InsertOp
 /**
  * Off-screen slides (appended by the demo deck or the agenda) don't repaint
  * mid-render, so the host swallows batches ~4-5x larger than the live canvas
- * tolerates. Measured against the real host: a stacked chart at 10 shapes
- * takes 4 syncs, at 40 it takes 1; the extra round-trips (~0.1s each) dominate
- * a 60-slide run's wall clock. 40 keeps a comfortable safety margin against
- * the observed ceiling.
+ * tolerates. 40 keeps a comfortable safety margin against the observed ceiling.
+ *
+ * **THE SAVING THIS NUMBER WAS CHOSEN FOR DOES NOT EXIST**, and the value is
+ * left alone anyway. Both halves need saying.
+ *
+ * It used to read: "a stacked chart at 10 shapes takes 4 syncs, at 40 it takes
+ * 1; the extra round-trips (~0.1s each) dominate a 60-slide run's wall clock."
+ * Measured across 2,913 batches in 169 archived rounds:
+ *
+ *     round-trip, empty payload         ~5ms   (the driver's readiness ping,
+ *                                               `slides.getCount()` + a sync,
+ *                                               printed on every round for months)
+ *     batch of 10, off-screen slide    5330ms
+ *     batch of 10, visible slide      12283ms
+ *
+ * A round-trip is a tenth of one percent of a batch, and ~0.1s was itself 20x
+ * too high. Four syncs instead of one saves about 15ms on a chart that takes
+ * five seconds to draw. Round-trips do not dominate a 60-slide run; they are
+ * invisible in it.
+ *
+ * The cost is per-shape drawing on the host, so the same shapes cost the same
+ * whether they cross in one sync or four. **Batching is not a latency lever on
+ * this host** — which also means raising `SHAPES_PER_SYNC` would buy nothing,
+ * and a batch that is too big does not get slower, it stops answering.
+ *
+ * So the value stays at 40: it is not earning what it was supposed to earn, but
+ * it is inside the measured tolerance, it has run this way for the whole
+ * archive, and moving a constant nearer a wedge ceiling to collect a saving now
+ * known to be nil is the wrong direction. Lowering it is the defensible change,
+ * and it wants its own rounds rather than a drive-by.
+ *
+ * The real lever these batches point at is elsewhere: 533ms per shape
+ * off-screen against 1228ms per shape on the visible slide, at identical batch
+ * size — draw off-screen, then reveal. (Different scenarios feed those two
+ * buckets, so the shapes inside may differ in complexity; it is a strong lead,
+ * not a proven 2.3x for one identical chart.)
  */
 const SHAPES_PER_SYNC_OFFSCREEN = 40;
 
