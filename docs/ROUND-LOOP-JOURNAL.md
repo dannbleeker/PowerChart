@@ -6211,3 +6211,45 @@ A hundred rounds of a two-way ambiguity is still a two-way ambiguity.
 difference between a question that resolves and one that accumulates evidence
 forever without ever deciding.
 
+
+### A warning about the field I just added: it may not break the tie
+
+Round 199 replicated the first-chart cost to within 2% — 38512ms against
+39355ms, siblings flat at ~18s both times — and `slideId` went onto the update
+line to separate the two surviving explanations: **position in the run** versus
+**the slide itself**.
+
+**It probably cannot, and it is better to say so now than to discover it in
+five rounds and call it a result.**
+
+The charts come from `scanned the deck for charts`, which returns them in deck
+order. Deck order is stable across rounds — the archive's first-slide id has
+not changed since round 149. So the chart that is `"1/8"` is very likely the
+same chart, on the same slide, every round. **Position and slide are then
+perfectly confounded**, and no number of rounds separates two variables that
+always move together. `slideId` will record which slide it was; it will not say
+whether that mattered.
+
+What the field DOES buy, and why it still belongs there:
+
+- It makes the confound VISIBLE. If `"1/8"` carries the same id every round, the
+  tie is proven rather than suspected, and the report can say so instead of
+  accumulating samples that cannot decide.
+- If the order ever does vary — a deck change, a scan that returns differently
+  — the data to exploit it is already being recorded rather than starting from
+  zero on the day it happens.
+
+**What would actually settle it is a design change, not more rounds:** update
+the charts in reverse, or from a shuffled order, once. If the cost follows the
+POSITION the first chart stays expensive whichever chart it is; if it follows
+the SLIDE the expense moves with the chart. One round of that is worth fifty of
+the current shape.
+
+That is a change to what the self-test does, on the scenario that is 38% of a
+round, so it is not a thing to slip in unattended — it is written down here as
+the experiment that exists, ready for whoever wants the answer.
+
+Recording it because the alternative is the failure this session has made six
+times already: watching a number replicate, feeling the confidence rise, and
+not noticing that the design could never have answered the question.
+

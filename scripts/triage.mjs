@@ -2890,7 +2890,14 @@ export function poolUpdateCost(logs) {
       if (typeof d.ms !== "number" || typeof d.changed !== "number" || typeof d.of !== "number") continue;
       // `chart` is "1/8" style and present only when a run updates several.
       const inRun = typeof d.chart === "string";
-      rows.push({ ms: d.ms, changed: d.changed, of: d.of, inRun, first: inRun && /^1\//.test(d.chart) });
+      rows.push({
+        ms: d.ms,
+        changed: d.changed,
+        of: d.of,
+        inRun,
+        first: inRun && /^1\//.test(d.chart),
+        slideId: typeof d.slideId === "string" ? d.slideId : null,
+      });
     }
   }
   const median = (a) => {
@@ -2922,7 +2929,58 @@ export function poolUpdateCost(logs) {
       firstVsRest.push({ of, changed, firstN: f.length, restN: rest.length, first: median(f), rest: median(rest) });
     }
   }
-  return { n: rows.length, sizes, fits, firstVsRest };
+  // EXCESS ABOVE THE FIT, which is the measurement that actually discriminates.
+  //
+  // Raw ms cannot: the first chart of the run changes 18 of 24 while the next two
+  // change 9 of 16, so comparing them measures the work. The fit is built from
+  // NON-FIRST rows only — otherwise the outlier sets its own baseline and
+  // defines itself away — and every row is then scored against it.
+  const fitFor = (of) => fits.find((f) => f.of === of);
+  const excessOf = (r) => {
+    const f = fitFor(r.of);
+    return f ? r.ms - (f.fixed + f.perShape * r.changed) : null;
+  };
+  const firstRows = rows.filter((r) => r.first);
+  const restRows = rows.filter((r) => r.inRun && !r.first);
+  const firstExcess = firstRows.map(excessOf).filter((x) => x != null);
+  const restExcess = restRows.map(excessOf).filter((x) => x != null);
+  // AND THE SLIDE, HELD CONSTANT — the control, when the deck provides one.
+  //
+  // If the first chart's slide also carries later charts, those are same slide,
+  // same run, later position. Round 200 is what this was written for: charts 1,
+  // 2 and 3 all on slide 257, the first +19631ms above fit and the other two
+  // +2768 and +3207. That is the whole argument that position, not the slide,
+  // is the cause — and it was nearly missed, because the entry above this one
+  // predicted the two would be permanently confounded on the assumption of one
+  // chart per slide.
+  const firstSlides = new Set(firstRows.map((r) => r.slideId).filter(Boolean));
+  const sameSlideLater = restRows.filter((r) => r.slideId && firstSlides.has(r.slideId));
+  const sameSlideExcess = sameSlideLater.map(excessOf).filter((x) => x != null);
+  // COUNTED, NOT DROPPED. A same-slide chart with no fit for its size scores
+  // null and used to vanish inside this filter — so the report announced
+  // "no later chart shares the first one's slide, so slide and position are
+  // still tied" while round 200 held two of them, on slide 257, and settled
+  // the question.
+  //
+  // They are unscorable because a fit needs two distinct `changed` values for a
+  // size, and every 16-node chart in the archive changes 9. That is a real
+  // limit, and it is not the same fact as "there is no control". Silence from
+  // a filter is not evidence of absence.
+  const sameSlideUnscorable = sameSlideLater.length - sameSlideExcess.length;
+  return {
+    n: rows.length,
+    sizes,
+    fits,
+    firstVsRest,
+    firstExcess: median(firstExcess),
+    firstExcessN: firstExcess.length,
+    restExcess: median(restExcess),
+    restExcessN: restExcess.length,
+    sameSlideExcess: median(sameSlideExcess),
+    sameSlideN: sameSlideExcess.length,
+    sameSlideUnscorable,
+    sameSlideRaw: sameSlideLater.map((r) => ({ ms: r.ms, changed: r.changed, of: r.of })),
+  };
 }
 
 /** What an in-place update costs, and whether the first one in a run is worse. */
@@ -2949,6 +3007,45 @@ function reportUpdateCost(logs) {
       console.log(
         "      n=" + c.firstN + " first-chart sample(s) — a LEAD, not a rate. Needs rounds before it is anything.",
       );
+  }
+  if (u.firstExcessN) {
+    const a = Math.round(u.firstExcess);
+    const b = Math.round(u.restExcess);
+    console.log(
+      "    above the fit: first chart +" +
+        a +
+        "ms (n=" +
+        u.firstExcessN +
+        "), later charts +" +
+        b +
+        "ms (n=" +
+        u.restExcessN +
+        ")",
+    );
+    if (u.sameSlideN)
+      console.log(
+        "    on the FIRST CHART'S OWN SLIDE, later charts are +" +
+          Math.round(u.sameSlideExcess) +
+          "ms (n=" +
+          u.sameSlideN +
+          ") — the slide is held constant and the cost still drops, so POSITION is the cause.",
+      );
+    else if (u.sameSlideUnscorable) {
+      // The control EXISTS and cannot be scored against a fit. Show it raw,
+      // with the reason, rather than printing a tie it does not support.
+      const shown = u.sameSlideRaw.map((r) => r.ms + "ms at " + r.changed + " of " + r.of).join(", ");
+      console.log(
+        "    " +
+          u.sameSlideUnscorable +
+          " later chart(s) DO share the first one's slide: " +
+          shown +
+          " — against the first chart's +" +
+          Math.round(u.firstExcess) +
+          "ms.",
+      );
+      console.log("    Unscorable against a fit — their size has only one change-count in the archive — but the");
+      console.log("    slide is held constant and the cost is not, which is the comparison that matters.");
+    } else console.log("    no later chart shares the first one's slide, so slide and position are still tied here.");
   }
 }
 
