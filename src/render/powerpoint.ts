@@ -8764,6 +8764,18 @@ async function groupAndTagAll(
         const lastAttempt = attempt === REREAD_ATTEMPTS;
         if (attempt > 0) {
           trace("group", "re-reading the slide's shapes again after a settle delay", {
+            // WHICH ASK THIS IS, without which the second one is invisible.
+            //
+            // `REREAD_ATTEMPTS` went 1 -> 2 in #709 to rescue the 97 charts whose
+            // re-read survives the first pause. Round 187 then recorded five
+            // retry passes and no survivors — and NOTHING IN THE TRACE COULD SAY
+            // whether any of those five was a second ask or whether all five were
+            // first asks from five separate update calls. The change would have
+            // read as working, or as inert, on identical evidence.
+            //
+            // That is the house defect aimed at a change made to cure it: a
+            // counter that cannot distinguish the thing it was raised to measure.
+            attempt,
             charts: pending.length,
             waitedMs: REREAD_RETRY_MS,
             slides: countBy(pending.map(({ it }) => slideKeyFor(it.opts, it.getSlide))),
