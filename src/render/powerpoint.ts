@@ -2105,8 +2105,28 @@ export async function updateChartsInSlides(
       // now out of date; the type definitions carry `ShapeGroup.shapes` as a
       // `ShapeScopedCollection`.
       //
-      // Queued in the SAME sync as the part lookups above, so it costs no extra
-      // round trip, and only when there is no parts list to use.
+      // Queued in the SAME sync as the part lookups above, and only when there
+      // is no parts list to use.
+      //
+      // **"SO IT COSTS NO EXTRA ROUND TRIP" IS WHAT THIS SAID, AND THE ARCHIVE
+      // REFUTES IT.** `Shape.group` on a shape that is not a group returns
+      // GeneralException — Microsoft's own reference says so — and that POISONS
+      // THE SYNC it was queued in. The archive carries it 76 times across 38
+      // rounds, and in the last twenty rounds it is EXACTLY 2 EVERY ROUND,
+      // deterministic, always `errorLocation: Shape.group`,
+      // `statement: var group = itemOrNullObject1.group;`. The very next trace
+      // line is `a by-id lookup refused the whole resolve — re-reading the
+      // slides instead`. So it costs a whole extra resolve, twice a round.
+      //
+      // WHY IT FIRES ON EVERY CHART: this is guarded by `parts.length`, and the
+      // parts list has never once been produced on this host — `withParts` is 0
+      // across 872 charts. Every chart therefore reaches `.group`, and the ones
+      // that are not groups throw.
+      //
+      // Which means the parts-list repair may remove this by itself: a chart
+      // that arrives carrying parts never queues `.group` at all. Left to a
+      // round to measure rather than restructured on that theory — the batch
+      // shape here has three shipped-broken fixes on record behind it.
       const groupMembers = parts.length ? undefined : queueGroupMembers(old);
       return { it, old, parts, groupMembers, wasConfig, wasScene };
     });
