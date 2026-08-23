@@ -385,9 +385,27 @@ describe("talking to the browser at all", () => {
     // does not exist here yet. A guard that merely stopped asserting would let
     // it drift back in unnoticed; this one states the cost.
     const src = readFileSync(new URL("../scripts/round.mjs", import.meta.url), "utf8");
-    const body = src.slice(src.indexOf("async function collectRound"));
+    // ANCHOR FIRST, ASSERT SECOND — this guard silently degraded to checking a
+    // SINGLE CHARACTER. `indexOf` returns -1 when the declaration is spelled any
+    // other way (`const collectRound = async`, an added `export`), and
+    // `src.slice(-1)` is then the last character of the file; `indexOf` for the
+    // closing brace on that is -1, so `fn` fell back to `body.slice(0, 4000)` —
+    // one character — and `not.toMatch` passes on it.
+    //
+    // A source-text guard that cannot find its anchor reports a floor, not a
+    // count, and this one fences off the regression that COSTS THE SIDELOAD:
+    // rounds 124 and 132, about one round in four. Silence reading as success,
+    // inside the guard written to stop exactly that.
+    const at = src.indexOf("async function collectRound");
+    expect(at, "the guard could not find collectRound, so it was about to check one character").toBeGreaterThan(-1);
+    const body = src.slice(at);
     const end = body.indexOf("\n}\n");
-    const fn = body.slice(0, end > 0 ? end : 4000);
+    expect(
+      end,
+      "collectRound has no closing brace at column 0 — the slice would be the rest of the file",
+    ).toBeGreaterThan(0);
+    const fn = body.slice(0, end);
+    expect(fn.length, "the extracted function body is too short to contain anything").toBeGreaterThan(500);
     expect(fn, "collectRound reloads the pane again — that costs the sideload about 1 round in 4").not.toMatch(
       /^\s*(?:if \()?await refreshPane\(/m,
     );
@@ -397,9 +415,13 @@ describe("talking to the browser at all", () => {
     expect(src, "refreshPane was deleted, taking recovery's reload with it").toMatch(
       /export async function refreshPane/,
     );
-    expect(src.slice(src.indexOf("export async function recover")), "recover stopped using it").toMatch(
-      /refreshPane\(/,
+    // Same anchor discipline. A missing declaration slices the last character
+    // and this `toMatch` would fail — loudly, but naming the wrong thing.
+    const recoverAt = src.indexOf("export async function recover");
+    expect(recoverAt, "recover is no longer declared this way — the guard is reading the wrong text").toBeGreaterThan(
+      -1,
     );
+    expect(src.slice(recoverAt), "recover stopped using it").toMatch(/refreshPane\(/);
   });
 
   it("will not call an add-in missing when the window is too narrow to show it", () => {
