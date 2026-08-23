@@ -4858,3 +4858,70 @@ Everything load-bearing above was re-derived by hand before being written down.
 The 155/29 split, the 22-for-22 formula, and the code path were all checked
 directly; the wrong-chart success was checked and found NOT observable, which is
 why it is an instrument and not a finding.
+
+## Rounds 179 and 180 — the instrument answered on its first round
+
+Round 179, the first round carrying the traced ids:
+
+    mine  ["35","36","37","38","39","40","41"]
+    chose ["27","28","29","30","31","32","33"]   listed: 8
+
+**Zero overlap**, with `withOwnId: 7` — every one of our own ids in hand, and the
+guess took a different chart's seven shapes. The host's listing was one
+grouping-event stale and its tail named the chart drawn before this one.
+
+That round threw, because 27-33 had already been absorbed into their own group.
+**The same guess on shapes still loose would have SUCCEEDED** — grouping another
+chart's shapes under this chart's name and writing them into its parts tag, with
+nothing thrown and nothing traced. One draw's timing away from the 29 archived
+throws.
+
+Yesterday this was an inference the archive could not reach. It took one round to
+become an observation, which is what an instrument is for.
+
+### The fix, and what it does not fix
+
+`positionalGuessNamesOurs` refuses the guess when we have ids of our own and the
+pick contains none of them. Refusing is strictly better than guessing wrong: an
+ungrouped chart keeps its own shapes and loses its group, which is measured and
+recoverable; a wrongly grouped one takes another chart apart and reports success.
+
+A partial overlap is allowed through on purpose — a mixture means the listing is
+only partly stale, and the one-for-one checks downstream judge it. When the host
+reads no id back at all there is nothing to compare and the positional rule stays
+the last resort it was added for.
+
+**The root is untouched.** The chain is:
+
+    1. the pre-grouping re-read matches NONE of our own ids   <- unexplained
+    2. the positional fallback fires
+    3. it may pick another chart's shapes                     <- fixed here
+
+### The root's rate, and the test for the fix
+
+Over rounds 157-180:
+
+    re-read named none fired in   7 of 24 rounds
+    every one of those 7 threw
+    the other 17 threw nothing
+
+Per EVENT the precursor is necessary and not sufficient — 95 events across the
+archive split 29 throw / 39 grouped-OK / 27 declined. Per ROUND in this window it
+is 7 for 7. Both are true and the second is what makes the fix testable:
+
+> **A round where `the re-read named none of the chart's shapes` fires should now
+> record `not grouping: the positional guess named no shape of ours` INSTEAD of
+> an `addGroup` throw.**
+
+**Round 180 does not test it.** It is clean — 9 of 9, no throw, fullest 5 — and
+it carries no positional-guess line at all, so the guard was never exercised.
+177/178 established that the throw varies within a build, so a clean round is not
+evidence either way. The condition fires about once in three and a half rounds;
+the next one that fires is the test.
+
+**NOT STAKED IN THE LEDGER, deliberately.** The claim is conditional on the
+precursor firing, and `trace-line-present` cannot express "when X happens, Y
+rather than Z" — an absolute would read FAILED on every round where the fallback
+simply never ran. Forcing a conditional into an absence-shaped claim kind is
+exactly what produced #684's false `held`. The criterion is written here instead,
+where it can be checked by eye against one grep.
