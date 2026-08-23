@@ -8961,16 +8961,57 @@ async function groupAndTagAll(
               // `mine`/`chose` rather than a verdict: the ids are the evidence,
               // and a instrument that decides for the reader is how a wrong
               // conclusion outlives the thing that produced it.
+              const mine = it.created.map((sh) => loadedValue(() => sh.id) ?? null);
+              const chosenIds = chose.map((sh) => loadedValue(() => sh.id) ?? null);
               trace("group", "the positional guess picked the tail of the listing", {
                 index: i,
-                mine: it.created.map((sh) => loadedValue(() => sh.id) ?? null),
-                chose: chose.map((sh) => loadedValue(() => sh.id) ?? null),
+                mine,
+                chose: chosenIds,
                 listed: items.length,
               });
-              freshMembers.set(i, chose);
-              // A guess, but a WHOLE one: it is `created.length` shapes long, so
-              // the parts tag it feeds names as many shapes as the chart drew.
-              wholeMatch.add(i);
+              // WE KNOW OUR OWN IDS HERE, AND THE GUESS PICKED NONE OF THEM.
+              //
+              // Round 179, the first round after this line was added, verbatim:
+              //   mine  ["35","36","37","38","39","40","41"]
+              //   chose ["27","28","29","30","31","32","33"]
+              // Zero overlap. Not a near miss — a different chart's seven
+              // shapes, taken because the host's listing was one grouping-event
+              // stale and its tail named the chart before this one.
+              //
+              // That round threw, because 27-33 had already been absorbed into
+              // their own group and every `getItemOrNullObject` came back a null
+              // object. **The same guess on shapes that are still LOOSE would
+              // SUCCEED**, grouping another chart's shapes under this chart's
+              // name and writing them into its parts tag — silently, with
+              // nothing thrown and nothing traced. That is the outcome this
+              // guard exists to prevent, and it is a guess away from the 29
+              // archived throws.
+              //
+              // REFUSING IS STRICTLY BETTER THAN GUESSING WRONG. An ungrouped
+              // chart keeps its own shapes and loses its group; a wrongly
+              // grouped one takes another chart apart and claims its shapes.
+              // The first is a known, measured, recoverable state this project
+              // has instrumented for months. The second corrupts two charts and
+              // reports success.
+              //
+              // Narrow on purpose: this only fires when we HAVE our ids and none
+              // of them is in the tail. The branch below — no ids to match on at
+              // all — is untouched, because there the positional rule is the
+              // honest last resort it was written to be.
+              if (!positionalGuessNamesOurs(mine, chosenIds)) {
+                trace("group", "not grouping: the positional guess named no shape of ours", {
+                  index: i,
+                  mine,
+                  chose: chosenIds,
+                  listed: items.length,
+                });
+              } else {
+                freshMembers.set(i, chose);
+                // A guess, but a WHOLE one: it is `created.length` shapes long,
+                // so the parts tag it feeds names as many shapes as the chart
+                // drew.
+                wholeMatch.add(i);
+              }
             }
           } else if (items.length >= it.created.length) {
             // No ids to match on at all — a host that would not read them back.
@@ -9851,6 +9892,41 @@ function queueGroupMembers(shape: PowerPoint.Shape): PowerPoint.ShapeScopedColle
  * that safe: a group that does not line up with the scene is refused exactly as
  * a short parts tag already is, so a wrong mapping cannot reach the writer.
  */
+/**
+ * May the positional guess be trusted — does its pick name any shape of ours?
+ *
+ * THE GUESS HAS BEEN OBSERVED PICKING ANOTHER CHART'S SHAPES ENTIRELY. Round
+ * 179, the first round after the ids were traced, verbatim:
+ *
+ *     mine  ["35","36","37","38","39","40","41"]
+ *     chose ["27","28","29","30","31","32","33"]
+ *
+ * Zero overlap — not a near miss, a different chart's seven shapes, taken
+ * because the host's listing was one grouping-event stale and its tail named the
+ * chart drawn before this one.
+ *
+ * That round threw: 27-33 had already been absorbed into their own group, so
+ * every `getItemOrNullObject` returned a null object and `addGroup` refused the
+ * lot. **The same guess on shapes that are still LOOSE would SUCCEED** — it
+ * would group another chart's shapes under this chart's name and write them into
+ * its parts tag, silently, with nothing thrown and nothing traced.
+ *
+ * REFUSING IS STRICTLY BETTER THAN GUESSING WRONG. An ungrouped chart keeps its
+ * own shapes and loses its group — a known, measured, recoverable state this
+ * project has instrumented for months. A wrongly grouped one takes another chart
+ * apart, claims its shapes, and reports success.
+ *
+ * NARROW ON PURPOSE. `false` only when we HAVE ids of our own and the pick
+ * contains none of them. When the host would not read any id back, `mine` is all
+ * nulls, there is nothing to compare, and the positional rule stays the honest
+ * last resort it was written to be — which is the case it was added for.
+ */
+export function positionalGuessNamesOurs(mine: (string | null)[], chose: (string | null)[]): boolean {
+  const own = new Set(mine.filter((id) => id != null).map(String));
+  if (!own.size) return true;
+  return chose.some((id) => id != null && own.has(String(id)));
+}
+
 function groupMembersInOrder(members: PowerPoint.ShapeScopedCollection | undefined): PowerPoint.Shape[] {
   const items = members ? loadedValue(() => members.items) : undefined;
   if (!Array.isArray(items) || items.length < 2) return [];

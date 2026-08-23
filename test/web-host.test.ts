@@ -1600,6 +1600,50 @@ describe("what a group that SUCCEEDS leaves behind", () => {
     }
   });
 
+  it("refuses a positional guess that names no shape of ours, and allows one that does", async () => {
+    // OBSERVED, NOT REASONED. Round 179 — the first round after the guess's ids
+    // were traced — recorded, verbatim:
+    //
+    //     mine  ["35","36","37","38","39","40","41"]
+    //     chose ["27","28","29","30","31","32","33"]
+    //
+    // Zero overlap. Not a near miss: a different chart's seven shapes, taken
+    // because the host's listing was one grouping-event stale and its tail named
+    // the chart drawn before this one. That round threw, because 27-33 were
+    // already inside their own group — but the SAME guess on shapes still loose
+    // would have SUCCEEDED, grouping another chart's shapes under this chart's
+    // name and writing them into its parts tag. Nothing thrown, nothing traced.
+    //
+    // Refusing is strictly better: an ungrouped chart keeps its own shapes and
+    // loses its group, which is measured and recoverable. A wrongly grouped one
+    // takes another chart apart and reports success.
+    const { positionalGuessNamesOurs } = await import("../src/render/powerpoint");
+
+    // Round 179's actual numbers.
+    expect(
+      positionalGuessNamesOurs(["35", "36", "37", "38", "39", "40", "41"], ["27", "28", "29", "30", "31", "32", "33"]),
+      "round 179's guess would still be grouped",
+    ).toBe(false);
+
+    // The ordinary case the fallback was written for: the tail IS ours.
+    expect(positionalGuessNamesOurs(["35", "36"], ["35", "36"])).toBe(true);
+
+    // A PARTIAL OVERLAP IS ALLOWED THROUGH, deliberately. The guard's job is to
+    // stop a pick that is wholly someone else's; a mixture means the listing is
+    // only partly stale and the existing one-for-one checks downstream are what
+    // judge it. Widening this to "must be entirely ours" would refuse cases the
+    // fallback handles correctly today, and this change is meant to remove a
+    // corruption, not to trade it for a regression.
+    expect(positionalGuessNamesOurs(["35", "36"], ["34", "35"])).toBe(true);
+
+    // NARROW ON PURPOSE: when the host would not read any id back there is
+    // nothing to compare, and the positional rule stays the honest last resort
+    // it was added for. Refusing here would break the case the branch exists to
+    // serve.
+    expect(positionalGuessNamesOurs([null, null], ["27", "28"]), "refused a host that names no ids at all").toBe(true);
+    expect(positionalGuessNamesOurs([], ["27"])).toBe(true);
+  });
+
   it("asks a settling slide again when the re-read comes back EMPTY, and the chart groups", async () => {
     const slide = makeSlide("s1");
     installHost([slide]);
