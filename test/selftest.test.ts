@@ -2971,3 +2971,61 @@ describe("the collapse's readback when the host will not list a slide", () => {
     }
   }, 60_000);
 });
+
+describe("the host-friction counters", () => {
+  it("resets every counter, not the four that existed when the reset was written", async () => {
+    // WHAT WENT WRONG: `resetHostFriction` named four of eight fields by hand.
+    // `shortReReads`, `unmatchedReReads`, `settledByBinding` and `reReadsRepaired`
+    // were each added later, each with a docstring about the round-level question
+    // it answers, and none was added to the reset. Only the test seam calls it, so
+    // the cost was isolation — one test's re-read failures leaking into the next
+    // one's counts, the kind of pollution that makes a suite pass in one order and
+    // fail in another.
+    //
+    // ASSERTED ON THE SOURCE, and the first draft of this test is why.
+    //
+    // It called the reset and checked every counter was zero. It passed with the
+    // bug put back — because a freshly imported module has never incremented
+    // anything, so all eight are zero whether the reset touches them or not. A
+    // test that cannot fail is not a test, and this one was caught only by
+    // mutating the fix away and watching it stay green.
+    //
+    // Reaching the real thing at runtime would mean driving the host paths that
+    // increment each counter, from a test about a four-line function. The
+    // property actually wanted is not a runtime value at all: it is that the
+    // reset CANNOT NAME FIELDS ONE BY ONE, because a list is what went stale.
+    // So that is what is asserted.
+    const src = readFileSync("src/render/powerpoint.ts", "utf8");
+    const fn = src.slice(src.indexOf("function resetHostFriction(): void {"));
+    const body = fn.slice(0, fn.indexOf("\n}"));
+    expect(body, "the reset went back to a hand-maintained list").not.toMatch(/hostFriction\.\w+ = 0;/);
+    expect(body, "the reset no longer covers the object's own keys").toContain("Object.keys(hostFriction)");
+
+    // And the counter set is still the eight this is written about, so a shrink
+    // to four somewhere else does not quietly satisfy the above.
+    const mod = await import("../src/render/powerpoint");
+    expect(
+      Object.keys(mod.hostFrictionCounts()).length,
+      "expected the eight documented counters",
+    ).toBeGreaterThanOrEqual(8);
+  });
+
+  it("puts every counter on the run-finished line, including the one nothing else reads", async () => {
+    // `unmatchedReReads` is incremented where the re-read names none of a chart's
+    // shapes and is referenced nowhere else in src/. It counts the same event as
+    // the trace line beside it, which makes it a second source for a number this
+    // project reasons about constantly — and it reached no archive, so the
+    // cross-check could not be run at all.
+    const src = readFileSync("src/render/powerpoint.ts", "utf8");
+    expect(src, "the run-finished line no longer emits the counters").toContain("frictionSoFar: hostFrictionCounts(),");
+    // The emitted value is the whole snapshot, so its keys are the real keys —
+    // named individually here only because these four are the ones that were
+    // missing from every hand-written list in the repo.
+    const mod = await import("../src/render/powerpoint");
+    const emitted = Object.keys(mod.hostFrictionCounts());
+    expect(emitted, "unmatchedReReads is the counter this was written for").toContain("unmatchedReReads");
+    expect(emitted).toContain("settledByBinding");
+    expect(emitted).toContain("shortReReads");
+    expect(emitted).toContain("reReadsRepaired");
+  });
+});

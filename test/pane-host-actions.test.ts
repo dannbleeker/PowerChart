@@ -212,7 +212,24 @@ vi.mock("../src/render/powerpoint", () => ({
   // Same reason: the battery stamps every scenario with the host-friction
   // delta, so it is on the round's critical path now. (`deckSlideIds` is
   // already mocked further down, with the round's own growth modelled.)
-  hostFrictionCounts: () => ({ errors: 0, idRefusals: 0, generalExceptions: 0, emptyReReads: 0 }),
+  // FOUR NAMES HERE, EIGHT IN THE REAL THING. This listed the counters that
+  // existed when it was written, so a caller reading any of the four added
+  // since got `undefined` from the double and a number from production — a
+  // fake that cannot fail, which this repo has been bitten by before.
+  //
+  // A `vi.mock` factory is hoisted and cannot read the real module, so the list
+  // stays literal. `the pane's friction double carries every counter` below
+  // compares it against `vi.importActual` and goes red the day a ninth is added.
+  hostFrictionCounts: () => ({
+    errors: 0,
+    idRefusals: 0,
+    generalExceptions: 0,
+    emptyReReads: 0,
+    shortReReads: 0,
+    unmatchedReReads: 0,
+    settledByBinding: 0,
+    reReadsRepaired: 0,
+  }),
   canInsertPicture: vi.fn(() => host.canPicture),
   getSelectionBounds: vi.fn(async () => host.selectionBounds),
   dropShapeSelection: vi.fn(async () => {
@@ -2688,5 +2705,19 @@ describe("the style a deck carries", () => {
     $("style-import").click();
     await settle();
     expect(await insertedPalette()).toEqual(["#22aa33"]);
+  });
+});
+
+describe("the pane's host-friction double", () => {
+  it("carries every counter the real module has", async () => {
+    // The double named four of eight. Comparing KEY SETS rather than a list of
+    // names is the point: a list is what went stale in the first place.
+    const actual = (await vi.importActual("../src/render/powerpoint")) as typeof import("../src/render/powerpoint");
+    const mocked = (await import("../src/render/powerpoint")) as unknown as {
+      hostFrictionCounts: () => Record<string, number>;
+    };
+    const real = Object.keys(actual.hostFrictionCounts()).sort();
+    const fake = Object.keys(mocked.hostFrictionCounts()).sort();
+    expect(fake, "the double has drifted from the real counter set").toEqual(real);
   });
 });

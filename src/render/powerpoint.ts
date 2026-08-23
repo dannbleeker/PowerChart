@@ -730,12 +730,22 @@ export function hostFrictionCounts(): Readonly<typeof hostFriction> {
   return { ...hostFriction };
 }
 
-/** Reset alongside the stall context — same lifetime, same reason. */
+/**
+ * Reset alongside the stall context — same lifetime, same reason.
+ *
+ * WRITTEN AS A LOOP BECAUSE THE HAND-MAINTAINED LIST WENT STALE. It named four
+ * of the eight counters: `shortReReads`, `unmatchedReReads`, `settledByBinding` and
+ * `reReadsRepaired` were each added later, each with a docstring about what it
+ * measures, and none was added here. Only `_resetStallContextForTest` calls this,
+ * so the cost was test isolation rather than production — one test's re-read
+ * failures leaking into the next one's counts, which is the kind of pollution
+ * that makes a suite pass in one order and fail in another.
+ *
+ * A list you must remember to extend is a list that will be short. This one
+ * cannot be.
+ */
 function resetHostFriction(): void {
-  hostFriction.errors = 0;
-  hostFriction.idRefusals = 0;
-  hostFriction.generalExceptions = 0;
-  hostFriction.emptyReReads = 0;
+  for (const key of Object.keys(hostFriction) as (keyof typeof hostFriction)[]) hostFriction[key] = 0;
 }
 
 /**
@@ -4590,6 +4600,38 @@ async function runDemoDeck(
     items: items.length,
     degradedAt,
     totalMs,
+    /**
+     * EVERY friction counter, because the archive has only ever seen half.
+     *
+     * `hostFriction` has eight fields. What reaches a round is the per-scenario
+     * delta on `SelfTestResult.friction`, and that carries four of them —
+     * `errors`, `idRefusals`, `generalExceptions`, `emptyReReads`. The same four-name
+     * list appears in four places in this repo and had gone stale in all of
+     * them; `resetHostFriction` above is now a loop for that reason.
+     *
+     * ONE COUNTER HAS NO READER AT ALL: `unmatchedReReads`. Declared,
+     * incremented at the `the re-read named none of the chart's shapes` branch,
+     * and referenced nowhere else in `src`. It counts the same event as that
+     * trace line, which makes it a genuine SECOND SOURCE for a number this
+     * project has reasoned about for days — and it reached no archive, so the
+     * cross-check could not be run. That is how it was found: the number was
+     * wanted, the counter was the obvious place, and the counter was write-only.
+     *
+     * (`settledByBinding` is a near-miss of the same kind: its only other
+     * mention is a comment asserting it is "0 across five rounds", a claim
+     * about a value nothing emitted.)
+     *
+     * CUMULATIVE FOR THE PANE'S SESSION, which the name says out loud. Nothing
+     * resets these in production — `resetHostFriction` is reached only from the
+     * test seam — and `hostFrictionCounts` is documented as a snapshot to
+     * difference against a later one. Read as a per-run figure this would be a
+     * running total, so it must not be named like one.
+     *
+     * The per-scenario delta is deliberately left at its four fields: it feeds
+     * `scenarioBlame`, widening it is a separate decision, and this line closes
+     * the gap that mattered by putting all eight in the round either way.
+     */
+    frictionSoFar: hostFrictionCounts(),
   });
   // The adds we actually ISSUED, summed per item rather than inferred from
   // retried/failed — a too-dense item whose stamp sync is refused ends "failed"
