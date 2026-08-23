@@ -1643,6 +1643,61 @@ describe("what a group that SUCCEEDS leaves behind", () => {
     }
   });
 
+  it("groups a chart the FIRST retry could not, which is what the second ask is for", async () => {
+    // THE DISCRIMINATING TEST, and it exists because waiting for the host to
+    // produce one would take days.
+    //
+    // #709 raised REREAD_ATTEMPTS from 1 to 2 to reach the 97 charts whose
+    // re-read survives the first pause — 1,057 retry passes across 161 rounds,
+    // 90.8% rescued, 97 left. Those 97 then take the positional guess, throw
+    // addGroup, and lose both the group and the config tag.
+    //
+    // On the real host the survivor appears about once every two rounds, so
+    // rounds 187-189 all showed five first asks and NO second ask: the change
+    // is unexercised, not inert, and no amount of clean rounds distinguishes
+    // those two. `unmatchedIdReads = 2` makes the host answer with ids nothing
+    // can be joined to for the first read AND the first retry, then answer
+    // honestly. Under the old `REREAD_ATTEMPTS = 1` there is no third read and
+    // the chart is left ungrouped; under 2 it groups.
+    //
+    // Mutating the constant back to 1 turns this red, which is the only proof
+    // available today that the change does anything at all.
+    const slide = makeSlide("s1");
+    installHost([slide]);
+    setTracing(true);
+    const mark = traceMark();
+    faults.unmatchedIdReads = 2;
+    _setReReadRetryDelayForTest(0);
+    try {
+      const cfg = { ...sampleConfig("clustered"), ...DEFAULT_SIZE };
+      await insertSceneIntoSlide(buildChart(cfg), { tagData: JSON.stringify(cfg) });
+      const said = traceLog(mark).entries;
+
+      // THE SECOND ASK FIRED, named by its own attempt number — the field added
+      // after round 187 could not tell a second ask from a first.
+      const asks = said
+        .filter((e) => e.message === "re-reading the slide's shapes again after a settle delay")
+        .map((e) => Number(e.data?.attempt));
+      expect(asks, "the settle retry never ran at all").not.toHaveLength(0);
+      expect(asks, "no SECOND ask fired, so this proves nothing about #709").toContain(2);
+
+      // AND IT RESCUED THE CHART. The positive, not the absence of a failure:
+      // an ungrouped chart here is the defect, so the group is the claim.
+      expect(
+        slide.created.some((sh) => sh.type === "group"),
+        "the chart was left ungrouped even with a second ask",
+      ).toBe(true);
+      expect(
+        said.some((e) => e.message === "the re-read named none of the chart's shapes"),
+        "a chart the second ask rescued was still reported as a survivor",
+      ).toBe(false);
+    } finally {
+      faults.unmatchedIdReads = 0;
+      _setReReadRetryDelayForTest(1_500);
+      setTracing(false);
+    }
+  });
+
   it("says so when a zero match survives the retry, instead of looking like an empty read", async () => {
     // `not grouping … refreshed: 0` was the ONLY line a zero match produced, and
     // it reads identically to an empty re-read. The two want different fixes —
