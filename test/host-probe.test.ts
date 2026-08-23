@@ -508,14 +508,15 @@ describe("the fake host's answer sheet", () => {
         // `kept` in the suite while saying nothing whatever about the real host,
         // which is the one thing they exist to ask.
         //
-        // `creationid-on-fresh-shape` is NOT in this list, and the reason is a
-        // property of the fake rather than of the probe. It is the first of the
-        // three to run, and it absorbs the `pendingHostError` the PRECEDING
-        // probe's refused add left queued — so the throw reaches it outside
-        // `scratchShapes` and it answers `threw`, truthfully, rather than
-        // `no-scratch-shape`. Its two siblings run after the error is consumed
-        // and demonstrate the contract this list is about. Listing it here would
-        // assert something about the probe that is really about ordering.
+        // The FIRST question to run after a refused add is not in this list, and
+        // the reason is ordering rather than the probe: it absorbs the
+        // `pendingHostError` that add left queued, so the throw reaches it
+        // outside `scratchShapes` and it answers `threw` — truthfully — rather
+        // than `no-scratch-shape`. That is `shapes-by-index-vs-items` today and
+        // was `creationid-on-fresh-shape` before it was inserted ahead of it.
+        // Everything after the error is consumed demonstrates the contract this
+        // list is about.
+        "creationid-on-fresh-shape",
         "creationid-survives-a-sync",
         "creationid-survives-grouping",
         // Needs a shape to age.
@@ -552,16 +553,21 @@ describe("the fake host's answer sheet", () => {
       // refusal, so a host that refuses every add agrees with the fake there.
       const d = diffAnswers(answers, FAKE_BASELINE);
       expect(d.differ.map((x: { id: string }) => x.id).sort()).toEqual([
-        // Diverges for the ordering reason given above: it is the first of the
-        // creationId questions to run, absorbs the pending refusal the previous
-        // probe left queued, and answers `threw` where the baseline says
-        // `absent`. A truthful answer that differs from the fake's — which is
-        // exactly what a divergence IS, so it belongs here rather than being
-        // smoothed away.
-        "creationid-on-fresh-shape",
         "shape-add-fresh-getitem-slide",
         "shape-add-fresh-slide-proxy",
         "shape-add-positional-slide-proxy",
+        // WHICHEVER QUESTION RUNS FIRST AFTER A REFUSED ADD absorbs the
+        // `pendingHostError` that add left queued, and answers `threw` where the
+        // baseline says otherwise. It was `creationid-on-fresh-shape`; adding
+        // `shapes-by-index-vs-items` ahead of it moved the artifact here.
+        //
+        // Worth keeping as a divergence rather than smoothing away: it is a
+        // truthful answer that differs from the fake's, which is what a
+        // divergence IS. But it is a property of ORDERING, not of either
+        // question — so if a probe is ever inserted before this one, expect the
+        // name in this list to move again rather than a new fault to have
+        // appeared.
+        "shapes-by-index-vs-items",
       ]);
       expect(d.notAsked.map((n: { id: string }) => n.id).sort()).toEqual([...needShapes].sort());
     } finally {

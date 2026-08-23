@@ -5189,3 +5189,70 @@ threshold. Round 181 started first time on it after the sign-in scare.
 The positional guard has still not been exercised — no guess fired in 181.
 `Shape.group` still threw its deterministic 2, unchanged, because the parts
 list is still 0 and every chart therefore still reaches it.
+
+## CORRECTION — the collection read works 95.7% of the time
+
+Two entries above say **"the shape collection has never once honestly reported
+freshly added shapes"**, and one calls it the single root of every live defect.
+It is a SCRATCH-SLIDE answer quoted as a production fact.
+
+    charts grouped by id-match   2135
+    charts grouped by created      49
+    re-read named NONE             97   ->  4.3% of charts
+
+**The re-read matches ids for 2,135 charts.** The claim came from
+`shapes-items-count-honest` — `unreadable` 142, `short-0` 16 of 158 — which runs
+on the scratch slide, and this repo already documents that the scratch slide is
+strictly worse at collection reads than a real one. It says so about three other
+questions on the same sheet.
+
+### The third time tonight, and the second after writing the rule down
+
+    the ids are reassigned        a mine/chose mismatch read as volatility
+    the ids are already loaded    withOwnId: 7 from the re-read path,
+                                  asserted about the fallback path
+    the collection never answers  a scratch-slide probe, asserted about
+                                  production
+
+Every one is the same move: **a reading taken in one context asserted about
+another.** Each was caught by one query against the archive, and each had
+already been written into a commit message before it was caught.
+
+The pattern is not carelessness about numbers — every number quoted was real.
+It is carelessness about SCOPE. The number is measured somewhere, and the claim
+is made everywhere.
+
+### What is actually true, which is narrower and more useful
+
+The collection read usually works. It fails about **one chart in twenty-three**,
+roughly one round in four, and when it fails everything downstream fails with
+it — the re-read matches nothing, the positional guess takes another chart's
+shapes, addGroup throws, and no parts list is written.
+
+That does not weaken the case for `shapes-by-index-vs-items`; it sharpens the
+question. Not "can an index walk replace a read that never works" but **"does an
+index walk survive the 4% where items does not"** — which is answerable, and is
+what the probe now asks.
+
+### Rounds 181-183, and a fourth that never ran
+
+    181  1e8455e  13/13 | grouped 9 | threw 0 | GenEx 2 | gotParts 0 | fullest 5
+    182  1e8455e  13/13 | grouped 9 | threw 0 | GenEx 2 | gotParts 0 | fullest 5
+    183  7eaa1ae  13/13 | grouped 9 | threw 0 | GenEx 2 | gotParts 0 | fullest 5
+
+Three identical rounds across two builds. No guess fired in any of them, so the
+positional guard is still unexercised — and at 4.3% per chart on nine charts a
+round, three clean rounds is unremarkable rather than evidence of a fix.
+
+**Round 184 refused before it started, and it was my doing.** I checked out a
+branch to write the correction above while 184 was already running. The driver
+re-reads git HEAD on every retry, so it compared the branch commit against the
+deployed main and refused with site-behind:
+
+    HEAD c1fab2d · site 7eaa1ae
+
+**That is the third time**, and it is written down in this project's own notes:
+do branch work before or after a round, or in a worktree. The refusal is the
+driver working — it caught a comparison that would have been meaningless — but
+the round is lost and the pair with it.
+

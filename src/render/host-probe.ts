@@ -2438,6 +2438,108 @@ const PROBES: Probe[] = [
     },
   },
   {
+    id: "shapes-by-index-vs-items",
+    resample: true,
+    question: "Can the shapes be enumerated by getCount + getItemAt where `items` will not answer?",
+    /**
+     * THE ONE QUESTION UPSTREAM OF EVERY LIVE DEFECT.
+     *
+     * **CORRECTED BEFORE IT WAS EVER RUN.** This said "the shape collection will
+     * not honestly report freshly added shapes", citing this sheet's own
+     * `shapes-items-count-honest` at `unreadable` 142 / `short-0` 16 of 158.
+     * That is a SCRATCH-SLIDE answer, and production disagrees with it 2,135
+     * times:
+     *
+     *     charts grouped by id-match   2135
+     *     charts grouped by `created`    49
+     *     re-read named NONE             97   -> 4.3% of charts
+     *
+     * The scratch slide is strictly worse at collection reads than a real one —
+     * this file says so about three other questions — so a probe answer about
+     * collection reads is not a production fact. Quoting one as if it were is
+     * how "never works" got written about a call that works 95.7% of the time.
+     *
+     * THE REAL QUESTION IS NARROWER AND BETTER. The read usually works and
+     * fails about one chart in twenty-three, roughly one round in four; when it
+     * fails, everything downstream fails with it — the re-read that matches
+     * nothing, the positional guess at a stale listing, the `addGroup` throw on
+     * another chart's shapes, and the parts list that has never once been
+     * written (0 across 872 charts).
+     *
+     * So this asks whether an INDEX walk survives the 4% where `items` does
+     * not. Not whether it can replace a read that never works.
+     *
+     * Every workaround tried DOWNSTREAM has cost more than it bought: the
+     * tag-anchor move (reverted after five rounds), loading ids earlier
+     * (implicated in `from: created`, 235 tagging failures), and the fast path
+     * in `ungroupedFallback` (shipped, measured inert in round 181).
+     *
+     * BUT THE HOST IS NOT UNIFORMLY DEAF, and that is the lead. On the same
+     * sheets, in the same rounds:
+     *
+     *     getcount-populates-same-sync   yes    158 of 158
+     *     shapes-items-count-honest      unreadable 142 / short-0 16
+     *     getitemat-past-end             threw  158 of 158
+     *
+     * `getCount()` is answered every single time. `items` never is. And
+     * `getItemAt` is demonstrably CALLABLE — a past-end index throws, which is
+     * the correct answer to a wrong question rather than a refusal to answer.
+     *
+     * So: can the collection be walked by INDEX where it will not be read as a
+     * LIST? If yes, the re-read has a route that does not depend on `items`, and
+     * the root is addressable rather than only worked around. If no, that closes
+     * the last cheap idea and the answer is worth as much — this project has
+     * spent four rounds on a downstream fix that a probe would have refused.
+     *
+     * DELIBERATELY NOT WIRED INTO PRODUCTION. `getItemAt` appears nowhere in
+     * `src/`, on purpose: an earlier attempt to reach a shape that way was
+     * reverted for making a question answerable and worthless. This asks the
+     * host without changing anything, which is the whole point of a probe.
+     *
+     * The comparison is the deliverable — both routes, same slide, same sync —
+     * because "index worked" means nothing without "and list did not, here,
+     * now".
+     */
+    ask: async (ctx) => {
+      const want = 3;
+      await scratchShapes(
+        ctx,
+        Array.from({ length: want }, (_, i) => ({ left: 60 + i * 25, top: 200, width: 20, height: 20 })),
+      );
+      const shapes = probeShapes(ctx);
+      // BOTH ROUTES QUEUED IN ONE SYNC, so neither can be blamed on the host's
+      // mood a moment later. `getCount` first: it is the one this host has never
+      // refused, and if it fails the index walk has no length to walk.
+      const count = shapes.getCount();
+      shapes.load("items/id");
+      await ctx.sync();
+      const n = loadedCount(count);
+      if (n === undefined) return { answer: "no-count", detail: "getCount did not populate — the premise is gone" };
+      let listed: number | undefined;
+      try {
+        listed = shapes.items.length;
+      } catch {
+        listed = undefined;
+      }
+      // Walk by index in a SECOND sync, because `getItemAt` needs the count that
+      // the first one produced.
+      try {
+        const picked = Array.from({ length: Math.min(n, want) }, (_, i) => shapes.getItemAt(i));
+        for (const sh of picked) sh.load("id");
+        await ctx.sync();
+        const ids = picked.map((sh) => readShapeId(sh as unknown as { id?: string })).filter(Boolean);
+        const detail = `count=${n} listed=${listed === undefined ? "unreadable" : listed} byIndex=${ids.length}`;
+        if (!ids.length) return { answer: "index-unreadable", detail };
+        // The finding is the DIFFERENCE. Index answering where the list did not
+        // is the only outcome that changes what the product can do.
+        if (listed === undefined || listed < want) return { answer: "index-beats-items", detail };
+        return { answer: "both-answer", detail };
+      } catch (err) {
+        return { ...threw(err), detail: `count=${n} listed=${listed === undefined ? "unreadable" : listed}` };
+      }
+    },
+  },
+  {
     id: "creationid-on-fresh-shape",
     resample: true,
     question: "Does a shape this run just added report a creationId, or null?",
@@ -2464,8 +2566,11 @@ const PROBES: Probe[] = [
      * previous chart's shapes, because the collection read is stale. The host
      * has said so in every round — `shapes-items-count-honest` answers
      * `unreadable` 140 times and `short-0` 16 times across 156 rounds, and
-     * `tag-through-refetched-shape` answers `no-id` 149 of 149. **The shape
-     * collection has never once honestly reported freshly added shapes.**
+     * `tag-through-refetched-shape` answers `no-id` 149 of 149 — **on the SCRATCH
+     * SLIDE, which is strictly worse at collection reads than a real one.** In
+     * production the same read matches ids for 2,135 charts and names none for
+     * 97, a 4.3% failure share. "Never works" was a scratch answer quoted as a
+     * production fact; the read usually works and fails about one chart in 23.
      *
      * So creationId cannot fix that chain — matching on it against the same
      * stale listing matches zero, exactly as id does, and there is no

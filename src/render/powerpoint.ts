@@ -9535,10 +9535,17 @@ async function ungroupedFallback(
   // spends the tag write that makes the chart re-editable at all.
   //
   // So the parts list is blocked behind the same root as the grouping and the
-  // re-read: **the shape collection will not honestly report freshly added
-  // shapes** (`shapes-items-count-honest`: unreadable 140, short-0 16, of 156).
-  // One root, three symptoms. Fix that and this fixes itself; work around it
-  // here and the workaround costs more than the defect.
+  // re-read: **the collection read fails about 4.3% of the time**, and when it
+  // fails everything downstream fails with it. Production: 2,135 charts grouped
+  // by id-match, 97 re-reads that named none.
+  //
+  // NOT "the collection never works" — that was `shapes-items-count-honest`
+  // (unreadable 140 of 156), which is measured on the SCRATCH SLIDE and is
+  // strictly worse than a real one. Quoting it as a production fact is how a
+  // call that works 95.7% of the time got written up as broken.
+  //
+  // One root, three symptoms, four percent of the time. Fix that and this fixes
+  // itself; work around it here and the workaround costs more than the defect.
   //
   // THE IDS ARE SOMETIMES ALREADY HERE, and asking for them again is what costs
   // the parts list when they are.
