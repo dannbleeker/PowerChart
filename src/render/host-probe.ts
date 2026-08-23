@@ -2595,6 +2595,18 @@ const PROBES: Probe[] = [
      * So it is measured before anything is built on it. `null` here and the
      * whole plan is dead on this host, which is worth one probe slot to learn
      * before it is worth a migration to find out.
+     *
+     * **ANSWERED, ROUND 184: `absent` — the property is not on the shape at
+     * all.** Not null, not equal to `id`: absent. `Shape.creationId` does not
+     * exist on this host's shapes, though the host advertises requirement set
+     * 1.10, where it is documented. Both siblings answered `no-creation-id` on
+     * the same sheet, `before=[absent,absent]`.
+     *
+     * The route is closed — nothing to record at draw time, nothing to match
+     * on, nothing to migrate to — and this is exactly what the probe was for.
+     * The backlog called it "a durable per-shape identifier" and cited no
+     * source; a migration built on that phrase would have been built on a
+     * property that is not there. Three probes, one round, question settled.
      */
     ask: async (ctx) => {
       const [shape] = await scratchShapes(ctx, [{ left: 120, top: 10, width: 20, height: 20 }], "creationId,id");
