@@ -1698,6 +1698,32 @@ export function makeSlide(id: string) {
         }
         return { value: live };
       },
+      /**
+       * `ShapeCollection.getItemAt(index)` — the API surface the fake was
+       * missing, not a behaviour it was modelling.
+       *
+       * Added 2026-08-23 for `shapes-by-index-vs-items`, which asks whether this
+       * host will walk a collection by INDEX where it refuses to read it as a
+       * LIST. Without this the probe answered `threw` — "not a function" — which
+       * would have been recorded as a fact about PowerPoint rather than about
+       * the double. The real host demonstrably HAS it: `getitemat-past-end`
+       * answers `threw` in 158 of 158 rounds, which is the correct answer to an
+       * out-of-range index and impossible from a method that does not exist.
+       *
+       * Modelled honestly and no more: live shapes, in order, and a throw past
+       * the end. It does NOT model the host's deafness — the fake's collection
+       * answers, so the probe reads `both-answer` here and only the real host
+       * can produce the interesting one. A double that reproduced the deafness
+       * would be modelling a bug instead of a contract.
+       */
+      getItemAt(index: number) {
+        const live = created.filter((s) => !s.deleted);
+        if (!Number.isInteger(index) || index < 0 || index >= live.length)
+          throw new Error(
+            `InvalidArgument | code=InvalidArgument | debugInfo={"code":"InvalidArgument","errorLocation":"ShapeCollection.getItemAt"}`,
+          );
+        return live[index];
+      },
     },
   };
   // See `faults.slideIdUnreadableBeforeFirstSync`. Installed unconditionally
@@ -1853,6 +1879,17 @@ function windowedHandle(real: FakeSlide, makeError: () => Error) {
       addGroup: (items: FakeShape[]) =>
         ok() ? real.shapes.addGroup(items) : makeShape("group", undefined, { left: 0, top: 0, width: 0, height: 0 }),
       getItemOrNullObject: (id: string) => real.shapes.getItemOrNullObject(id),
+      // FORWARDED LIKE `getItemOrNullObject`, and added for the same reason it
+      // was: the windowed proxy is a SUBSET of the collection's surface, and a
+      // method missing from the subset throws "not a function" — which a probe
+      // records as the HOST refusing, not the double being incomplete.
+      //
+      // `shapes-by-index-vs-items` hit exactly that: it answered `threw |
+      // shapes.getCount is not a function`, which would have gone into the
+      // archive as a fact about PowerPoint. The real host answers
+      // `getcount-populates-same-sync` yes in 158 of 158 rounds.
+      getCount: () => real.shapes.getCount(),
+      getItemAt: (index: number) => real.shapes.getItemAt(index),
     },
   };
 }

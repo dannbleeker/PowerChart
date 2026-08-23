@@ -12,6 +12,12 @@
  */
 /** The fake's frozen answers, as asserted in `test/host-probe.test.ts`. */
 export const FAKE_BASELINE = {
+  // The fake's collection answers honestly, so both routes work there and the
+  // interesting answer — index answering where the list does not — is a
+  // divergence by construction. That is the point: this question exists to be
+  // answered by the REAL host, and a double that reproduced the host's deafness
+  // would be modelling a bug rather than a contract.
+  "shapes-by-index-vs-items": "both-answer",
   // THE FAKE DOES NOT MODEL `creationId`, AND DELIBERATELY DOES NOT. A double
   // that handed back a plausible id would make these read `yes`, `stable` and
   // `kept` in every suite run while saying nothing whatever about the real host
@@ -339,6 +345,20 @@ export const UNSTABLE_ANSWERS = {
  * Every entry here is a reason to ask the owner for a probe run.
  */
 export const PENDING_QUESTIONS = {
+  "shapes-by-index-vs-items":
+    "Added 2026-08-23, and it is the one question upstream of every live defect. Everything this product loses " +
+    "comes from a single fact: the shape collection will not honestly report freshly added shapes — " +
+    "`shapes-items-count-honest` is `unreadable` 142 and `short-0` 16 across 158 rounds. From that follow the " +
+    "re-read that matches nothing, the positional guess at a stale listing, the addGroup throw on another chart's " +
+    "shapes, and the parts list that has never once been written (0 across 872 charts). Every workaround tried " +
+    "DOWNSTREAM has cost more than it bought: the tag-anchor move (reverted after five rounds), loading ids earlier " +
+    "(implicated in `from: created`, 235 tagging failures), and the ungroupedFallback fast path (shipped 2026-08-23, " +
+    "measured INERT in round 181). BUT THE HOST IS NOT UNIFORMLY DEAF: on the same sheets, " +
+    "`getcount-populates-same-sync` answers `yes` 158 of 158 while `items` never does, and `getitemat-past-end` " +
+    "throws 158 of 158 — the correct answer to a wrong question, which proves getItemAt is CALLABLE. So can the " +
+    "collection be walked by INDEX where it will not be read as a LIST? `index-beats-items` means the root is " +
+    "addressable rather than only worked around. `index-unreadable` closes the last cheap idea and is worth as " +
+    "much — this project has spent four rounds on a downstream fix a probe would have refused.",
   "creationid-on-fresh-shape":
     "Added 2026-08-23, and CORRECTED the same day. It was added believing `shape.id` was volatile on this host and " +
     "that creationId would fix the live defect. THE IDS ARE STABLE: round 179's chart reported `mine [35..41]` and " +
