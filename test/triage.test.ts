@@ -2167,6 +2167,52 @@ describe("grouping, which no scenario verdict reports", () => {
     expect(out?.now.deck, "the deck is printed as corroboration, not derived from").toEqual([0, 4, 2, 17, 24, 24, 24]);
   });
 
+  it("separates a positional guess that picked its own shapes from one that picked another chart's", async () => {
+    // THE SILENT HALF OF THE addGroup THROW. `chooseGroupMembers` falls back to
+    // the TAIL of the host's shape listing when no id matched, and the listing
+    // can be one grouping-event stale — so the tail is the PREVIOUS chart's
+    // shapes.
+    //
+    // If those shapes are already inside that chart's group they no longer exist
+    // at top level, every getItemOrNullObject returns a null object, and
+    // addGroup throws InvalidArgument. That is the 29 archived throws across
+    // rounds 068-175, every one preceded by this branch, and it is VISIBLE.
+    //
+    // If they are still LOOSE, the same guess SUCCEEDS on the wrong chart's
+    // shapes and feeds them to the parts tag as this chart's own. It throws
+    // nothing and traced nothing, so the archive could not tell it from a
+    // correct group — an inference the evidence could not reach, which is why
+    // the ids are recorded rather than a verdict.
+    // @ts-expect-error — plain .mjs tool, no types.
+    const { poolPositionalGuess } = await import("../scripts/triage.mjs");
+    const ev = (mine: (string | null)[], chose: (string | null)[]) => ({
+      message: "the positional guess picked the tail of the listing",
+      data: { index: 0, mine, chose, listed: 15 },
+    });
+    const pooled = poolPositionalGuess([
+      {
+        trace: {
+          entries: [
+            ev(["35", "36", "37"], ["35", "36", "37"]), // its own
+            ev(["43", "44", "45"], ["35", "36", "37"]), // another chart's
+            ev(["50", "51", "52"], ["50", "51", "99"]), // a mixture
+            ev(["60", "61"], ["60", null]), // the host would not name one
+          ],
+        },
+      },
+      { trace: { entries: [{ message: "drew a chart" }] } },
+    ]);
+    expect(pooled).toMatchObject({ events: 4, rounds: 1, mine: 1, other: 1, partial: 1, unreadable: 1 });
+
+    // THE MIXTURE MUST NOT COUNT AS "OWN". A guess that took four of this
+    // chart's shapes and three of the last one's produces a group that is wrong
+    // in exactly the way the parts tag cannot express, and rounding it toward
+    // the reassuring bucket is how this stayed invisible.
+    const mixed = poolPositionalGuess([{ trace: { entries: [ev(["1", "2"], ["1", "9"])] } }]);
+    expect(mixed.mine, "a partial pick was counted as this chart's own").toBe(0);
+    expect(mixed.partial).toBe(1);
+  });
+
   it("counts a group that THREW, which fell out of both the numerator and the denominator", () => {
     // GROUPING HAS THREE OUTCOMES AND THIS COUNTED TWO. It succeeds
     // (`grouped the chart's shapes`), declines by rule (`not grouping: …`), or

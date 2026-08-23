@@ -4779,3 +4779,82 @@ it, in the sentence announcing the fix.
 
 Caught by testing my own claim against the whole archive rather than the window
 I had already looked at. One query.
+
+## Rounds 177 and 178 — the cleanest pair yet, and it disagrees with itself
+
+    177  0a5dd16  pane 65s  grouped 8  threw 1  fullest 11  13/13
+    178  0a5dd16  pane 64s  grouped 9  threw 0  fullest  5  13/13
+
+Same build, nothing merged between them, **panes one second apart**. Pane age is
+fully controlled here and one round still threw. So the addGroup throw is not a
+property of a build, and **no single clean round can ever show it fixed** — that
+is what the pair bought.
+
+### The precursor is the whole story
+
+    177  the re-read named none of the chart's shapes: listed:9  → positional fallback → THREW
+    178  the re-read named none of the chart's shapes: (none at all)     → normal path → clean
+
+The difference is not the guess going wrong. It is **whether the pre-grouping
+re-read fails at all.** That reframes the chain:
+
+1. the re-read matches none of the chart's own ids — the root, ~1 round in 4
+2. the positional fallback fires, taking the TAIL of the host's listing
+3. whether that throws depends on whether the tail names dead or loose shapes
+
+Everything written about the throw so far has been about step 3. **Step 1 is the
+one to chase**, and nothing yet says why a re-read that had `withOwnId: 7` — all
+seven of our shapes carrying ids — matches nothing in a listing of nine.
+
+### TWO CORRECTIONS to what this journal said about the throw
+
+**"183 throws across 65 of 150 rounds" was two different failures conflated.**
+
+    ShapeCollection.getItem    155 events, rounds 023..065   code 5010
+    ShapeCollection.addGroup    29 events, rounds 068..175   InvalidArgument
+
+Zero overlap, a clean boundary at ~066. The getItem population is a different
+defect that stopped at round 065 and has not recurred. **The real addGroup
+population is 29 throws across 26 rounds**, and #693's commit message carries the
+wrong number.
+
+Both were pooled under one trace message, which is why one query answered "how
+often does the group throw" with a number spanning two eras and two mechanisms.
+The message name was the same; the `errorLocation` was not, and nothing read it.
+
+**And `fullest = 5 + 6 × (throws + declines)` reproduces 22 for 22, no
+residual** — each failed grouping converts one top-level group into seven loose
+shapes. So the over-full slide is fully derived, not a separate symptom.
+
+### What is inferred and NOT observed, said plainly
+
+The stale tail explains the throw when it names shapes already absorbed into a
+group. **When it names shapes that are still LOOSE, the same guess succeeds — on
+the wrong chart's shapes — and feeds them to the parts tag as this chart's own.**
+It throws nothing and traces nothing.
+
+That is a prediction of the mechanism, not a finding. The success line carries
+`{charts, partial, by}` and no member ids, so the archive cannot distinguish a
+correct group from a mis-group. Round 161 is suggestive — three consecutive arms
+declined, threw, and "succeeded" on `listed` values of 1, 15 and 16 — and
+suggestive is all it is.
+
+So it becomes an instrument rather than a claim: the fallback now records
+`mine` and `chose`, the ids rather than a verdict, and triage splits them into
+own / another chart's / a mixture. A partial pick counts as a mixture and never
+as "own" — rounding that toward the reassuring bucket is how it stayed invisible.
+
+### Provenance
+
+A four-angle workflow, each account checked by a verifier told to refute it and
+specifically to test the SUCCESS-case counterfactual. That check is what makes
+the account honest: `re-read named none` precedes all 29 throws, and it also
+appears 95 times in total, splitting 29 throw / 39 grouped-OK / 27 declined.
+**Necessary, not sufficient** — and an account of a rare failure that never
+checked its signal against the successes is not established however good it
+sounds.
+
+Everything load-bearing above was re-derived by hand before being written down.
+The 155/29 split, the 22-for-22 formula, and the code path were all checked
+directly; the wrong-chart success was checked and found NOT observable, which is
+why it is an instrument and not a finding.

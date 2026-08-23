@@ -2164,6 +2164,49 @@ export function poolPartsListOutcome(logs) {
   return out;
 }
 
+/**
+ * Did the positional guess pick this chart's own shapes, or another chart's?
+ *
+ * The last-resort branch in `chooseGroupMembers` takes the TAIL of the host's
+ * shape listing when no id matched. **The listing can be one grouping-event
+ * stale**, and then its tail is the previous chart's shapes.
+ *
+ * When those shapes have already been absorbed into that chart's group they no
+ * longer exist at top level, every `getItemOrNullObject` returns a null object,
+ * and `addGroup` throws `InvalidArgument` — 29 times across rounds 068-175,
+ * every one preceded by this branch. When they are still LOOSE, the same guess
+ * SUCCEEDS on the wrong chart's shapes and feeds them to the parts tag as this
+ * chart's own, throwing nothing and tracing nothing.
+ *
+ * That second case is why `mine` and `chose` are recorded. The throw is visible
+ * in an error payload; the silent mis-group was not visible anywhere, and this
+ * is the reading that separates them.
+ */
+export function poolPositionalGuess(logs) {
+  const out = { events: 0, rounds: 0, mine: 0, other: 0, partial: 0, unreadable: 0 };
+  for (const log of logs ?? []) {
+    let any = false;
+    for (const e of log?.trace?.entries ?? []) {
+      if (!/^the positional guess picked the tail/.test(String(e.message ?? ""))) continue;
+      any = true;
+      out.events++;
+      const mine = e.data?.mine ?? [];
+      const chose = e.data?.chose ?? [];
+      if (!Array.isArray(mine) || !Array.isArray(chose) || chose.some((id) => id == null)) {
+        out.unreadable++;
+        continue;
+      }
+      const own = new Set(mine.filter((id) => id != null).map(String));
+      const hit = chose.filter((id) => own.has(String(id))).length;
+      if (hit === chose.length) out.mine++;
+      else if (hit === 0) out.other++;
+      else out.partial++;
+    }
+    if (any) out.rounds++;
+  }
+  return out;
+}
+
 /** How many rounds of a signal to print in sequence, so a step is visible. */
 export const RECENT_IN_A_ROW = 8;
 
@@ -2699,6 +2742,28 @@ function reportPartsListOutcome(logs) {
 ` +
       `    that separates them is \`where\`, and it has been in the same object since round 142.`,
   );
+}
+
+/** Whether the positional guess grouped this chart's shapes or another's. */
+function reportPositionalGuess(logs) {
+  const g = poolPositionalGuess(logs);
+  if (!g.events) return;
+  console.log(`
+  THE POSITIONAL GUESS — ${g.events} event(s) over ${g.rounds} round(s)`);
+  console.log(`    ${String(g.mine).padStart(4)}  picked this chart's OWN shapes`);
+  console.log(`    ${String(g.other).padStart(4)}  picked ANOTHER chart's shapes entirely`);
+  console.log(`    ${String(g.partial).padStart(4)}  picked a mixture`);
+  console.log(`    ${String(g.unreadable).padStart(4)}  the host would not name what it listed`);
+  if (g.other || g.partial)
+    console.log(
+      `    A guess that picks another chart's shapes GROUPS THEM under this chart's name and
+` +
+        `    feeds them to its parts tag. It throws nothing when those shapes are still loose,
+` +
+        `    which is why this line exists — the 29 archived addGroup throws are the same guess
+` +
+        `    on shapes that had already been absorbed into a group.`,
+    );
 }
 
 function reportStarvedQuestions(logs) {
@@ -3526,6 +3591,7 @@ if (invokedDirectly) {
     reportStarvedQuestions(pooled);
     reportIdChurn(pooled);
     reportPartsListOutcome(pooled);
+    reportPositionalGuess(pooled);
     reportTagFaults(pooled);
     reportPool(pooled);
     process.exit(failed ? 1 : 0);
@@ -3575,6 +3641,7 @@ if (invokedDirectly) {
     reportStarvedQuestions(pooled);
     reportIdChurn(pooled);
     reportPartsListOutcome(pooled);
+    reportPositionalGuess(pooled);
     reportTagFaults(pooled);
     reportPool(pooled);
     if (!results.length && !selftest.length && !log?.trace)
