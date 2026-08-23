@@ -2446,11 +2446,33 @@ const PROBES: Probe[] = [
      * worth asking.
      *
      * Every user-visible defect left in this product traces to one thing: the
-     * add-in identifies shapes by `shape.id`, and this host reassigns them. The
-     * chain is a re-read that matches none of our ids, a positional guess at the
-     * tail of a stale listing, another chart's shapes, `addGroup` throwing, and
-     * a chart left as loose rectangles that cannot be re-edited — 6 of the last
-     * 20 rounds.
+     * pre-grouping re-read does not return the chart's own shapes. The chain is
+     * a match that finds none of our ids in the listing, a positional guess at
+     * the tail of it, another chart's shapes, `addGroup` throwing, and a chart
+     * left as loose rectangles that cannot be re-edited — 6 of the last 20
+     * rounds.
+     *
+     * **THE IDS ARE NOT THE PROBLEM, and this comment said they were.** Round
+     * 179's chart reported `mine [35..41]`, and those seven ids are in that
+     * round's own end-of-round deck inventory under their real names — `title`,
+     * `category-0`, `seg-0-0`, `baseline`. They never moved. 228 in-place
+     * updates across 30 rounds resolved 4,992 tag-stored ids written in an
+     * earlier context, and `addGroup` keyed on id grouped 2,108 charts against
+     * 36 throws. `shape.id` is stable on this host.
+     *
+     * What is wrong is the LISTING: the re-read returned `[27..33]`, the
+     * previous chart's shapes, because the collection read is stale. The host
+     * has said so in every round — `shapes-items-count-honest` answers
+     * `unreadable` 140 times and `short-0` 16 times across 156 rounds, and
+     * `tag-through-refetched-shape` answers `no-id` 149 of 149. **The shape
+     * collection has never once honestly reported freshly added shapes.**
+     *
+     * So creationId cannot fix that chain — matching on it against the same
+     * stale listing matches zero, exactly as id does, and there is no
+     * `getItemByCreationId` for it to address a shape with. These probes are
+     * kept for the SEPARATE question in BACKLOG ("Retire the positional
+     * group-member mapping"), which is about node-to-shape ordering inside a
+     * group and is untouched by the above.
      *
      * `Shape.creationId` (PowerPointApi 1.10, which this host advertises) is the
      * obvious answer, and **the documentation does not say what this project

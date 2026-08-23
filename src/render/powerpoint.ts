@@ -9473,6 +9473,44 @@ async function ungroupedFallback(
     tracePartsOutcome(items, grouped, tagTargets, siblings, partsJson, "no loose chart had siblings");
     return partsJson;
   }
+  // THE IDS ARE USUALLY ALREADY HERE, and asking for them again is what has
+  // cost every parts list this project has ever tried to write.
+  //
+  // `withParts` is **0 across 872 charts in 156 rounds** — CHART_PARTS_TAG has
+  // never once been produced on this host. The exits say why: 50 events died at
+  // "the id read-back threw", `InvalidParam passed to GetItem(id)`, code 5010,
+  // `errorLocation: ShapeCollection.getItem`. That is the sync below. Office.js
+  // rewrites a created proxy's object path to `shapes.getItem(id)`, and this
+  // host refuses that call — which the comment above `parts` has described
+  // correctly for months while the code went on making it anyway.
+  //
+  // But the ids do not need re-reading. The pre-grouping re-read records
+  // `withOwnId`, and it reads **7 of 7** on the very charts that then fail here:
+  // `loadedValue(() => sh.id)` already answers on `it.created`. The drawing
+  // batch's own sync populated them, and reading a populated property issues no
+  // host call at all.
+  //
+  // So take what is there first and only ask for what is missing. A chart whose
+  // siblings all carry ids now skips the sync entirely and keeps its parts list;
+  // one whose ids really are absent behaves exactly as before. Nothing gets
+  // worse, because the only change is NOT making a call whose answer is already
+  // in hand.
+  //
+  // Why it matters more than "fallback" suggests: PowerPoint on the web ungroups
+  // every chart it cannot group, so a chart with no parts list has its in-place
+  // update delete the anchor and redraw all 24 shapes, leaving the other 23
+  // behind. The chart grows by a whole chart on every edit.
+  const needLoading = siblings.flat().filter((s) => !loadedValue(() => s.id));
+  if (!needLoading.length && !alt.length) {
+    siblings.forEach((shapes, i) => {
+      const ids = shapes
+        .map((s) => loadedValue(() => s.id))
+        .filter((id): id is string => typeof id === "string" && id.length > 0);
+      if (ids.length) partsJson[i] = JSON.stringify(ids);
+    });
+    tracePartsOutcome(items, grouped, tagTargets, siblings, partsJson, "the ids were already loaded");
+    return partsJson;
+  }
   try {
     // Queueing counts as best-effort too. `s.load("id")` and `applyAltText` are
     // ordinary property access on host proxies, and on the web those can throw
@@ -9480,7 +9518,7 @@ async function ungroupedFallback(
     // failed an update whose shapes were already committed. The catch was
     // always meant to cover this: the comment below is the contract, and it is
     // just as true of a queue that faulted as of a sync that did.
-    for (const s of siblings.flat()) s.load("id");
+    for (const s of needLoading) s.load("id");
     for (const { it, i } of alt) applyAltText(tagTargets[i]!, it.opts);
     // Labelled and bounded, like every other sync in this phase. This one was
     // neither — a bare `context.sync()` with no `step`, so an error escaping it
@@ -9493,6 +9531,27 @@ async function ungroupedFallback(
     // AND SAY SO. This exit discards a parts list that was about to be built,
     // which is a different fault from never having had one — see
     // `tracePartsOutcome`.
+    // SALVAGE WHAT WAS ALREADY IN HAND. The sync failing does not un-populate a
+    // property the drawing batch already answered, and throwing the whole parts
+    // list away because ONE sibling needed a re-read is how a chart that could
+    // have named all seven of its shapes named none.
+    siblings.forEach((shapes, i) => {
+      const ids = shapes
+        .map((s) => loadedValue(() => s.id))
+        .filter((id): id is string => typeof id === "string" && id.length > 0);
+      // WHOLE LISTS ONLY, the same rule the `parts` selector applies above: a
+      // tag naming fewer shapes than the chart drew makes the next update strand
+      // the unnamed ones, which is strictly worse than no tag at all.
+      //
+      // NOT COVERED BY THE SUITE, and said out loud rather than assumed.
+      // Reaching this branch needs a host that populates SOME created-shape ids
+      // in the drawing sync and then refuses the read-back, and the fake
+      // populates none of them — so both this line and the fast path above are
+      // unexercised, and dropping the `=== shapes.length` guard keeps the suite
+      // green. The real host populates them (`withOwnId: 7` of 7 on the charts
+      // that fail here), so only a round can exercise either.
+      if (ids.length === shapes.length && ids.length) partsJson[i] = JSON.stringify(ids);
+    });
     tracePartsOutcome(items, grouped, tagTargets, siblings, partsJson, "the id read-back threw");
     return partsJson;
   }

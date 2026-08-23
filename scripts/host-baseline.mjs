@@ -340,13 +340,20 @@ export const UNSTABLE_ANSWERS = {
  */
 export const PENDING_QUESTIONS = {
   "creationid-on-fresh-shape":
-    "Added 2026-08-23, and it decides whether the only live user-visible defect can be fixed at all. Every chart " +
-    "this product loses traces to ONE thing: it identifies shapes by `shape.id`, and this host reassigns them. The " +
-    "chain is a pre-grouping re-read that matches none of our ids, a positional guess at the tail of a stale " +
-    "listing, another chart's shapes, `addGroup` throwing InvalidArgument, a chart left as seven loose rectangles, " +
-    "and a config tag that then fails at BindingCollection.add — 6 of the last 20 rounds, and the throw and the tag " +
-    "failure coincide 6 for 6 because they are one event. `Shape.creationId` (PowerPointApi 1.10, which this host " +
-    "advertises) is the obvious identifier to switch to. WHAT THE DOCUMENTATION ACTUALLY SAYS, checked 2026-08-23, " +
+    "Added 2026-08-23, and CORRECTED the same day. It was added believing `shape.id` was volatile on this host and " +
+    "that creationId would fix the live defect. THE IDS ARE STABLE: round 179's chart reported `mine [35..41]` and " +
+    "those seven ids sit in that round's own end-of-round deck inventory under their real names (title, category-0, " +
+    "seg-0-0, baseline); 228 in-place updates across 30 rounds resolved 4,992 tag-stored ids written in an earlier " +
+    "context; addGroup keyed on id grouped 2,108 charts against 36 throws. What is stale is the LISTING — the " +
+    "re-read returned `[27..33]`, the previous chart's shapes — and the host has said so every round: " +
+    "`shapes-items-count-honest` is `unreadable` 140 / `short-0` 16 across 156 rounds and " +
+    "`tag-through-refetched-shape` is `no-id` 149 of 149. The shape collection has NEVER honestly reported freshly " +
+    "added shapes. So creationId cannot fix the grouping chain: matching on it against the same stale listing " +
+    "matches zero, and there is no `getItemByCreationId` — getItem, getItemOrNullObject and addGroup all take ids " +
+    'only, so it can label a shape but never address one. KEPT ANYWAY for the separate BACKLOG item, "Retire the ' +
+    'positional group-member mapping", which is about node-to-shape ordering INSIDE a group and is untouched by ' +
+    "the above; and because the contract is worth knowing before anyone reaches for it again. " +
+    "WHAT THE DOCUMENTATION ACTUALLY SAYS, checked 2026-08-23, " +
     'in full: `readonly creationId: string | null` and "Gets the creation ID of the shape. Returns null if the ' +
     'shape has no creation ID." That is everything — nothing about when it is assigned, nothing about surviving a ' +
     "save or a session, and an explicit null for shapes that have none. THIS REPO'S OWN BACKLOG calls it \"a durable " +
