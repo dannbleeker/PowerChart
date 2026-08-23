@@ -10255,6 +10255,25 @@ async function tryInPlaceUpdate(
 ): Promise<boolean> {
   const { it, old, groupMembers } = entry;
   let parts = entry.parts;
+  // HOW WORN THE CONTEXT ALREADY WAS, and how many syncs this update adds.
+  //
+  // `syncsPerContext` was built for exactly this question and has only ever
+  // been emitted on the GROUPING path (three sites), never here — while the
+  // comment that introduced it is about this scenario: "same scale across the
+  // deck degrades chart by chart inside a single context … that is the shape of
+  // a context wearing out, and updateChartsInSlides was deliberately made ONE
+  // context flat in N, so this project's own perf work is the suspect."
+  //
+  // The timing added in 05a27fd says the first chart of a run costs ~20s more
+  // than the fit predicts while every later chart lands on it, and that three
+  // explanations are already dead: not the slide (charts 1-3 share one and only
+  // the first is dear), not a post-scan cold start, and not a per-pane warmup
+  // (the round's first update is a cheap solo one, 95s earlier).
+  //
+  // What it cannot say is WHY, and there are two shapes: the first update
+  // issues MORE SYNCS, or it issues the same number and they are SLOWER. One is
+  // our batching, the other is the host. These two numbers separate them.
+  const syncsAtStart = syncsOf(context);
   // WHAT THIS PATH COSTS, which nothing has ever recorded.
   //
   // `same scale across the deck` is the most expensive scenario in the round —
@@ -10472,6 +10491,10 @@ async function tryInPlaceUpdate(
     // more to touch, which this file measures elsewhere at 4.7x. Without the id
     // those two are indistinguishable however long the loop runs.
     slideId: it.target.slideId,
+    // How many syncs the shared context had already spent before this chart, and
+    // how many this chart spent. Wear, and work.
+    contextSyncs: syncsAtStart,
+    syncs: syncsOf(context) - syncsAtStart,
   });
   return true;
 }
