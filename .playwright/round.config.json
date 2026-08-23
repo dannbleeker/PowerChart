@@ -2,7 +2,8 @@
   "browser": {
     "browserName": "chromium",
     "launchOptions": {
-      "channel": "chrome"
+      "channel": "chrome",
+      "args": ["--test-type"]
     },
     "contextOptions": {
       "viewport": null

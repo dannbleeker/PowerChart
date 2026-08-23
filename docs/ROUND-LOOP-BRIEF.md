@@ -382,19 +382,38 @@ Gate → commit → push → green CI → merge. Don't ask first.
 dead browser is not a lost sign-in**, and believing otherwise cost this loop five
 hours. Only a redirect to `login.live.com` needs the owner.
 
-**IGNORE the yellow bar that says `--disable-blink-features=AutomationControlled`
-— "Stability and security will suffer".** It is not ours and it is not a symptom.
-Nothing in this repo passes that flag; `playwright-core` sets it on every
-Chromium launch, and Chrome prints that same boilerplate for any flag outside its
-supported list. Every one of the archived rounds ran with it, the clean ones
-included.
+**The yellow bar that says `--disable-blink-features=AutomationControlled` —
+"Stability and security will suffer" — is suppressed as of 2026-08-23, and the
+FLAG STAYS.** `round.config.json` passes `--test-type`, which Chrome treats as
+"do not raise the bad-flag infobar" (chromium issue 40205764). Playwright does
+not pass it by default; ChromeDriver and Cypress do.
 
-It is also doing something useful: the flag hides `navigator.webdriver`, and this
-host sniffs automation and silently skips sideloading when it sees it. Removing
-it would be a regression. It costs ~30px of viewport and nothing else — the
-driver works through refs and `eval`, never pixel coordinates. Dismissing it with
-the × is harmless and pointless, since `recover` relaunches the browser and it
-comes straight back.
+If you see the bar again, the config did not reach the launch — check that
+`roundConfigArg()` found `.playwright/round.config.json`.
+
+**Do NOT fix it by removing the flag.** That was tried in #668 and reverted in
+#669: round 156 never produced a round, two consecutive `--check` runs reported
+the add-in gone, and a re-sideload uploaded the manifest without a PowerChart
+command appearing. The mechanism is known rather than guessed — the flag hides
+`navigator.webdriver`, and this host sniffs automation and silently skips
+sideloading when it sees it. Rounds 157-180 all ran clean with the flag restored,
+which is the test #669 set up, and it came out against removing it.
+
+The bar itself was never a symptom. Nothing in this repo passed that flag;
+`playwright-core` sets it on every Chromium launch, and Chrome prints the same
+boilerplate for any flag outside its supported list. Every archived round ran
+with it, the clean ones included. It cost ~30px of viewport and nothing else —
+the driver works through refs and `eval`, never pixel coordinates.
+
+**REVERT CRITERION for `--test-type`**, stated before it runs: it is additive and
+removes nothing, but it is still a launch-argument change and one of those has
+broken the sideload before. If the next round shows the add-in missing, a
+re-sideload that does not take, a failed scenario, a changed count, a round that
+does not complete, or a sign-in prompt — take `args` back out and keep the bar.
+A yellow bar is worth less than a working sideload.
+
+**NOT YET VALIDATED.** It was written while the host was blocked on a sign-in
+wall, so no round has launched with it. The first round after sign-in is the test.
 
 Then: click the deck (**it opens in a NEW TAB and the CLI stays on the old one** —
 `pw tab-list`, `pw tab-select <n>`), open the pane from Home ▸ Add-ins ▸ **Insert
