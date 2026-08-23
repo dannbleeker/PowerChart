@@ -8939,7 +8939,35 @@ async function groupAndTagAll(
             // the honest last resort for a host that will not read ids back, and
             // it is the branch that only fires when NOTHING matched.
             if (items.length >= it.created.length) {
-              freshMembers.set(i, items.slice(items.length - it.created.length));
+              const chose = items.slice(items.length - it.created.length);
+              // WHICH SHAPES THE GUESS ACTUALLY PICKED, because the guess has
+              // been observed picking ANOTHER CHART'S and nothing could say so.
+              //
+              // 29 archived `addGroup` throws (rounds 068-175) are all preceded
+              // by this branch, and their `fullStatements` show the seven ids it
+              // handed over resolving to seven null objects. Reconstructed
+              // against the deck, those ids are the PREVIOUS chart's shapes —
+              // already absorbed into that chart's group, so no longer top-level.
+              // The listing was one grouping-event stale and its tail named the
+              // wrong chart.
+              //
+              // When the stale tail happens to name shapes that are still LOOSE,
+              // the same guess SUCCEEDS — on the wrong chart's shapes — and
+              // `wholeMatch` then feeds them to the parts tag as this chart's
+              // own. That case throws nothing and traces nothing, so the archive
+              // cannot distinguish it from a correct group. This line is what
+              // makes the next round able to.
+              //
+              // `mine`/`chose` rather than a verdict: the ids are the evidence,
+              // and a instrument that decides for the reader is how a wrong
+              // conclusion outlives the thing that produced it.
+              trace("group", "the positional guess picked the tail of the listing", {
+                index: i,
+                mine: it.created.map((sh) => loadedValue(() => sh.id) ?? null),
+                chose: chose.map((sh) => loadedValue(() => sh.id) ?? null),
+                listed: items.length,
+              });
+              freshMembers.set(i, chose);
               // A guess, but a WHOLE one: it is `created.length` shapes long, so
               // the parts tag it feeds names as many shapes as the chart drew.
               wholeMatch.add(i);
