@@ -4744,3 +4744,38 @@ The sweep flagged this — "the grouping instrument drops a chart whose addGroup
 threw from BOTH the numerator and the denominator" — and I had it in the queue
 behind four other findings. Round 174 produced it live before I got there, which
 is the better provenance: the archive said it, not an agent.
+
+### CORRECTION to the entry above: the correspondence is ONE-WAY
+
+The entry above reads "four for four and twelve for twelve" from rounds 159-174,
+and the commit message for #693 repeats it. That window is real and the general
+claim it invites is not. Over all 150 archived rounds:
+
+    threw AND ended over-full        66
+    threw, NOT over-full              0
+    over-full, did NOT throw         27
+    neither                          59
+
+**A throw always leaves an over-full slide — 66 for 66, no exceptions.** That
+half is exact and it is the half the fix rests on.
+
+**An over-full slide does not imply a throw.** 27 rounds ended over-full having
+thrown nothing: 028, 066, 067, 069, 070, 075, 076, 083, 095, 099, 109, 114, 116,
+118 and more, at 11, 24, 28, 32 and 38 shapes. Those are the REFUSAL era — the
+fresh-slide charts that answered `not grouping: no member handle this host will
+accept`, which stopped after round 142.
+
+So there are two mechanisms that leave a chart as loose shapes, and only one of
+them is live:
+
+    refused (`not grouping`)   the old fresh-slide failure, ~0 since round 142
+    thrown  (`addGroup`)        the current one, ~1 round in 4
+
+The recent window looks like a perfect correspondence because only one mechanism
+is still firing in it. Reading a law off sixteen rounds when the archive holds
+150 is the same mistake as reading a rate off a window that spans a regime — the
+thing this journal has spent two days documenting — committed while documenting
+it, in the sentence announcing the fix.
+
+Caught by testing my own claim against the whole archive rather than the window
+I had already looked at. One query.
