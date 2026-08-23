@@ -2839,6 +2839,61 @@ describe("what it took to start each round", () => {
     const solo = poolUpdateCost([{ trace: { entries: [upd(18, 24, 39000), upd(18, 24, 18000)] } }]);
     expect(solo.firstVsRest, "an update with no run was treated as a first chart").toEqual([]);
   });
+  it("flags numeric trace fields that never vary, and leaves varying ones alone", async () => {
+    // Every serious error this project has made is one shape: an unmeasured
+    // thing printed as a measurement. Nothing detected the CLASS — each one was
+    // caught by eye, late.
+    //
+    // The case that produced this reader: `contextSyncs` went onto the in-place
+    // update's trace line, and round 202 answered 0 for eight charts costing
+    // 12-37 seconds each. A 37-second update issuing no syncs is a broken gauge,
+    // and it was visible in the first round that carried it.
+    // @ts-expect-error — plain .mjs tool, no types.
+    const { poolFlatFields } = await import("../scripts/triage.mjs");
+    const entry = (message: string, data: Record<string, number>) => ({ message, data });
+    const many = (n: number, make: (i: number) => unknown) => Array.from({ length: n }, (_, i) => make(i));
+
+    const pooled = poolFlatFields(
+      [
+        {
+          trace: {
+            entries: [
+              // Always 0 — the shape that matters.
+              ...many(25, () => entry("an update", { contextSyncs: 0 })),
+              // Always the same NON-ZERO value — a constant wearing a
+              // measurement's clothes.
+              ...many(25, () => entry("a settle", { waitedMs: 1500 })),
+              // Varies — must not be flagged, however boring the spread.
+              ...many(25, (i) => entry("a draw", { ms: 1000 + i })),
+            ],
+          },
+        },
+      ],
+      20,
+    );
+
+    const zeroFields = pooled.zeros.map((r: { field: string }) => r.field);
+    const constFields = pooled.constants.map((r: { field: string }) => r.field);
+    expect(zeroFields, "an always-zero field was not flagged").toContain("contextSyncs");
+    expect(constFields, "an always-constant field was not flagged").toContain("waitedMs");
+    // THE ASSERTION THAT MAKES THE OTHERS MEAN ANYTHING. A detector that flags
+    // everything has found nothing.
+    expect(zeroFields, "a varying field was flagged as flat").not.toContain("ms");
+    expect(constFields, "a varying field was flagged as constant").not.toContain("ms");
+
+    // Thin data is not evidence of flatness. Below minSamples nothing is
+    // reported, or every new field reads as a broken gauge on its first round.
+    const thin = poolFlatFields([{ trace: { entries: many(3, () => entry("an update", { contextSyncs: 0 })) } }], 20);
+    expect(thin.zeros, "three samples were enough to call a field flat").toEqual([]);
+
+    // Non-numeric values are ignored rather than counted as constants — every
+    // slideId in a round is a string that never varies within its chart.
+    const strings = poolFlatFields(
+      [{ trace: { entries: many(25, () => ({ message: "an update", data: { slideId: "257#1" } })) } }],
+      20,
+    );
+    expect(strings.constants, "a string field was treated as a measurement").toEqual([]);
+  });
   it("reads the deck inventory the gate has printed all along", async () => {
     // EIGHT OF THE LAST THIRTY ROUNDS ended with a slide holding between 11 and
     // 48 shapes, and every one of them reported 13 of 13 scenarios passed —

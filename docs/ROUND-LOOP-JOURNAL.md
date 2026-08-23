@@ -6316,3 +6316,84 @@ kind of reasoning this session keeps having to retract. Round 203 will carry
 the counted number, and the derivation is written down here so it can be
 checked against one rather than quietly replaced by it.
 
+
+## The fork is answered, and my reason for widening the fix was wrong
+
+### Round 203: same syncs, slower syncs
+
+    chart  changed/of   ms      syncs  ms/sync
+     1/8    18/24        43837      4    10959
+     4/8    18/24        20548      4     5137
+     5/8    18/24        19920      4     4980
+     8/8    18/24        20967      4     5242
+
+**The first chart of a run issues exactly the same number of syncs as every
+other chart, and each one costs about 2.1x as much.** So the ~20s excess is
+host-side, not our batching. Six rounds, four mechanisms eliminated: not the
+slide, not a post-scan cold start, not a per-pane warmup, and now not our
+sync count.
+
+The derivation held exactly. `IN_PLACE_WRITES_PER_SYNC` is 6, so `changed: 18`
+predicts 3 write syncs plus 1 for tags and `changed: 9` predicts 3 in total. Both
+measured on the nose, and both were written down BEFORE the round that
+measured them.
+
+**What the number still cannot say** is whether one sync is slow or four are:
+10959 is a mean over four, and one sync of ~28.5s with three normal ones gives
+the same mean as four uniformly slow ones. Those want opposite fixes — a cheap
+warm-up sync absorbs the first, and buys nothing against the second. `syncMs`
+now records each sync in order, so round 204 decides it. Proposing a warm-up
+from the mean would be this journal's own recurring defect.
+
+## 20 of 30 "safe" verdicts were wrong
+
+Nine agents classified all 65 bare `context.sync()` calls for whether a deadline
+could be added, then an adversarial pass attacked ONLY the SAFE ones — a wrong
+SAFE breaks production, a wrong UNSAFE costs an improvement.
+
+    30  proposed SAFE
+    20  overturned
+    10  surviving
+    16  NEEDS-BIGGER-BUDGET
+    19  UNSAFE
+
+Three objections I had not thought of, each disqualifying on its own:
+
+1. **`withTimeout` does not cancel the promise** — deliberately, so it can "keep
+   listening after giving up". A fired deadline therefore leaves an in-flight
+   `context.sync()` on a context that then gets a second batch queued and synced
+   on top of it. That is a new concurrency state, on the exact object whose
+   degradation `syncsPerContext` exists to investigate.
+
+2. **An inner deadline is often a BUDGET CUT.** Many of these sites sit inside
+   `boundedRun(…, READBACK_TIMEOUT_MS)` at 90s. Adding a 45s inner deadline
+   halves the budget on the pane's most-used read — and the archive contains
+   `did not respond while reading the deck's style (90s)` four times, so those
+   reads demonstrably do run past 45s. Others sit inside a 4s selection run,
+   where a 45s inner deadline is unreachable dead code.
+
+3. **`boundedSync` has side effects on a cross-round baseline.** It routes
+   through `step()`, which on a rejected sync increments `hostFriction.errors`
+   and `generalExceptions` — numbers stamped into every round record and
+   differenced across rounds. Adding counting sites mid-investigation moves the
+   baseline and reads as a host regression. That is this project's own
+   no-history-is-not-a-spike rule, quoted back at me.
+
+### And the premise for the whole exercise was false
+
+I said, here and in a commit message: **74 of 101 syncs have no timeout, so a
+hang there is unbounded.** The count is right. The clause is not.
+
+`boundedRun` exists, with 21 call sites and three budgets — 45s batch, 4s
+selection, 90s readback. **A bare sync inside a bounded run is bounded, by the
+run.** What those sites actually lack is attribution, counting and per-sync
+granularity: real, useful, and nothing like a wedge that never returns.
+
+Seventh time today that a correct number carried a sentence about something it
+did not describe. This one would have cost 65 edits to a hot path.
+
+**Nothing in Class B is being converted.** Even the 10 survivors add `step()`
+sites to a friction baseline that a live investigation is reading. The five
+ALREADY-LABELLED sites converted earlier are unaffected by that objection —
+they went through `step()` before and after, so no counting site was added.
+

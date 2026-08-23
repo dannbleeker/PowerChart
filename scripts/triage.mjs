@@ -2867,6 +2867,78 @@ function reportTagRoutes(logs) {
  * belongs to is that line's delta, not this one's.
  */
 /**
+ * Numeric trace fields that NEVER VARY across the whole archive.
+ *
+ * Every serious error this project has made is one shape: an unmeasured thing
+ * printed as a measurement. A field that is always 0 is the commonest form of
+ * it, and nothing has ever detected the class automatically — each one was
+ * caught by eye, late, and only when the number happened to look absurd.
+ *
+ * The case that produced this reader: a commit put `contextSyncs` on the
+ * in-place update's trace line to ask whether the first chart of a run issues
+ * more syncs or slower ones. Round 202 answered 0 for eight charts costing
+ * 12-37 seconds each. A 37-second update that issues no syncs is not a
+ * finding, it is a broken gauge — and it was visible in the very first round
+ * that carried it.
+ *
+ * WHAT THIS CANNOT DO, said plainly: it cannot tell a broken gauge from a
+ * thing that genuinely never happens. `partial: 0` on every grouped chart means
+ * no chart was ever partial, which is a real and welcome answer.
+ * `contextSyncs: 0` on a 37s update means the counter is blind. **Both look
+ * identical here.** The report says so rather than ranking them, because
+ * ranking them would be the same defect one level up.
+ *
+ * It flags CONSTANTS too, not only zeros. A field reporting the same non-zero
+ * number in every round is a hardcoded conclusion wearing a measurement's
+ * clothes, and this repo has shipped one of those before.
+ */
+export function poolFlatFields(logs, minSamples = 20) {
+  const seen = new Map();
+  for (const log of logs ?? []) {
+    for (const e of log?.trace?.entries ?? []) {
+      const message = String(e?.message ?? "");
+      const data = e?.data;
+      if (!data || typeof data !== "object") continue;
+      for (const [field, value] of Object.entries(data)) {
+        if (typeof value !== "number" || !Number.isFinite(value)) continue;
+        const key = message + " :: " + field;
+        let row = seen.get(key);
+        if (!row) {
+          row = { message, field, n: 0, only: value, varies: false };
+          seen.set(key, row);
+        }
+        row.n++;
+        if (value !== row.only) row.varies = true;
+      }
+    }
+  }
+  const flat = [...seen.values()].filter((r) => !r.varies && r.n >= minSamples);
+  return {
+    zeros: flat.filter((r) => r.only === 0).sort((a, b) => b.n - a.n),
+    constants: flat.filter((r) => r.only !== 0).sort((a, b) => b.n - a.n),
+    fieldsSeen: seen.size,
+  };
+}
+
+/** Numeric fields that never move — suspect gauges, or genuinely quiet facts. */
+function reportFlatFields(logs) {
+  const f = poolFlatFields(logs);
+  if (!f.zeros.length && !f.constants.length) return;
+  console.log("\n  NUMERIC TRACE FIELDS THAT NEVER VARY — of " + f.fieldsSeen + " seen");
+  const show = (rows, what) => {
+    if (!rows.length) return;
+    console.log("    " + what);
+    for (const r of rows.slice(0, 12))
+      console.log("      " + (r.message.slice(0, 44) + " :: " + r.field).padEnd(64) + String(r.n).padStart(5) + "x");
+    if (rows.length > 12) console.log("      … and " + (rows.length - 12) + " more");
+  };
+  show(f.zeros, "always 0:");
+  show(f.constants, "always the same non-zero value:");
+  console.log("    A broken gauge and a thing that never happens look IDENTICAL here, and this");
+  console.log("    cannot tell them apart. Check any field whose zero would be surprising — a");
+  console.log("    sync count of 0 on a 37-second update is what made this reader exist.");
+}
+/**
  * What the IN-PLACE UPDATE path costs — the product's largest latency number,
  * and the one the batch pooler below cannot see.
  *
@@ -4264,6 +4336,7 @@ if (invokedDirectly) {
     reportPositionalGuess(pooled);
     reportSettleAsks(pooled);
     reportUpdateCost(pooled);
+    reportFlatFields(pooled);
     reportDrawCostCurve(pooled);
     reportTagRoutes(pooled);
     reportTagFaults(pooled);

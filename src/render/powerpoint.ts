@@ -1211,11 +1211,34 @@ export function _setSelectionTimeoutForTest(ms: number): void {
  * seconds each. Zero there meant NOT MEASURED. That path now counts its own
  * syncs locally, beside the calls it counts, where it cannot go blind.
  *
- * Left as it is rather than widened, deliberately: routing 74 sites through
- * `boundedSync` would also put a `BATCH_TIMEOUT_MS` on every one of them, which is a
- * behaviour change to the whole file and wants its own rounds. What is fixed
- * here is the CLAIM — a counter that admits its blind spot can be reasoned
- * about; one that denies it cannot.
+ * Left as it is rather than widened, and the reasons are stronger than the ones
+ * first given here. All 65 bare sites were classified and the SAFE verdicts
+ * adversarially attacked; **20 of 30 were overturned.** Three objections, each
+ * disqualifying alone:
+ *
+ * - `withTimeout` does not cancel the promise — deliberately, so it can keep
+ *   listening after giving up. A fired deadline leaves an in-flight
+ *   `context.sync()` on a context that then gets a second batch queued on top of
+ *   it: a new concurrency state, on the very object whose degradation this
+ *   counter exists to investigate.
+ * - An inner deadline is often a BUDGET CUT. Many sites sit inside
+ *   `boundedRun(…, READBACK_TIMEOUT_MS)` at 90s, and the archive holds
+ *   `did not respond while reading the deck's style (90s)` four times — so a 45s
+ *   inner deadline would throw on work that completes today. Others sit inside a
+ *   4s selection run, where 45s is unreachable dead code.
+ * - `boundedSync` routes through `step()`, which increments `hostFriction.errors` and
+ *   `generalExceptions` on a rejected sync. Those are differenced across rounds and
+ *   stamped into every round record, so new counting sites move a baseline that
+ *   a live investigation is reading.
+ *
+ * **AND THE ORIGINAL PREMISE WAS WRONG.** This paragraph used to imply the bare
+ * sites are unbounded. They are not: `boundedRun` has 21 call sites and three
+ * budgets, and a bare sync inside a bounded run is bounded BY THE RUN. What
+ * these sites actually lack is attribution, counting and per-sync granularity —
+ * real, and nothing like a hang that never returns.
+ *
+ * What is fixed here is the CLAIM — a counter that admits its blind spot can be
+ * reasoned about; one that denies it cannot.
  */
 const syncsPerContext = new WeakMap<PowerPoint.RequestContext, number>();
 
@@ -2063,7 +2086,7 @@ export async function updateChartsInSlides(
       queueNullCheck(slide);
       return { it, slide };
     });
-    await step("resolving the charts' slides", () => context.sync());
+    await boundedSync(context, "resolving the charts' slides");
 
     // Confirmed present, never merely "not confirmed gone". A slide the host
     // would not answer for is one we cannot safely delete a chart off.
@@ -2176,7 +2199,7 @@ export async function updateChartsInSlides(
     // user is looking at.
     let refusedResolve = false;
     try {
-      await step("resolving the charts' shapes", () => context.sync());
+      await boundedSync(context, "resolving the charts' shapes");
     } catch (err) {
       // Never swallowed — recorded, then recovered from. If the re-read below
       // cannot save it either, `alive` empties and the caller behaves exactly
@@ -2340,13 +2363,10 @@ export async function updateChartsInSlides(
       // been removed yet and the loop below does the whole job as it always
       // has. See `tryInPlaceUpdate` for every reason it says no.
       if (
-        await tryInPlaceUpdate(
-          context,
-          entry,
-          opts,
-          { config: entry.wasConfig && tagValue(entry.wasConfig), scene: entry.wasScene && tagValue(entry.wasScene) },
-          step,
-        )
+        await tryInPlaceUpdate(context, entry, opts, {
+          config: entry.wasConfig && tagValue(entry.wasConfig),
+          scene: entry.wasScene && tagValue(entry.wasScene),
+        })
       )
         continue;
       const getSlide: SlideThunk = () => context.presentation.slides.getItemOrNullObject(it.target.slideId);
@@ -2366,7 +2386,7 @@ export async function updateChartsInSlides(
             p.delete();
             removed++;
           }
-        await step("deleting the chart being replaced", () => context.sync());
+        await boundedSync(context, "deleting the chart being replaced");
         // Committed gone, so the slide's count owes them back.
         forgetShapesDrawnOn(it.target.slideId, replacedShapeCount(removed, estimateOfficeShapes(it.scene)));
         // RECORDED HERE because this is the only place that knows `removed` —
@@ -10274,7 +10294,6 @@ async function tryInPlaceUpdate(
   },
   opts: InsertOptions,
   tags: { config?: string; scene?: string },
-  step: <T>(what: string, run: () => Promise<T>) => Promise<T>,
 ): Promise<boolean> {
   const { it, old, groupMembers } = entry;
   let parts = entry.parts;
@@ -10315,6 +10334,34 @@ async function tryInPlaceUpdate(
   // issues MORE SYNCS, or it issues the same number and they are SLOWER. One is
   // our batching, the other is the host. These two numbers separate them.
   let syncsHere = 0;
+  // EACH SYNC'S OWN DURATION, because the average cannot tell two different
+  // worlds apart and they want opposite fixes.
+  //
+  // Round 203 measured the first chart of a run at 4 syncs and 10959ms each,
+  // against 4 syncs and ~5100ms for every later chart — same count, slower
+  // syncs, so the cost is host-side rather than our batching. But 10959 is a
+  // MEAN over four. One slow sync of ~28.5s with three normal ones averages to
+  // exactly the same number as four uniformly slow ones.
+  //
+  // If it is one, a cheap warm-up sync before the run might absorb it for the
+  // price of a 5ms round-trip. If it is all four, a warm-up buys nothing and
+  // the fix is elsewhere. Proposing either from the mean would be the defect
+  // this file keeps recording: a number asserted about a population it does
+  // not describe.
+  const syncMs = [];
+  // AND THE CONTEXT'S WEAR, which is a real number again as of this commit.
+  //
+  // It was removed one commit ago for reading 0 on every chart of a 37-second
+  // update: this path synced through `step(…, () => context.sync())` and only
+  // `boundedSync` increments the WeakMap, so the counter could not see it. The
+  // five labelled sites in this file now go through `boundedSync`, these two
+  // among them, so the count is live on exactly the path the counter was
+  // written to measure.
+  //
+  // `updateChartsInSlides` holds ONE context across all N charts, so this rises
+  // chart by chart within a run — which is the decay curve its own docstring
+  // describes and nothing has ever been able to plot.
+  const syncsAtStart = syncsOf(context);
   // WHAT THIS PATH COSTS, which nothing has ever recorded.
   //
   // `same scale across the deck` is the most expensive scenario in the round —
@@ -10478,7 +10525,11 @@ async function tryInPlaceUpdate(
       for (const n of plan.changed.slice(i, i + IN_PLACE_WRITES_PER_SYNC))
         applyNodeInPlace(shapes[n], it.scene.nodes[n], dx, dy, opts);
       syncsHere++;
-      await step("updating the shapes a chart actually changed", () => context.sync());
+      {
+        const at = Date.now();
+        await boundedSync(context, "updating the shapes a chart actually changed");
+        syncMs.push(Date.now() - at);
+      }
     }
     // The tags LAST, and in their own sync. They are what makes the chart
     // re-editable, so committing them before the shapes they describe would
@@ -10486,7 +10537,11 @@ async function tryInPlaceUpdate(
     old.tags.add(CHART_TAG, it.opts.tagData);
     old.tags.add(CHART_SCENE_TAG, sceneFingerprint(it.scene));
     syncsHere++;
-    await step("writing the chart's tags after an in-place update", () => context.sync());
+    {
+      const at = Date.now();
+      await boundedSync(context, "writing the chart's tags after an in-place update");
+      syncMs.push(Date.now() - at);
+    }
   } catch (err) {
     trace("draw", "in-place update refused — redrawing instead", {
       changed: plan.changed.length,
@@ -10543,6 +10598,13 @@ async function tryInPlaceUpdate(
     // global counter cannot see this path at all, and a field that is always
     // zero is read as a measurement of zero.
     syncs: syncsHere,
+    // How many syncs the shared context had already spent before this chart.
+    // Counted locally as well, so a future blindness in the WeakMap shows up as
+    // a DISAGREEMENT between the two rather than as a quiet zero.
+    contextSyncs: syncsAtStart,
+    // In order. The last one is always the tag write; the ones before it are
+    // the shape writes, `IN_PLACE_WRITES_PER_SYNC` at a time.
+    syncMs,
   });
   return true;
 }
