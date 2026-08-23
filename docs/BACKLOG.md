@@ -18,6 +18,60 @@ patterns.
 
 ## 1. Open
 
+### Adding a chart to an existing slide costs ~24s; making a new one costs ~0.75s — MEASURED 2026-08-23, not fixed
+
+Pooled over 2,917 timed batches in 169 rounds. Every batch in the archive is
+ten shapes, so this is a curve in slide load, not in batch size:
+
+    shapes this run already drew on the target    median batch
+      0                                              3886ms
+      1-20                                           5490ms
+      21-50                                         13995ms
+      51-100                                        18074ms
+
+**A run slows itself 4.7x by piling onto one slide.** This is the effect
+`shapesDrawnOn` already documents ("about +0.44s per shape present … quadratically")
+and it is now measured across the whole archive rather than in one round.
+
+What a user sees, from the two self-test arms:
+
+    insert on top of an earlier run           3s   4 charts onto NEW slides    ~0.75s each
+    insert onto a slide that already has …   48s   2 charts onto an EXISTING   ~24s each
+
+**About 32x, and it is structural rather than a bug.** The two arms separate
+cleanly on the path they take — counted from one round's trace:
+
+    insert on top of an earlier run          0 batches   2 file handovers
+    insert onto a slide that already has …   4 batches   0 file handovers
+
+The fast arm draws **no shapes at all**: it hands the host a generated file. That
+is also why 4 charts in 3s is not a contradiction of the curve above — a single
+ten-shape batch has a floor of 3886ms, so 4 charts drawn shape-by-shape could
+not finish in three seconds and never do.
+
+You cannot hand the host a file to add shapes to a slide that already exists, so
+that path draws shape by shape and pays the curve. **PowerChart is fast exactly
+when it CREATES slides and slow exactly when it ADDS to one.**
+
+**Why this is a product decision and not a fix.** The side-by-side layout — two
+or three small charts on one slide — is the everyday think-cell workflow, and
+it is the slow case. Nothing in the pane tells the user that, and nothing
+should be changed unilaterally: the cost is the host's, the mitigation
+(`leastLoadedChart`) is correctly scoped to the self-test, which picks a chart
+arbitrarily and so should pick wisely. A user picks the chart they mean, so
+there is no choice for the product to make on their behalf.
+
+The options are all product calls: say nothing; show progress honestly on the
+slow path; or offer "put this on its own slide" when the target is already
+loaded. Worth a decision, not worth guessing at.
+
+**What this is NOT.** Not a batching problem — an empty Office.js round-trip is
+**5ms** (the driver's readiness ping, `slides.getCount()` plus one sync), so
+round-trips are ~0.1% of a batch and raising `SHAPES_PER_SYNC` cannot help; the
+cost is per-shape drawing on the host. And not a visibility problem: an earlier
+reading of this same data claimed 2.3x for "the slide the user is looking at"
+and was retracted in `0638b6a` — it split on a sentinel meaning "slide id not
+loaded yet". Nothing in this archive distinguishes on-screen from off-screen.
 ### Text that overlaps text on data the samples do not carry — MEASURED 2026-08-19, not fixed
 
 The frame gate's overlap half sweeps `sampleConfig(kind)`, and a sweep of the
