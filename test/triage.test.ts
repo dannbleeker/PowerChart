@@ -2715,6 +2715,48 @@ describe("what it took to start each round", () => {
     expect(band(21).median).toBeGreaterThan(band(0).median);
   });
 
+  it("counts whether a second ask RESCUED the chart, not merely that it fired", async () => {
+    // Round 194 produced the first second ask on the real host, and the trace
+    // reads, in order:
+    //
+    //   the cold re-read fell short …        {kind:"zero-match", drew:7, listed:8}
+    //   … after a settle delay               {attempt:1}
+    //   the cold re-read fell short …        {kind:"zero-match", drew:7, listed:8}
+    //   … after a settle delay               {attempt:2}     <- #709
+    //   grouped the chart's shapes           {charts:1, partial:0, by:"ids"}
+    //
+    // Under REREAD_ATTEMPTS = 1 that chart is a survivor. Counting that the ask
+    // FIRED would have said nothing about that; the outcome is the whole point.
+    // @ts-expect-error — plain .mjs tool, no types.
+    const { poolSettleAsks } = await import("../scripts/triage.mjs");
+    const ask = (attempt: number) => ({
+      message: "re-reading the slide's shapes again after a settle delay",
+      data: { attempt, charts: 1 },
+    });
+    const grouped = { message: "grouped the chart's shapes", data: { charts: 1, partial: 0 } };
+    const survivor = { message: "the re-read named none of the chart's shapes", data: {} };
+
+    const rescued = poolSettleAsks([{ trace: { entries: [ask(1), ask(2), grouped] } }]);
+    expect(rescued.second).toBe(1);
+    expect(rescued.secondAskRescued, "a group after the second ask is a rescue").toBe(1);
+    expect(rescued.secondAskLost).toBe(0);
+
+    const lost = poolSettleAsks([{ trace: { entries: [ask(1), ask(2), survivor] } }]);
+    expect(lost.secondAskRescued, "a survivor after the second ask is NOT a rescue").toBe(0);
+    expect(lost.secondAskLost).toBe(1);
+
+    // A FIRST ask followed by a group is not credited to the second one. This is
+    // the assertion that stops the counter reporting every ordinary success.
+    const firstOnly = poolSettleAsks([{ trace: { entries: [ask(1), grouped] } }]);
+    expect(firstOnly.second).toBe(0);
+    expect(firstOnly.secondAskRescued, "a first-ask success was credited to the second ask").toBe(0);
+
+    // And an ask with nothing decisive after it is counted NEITHER way, rather
+    // than assumed to have worked.
+    const undecided = poolSettleAsks([{ trace: { entries: [ask(1), ask(2)] } }]);
+    expect(undecided.second).toBe(1);
+    expect(undecided.secondAskRescued + undecided.secondAskLost, "an undecided ask was counted").toBe(0);
+  });
   it("reads the deck inventory the gate has printed all along", async () => {
     // EIGHT OF THE LAST THIRTY ROUNDS ended with a slide holding between 11 and
     // 48 shapes, and every one of them reported 13 of 13 scenarios passed —

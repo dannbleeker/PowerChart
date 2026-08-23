@@ -3014,6 +3014,16 @@ export function poolSettleAsks(logs) {
     labelledAgo: null, //        rounds since the trace could TELL ASKS APART (#710)
     survivorsSinceChange: 0,
     roundsSinceChange: 0,
+    // THE BASELINE FOR `sinceLastSurvivor`. Without it a quiet stretch has nothing
+    // to be long compared to, and this journal has already once called 12 quiet
+    // rounds a ~1% event by picking the split point after seeing the zeros.
+    longestPriorGap: null,
+    survivorRounds: 0,
+    // DID THE SECOND ASK WORK, not merely fire. Counting that it happened says
+    // nothing about whether it helped, and the difference between "it fired"
+    // and "it worked" is the distinction this whole section exists to draw.
+    secondAskRescued: 0,
+    secondAskLost: 0,
   };
   const all = logs ?? [];
   // The index of the LAST round that produced a survivor, of the first round on
@@ -3038,6 +3048,7 @@ export function poolSettleAsks(logs) {
   // what we match. The archive only moves forward, so the first round on that
   // build begins the era.
   let lastSurvivorAt = -1;
+  const survivorAt = [];
   let labelledAt = -1;
   let changeLandedAt = -1;
   for (let i = 0; i < all.length; i++) {
@@ -3059,6 +3070,7 @@ export function poolSettleAsks(logs) {
       } else if (/re-read named none/.test(m)) {
         any = true;
         out.survivors++;
+        if (lastSurvivorAt !== i) survivorAt.push(i);
         lastSurvivorAt = i;
       }
     }
@@ -3067,6 +3079,37 @@ export function poolSettleAsks(logs) {
   }
   const n = all.length;
   if (lastSurvivorAt >= 0) out.sinceLastSurvivor = n - 1 - lastSurvivorAt;
+  // Every gap BETWEEN survivor rounds, so the current quiet stretch can be read
+  // against the quiet stretches this archive has already produced.
+  out.survivorRounds = survivorAt.length;
+  // What FOLLOWED each second ask. The next decisive line wins: a group means it
+  // rescued the chart, a survivor line means it did not. Anything else is
+  // neither and is left uncounted rather than assumed either way.
+  for (const log of all) {
+    const es = log?.trace?.entries ?? [];
+    for (let i = 0; i < es.length; i++) {
+      const e = es[i];
+      if (!/settle delay/.test(String(e?.message ?? ""))) continue;
+      if (!(Number(e?.data?.attempt) >= 2)) continue;
+      for (let j = i + 1; j < es.length; j++) {
+        const m = String(es[j]?.message ?? "");
+        if (/re-read named none/.test(m)) {
+          out.secondAskLost++;
+          break;
+        }
+        if (/grouped the chart's shapes/.test(m)) {
+          out.secondAskRescued++;
+          break;
+        }
+        // A further ask means this one is still in flight; stop looking.
+        if (/settle delay/.test(m)) break;
+      }
+    }
+  }
+  for (let i = 1; i < survivorAt.length; i++) {
+    const gap = survivorAt[i] - survivorAt[i - 1];
+    if (out.longestPriorGap == null || gap > out.longestPriorGap) out.longestPriorGap = gap;
+  }
   if (labelledAt >= 0) out.labelledAgo = n - 1 - labelledAt;
   if (changeLandedAt >= 0) {
     out.changeLandedAgo = n - 1 - changeLandedAt;
@@ -3091,6 +3134,22 @@ function reportSettleAsks(logs) {
   if (a.unlabelled)
     console.log("    " + String(a.unlabelled).padStart(5) + "  unlabelled — rounds before the attempt field");
   console.log("    " + String(a.survivors).padStart(5) + "  failures that survived every ask");
+  // THE OUTCOME OF THE SECOND ASK, printed whenever one has fired. On
+  // 2026-08-23 round 194 produced the first: the cold re-read fell short, the
+  // first ask fell short again, the second ask fired, and the chart grouped
+  // "by ids" with partial 0. Under the old REREAD_ATTEMPTS = 1 that chart would
+  // have been a survivor. One event is not a rate — but it is the difference
+  // between a change that works and a change nothing has ever exercised.
+  if (a.second)
+    console.log(
+      "    of the " +
+        a.second +
+        " second ask(s): " +
+        a.secondAskRescued +
+        " rescued the chart, " +
+        a.secondAskLost +
+        " still lost it.",
+    );
 
   // THE CLAIM, which needs every ask labelled to be worth making. An
   // unlabelled ask could have been a second one, so a slice containing any
@@ -3134,6 +3193,25 @@ function reportSettleAsks(logs) {
         " clean round(s) came FIRST.",
     );
     console.log("    So the quiet rounds since are NOT evidence for it. Something else moved this number.");
+    // AND WHETHER THE QUIET IS EVEN UNUSUAL. "13 rounds since the last one" reads
+    // as remarkable and may be ordinary; this archive's own gaps are the only
+    // thing that can say. Reporting the stretch without the distribution is how
+    // a long tail on a sporadic event gets written up as an inflection.
+    if (a.longestPriorGap != null) {
+      const unusual = a.sinceLastSurvivor > a.longestPriorGap;
+      console.log(
+        "    Quiet for " +
+          a.sinceLastSurvivor +
+          " round(s); the longest gap between survivors before this was " +
+          a.longestPriorGap +
+          " (over " +
+          a.survivorRounds +
+          " round(s) that produced one) — " +
+          (unusual
+            ? "so this is the longest on record, but NOT out of family."
+            : "so this is ORDINARY. Not an inflection."),
+      );
+    }
     // AND NAME WHAT WE CANNOT RULE OUT, because "something else" invites the
     // reader to fill the blank with the nearest recent commit.
     //

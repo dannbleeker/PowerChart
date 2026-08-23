@@ -134,12 +134,23 @@ export function readiness({
   };
   // First, and on its own: everything below reads as "the browser said nothing"
   // when the truth is that nobody asked it. See `cli`.
-  if (!reachable)
+  if (!reachable) {
+    // WHICH of the two unreachable states this is. A tool that is missing and a
+    // machine that was too busy to start it produce the same empty string here,
+    // and they want opposite handling: fail fast, or retry. Classified off the
+    // errno, and the headline now names the CONDITION rather than guessing at a
+    // cause — "Install it" was the first thing the old message said, and the
+    // install has never once been the problem.
+    const transient = unreachableAt && spawnFailureIsTransient(unreachableAt.error);
     return {
       ok: false,
+      codes: transient ? ["cli-busy"] : [],
       stop: [
-        "playwright-cli could not be run — nothing below was actually measured. " +
-          "Install it (`npm i -g @playwright/cli`), or set PLAYWRIGHT_CLI_JS to its entry point." +
+        (transient
+          ? "playwright-cli could not be STARTED — the machine was busy, not the tool missing. " +
+            "Nothing below was actually measured; the next attempt is expected to clear it."
+          : "playwright-cli could not be run — nothing below was actually measured. " +
+            "Install it (`npm i -g @playwright/cli`), or set PLAYWRIGHT_CLI_JS to its entry point.") +
           // The call and the errno, when there is one. Without them this message
           // points at the install every time, and the install is almost never it.
           (unreachableAt
@@ -147,6 +158,7 @@ export function readiness({
             : ""),
       ],
     };
+  }
   // Before the sign-in check and everything under it: a browser that is not
   // there answers every read with nothing, and "is the add-in open?" is the
   // wrong question to send anyone to. See `noBrowser`.
@@ -2279,7 +2291,34 @@ async function collectRound(sh, stamp, sleep, driverSize = null, driverRun = nul
  * silently re-making them would change what the round measures; the sign-in and
  * unreachable-CLI states never get here because they return before the codes do.
  */
+/**
+ * Did a spawn fail because the tool is not there, or because the machine was busy?
+ *
+ * These want OPPOSITE treatment and had one handler between them. A missing
+ * binary is not going to appear on the second try, so failing fast is right. A
+ * spawn that TIMED OUT is the machine being busy, and retrying is the whole
+ * cure — but the unreachable-CLI stop returns before any code is assigned, so
+ * `--retry 6` never got a chance at it.
+ *
+ * WHAT IT COST: round 197, 2026-08-23. `spawnSync … node.exe ETIMEDOUT` on
+ * `eval () => String(window.innerWidth)` — the first call of the round, while the
+ * full 124-file vitest suite was running in the same session. The tool was
+ * installed and had run six rounds that day. The driver exited 1 on a condition
+ * that would have cleared by itself, and the message sent the reader to the
+ * install.
+ *
+ * Conservative on purpose: ONLY the errnos that mean "could not start it just
+ * now" are transient. Anything unrecognised stays fatal, because a stop that
+ * loops is worse than one that stops — this loop runs unattended for hours.
+ */
+export function spawnFailureIsTransient(errorText) {
+  return /ETIMEDOUT|EAGAIN|EBUSY|EMFILE|ENFILE|ENOMEM|SIGTERM|SIGKILL/i.test(String(errorText ?? ""));
+}
 export const RECOVERABLE_STOPS = new Set([
+  // A spawn that timed out rather than a tool that is missing. See
+  // `spawnFailureIsTransient` — the two states used to share one handler and
+  // the transient one exited the run.
+  "cli-busy",
   "browser-gone",
   "crashed",
   "host-silent",

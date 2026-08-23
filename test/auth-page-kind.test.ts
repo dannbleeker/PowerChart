@@ -71,3 +71,54 @@ describe("telling a sign-in prompt from a sign-in error", () => {
     expect(authPageKind("https://example.com/", "AADSTS900561")).toBe("not-auth");
   });
 });
+
+describe("a spawn that failed because the tool is missing, or because the box was busy", () => {
+  /**
+   * WHAT THIS COST: round 197, 2026-08-23, and the six retries that should have
+   * absorbed it.
+   *
+   * The first call of the round was `eval () => String(window.innerWidth)` and
+   * it came back `spawnSync … node.exe ETIMEDOUT`, while the full 124-file
+   * vitest suite was running in the same session. playwright-cli was installed
+   * and had driven six rounds that day.
+   *
+   * The driver exited 1 and told the reader to install the tool. Two faults in
+   * one branch: the message named a CAUSE it could not know, and the stop
+   * returned before any code was assigned, so `RECOVERABLE_STOPS` never saw it
+   * and `--retry 6` never fired on a condition that clears by itself.
+   */
+  it("calls the real round-197 ETIMEDOUT transient", async () => {
+    // @ts-expect-error — plain .mjs tool, no types.
+    const { spawnFailureIsTransient } = await import("../scripts/round.mjs");
+    expect(
+      spawnFailureIsTransient(
+        "spawnSync C:\\Users\\dann.pedersen\\AppData\\Local\\Microsoft\\WinGet\\Packages\\node.exe ETIMEDOUT",
+      ),
+    ).toBe(true);
+  });
+
+  it("keeps a genuinely missing binary FATAL, because retrying cannot conjure one", async () => {
+    // @ts-expect-error — plain .mjs tool, no types.
+    const { spawnFailureIsTransient } = await import("../scripts/round.mjs");
+    expect(spawnFailureIsTransient("spawnSync playwright-cli ENOENT")).toBe(false);
+  });
+
+  it("defaults an unrecognised spawn error to FATAL, because a stop that loops is worse", async () => {
+    // This loop runs unattended for hours. A wrong `transient` spins forever on
+    // something no retry can fix; a wrong `fatal` costs one round and says why.
+    // The asymmetry decides the default.
+    // @ts-expect-error — plain .mjs tool, no types.
+    const { spawnFailureIsTransient } = await import("../scripts/round.mjs");
+    expect(spawnFailureIsTransient("something nobody has seen before")).toBe(false);
+    expect(spawnFailureIsTransient(undefined)).toBe(false);
+    expect(spawnFailureIsTransient("")).toBe(false);
+  });
+
+  it("puts the transient one where the retry loop can actually see it", async () => {
+    // The whole defect was that this stop returned before a code was assigned,
+    // so membership here is the half that makes the classifier do anything.
+    // @ts-expect-error — plain .mjs tool, no types.
+    const { RECOVERABLE_STOPS } = await import("../scripts/round.mjs");
+    expect(RECOVERABLE_STOPS.has("cli-busy"), "cli-busy is not recoverable, so --retry still cannot see it").toBe(true);
+  });
+});

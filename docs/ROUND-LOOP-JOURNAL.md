@@ -5898,3 +5898,221 @@ with the bug restored. It needed a THIRD batch to reach the place the two
 readings disagree. Caught by mutation, like the other two today; there is no
 other way I have found to catch these.
 
+
+### The round-180 inflection: the deck is eliminated too
+
+Three candidates were named for the survivors stopping at round 180 — our
+source, the host, the deck. The first went to a diff. The deck goes here.
+
+**The archive does not record which deck a round ran against.** The driver
+prints it on every line (`deck 1 slide(s) · Presentation64.pptx`) and it reaches
+no round file — the same shape of blind spot as the unversioned host, found
+the same way: by going to look for it and finding nothing there.
+
+But it is answerable by proxy. Slide ids are deck-specific, and the deck's
+first slide is the one the sweep never removes:
+
+    023: 256#109857222
+    029: 287#62081387
+    …
+    111: 256#109857222
+    149: 256#2587447327     <- last change in the archive
+
+Eight distinct values across 170 rounds, and **the last change was round 149**.
+The id has been the same one through 180 and every round since. The deck did
+not change at the inflection.
+
+    not our source     #696 is downstream of the trace line, by diff
+    not the probes     all settled across 180; the two flips are singletons at 184 and 190
+    NOT THE DECK       first-slide id unchanged since round 149
+    the host           unversioned in all 170 rounds — cannot be ruled in or out
+    chance             possible, and weaker than first claimed (post-hoc split)
+
+**Two candidates left from five, and one of them is unmeasurable here.** That is
+a real narrowing rather than a conclusion, and it is worth the distinction: the
+honest state of this question is now "the host or nothing", not "unexplained".
+
+No instrument added for the deck name. The proxy answered it in one query, and
+the technique is written down here so the next person does not have to find it
+again — which is the cheap half of an instrument without the standing cost.
+
+
+### The survivors came from ONE scenario, which did not change — and the gap is marginal
+
+Splitting the survivors by the scenario they occurred in, which is the one
+dimension this question had never been cut on:
+
+    94  does a rasterise poison the next draw
+     1  the chart is actually visible
+     1  an update follows a moved chart
+     1  explode a degraded picture
+
+**97 survivors, and 94 of them are one scenario.** The same scenario carries 4.00
+of the 4.97 settle sleeps a round. Whatever this is, it lives almost entirely
+in one code path, not across the product.
+
+And that scenario did not change at the inflection:
+
+    174   51s ok  all four draws landed — …
+    …
+    180   48s ok  all four draws landed — …
+    …
+    186   47s ok  all four draws landed — …
+
+Same duration, same detail string, same verdict, every round either side.
+**Identical work, different outcome.**
+
+### Then the check that matters, applied to my own claim
+
+Before calling a quiet stretch an inflection: was a quiet stretch ever normal?
+
+    rounds with at least one survivor      43 of 172
+    largest gap between survivor rounds     14 rounds
+    current gap (179 -> 196)                17 rounds
+    historical gaps of 17 or more            0
+
+So it is the longest quiet stretch on record — and a 14-round gap has happened
+before, so 17 is **not out of family**. This is "the longest gap observed", not
+"impossible under the old regime", and the difference between those two
+sentences is the whole finding.
+
+**That is materially weaker than the ~1% this journal first quoted**, which came
+from a split point chosen after seeing where the zeros began. Third time today
+a claim of mine has had to be walked back in strength rather than in substance.
+The number moved; how much it means is smaller each time I check it properly.
+
+### Where the question now stands
+
+    not our source     by diff
+    not the probes     all settled across 180
+    not the deck       first-slide id unchanged since round 149
+    not the scenario   identical duration, detail and verdict either side
+    the host           unversioned — cannot be ruled in or out
+    chance             still live, and stronger than I first allowed
+
+Four eliminations and two survivors, one of which is unmeasurable here. The
+honest reading is that this may simply be a long tail on a sporadic event, and
+the way to tell is more rounds — which the loop is producing anyway.
+
+
+## The second ask fired on the real host, and it worked
+
+This morning's entry said the change might be permanently inert: the
+population it targets had gone quiet eight rounds before it shipped, and
+"a round with no survivors cannot tell a working change from an idle one".
+
+Round 194 told them apart. Verbatim from the trace, in order:
+
+    the cold re-read fell short — asking again after the settle
+        {kind: "zero-match", index: 0, drew: 7, listed: 8}
+    re-reading the slide's shapes again after a settle delay
+        {attempt: 1, charts: 1, waitedMs: 1500}
+    the cold re-read fell short — asking again after the settle
+        {kind: "zero-match", index: 0, drew: 7, listed: 8}      <- THE FIRST ASK FAILED
+    re-reading the slide's shapes again after a settle delay
+        {attempt: 2, charts: 1, waitedMs: 1500}                 <- #709
+    grouped the chart's shapes
+        {charts: 1, partial: 0, by: "ids"}                      <- RESCUED, in full
+
+The host listed 8 shapes for a chart that drew 7 and matched none of them.
+The first ask, after a 1.5s settle, got the same answer. The second ask — the
+one that did not exist before #709 — got a complete match, and the chart
+grouped by ids with `partial: 0`.
+
+**Under `REREAD_ATTEMPTS = 1` that chart is a survivor**, which on this host means
+an ungrouped chart, which means a chart that loses its config and stops being
+re-editable. A real one, on the real host, not the fake.
+
+It is exactly the sequence the fault-injected test predicted, which is worth
+saying plainly: the test set `faults.unmatchedIdReads = 2` and asserted the
+second ask recovers what the first cannot, and reverting the constant made it
+fail with `expected [ 1 ] to include 2`. The host has now produced the same shape
+unprompted.
+
+### What this does and does not change
+
+It does NOT rehabilitate the eight clean rounds. The population still dried up
+before the change shipped; those rounds are still not evidence for it, and the
+report still says so. Nothing about today's finding makes yesterday's
+reasoning better than it was.
+
+It DOES close the question the morning entry left open. "Either the first
+always succeeds now, or the change is inert" — the answer is neither. The
+first ask still fails sometimes, and when it does the second one catches it.
+
+**n = 1.** One rescue is not a rate and this journal has been wrong about
+exactly that distinction more than once today. What it is: the difference
+between a change that works and a change nothing has ever exercised.
+
+### And the report now counts the outcome, not the event
+
+    of the 1 second ask(s): 1 rescued the chart, 0 still lost it.
+
+Counting that an ask FIRED says nothing about whether it HELPED — the same
+gap between "it happened" and "it worked" that this section has been about all
+day. The reader pairs each second ask with the next decisive line after it: a
+group means rescued, a survivor line means lost, and anything else is left
+uncounted rather than assumed in either direction.
+
+
+## Round 197 died on a busy machine, and six retries watched it happen
+
+    NOT READY — a round now would not prove anything:
+      - playwright-cli could not be run — nothing below was actually measured.
+        Install it (`npm i -g @playwright/cli`), or set PLAYWRIGHT_CLI_JS …
+        the call that could not be spawned: `eval () => String(window.innerWidth)`
+          — spawnSync …\node.exe ETIMEDOUT
+    [exited with code 1]
+
+The tool was installed. It had driven six rounds that day. **I caused this**: the
+full 124-file vitest suite was running in the same session when the driver
+tried its first spawn, and `spawnSync` timed out waiting for a process slot.
+
+### Two faults in one branch
+
+**The message named a cause it could not know.** "Install it" is the first thing
+it says, on a condition that is only ever "the spawn did not return". The
+comment beneath it already conceded the point — "without them this message
+points at the install every time, and the install is almost never it" — and the
+fix at the time was to APPEND the errno rather than to stop guessing in the
+headline. So the evidence was there, underneath a sentence contradicting it.
+
+**And the stop was unclassifiable, therefore fatal.** The unreachable-CLI branch
+returns before any code is assigned — deliberately, and documented:
+"the sign-in and unreachable-CLI states never get here because they return
+before the codes do". That is right for a missing binary, which no number of
+retries will conjure. It is wrong for `ETIMEDOUT`, where retrying is the entire
+cure. **One label over two conditions that want opposite treatment** — the same
+shape as every other finding today, this time costing a round instead of a
+conclusion.
+
+### The fix
+
+`spawnFailureIsTransient` splits them on the errno. `ETIMEDOUT / EAGAIN / EBUSY /`
+`EMFILE / ENFILE / ENOMEM / SIGTERM / SIGKILL` are "could not start it just now"
+and return the new recoverable code `cli-busy`. `ENOENT` stays fatal. So does
+anything unrecognised, and that default is deliberate: this loop runs
+unattended for hours, so a wrong `transient` spins forever on something no retry
+can fix, while a wrong `fatal` costs one round and prints why. The asymmetry
+picks the default.
+
+The headline now names the condition — "could not be STARTED — the machine was
+busy, not the tool missing" — and only says "install it" when the errno
+actually supports it.
+
+### Both halves are pinned, because either alone does nothing
+
+A classifier that nothing consults is decoration, and a recoverable code with
+no classifier never fires. Reverting the regex fails with `expected false to be`
+`true`; removing `cli-busy` from `RECOVERABLE_STOPS` fails with "cli-busy is not
+recoverable, so --retry still cannot see it".
+
+### The operational lesson, which is mine
+
+**Do not run the gate while a round is starting.** The driver spawns ~8
+subprocesses in its first sweep and the full suite runs 124 files; on this box
+they contend. Rounds and the test suite are both cheap to schedule apart and
+expensive to interleave. The round is a measurement of the HOST, and a
+measurement taken while the measuring machine is saturated is a measurement of
+the machine.
+
