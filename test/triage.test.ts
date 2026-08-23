@@ -2757,6 +2757,88 @@ describe("what it took to start each round", () => {
     expect(undecided.second).toBe(1);
     expect(undecided.secondAskRescued + undecided.secondAskLost, "an undecided ask was counted").toBe(0);
   });
+  it("prices an in-place update WITHIN one chart size, never across two", async () => {
+    // The in-place update path is the round's largest single cost —
+    // `same scale across the deck` is 166s and issues no batches at all — and it
+    // had no clock until 05a27fd. Round 198, the first to carry one, gives
+    // ~1589ms fixed + ~930ms per changed shape for a 24-node chart.
+    //
+    // THE FIXTURE IS BUILT TO MAKE THE CONFOUNDS BITE, and the first version of
+    // it was not. It had the second chart size changing 9 and 2 shapes while the
+    // fit's endpoints were 1 and 18, so pooling the sizes together moved
+    // nothing and the guard could be deleted with the test still green. Same
+    // for the first-chart comparison: there was no same-size, different-changed
+    // pair for a dropped `changed` match to pull in. Both mutations passed.
+    //
+    // So the other size now SHARES an endpoint (changed: 1) with a wildly
+    // different cost, and the run carries a same-size row at a different
+    // changed count. Deleting either guard now fails.
+    // @ts-expect-error — plain .mjs tool, no types.
+    const { poolUpdateCost } = await import("../scripts/triage.mjs");
+    const upd = (changed: number, of: number, ms: number, chart?: string) => ({
+      message: "updated only the shapes that changed",
+      data: chart === undefined ? { changed, of, ms } : { changed, of, ms, chart },
+    });
+
+    // 24-node: 1 -> 2500ms, 18 -> 18000ms. Slope (18000-2500)/17 = 911.8.
+    const u = poolUpdateCost([
+      {
+        trace: {
+          entries: [
+            upd(1, 24, 2500),
+            upd(18, 24, 18000),
+            // SHARES the lo endpoint (changed: 1) at a fraction of the cost, and
+            // THREE OF THEM, which is the part that took a second mutation run to
+            // get right. With one contaminating row the pooled set is
+            // [100, 2500], and this file's median takes the upper middle of an
+            // even-length array — so it returned 2500, exactly what the guarded
+            // version returns, and mutation 1 passed against a fixture that
+            // looked like it should catch it. Three outvote the real sample and
+            // the median actually moves.
+            upd(1, 16, 100),
+            upd(1, 16, 100),
+            upd(1, 16, 100),
+            upd(9, 16, 900),
+          ],
+        },
+      },
+    ]);
+    const fit24 = u.fits.find((f: { of: number }) => f.of === 24);
+    expect(fit24, "no fit for the 24-node chart").toBeTruthy();
+    expect(Math.round(fit24.perShape), "the 16-node chart leaked into the 24-node fit").toBe(912);
+    expect(Math.round(fit24.fixed), "the 16-node chart moved the 24-node intercept").toBe(1588);
+    expect(
+      u.fits.find((f: { of: number }) => f.of === 16),
+      "the 16-node chart lost its own fit",
+    ).toBeTruthy();
+
+    // First chart of a run against the rest, same size AND same changed count.
+    const run = poolUpdateCost([
+      {
+        trace: {
+          entries: [
+            upd(18, 24, 39000, "1/8"),
+            upd(18, 24, 18000, "4/8"),
+            upd(18, 24, 18000, "5/8"),
+            // SAME SIZE, DIFFERENT changed. Dropping the changed match pulls
+            // this into the 18-shape comparison and the ratio stops measuring
+            // position at all.
+            upd(3, 24, 4000, "2/8"),
+          ],
+        },
+      },
+    ]);
+    const cmp = run.firstVsRest;
+    expect(cmp.length, "a comparison was made across mismatched work").toBe(1);
+    expect(cmp[0]).toMatchObject({ of: 24, changed: 18, firstN: 1, restN: 2 });
+    expect(cmp[0].first).toBe(39000);
+    expect(cmp[0].rest, "a different changed count leaked into the rest").toBe(18000);
+
+    // A lone update outside a run is not a "first chart" — it has no rest to be
+    // first of, and counting it would invent a comparison.
+    const solo = poolUpdateCost([{ trace: { entries: [upd(18, 24, 39000), upd(18, 24, 18000)] } }]);
+    expect(solo.firstVsRest, "an update with no run was treated as a first chart").toEqual([]);
+  });
   it("reads the deck inventory the gate has printed all along", async () => {
     // EIGHT OF THE LAST THIRTY ROUNDS ended with a slide holding between 11 and
     // 48 shapes, and every one of them reported 13 of 13 scenarios passed —

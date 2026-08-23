@@ -2867,6 +2867,92 @@ function reportTagRoutes(logs) {
  * belongs to is that line's delta, not this one's.
  */
 /**
+ * What the IN-PLACE UPDATE path costs — the product's largest latency number,
+ * and the one the batch pooler below cannot see.
+ *
+ * `same scale across the deck` is 166s median, 38% of a round, and issues not one
+ * `batch issued` line: eight charts, all through `tryInPlaceUpdate`. The batch
+ * timings therefore price the DRAW path and miss this entirely. `ms` arrived on
+ * the update line in 05a27fd; round 198 is the first to carry it, and its
+ * updates account for 156.5s of that scenario's 166s.
+ *
+ * BUCKETED BY `of`, BECAUSE CHART SIZE IS A CONFOUND. A 16-node chart changing 9
+ * shapes and a 24-node chart changing 18 are different work, and pooling them
+ * gives a per-shape figure describing neither. Every comparison here is made
+ * within one `of`, and the first-chart one within one `changed` as well.
+ */
+export function poolUpdateCost(logs) {
+  const rows = [];
+  for (const log of logs ?? []) {
+    for (const e of log?.trace?.entries ?? []) {
+      if (String(e.message ?? "") !== "updated only the shapes that changed") continue;
+      const d = e.data ?? {};
+      if (typeof d.ms !== "number" || typeof d.changed !== "number" || typeof d.of !== "number") continue;
+      // `chart` is "1/8" style and present only when a run updates several.
+      const inRun = typeof d.chart === "string";
+      rows.push({ ms: d.ms, changed: d.changed, of: d.of, inRun, first: inRun && /^1\//.test(d.chart) });
+    }
+  }
+  const median = (a) => {
+    if (!a.length) return null;
+    const b = [...a].sort((x, y) => x - y);
+    return b[Math.floor(b.length / 2)];
+  };
+  const sizes = [...new Set(rows.map((r) => r.of))].sort((a, b) => a - b);
+  const fits = [];
+  for (const of of sizes) {
+    const here = rows.filter((r) => r.of === of && !r.first);
+    const changes = [...new Set(here.map((r) => r.changed))].sort((a, b) => a - b);
+    if (changes.length < 2) continue;
+    const lo = changes[0];
+    const hi = changes[changes.length - 1];
+    const loMs = median(here.filter((r) => r.changed === lo).map((r) => r.ms));
+    const hiMs = median(here.filter((r) => r.changed === hi).map((r) => r.ms));
+    const perShape = (hiMs - loMs) / (hi - lo);
+    fits.push({ of, lo, hi, perShape, fixed: loMs - perShape * lo, n: here.length });
+  }
+  const firstVsRest = [];
+  for (const of of sizes) {
+    const changedHere = [...new Set(rows.filter((r) => r.of === of).map((r) => r.changed))];
+    for (const changed of changedHere) {
+      const same = (r) => r.of === of && r.changed === changed;
+      const f = rows.filter((r) => same(r) && r.first).map((r) => r.ms);
+      const rest = rows.filter((r) => same(r) && r.inRun && !r.first).map((r) => r.ms);
+      if (!f.length || !rest.length) continue;
+      firstVsRest.push({ of, changed, firstN: f.length, restN: rest.length, first: median(f), rest: median(rest) });
+    }
+  }
+  return { n: rows.length, sizes, fits, firstVsRest };
+}
+
+/** What an in-place update costs, and whether the first one in a run is worse. */
+function reportUpdateCost(logs) {
+  const u = poolUpdateCost(logs);
+  if (!u.n) return;
+  console.log("\n  WHAT AN IN-PLACE UPDATE COSTS — the round's largest single cost");
+  console.log("    " + u.n + " timed update(s). The batch report below does not cover this path at all.");
+  for (const f of u.fits) {
+    const label = "chart of " + f.of + " nodes";
+    const shape = "~" + Math.round(f.fixed) + "ms fixed + ~" + Math.round(f.perShape) + "ms per changed shape";
+    const range = "(" + f.lo + "-" + f.hi + " changed, n=" + f.n + ")";
+    console.log("    " + label.padEnd(22) + shape + "   " + range);
+  }
+  for (const c of u.firstVsRest) {
+    const ratio = c.rest ? (c.first / c.rest).toFixed(1) : null;
+    const at = " at " + c.changed + " of " + c.of + ": ";
+    const both = Math.round(c.first) + "ms vs " + Math.round(c.rest) + "ms";
+    console.log("    first chart of a run vs the rest" + at + both + (ratio ? " (" + ratio + "x)" : ""));
+    // ONE ROUND IS NOT A RATE. Round 198 showed 39355ms against ~18000ms for
+    // identical work — a striking lead and a single observation. This line says
+    // which it is, so a reader does not have to remember.
+    if (c.firstN < 5)
+      console.log(
+        "      n=" + c.firstN + " first-chart sample(s) — a LEAD, not a rate. Needs rounds before it is anything.",
+      );
+  }
+}
+
+/**
  * What a batch of shapes costs, against HOW MUCH THIS RUN HAS ALREADY DRAWN on
  * the same slide.
  *
@@ -4080,6 +4166,7 @@ if (invokedDirectly) {
     reportPartsListOutcome(pooled);
     reportPositionalGuess(pooled);
     reportSettleAsks(pooled);
+    reportUpdateCost(pooled);
     reportDrawCostCurve(pooled);
     reportTagRoutes(pooled);
     reportTagFaults(pooled);
