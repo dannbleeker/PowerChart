@@ -438,6 +438,81 @@ describe("the everyday paths on a host that refuses stale proxies", () => {
    * collection read. `groupAndTagAll` already performs that read for grouping;
    * this is the same answer, used twice.
    */
+  it("keeps the parts list when the ids are already in hand, without asking for them again", async () => {
+    // **`withParts` IS 0 ACROSS 872 CHARTS IN 156 ROUNDS.** CHART_PARTS_TAG has
+    // never once been produced on this host, and the archive says exactly where
+    // it dies: 50 events at "the id read-back threw", `InvalidParam passed to
+    // GetItem(id)`, code 5010, `errorLocation: ShapeCollection.getItem`.
+    //
+    // That is `ungroupedFallback` calling `s.load("id")` on the created proxies.
+    // Office.js has rewritten their object paths to `shapes.getItem(id)` by
+    // then, and this host refuses that call — which the comment above `parts`
+    // has described correctly for months while the code went on making it.
+    //
+    // THE IDS DO NOT NEED RE-READING. The pre-grouping re-read records
+    // `withOwnId`, and it reads 7 OF 7 on the very charts that then fail: the
+    // drawing batch's own sync populated them, and reading a populated property
+    // issues no host call at all. So the fallback now takes what is there and
+    // only asks for what is missing.
+    //
+    // What it costs a user when it fails: PowerPoint on the web ungroups every
+    // chart it cannot group, and a chart with no parts list has its in-place
+    // update delete the anchor and redraw all 24 shapes, leaving the other 23
+    // behind. The chart grows by a whole chart on every edit.
+    const deck = [makeSlide("s1")];
+    installHost(deck);
+    const slideId = await addScratchSlide();
+    expect(slideId, "no freshly-added slide to draw on").toBeTruthy();
+    faults.refuseGroups = 99;
+    // The host that refuses an id load on a proxy older than its batch — the
+    // 5010 above. If the fix works, this fault is never reached, because the
+    // load is never queued.
+    faults.strictIdLoads = true;
+    setTracing(true);
+    const mark = traceMark();
+    try {
+      const cfg = { ...sampleConfig("clustered"), ...DEFAULT_SIZE };
+      await insertSceneIntoSlide(buildChart(cfg), { slideId: slideId!, tagData: JSON.stringify(cfg) });
+      const said = traceLog(mark).entries;
+      const outcome = said.find((e) => e.message === "parts list outcome");
+      expect(outcome, "the parts-list instrument did not run at all").toBeTruthy();
+      // WHAT THE FAKE CAN AND CANNOT SHOW, said out loud rather than engineered
+      // around. The fast path this fix adds — every sibling already carrying an
+      // id, so the sync is skipped entirely — IS NOT REACHABLE HERE: the fake
+      // does not populate `id` on a created shape during the drawing sync, so
+      // `needLoading` is never empty and the exit taken is "read the ids back".
+      //
+      // The real host does populate them. `the re-read named none of the
+      // chart's shapes` records `withOwnId: 7` of 7 on the very charts that then
+      // fail at the read-back, which is the whole basis for the change. So this
+      // is a FAKE/HOST DIVERGENCE, and the fast path can only be confirmed by a
+      // round. Asserting "the ids were already loaded" here would have meant
+      // teaching the double to hand back what the host hands back — and a double
+      // that fills in what the real thing refuses, or supplies what it supplies,
+      // cannot fail the way the system does.
+      //
+      // What IS pinned: this configuration produces a WHOLE parts list, by
+      // whichever exit. That is the outcome the user gets, and it is 0 of 872 in
+      // the archive today.
+      expect(["the ids were already loaded", "read the ids back"]).toContain(String(outcome!.data?.where));
+      expect(Number(outcome!.data?.gotPartsList), "no parts list was produced").toBeGreaterThan(0);
+      // And it must be a WHOLE list — a tag naming fewer shapes than the chart
+      // drew strands the unnamed ones on the next edit, which is worse than none.
+      const fresh = deck.find((s) => s.id === slideId);
+      const live = fresh?.created.filter((sh) => !sh.deleted) ?? [];
+      const tagged = live.filter((sh) => sh.tagStore.has(CHART_TAG));
+      const parts = tagged[0]?.tagStore.get(CHART_PARTS_TAG);
+      expect(parts, "the chart carries no parts list").toBeTruthy();
+      expect(JSON.parse(parts!), "the parts list is too short to be the rest of the chart").toHaveLength(
+        live.length - 1,
+      );
+    } finally {
+      faults.refuseGroups = 0;
+      faults.strictIdLoads = false;
+      setTracing(false);
+    }
+  });
+
   it("writes an ungrouped chart's parts tag from the re-read when created proxies are refused", async () => {
     const deck = [makeSlide("s1")];
     installHost(deck);

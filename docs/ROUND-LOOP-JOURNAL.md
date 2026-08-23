@@ -4988,3 +4988,71 @@ A lost add-in looks different: the slide list READS and `button "Insert chart"`
 is absent. A stale pane reads a build stamp. **Only a dead document reads
 nothing at all from the first attempt**, and the one command that settles it is
 `-s=ms --raw snapshot` from `.pw-session`.
+
+## CORRECTION — `shape.id` is not volatile on this host, and the chain has a different root
+
+Several entries above, and the commit messages for #696 and #701, rest on a
+premise that is false: *"the product identifies shapes by `shape.id`, and this
+host reassigns them."* It does not.
+
+**The proof is in the round those entries used as their own evidence.** Round 179
+recorded the positional guess taking `chose [27..33]` while the chart had drawn
+`mine [35..41]`, and that was read as the ids having moved. The same round's
+end-of-round deck inventory, slide `260#1666125241`:
+
+    {"id":"35","name":"title"}          {"id":"38","name":"seg-0-0"}
+    {"id":"36","name":"category-0"}     {"id":"39","name":"seg-0-1"}
+    {"id":"37","name":"category-1"}     {"id":"40","name":"baseline"}
+                                        {"id":"41","name":"series-label-0"}
+
+Seven ids, their real names, still there when the round finished. **They never
+moved.** Two more, independently:
+
+- 228 in-place updates across 30 rounds resolved **4,992 tag-stored shape ids**
+  written in an earlier context.
+- `addGroup` keyed on id grouped **2,108 charts** against 36 throws.
+
+### The actual root, which the host has been answering every round
+
+The re-read returned `[27..33]` because **the LISTING is stale** — it held the
+previous chart's shapes, not ours. Matching failed for want of the right listing,
+not the right key. The probe sheet says so and has since the beginning:
+
+    shapes-items-count-honest    unreadable 140   short-0 16     (156 rounds)
+    tag-through-refetched-shape  no-id      149 of 149
+
+**The shape collection has never once honestly reported freshly added shapes.**
+That answer has been on every sheet, read as a fact about a probe rather than as
+the cause of the product's only live defect.
+
+### What it costs the creationId plan
+
+Nothing survives of it as a fix for this chain. Matching on creationId against
+the same stale listing matches zero, exactly as id does. And there is no
+`getItemByCreationId`: `getItem`, `getItemOrNullObject` and `addGroup` all take
+ids, so creationId can LABEL a shape and never ADDRESS one.
+
+The three probes are kept, for two reasons that are not this one. The BACKLOG
+item they were half-aimed at — "Retire the positional group-member mapping" — is
+about node-to-shape ordering INSIDE a group and is untouched by any of the above.
+And the contract is worth having on the sheet before the next person reaches for
+it on the strength of the name, which is exactly what happened here.
+
+### How the error was made, because the shape of it matters
+
+The evidence was read once and not cross-checked against the deck. `mine` and
+`chose` disagreeing is equally consistent with "our ids changed" and "the listing
+is of something else", and the second was never tested — although the round file
+carried the inventory that settles it, in the same JSON, two fields away.
+
+It is the house defect one more time: **a single reading promoted to a cause.**
+The rule this archive already carries — cross-check every number against a second
+source in the same file — was written down twice tonight and not applied to the
+claim everything else was being built on.
+
+### What the next work is
+
+Upstream of the match, not at it: **make the pre-grouping re-read return the
+shapes just drawn, or stop depending on a re-read at all.** The guard shipped in
+#696 stays — it converts a certain double loss into a loose-but-tagged chart —
+but it is a seatbelt, not the fix.
