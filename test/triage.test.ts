@@ -2167,6 +2167,55 @@ describe("grouping, which no scenario verdict reports", () => {
     expect(out?.now.deck, "the deck is printed as corroboration, not derived from").toEqual([0, 4, 2, 17, 24, 24, 24]);
   });
 
+  it("counts a group that THREW, which fell out of both the numerator and the denominator", () => {
+    // GROUPING HAS THREE OUTCOMES AND THIS COUNTED TWO. It succeeds
+    // (`grouped the chart's shapes`), declines by rule (`not grouping: …`), or
+    // THROWS — `grouping the chart's shapes` carrying an `error`, usually
+    // `InvalidArgument`. Only the first two were counted, so round 174 printed
+    // `8 of 8 attempt(s) grouped, 0 refused` and read as perfect. **The missing
+    // attempt was the defect**, and the count written to expose it hid it.
+    //
+    // 183 throws across 65 of 150 rounds, and they match the loose-shape slides
+    // exactly: rounds 159, 161, 167 and 174 each threw once and ended with a
+    // slide holding 17, 17, 11 and 11 shapes; the twelve rounds between them
+    // threw none and ended at 5. A chart whose group throws is left as its
+    // shapes — which is what `poolFullestSlide` sees from the other side, and
+    // that instrument found this one round after it landed.
+    const thrown = (n: number) =>
+      Array.from({ length: n }, () => ({
+        message: "grouping the chart's shapes",
+        data: { error: "InvalidArgument | at=grouping the chart's shapes" },
+      }));
+    const withThrow = poolGroupingOutcome([
+      { build: "a", trace: { entries: [...thrown(1)] }, deck: { inventory: [{ count: 11 }] } },
+      { build: "a", trace: { entries: [...thrown(1)] }, deck: { inventory: [{ count: 11 }] } },
+      { build: "a", trace: { entries: [...thrown(1)] }, deck: { inventory: [{ count: 11 }] } },
+      {
+        build: "a",
+        trace: {
+          entries: [{ message: "grouped the chart's shapes", data: { charts: 8 } }, ...thrown(1)],
+        },
+        deck: { inventory: [{ count: 11 }] },
+      },
+    ]);
+    expect(withThrow?.now.grouped).toBe(8);
+    expect(withThrow?.attempts, "the throw was dropped from the denominator, so 8 of 8 read as perfect").toBe(9);
+    expect(withThrow?.now.threw).toBe(1);
+
+    // A ROUND THAT ONLY THREW IS STILL A ROUND. The old guard skipped any round
+    // with no successes and no refusals, so a round where every group threw
+    // vanished from the pool entirely.
+    const onlyThrew = poolGroupingOutcome([
+      { build: "a", trace: { entries: thrown(2) }, deck: { inventory: [{ count: 20 }] } },
+      { build: "a", trace: { entries: thrown(2) }, deck: { inventory: [{ count: 20 }] } },
+      { build: "a", trace: { entries: thrown(2) }, deck: { inventory: [{ count: 20 }] } },
+      { build: "a", trace: { entries: thrown(3) }, deck: { inventory: [{ count: 20 }] } },
+    ]);
+    expect(onlyThrew, "a round where every group threw dropped out of the pool").not.toBeNull();
+    expect(onlyThrew?.attempts).toBe(3);
+    expect(onlyThrew?.now.grouped).toBe(0);
+  });
+
   it("carries the DENOMINATOR, because the population halved and nothing said so", () => {
     // `grouped` per round ran 15-20 for the whole archive and halved to 9 at
     // round 153. The cause is benign and complete — the in-place update started

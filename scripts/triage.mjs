@@ -938,14 +938,33 @@ export function poolGroupingOutcome(logs) {
     if (!Array.isArray(entries)) continue;
     let grouped = 0;
     let refused = 0;
+    // THE THIRD OUTCOME, and it was dropped from the numerator AND the
+    // denominator. Grouping succeeds (`grouped the chart's shapes`), declines by
+    // rule (`not grouping: …`), or THROWS — `grouping the chart's shapes`
+    // carrying an `error`, usually `InvalidArgument`. Only the first two were
+    // counted, so a round where a group threw reported `8 of 8 attempt(s)
+    // grouped, 0 refused` and read as perfect. **The missing attempt IS the
+    // defect**, and the count that was supposed to expose it hid it.
+    //
+    // 183 thrown groups across 65 of 150 rounds. They match the loose-shape
+    // slides exactly: rounds 159, 161, 167 and 174 each threw once and ended
+    // with a slide holding 17, 17, 11 and 11 shapes; the twelve rounds between
+    // them threw none and ended at 5. A chart whose group throws is left as its
+    // shapes, which is what `poolFullestSlide` sees from the other side.
+    //
+    // Found one round after `poolFullestSlide` landed, by that instrument, in
+    // this same function — which had been counting two of three outcomes since
+    // it was written.
+    let threw = 0;
     for (const e of entries) {
       const m = String(e.message ?? "");
       if (m === "grouped the chart's shapes") grouped += Number(e.data?.charts) || 0;
       else if (/^not grouping/.test(m)) refused += 1;
+      else if (m === "grouping the chart's shapes" && e.data?.error) threw += 1;
     }
-    if (!grouped && !refused) continue;
+    if (!grouped && !refused && !threw) continue;
     const deck = (log?.deck?.inventory ?? []).map((sl) => sl.count ?? sl.shapes?.length ?? 0);
-    per.push({ build: String(log.build ?? "").split(" ")[0], grouped, refused, deck });
+    per.push({ build: String(log.build ?? "").split(" ")[0], grouped, refused, threw, deck });
   }
   if (!per.length) return null;
   const now = per[per.length - 1];
@@ -979,8 +998,8 @@ export function poolGroupingOutcome(logs) {
   // This is the `same scale across the deck` trap again — "6 of 6" and "8 of 8"
   // are both a pass — and this file argues it at length one screen up while
   // reporting a bare count here.
-  const attempts = now.grouped + now.refused;
-  const recent = per.slice(-RECENT_IN_A_ROW).map((p) => p.grouped + p.refused);
+  const attempts = now.grouped + now.refused + (now.threw ?? 0);
+  const recent = per.slice(-RECENT_IN_A_ROW).map((p) => p.grouped + p.refused + (p.threw ?? 0));
   return { now, refusedMedian, rounds: priors.length, attempts, recent };
 }
 

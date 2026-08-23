@@ -401,6 +401,16 @@ if (isMain(import.meta.url, process.argv[1])) {
           ? `${now.refused} refused (no baseline — ${priorRounds} prior round(s) is too few to say what is usual)`
           : `${now.refused} refused (usually ${refusedMedian} over ${priorRounds} prior round(s))`),
     );
+    // THE THROW, NAMED. Grouping has three outcomes and this line counted two,
+    // so a round where a group threw printed `8 of 8 grouped, 0 refused` and
+    // read as perfect — the missing attempt WAS the defect. 183 throws across
+    // 65 of 150 rounds, and they match the loose-shape slides exactly: 159,
+    // 161, 167 and 174 threw once each and ended holding 17, 17, 11 and 11
+    // shapes, while the twelve rounds between them threw none and ended at 5.
+    if (now.threw)
+      console.log(
+        `    ${now.threw} group(s) THREW — a chart whose group throws is left as its shapes; see the fullest-slide line`,
+      );
     // THE POPULATION, BESIDE THE COUNT. Attempts per round ran 15-20 for the
     // whole archive and halved to 9 at round 153 — benign (the in-place update
     // started working, and a chart that is not redrawn is never regrouped) and
