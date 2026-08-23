@@ -20,3 +20,8 @@ CHANGELOG.md
 # Machine-written round evidence — reformatting a 250KB trace is churn, and
 # every archived round failed the gate until this line existed.
 rounds/*.json
+# A crashed run is the same artifact by another name: the driver writes it when a
+# round dies part-way, and it lands in the repo the moment anyone commits with
+# `git add -A`. Missing here cost a red CI on 2026-08-23 — round 203's browser
+# died, the dump was archived, and `prettier --check .` refused it.
+crashes/*.json

@@ -6397,3 +6397,66 @@ sites to a friction baseline that a live investigation is reading. The five
 ALREADY-LABELLED sites converted earlier are unaffected by that objection —
 they went through `step()` before and after, so no counting site was added.
 
+
+## A push reported green, and CI failed on the thing the report was about
+
+    [warn] crashes/2026-08-23T16-01-49-crashed-run.json
+    [warn] Code style issues found in the above file.
+    ##[error]Process completed with exit code 1.
+
+The push was announced as "gate green: typecheck 0, lint 0, format clean, 3310
+tests". The local check behind "format clean" was:
+
+    npx prettier --check src test scripts docs
+
+CI runs `prettier --check .` — the whole repo. Round 203's browser had died,
+the driver archived the crash dump, `git add -A` swept it in, and a check scoped
+to four directories never looked at it.
+
+**The claim was "format clean". The check was "format clean in four
+directories."** Eighth time today a claim and its evidence had different
+scopes — and this one had crept into the thing that verifies everything else,
+and had been repeated in every gate report for hours.
+
+### The repo already knew this class
+
+`rounds/*.json` is in `.prettierignore` with: "Machine-written round evidence —
+reformatting a 250KB trace is churn, and every archived round failed the gate
+until this line existed." A crashed run is the same artifact by another name,
+written by the same driver into a sibling directory, and nobody had added it.
+It is there now, with what its absence cost.
+
+### The bigger gap underneath
+
+Checking what CI's `test` job actually runs turned up **nine steps**, and the
+hand-assembled local gate was running four — and not the same four:
+
+    lint            local: yes
+    format:check    local: NO — a scoped approximation
+    typecheck       local: yes
+    coverage        local: NO — `npm test` does not enforce CI's thresholds
+    vite build      local: NO
+    build:manifest  local: NO
+    skill           local: NO
+    verify-deck     local: NO
+    validate-ooxml  local: NO
+
+Six CI steps never ran locally. The format scope was the symptom that happened
+to fire first.
+
+### `npm run gate`
+
+A gate that runs CI's own npm scripts, by name, in CI's order — not an
+approximation of them. `npm run format:check` and not a scoped prettier call, so
+if CI's scope changes the gate changes with it, because it is the same script.
+
+**And it prints what it does not run.** Coverage thresholds, the build, the
+manifest check, the skill build, deck verification, the e2e. Skipping those is
+a choice about speed; hiding that they were skipped would be a lie about scope,
+which is the thing the gate exists to stop. The list is exported and asserted
+non-empty, so a future version that claims to cover everything fails a test
+reading "a gate that claims to cover everything is the original defect".
+
+Three properties are mutation-proven: dropping `format:check` fails, carrying on
+past a failing step fails, and emptying the not-covered list fails.
+

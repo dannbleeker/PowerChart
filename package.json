@@ -19,6 +19,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "vitest run",
+    "gate": "node scripts/gate.mjs",
     "coverage": "vitest run --coverage",
     "icons": "node scripts/make-icons.mjs",
     "gallery": "node scripts/render-gallery.mjs",
