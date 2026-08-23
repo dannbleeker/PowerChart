@@ -2054,7 +2054,54 @@ export async function startFresh(sh, sleep, recoverFn = recover, profile = PROFI
  * Hosts that serve a sign-in popup. Nothing else is ever closed by the function
  * below, and the list is deliberately short and explicit.
  */
+/** Where the deck lives, and the one page recovery navigates back to. */
+export const DECK_HOME_URL = process.env.PW_DECK_HOME ?? "https://onedrive.live.com/";
+
 const AUTH_POPUP_HOSTS = /login\.live\.com|login\.microsoftonline\.com/;
+
+/**
+ * Is this page a sign-in PROMPT, a sign-in ERROR, or neither?
+ *
+ * THE DISTINCTION THE LOOP DID NOT MAKE, and it cost a six-hour unattended run.
+ *
+ * On 2026-08-23 the sole tab was
+ * `login.microsoft.com/consumers/fido/get`, titled "Sign in to your account".
+ * The URL and the title both said sign-in, so the loop stopped and notified the
+ * owner that he was needed. **He was not.** The page rendered:
+ *
+ *     Sign in
+ *     Sorry, but we're having trouble signing you in.
+ *     AADSTS900561: The endpoint only accepts POST requests. Received a GET request.
+ *     Request Id: ...  Correlation Id: ...  Timestamp: ...
+ *
+ * No field, no button to proceed, nothing to enter. An error page REPORTING that
+ * a sign-in failed, produced by a bad GET — and the profile still held a live
+ * session, which navigating back to OneDrive proved in one command.
+ *
+ * The same page had already caused one false stop eight hours earlier. The test
+ * written after that one was "check the title", and this is the second failure
+ * of that test: a title can say "Sign in" on a page whose only content is a
+ * request id. **Read what is rendered, not what the tab is called.**
+ *
+ * CONSERVATIVE BY CONSTRUCTION. `prompt` is the default for anything on an auth
+ * host that this cannot positively identify as an error, because the cost of
+ * the two mistakes is not symmetric: treating a prompt as an error would have
+ * the loop navigate away from something a person is part-way through, and
+ * treating an error as a prompt only wastes a round. An `AADSTS` code with NO
+ * input on the page is the one shape that cannot be awaiting entry.
+ *
+ * Reading only. Nothing here types, clicks or closes.
+ */
+export function authPageKind(url, snapshot) {
+  if (!AUTH_POPUP_HOSTS.test(String(url ?? "")) && !/login\.microsoft\.com/.test(String(url ?? ""))) return "not-auth";
+  const text = String(snapshot ?? "");
+  // Anything that could accept a credential. A prompt awaiting entry always has
+  // one of these; an error page has none.
+  const takesInput = /textbox|passwordbox|button "Next"|button "Sign in"|button "Use your passkey"/i.test(text);
+  const isError = /AADSTS\d+/.test(text) || /having trouble signing you in/i.test(text);
+  if (isError && !takesInput) return "error";
+  return "prompt";
+}
 
 /**
  * Close a sign-in popup that outlived the flow it belonged to.
@@ -2457,6 +2504,33 @@ export async function recover(sh, sleep, profile = PROFILE_DIR) {
     // sideload is per-document — so a browser death would have reopened OneDrive
     // and then failed to find anything, silently, in exactly the situation this
     // function exists for. `PW_DECK` overrides it for a deck named anything else.
+    // A SIGN-IN ERROR PAGE IS NOT A SIGN-IN PROMPT, and telling them apart is
+    // what this loop got wrong twice in one day.
+    //
+    // On 2026-08-23 the sole tab was a login host titled "Sign in to your
+    // account", and the run stopped and notified the owner. The page was an
+    // AADSTS900561 error with no field on it — a bad GET — and the profile still
+    // held a live session. Navigating back to OneDrive proved it in one command.
+    //
+    // So: classify, then act. An ERROR page is recovered from by navigating to
+    // the deck, which is not meddling with a credential prompt because there is
+    // no prompt. A real PROMPT is left completely alone and the round refuses
+    // with a reason that names it, instead of "is the add-in open?" seven times.
+    {
+      const current = String(sh("tab-list") ?? "")
+        .split("\n")
+        .find((l) => /(current)/.test(l));
+      const url = /((https?:[^)]+))/.exec(String(current ?? ""))?.[1];
+      const kind = url ? authPageKind(url, sh("snapshot")) : "not-auth";
+      if (kind === "error") {
+        console.log("  the tab is on a sign-in ERROR page, not a prompt — navigating back to the deck");
+        sh("goto", DECK_HOME_URL);
+        await sleep(8000);
+      } else if (kind === "prompt") {
+        console.error("  the tab is on a LIVE sign-in prompt — leaving it untouched; this one needs the owner");
+        return;
+      }
+    }
     const deckName = process.env.PW_DECK ?? DECK_NAME;
     // OPENING AND SELECTING ARE TWO JOBS, and conflating them was a regression
     // this function shipped with for one commit. Guarding the whole block on
