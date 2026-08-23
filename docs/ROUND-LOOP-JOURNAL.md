@@ -5426,3 +5426,158 @@ made #684 come out `held` on rounds recorded before the change existed. The
 ledger's claim kinds cannot express this one, so it lives here where a grep
 settles it.
 
+
+## The survivors stopped EIGHT ROUNDS BEFORE the fix aimed at them
+
+    rounds 150-179   12 survivors over 30 rounds   =  0.40 per round
+    rounds 180+       0 survivors over 12 rounds   =  0.00 per round
+
+    167:1  174:1  175:1  177:1  179:1   <- the last one
+    180..191: 0 0 0 0 0 0 0 0 0 0 0 0
+
+#709 raised `REREAD_ATTEMPTS` to 2 to rescue exactly this population, and it
+landed at round **187**. The last survivor was round **179**.
+
+**So the five clean rounds since the change are not evidence for it.** Reading
+them as a win would be the regime error this journal has spent two days
+cataloguing: a number that moved for a reason, credited to a change that came
+afterwards.
+
+### What this means for the change
+
+It may be permanently unexercised. If `the re-read named none of the chart's`
+`shapes` has genuinely stopped firing, the second ask has nothing to rescue and
+will sit there costing nothing and doing nothing — which is a perfectly fine
+state for a guard, and a useless one to keep claiming credit for.
+
+What it is NOT is refuted. The mechanism is proven: with the fault injected,
+reverting the constant leaves the chart ungrouped and the test fails with
+`expected [ 1 ] to include 2`. The second ask works. There is simply nothing
+for it to work on at the moment.
+
+### What actually changed at round 180 is not known
+
+Round 180 was the first on a5e6ab5 — #696, the positional guard. But that
+guard fires AFTER `the re-read named none` is traced, so it cannot suppress the
+line. Candidates left: the host, the deck's state, or coincidence. 12 rounds at
+zero against a 0.40 rate is P(0) of about 1%, so coincidence is unlikely but
+not excluded, and nothing here identifies a cause.
+
+**Recorded as unexplained rather than attributed.** The temptation is to credit
+#696 because it is nearby and it is mine; the trace order says it cannot be the
+reason, and 'a change I made happens to sit near the inflection' is not an
+argument.
+
+### The rule this is the fifth instance of
+
+Before crediting a change, check when the number actually moved. Four times
+today a reading was asserted outside the scope it was measured in; this is the
+same failure across TIME rather than across context — and it would have been
+invisible without laying the per-round series side by side, which took one
+query.
+
+
+### Following it up: #696 exonerated, and the variable nobody measures
+
+The entry above left three candidates for the round-180 inflection and leaned
+on trace ORDER to clear #696. Order is weak evidence, so here is the diff.
+
+```
+985c547..a5e6ab5  =  one commit, one file, and all of it downstream:
+
+  + if (!positionalGuessNamesOurs(mine, chosenIds)) {
+  +   trace("group", "not grouping: the positional guess named no shape of ours", ...)
+  + } else {
+      freshMembers.set(i, chose);
+      wholeMatch.add(i);
+  + }
+```
+
+It decides whether to ACCEPT a guess. The survivor line is traced at
+powerpoint.ts:8989, the guard runs at :9063 — 74 lines later, in the same
+pass. Nothing in the commit can reduce a count that was already emitted.
+**#696 is not the cause.** Not by position: by content.
+
+### The denominator held perfectly, which makes it a real change
+
+    175..184   passes 5   charts [1,1,1,1,1]   every single round
+
+The retried population is not merely similar across the inflection, it is
+IDENTICAL — five passes, one chart each, ten rounds running. So this is not a
+case of the path going quiet and taking its failures with it. The same work
+happens and stopped failing.
+
+### And the variable that could explain it is not recorded at all
+
+    distinct host strings across 167 rounds: 1
+      "PowerPoint · OfficeOnline · 0.0.0.0"
+
+Office Online does not version itself to an add-in. Every round agrees about
+the host because every round is reading the same placeholder — **a constant
+that is constant because nothing measures it, which is indistinguishable on
+the page from a controlled variable.** A host-side change cannot be ruled in
+or out here, and the archive has been quietly presenting that as though the
+host were pinned.
+
+That is now printed under the finding rather than left for a reader to
+assume. It is the same house defect one more time — an unmeasured thing
+reading as a measured one — and it took a chase for it to surface at all.
+
+**The honest state: the number moved for a reason outside our source, and
+this archive cannot name it.** The instrument that would (a real host
+fingerprint off the page, not `Office.context.diagnostics`) needs the driver idle
+to build, so it is the next thing to try between pairs — not mid-round.
+
+
+### The host did not change either, and my own p-value was inflated
+
+Chasing the round-180 inflection into the probe sheet. Splitting all 40
+questions at the inflection and comparing their answer SETS reported seven
+changes — of which four were probes added later (`creationid-*`,
+`shapes-by-index-vs-items`), i.e. not-asked-before, not changed. The three
+that looked real:
+
+    picture-then-shape-read                       unreadable  ->  unreadable|yes
+    how-many-collection-reads-a-context-survives  unreadable-at-1 -> short-at-1|…
+    shape-add-held-slide-proxy                    threw|yes   ->  threw
+
+The first two point the same way — collection reads becoming MORE readable —
+which is exactly the mechanism a survivor is made of. It fit beautifully.
+
+**It is not true.** The series:
+
+    picture-then-shape-read     168..183 unreadable, 184 YES, 185..191 unreadable
+    how-many-collection-reads   168..189 unreadable-at-1, 190 SHORT, 191 unreadable
+
+One sample each, at rounds 184 and 190. Neither is at 180. Nothing changed at
+the inflection; two rare faces turned up afterwards and my comparison could
+not tell them from a regime change.
+
+**A SET COMPARISON SCORES 1-OF-12 THE SAME AS 12-OF-12.** That is the defect in
+the instrument I had just written to check the last one. Comparing which
+answers OCCUR discards how OFTEN, and how often was the entire question. It is
+the same shape as pooling survivors into a total and losing the timing — the
+thing this morning was spent on. Twice in one session, one layer apart.
+
+### And the 1% was not 1%
+
+The earlier entry said 12 rounds at zero against a 0.40 rate is P(0) of about
+1%, which is arithmetically right and rhetorically wrong: **the split point was
+chosen AFTER seeing where the zeros started.** The honest question is not "how
+unlikely is a 12-run at this spot" but "how unlikely is the longest zero-run
+ANYWHERE in a 30-round series", and that is a much weaker claim. Quoting the
+first as though it were the second is how a post-hoc split becomes a finding.
+
+### Where that leaves the inflection
+
+    not our source    #696 is downstream of the trace line, by diff, not by order
+    not the probes    every question settled across 180; the two flips are singletons
+    not measurable    the host reports 0.0.0.0 in all 167 rounds
+    not significant   at least, not at the strength first claimed
+
+**So: unexplained, and weaker evidence than it looked.** The one thing that did
+hold up all the way through is the denominator — five passes, one chart each,
+every round across the boundary — so whatever moved, it did not move by the
+work going away. That is the only load-bearing fact here, and it is enough to
+keep watching without being enough to conclude anything.
+

@@ -2841,9 +2841,61 @@ function reportTagRoutes(logs) {
  * before the `attempt` field cannot be told apart and are counted as
  * `unlabelled` rather than folded in.
  */
+/**
+ * The build that first carried the SECOND SETTLE ASK (#709, `REREAD_ATTEMPTS` 1 -> 2).
+ *
+ * A round records its build, not the pull requests inside it, so this is the
+ * only durable handle on "the era in which the change was live". Recheck it
+ * with `git log --oneline -S "REREAD_ATTEMPTS = 2" -- src/render/powerpoint.ts`
+ * if the constant ever stops matching a round in the archive.
+ */
+export const SECOND_ASK_BUILD = "2912802";
+
 export function poolSettleAsks(logs) {
-  const out = { rounds: 0, first: 0, second: 0, later: 0, unlabelled: 0, survivors: 0, charts: 0 };
-  for (const log of logs ?? []) {
+  const out = {
+    rounds: 0,
+    first: 0,
+    second: 0,
+    later: 0,
+    unlabelled: 0,
+    survivors: 0,
+    charts: 0,
+    // WHEN, not just how many — and TWO SEPARATE CLOCKS, because they are two
+    // separate commits and reading one as the other is how this whole section
+    // got written in the first place.
+    sinceLastSurvivor: null, //  rounds since a failure last survived every ask
+    changeLandedAgo: null, //    rounds since the SECOND ASK shipped (#709)
+    labelledAgo: null, //        rounds since the trace could TELL ASKS APART (#710)
+    survivorsSinceChange: 0,
+    roundsSinceChange: 0,
+  };
+  const all = logs ?? [];
+  // The index of the LAST round that produced a survivor, of the first round on
+  // the build that shipped the SECOND ASK, and of the first round whose asks
+  // carry an `attempt` number.
+  //
+  // THE LAST TWO ARE NOT THE SAME ROUND, and the first draft of this reader
+  // assumed they were:
+  //
+  //     #709  2912802  raised REREAD_ATTEMPTS 1 -> 2      first ran in round 187
+  //     #710  2fd8401  added the `attempt` label to the trace  first ran in round 189
+  //
+  // Two rounds apart. Deriving "when the change landed" from the label reported
+  // the change as two rounds old when it was four, under a field named for the
+  // change — an instrument answering a question it was not measuring, which is
+  // the exact defect this file exists to catch. Verify with:
+  //
+  //     git log --oneline -S "REREAD_ATTEMPTS = 2" -- src/render/powerpoint.ts
+  //
+  // The sha is a constant because nothing in a round's TRACE records which
+  // source change it is running; the round records its BUILD, so the build is
+  // what we match. The archive only moves forward, so the first round on that
+  // build begins the era.
+  let lastSurvivorAt = -1;
+  let labelledAt = -1;
+  let changeLandedAt = -1;
+  for (let i = 0; i < all.length; i++) {
+    const log = all[i];
     let any = false;
     for (const e of log?.trace?.entries ?? []) {
       const m = String(e.message ?? "");
@@ -2852,15 +2904,32 @@ export function poolSettleAsks(logs) {
         out.charts += Number(e.data?.charts) || 0;
         const a = e.data?.attempt;
         if (typeof a !== "number") out.unlabelled++;
-        else if (a <= 1) out.first++;
-        else if (a === 2) out.second++;
-        else out.later++;
+        else {
+          if (labelledAt < 0) labelledAt = i;
+          if (a <= 1) out.first++;
+          else if (a === 2) out.second++;
+          else out.later++;
+        }
       } else if (/re-read named none/.test(m)) {
         any = true;
         out.survivors++;
+        lastSurvivorAt = i;
       }
     }
     if (any) out.rounds++;
+    if (changeLandedAt < 0 && String(log?.build ?? "").startsWith(SECOND_ASK_BUILD)) changeLandedAt = i;
+  }
+  const n = all.length;
+  if (lastSurvivorAt >= 0) out.sinceLastSurvivor = n - 1 - lastSurvivorAt;
+  if (labelledAt >= 0) out.labelledAgo = n - 1 - labelledAt;
+  if (changeLandedAt >= 0) {
+    out.changeLandedAgo = n - 1 - changeLandedAt;
+    out.roundsSinceChange = n - changeLandedAt;
+    // Survivors are counted from the change forward, so "did it help" is asked
+    // of the rounds that could possibly answer it.
+    for (let i = changeLandedAt; i < n; i++)
+      for (const e of all[i]?.trace?.entries ?? [])
+        if (/re-read named none/.test(String(e.message ?? ""))) out.survivorsSinceChange++;
   }
   return out;
 }
@@ -2876,10 +2945,80 @@ function reportSettleAsks(logs) {
   if (a.unlabelled)
     console.log("    " + String(a.unlabelled).padStart(5) + "  unlabelled — rounds before the attempt field");
   console.log("    " + String(a.survivors).padStart(5) + "  failures that survived every ask");
-  if (!a.second && !a.unlabelled)
+
+  // THE CLAIM, which needs every ask labelled to be worth making. An
+  // unlabelled ask could have been a second one, so a slice containing any
+  // cannot say the second never fired.
+  if (!a.second && !a.unlabelled) console.log("    The second ask has NEVER FIRED — it has had nothing to rescue.");
+
+  // THE TIMING, which needs no such thing — and MUST NOT SHARE THE GUARD.
+  //
+  // It did share it for one draft, and so it never printed: the archive holds
+  // 2,144 unlabelled asks from before #710, so `!a.unlabelled` is false and
+  // stays false for as long as those rounds are pooled. A diagnostic written
+  // to catch a misreading, placed behind a condition that is never true, is
+  // just a comment. The backlog of unlabelled rounds is the case that needs
+  // the timing MOST, because the ask counts can say nothing at all there.
+  if (a.sinceLastSurvivor == null) {
+    if (a.survivors) return;
+    console.log("    No round in this slice has ever produced a survivor.");
+    return;
+  }
+  if (a.changeLandedAgo == null) {
+    // No round here ran the build that shipped the second ask, so there is no
+    // era to compare against and none is invented.
     console.log(
-      "    The second ask has NEVER FIRED. Either the first always succeeds now, or the change is inert —\n    and a round with no survivors cannot tell those apart.",
+      "    Last survivor " +
+        a.sinceLastSurvivor +
+        " round(s) ago. No round in this slice ran build " +
+        SECOND_ASK_BUILD +
+        ", so it cannot say when the second ask arrived.",
     );
+    return;
+  }
+  if (a.sinceLastSurvivor > a.changeLandedAgo) {
+    const before = a.sinceLastSurvivor - a.changeLandedAgo;
+    console.log(
+      "    THE POPULATION DRIED UP BEFORE THE CHANGE: last survivor " +
+        a.sinceLastSurvivor +
+        " round(s) ago, the second ask shipped " +
+        a.changeLandedAgo +
+        " round(s) ago — " +
+        before +
+        " clean round(s) came FIRST.",
+    );
+    console.log("    So the quiet rounds since are NOT evidence for it. Something else moved this number.");
+    // AND NAME WHAT WE CANNOT RULE OUT, because "something else" invites the
+    // reader to fill the blank with the nearest recent commit.
+    //
+    // Every round in this archive reports the same host string —
+    // "PowerPoint · OfficeOnline · 0.0.0.0". Office Online does not version
+    // itself to an add-in, so a host update is INVISIBLE HERE: it cannot be
+    // confirmed and it cannot be excluded. A constant that is a constant
+    // because nothing measures it reads exactly like a controlled variable,
+    // and it is not one.
+    const hosts = new Set((logs ?? []).map((l) => String(l?.host ?? "")).filter(Boolean));
+    if (hosts.size === 1)
+      console.log(
+        "    The host is unversioned (" +
+          [...hosts][0] +
+          ") in all " +
+          a.rounds +
+          " round(s), so a host-side change cannot be ruled in OR out from this archive.",
+      );
+    return;
+  }
+  console.log(
+    "    Last survivor " +
+      a.sinceLastSurvivor +
+      " round(s) ago; the second ask shipped " +
+      a.changeLandedAgo +
+      " round(s) ago. " +
+      a.survivorsSinceChange +
+      " survivor(s) in the " +
+      a.roundsSinceChange +
+      " round(s) since.",
+  );
 }
 
 function reportStarvedQuestions(logs) {

@@ -2612,6 +2612,63 @@ describe("what it took to start each round", () => {
     expect(old.unlabelled).toBe(2);
   });
 
+  it("dates the survivors against when the SECOND ASK shipped, not when its label did", async () => {
+    // WHAT THIS COST: five rounds read as a win that were not one.
+    //
+    // The archive said "0 survivors since the change" and that was true and
+    // meaningless — the survivors had stopped EIGHT rounds BEFORE the change:
+    //
+    //     rounds 150-179   12 survivors over 30 rounds  =  0.40 per round
+    //     rounds 180-191    0 survivors over 12 rounds  =  0.00 per round
+    //     #709 (the second ask) first ran in round 187
+    //
+    // Pooling survivors as one TOTAL cannot show that. A total is a number
+    // with the timing divided out, and the timing was the whole finding.
+    //
+    // The first fix derived "when the change landed" from the attempt label —
+    // and the label is a DIFFERENT COMMIT two rounds later (#710), so the era
+    // was two rounds short under a field named for the change. That is the
+    // same defect one layer up, so the two clocks are pinned apart here.
+    // @ts-expect-error — plain .mjs tool, no types.
+    const mod = await import("../scripts/triage.mjs");
+    const { poolSettleAsks, SECOND_ASK_BUILD } = mod;
+    const ask = (attempt?: number) => ({
+      message: "re-reading the slide's shapes again after a settle delay",
+      data: attempt === undefined ? { charts: 1 } : { attempt, charts: 1 },
+    });
+    const survivor = { message: "the re-read named none of the chart's shapes", data: {} };
+    const round = (build: string, entries: unknown[]) => ({ build, trace: { entries } });
+
+    // The real shape: a survivor, then quiet, THEN the change, then the label.
+    const a = poolSettleAsks([
+      round("aaaaaaa", [ask(undefined), survivor]), //  the last survivor
+      round("aaaaaaa", [ask(undefined)]), //            quiet
+      round("bbbbbbb", [ask(undefined)]), //            still quiet, still before
+      round(SECOND_ASK_BUILD, [ask(undefined)]), //     <- the second ask ships
+      round(SECOND_ASK_BUILD, [ask(undefined)]),
+      round("ccccccc", [ask(1)]), //                    <- only now can we tell asks apart
+    ]);
+    expect(a.sinceLastSurvivor, "the survivor clock").toBe(5);
+    expect(a.changeLandedAgo, "dated from the LABEL instead of the build").toBe(2);
+    expect(a.labelledAgo, "the label clock").toBe(0);
+    // The two clocks must not be the same number, or nothing above is proven.
+    expect(a.changeLandedAgo).not.toBe(a.labelledAgo);
+    // 5 > 2: the population died before the change could have touched it.
+    expect(a.sinceLastSurvivor).toBeGreaterThan(a.changeLandedAgo as number);
+    expect(a.survivorsSinceChange, "a survivor after the change went uncounted").toBe(0);
+    expect(a.roundsSinceChange).toBe(3);
+
+    // A survivor AFTER the change is counted, so a real failure still shows.
+    const b = poolSettleAsks([round("aaaaaaa", [ask(undefined)]), round(SECOND_ASK_BUILD, [ask(1), survivor])]);
+    expect(b.survivorsSinceChange).toBe(1);
+    expect(b.sinceLastSurvivor).toBe(0);
+
+    // A slice with no round on that build INVENTS NO ERA. Reporting 0 here
+    // would read as "the change landed just now" for every old archive.
+    const c = poolSettleAsks([round("aaaaaaa", [ask(undefined), survivor])]);
+    expect(c.changeLandedAgo, "an era was invented for rounds that never ran the build").toBeNull();
+    expect(c.sinceLastSurvivor).toBe(0);
+  });
   it("reads the deck inventory the gate has printed all along", async () => {
     // EIGHT OF THE LAST THIRTY ROUNDS ended with a slide holding between 11 and
     // 48 shapes, and every one of them reported 13 of 13 scenarios passed —
