@@ -5403,13 +5403,43 @@ export function _setReReadRetryDelayForTest(ms: number): void {
 /**
  * How many EXTRA attempts the pre-grouping re-read gets. One.
  *
- * Deliberately not tunable and deliberately not more. A second ask tests the
- * tracker's claim — that the collection fills in shortly after the slide is
- * materialised — and a third would only be waiting on a host that has already
- * answered the same way twice, at a second and a half a go, on the path a
- * deck-wide update runs for every chart.
+ * RAISED FROM 1 TO 2 ON 2026-08-23, and the argument it replaces was wrong on
+ * both halves.
+ *
+ * It read: "a third would only be waiting on a host that has already answered
+ * the same way twice, at a second and a half a go, on the path a deck-wide
+ * update runs for every chart."
+ *
+ * THE HOST DOES NOT ANSWER THE SAME WAY TWICE. Pooled over 161 archived rounds:
+ *
+ *     settle retries fired                 1057
+ *     failures that SURVIVED the retry       97
+ *     rescue rate                          90.8%
+ *
+ * The first ask fails on roughly half the charts this loop sees, and the pause
+ * plus a fresh slide handle fixes nine in ten of them. A host that changes its
+ * answer 91% of the time is the opposite of one that has settled.
+ *
+ * AND THE PAUSE IS NOT PER CHART. Look at the loop: the `await` sits under
+ * `if (attempt > 0)`, once per PASS, covering every chart still pending — and
+ * `pending` shrinks to `retry` each time round. A further attempt therefore
+ * costs one pause only while charts remain, which across the archive is 97
+ * events in 161 rounds — **about one second per round**, not a second and a half
+ * per chart.
+ *
+ * What it buys is the population that currently ends as loose rectangles: those
+ * 97 are the charts whose re-read named nothing, which then take the positional
+ * guess, throw `addGroup`, and lose both the group and the config tag.
+ *
+ * STAKED IN THE JOURNAL, NOT THE LEDGER, and deliberately. The claim is that a
+ * RATE falls; `trace-line-present` can only assert a line is absent, and staking
+ * an absolute where the data supports a rate is what made #684 read `held` on
+ * evidence recorded before the change existed. Revert if `re-read named none` does not fall, if a
+ * round gets materially slower, or if any counter moves the wrong way. Three
+ * shipped-broken fixes in this repo came from changing this path on a theory,
+ * so this one names its refutation in advance.
  */
-const REREAD_ATTEMPTS = 1;
+const REREAD_ATTEMPTS = 2;
 
 /**
  * Fetch the slot tag value from a slide by position, in a settled sync. Absent

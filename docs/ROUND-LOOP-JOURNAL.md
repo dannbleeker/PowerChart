@@ -5363,3 +5363,66 @@ pane, and the loop restarts at 185.
 If the add-in is gone from the ribbon after signing in, that is the agent's to
 fix — `sideloadAddIn` uploads a manifest and never asks for a password.
 
+
+## The settle retry is load-bearing, and a second ask costs a second a round
+
+Pooled over 161 archived rounds:
+
+    settle retries fired                 1057
+    failures that SURVIVED the retry       97
+    rescue rate                          90.8%
+
+**The first read of the shape collection fails on roughly half the charts this
+loop sees** — 1,057 retry passes against 2,135 successful groups — and a pause
+plus a fresh slide handle fixes nine in ten of them. The 4.3% quoted everywhere
+above is what is LEFT after the retry, not the failure rate of the read.
+
+### The constant was set on an argument the code contradicts
+
+`REREAD_ATTEMPTS` was 1, with this reasoning:
+
+> a third would only be waiting on a host that has already answered the same
+> way twice, at a second and a half a go, on the path a deck-wide update runs
+> for every chart
+
+**Both halves are wrong.**
+
+The host does NOT answer the same way twice — it changes its answer 91% of the
+time, which is the entire reason the first retry exists and works.
+
+And the pause is NOT per chart. The `await` sits under `if (attempt > 0)`, once
+per PASS, covering every chart still pending, and `pending` shrinks to `retry`
+each time round. A further attempt costs one pause only while charts remain —
+97 events across 161 rounds, **about one second per round**.
+
+### What it targets
+
+Those 97 are exactly the charts whose re-read named nothing. They then take the
+positional guess, throw addGroup, and lose both the group and the config tag —
+the one live user-visible defect left in this product.
+
+### The criterion, in advance
+
+**HELD** means `the re-read named none of the chart's shapes` falls against its
+own recent rate, judged as a RATE across every eligible round. The event fires
+about 0.6 times a round, so a single clean round proves nothing — that is the
+n=1 mistake that made #684 read `held` on evidence predating the change.
+
+**FAILED** means the survivors are not slow but structurally wrong — a listing
+one grouping-event stale, which no pause can cure — and that is the more
+valuable outcome: it closes the last cheap idea and points the next work at
+re-fetching rather than waiting. Two leads have already closed that way today.
+
+**REVERT** if the failure rate does not fall, if a round gets materially slower,
+if any scenario fails, or if any counter moves the wrong way. Three
+shipped-broken fixes in this repo came from changing this path on a theory, so
+this one names its refutation before it runs.
+
+### Not staked in the ledger, deliberately
+
+The claim is that a RATE falls. `trace-line-present` can only assert a line is
+ABSENT, and staking an absolute where the data supports a rate is exactly what
+made #684 come out `held` on rounds recorded before the change existed. The
+ledger's claim kinds cannot express this one, so it lives here where a grep
+settles it.
+
