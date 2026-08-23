@@ -2010,6 +2010,12 @@ describe("the settle pass tags the chart it is holding", () => {
     const written = slide.created
       .map((sh: { tagStore: Map<string, string> }) => sh.tagStore.get(CHART_TAG))
       .filter((v: string | undefined) => v === '{"i":0}' || v === '{"i":1}');
+    // THE POSITIVE FIRST, because the negative below passes on nothing.
+    // `[].not.toContain(x)` is true, so with only the second assertion this test
+    // could not tell "wrote the right config" from "wrote no config at all":
+    // make `settleAndTagChart` return early and it stayed green. Claim a
+    // positive, not the absence of a failure.
+    expect(written, "the settle pass wrote no config at all, and the guard below cannot see that").toContain('{"i":1}');
     // The surviving chart is chart 1. The old code wrote chart 0's config onto
     // it and then reported it re-editable, so opening it would have loaded the
     // DELETED chart's data and the next Update would have written that in.
