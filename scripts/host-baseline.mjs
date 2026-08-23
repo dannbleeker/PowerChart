@@ -346,9 +346,16 @@ export const UNSTABLE_ANSWERS = {
  */
 export const PENDING_QUESTIONS = {
   "shapes-by-index-vs-items":
-    "Added 2026-08-23, and it is the one question upstream of every live defect. Everything this product loses " +
-    "comes from a single fact: the shape collection will not honestly report freshly added shapes — " +
-    "`shapes-items-count-honest` is `unreadable` 142 and `short-0` 16 across 158 rounds. From that follow the " +
+    "Added 2026-08-23. CORRECTED THE SAME DAY, and the correction is the useful part. It was written claiming " +
+    "'the shape collection will not honestly report freshly added shapes', citing `shapes-items-count-honest` at " +
+    "`unreadable` 142 / `short-0` 16 of 158. **That is the PROBE's answer, measured on a SCRATCH slide, and " +
+    "production disagrees with it 2,135 times**: charts grouped by id-match 2135, by created 49, re-read named NONE " +
+    "97 — a 4.3% failure share. The scratch slide is strictly worse at collection reads than a real one, which this " +
+    "repo already documents, so a probe answer about collection reads cannot be quoted as a production fact. " +
+    "THE REAL QUESTION IS NARROWER AND BETTER: the read usually works and fails about 1 chart in 23, roughly one " +
+    "round in four, and when it fails everything downstream fails with it. So this asks whether an INDEX walk " +
+    "survives the 4% where `items` does not — not whether it can replace a read that never works. From the " +
+    "failures follow the " +
     "re-read that matches nothing, the positional guess at a stale listing, the addGroup throw on another chart's " +
     "shapes, and the parts list that has never once been written (0 across 872 charts). Every workaround tried " +
     "DOWNSTREAM has cost more than it bought: the tag-anchor move (reverted after five rounds), loading ids earlier " +

@@ -2444,13 +2444,30 @@ const PROBES: Probe[] = [
     /**
      * THE ONE QUESTION UPSTREAM OF EVERY LIVE DEFECT.
      *
-     * Everything this product loses comes from a single fact: **the shape
-     * collection will not honestly report freshly added shapes.**
-     * `shapes-items-count-honest` answers `unreadable` 142 times and `short-0`
-     * 16 times across 158 rounds. From that one failure follow the re-read that
-     * matches nothing, the positional guess at a stale listing, the `addGroup`
-     * throw on another chart's shapes, and the parts list that has never once
-     * been written (0 across 872 charts).
+     * **CORRECTED BEFORE IT WAS EVER RUN.** This said "the shape collection will
+     * not honestly report freshly added shapes", citing this sheet's own
+     * `shapes-items-count-honest` at `unreadable` 142 / `short-0` 16 of 158.
+     * That is a SCRATCH-SLIDE answer, and production disagrees with it 2,135
+     * times:
+     *
+     *     charts grouped by id-match   2135
+     *     charts grouped by `created`    49
+     *     re-read named NONE             97   -> 4.3% of charts
+     *
+     * The scratch slide is strictly worse at collection reads than a real one —
+     * this file says so about three other questions — so a probe answer about
+     * collection reads is not a production fact. Quoting one as if it were is
+     * how "never works" got written about a call that works 95.7% of the time.
+     *
+     * THE REAL QUESTION IS NARROWER AND BETTER. The read usually works and
+     * fails about one chart in twenty-three, roughly one round in four; when it
+     * fails, everything downstream fails with it — the re-read that matches
+     * nothing, the positional guess at a stale listing, the `addGroup` throw on
+     * another chart's shapes, and the parts list that has never once been
+     * written (0 across 872 charts).
+     *
+     * So this asks whether an INDEX walk survives the 4% where `items` does
+     * not. Not whether it can replace a read that never works.
      *
      * Every workaround tried DOWNSTREAM has cost more than it bought: the
      * tag-anchor move (reverted after five rounds), loading ids earlier
@@ -2549,8 +2566,11 @@ const PROBES: Probe[] = [
      * previous chart's shapes, because the collection read is stale. The host
      * has said so in every round — `shapes-items-count-honest` answers
      * `unreadable` 140 times and `short-0` 16 times across 156 rounds, and
-     * `tag-through-refetched-shape` answers `no-id` 149 of 149. **The shape
-     * collection has never once honestly reported freshly added shapes.**
+     * `tag-through-refetched-shape` answers `no-id` 149 of 149 — **on the SCRATCH
+     * SLIDE, which is strictly worse at collection reads than a real one.** In
+     * production the same read matches ids for 2,135 charts and names none for
+     * 97, a 4.3% failure share. "Never works" was a scratch answer quoted as a
+     * production fact; the read usually works and fails about one chart in 23.
      *
      * So creationId cannot fix that chain — matching on it against the same
      * stale listing matches zero, exactly as id does, and there is no
