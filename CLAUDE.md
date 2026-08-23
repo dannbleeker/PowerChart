@@ -643,6 +643,20 @@ deck` already says how many charts in a deck are re-editable, which is the
   which four rounds of work aimed at before anyone joined `onSlide` to the
   grouping outcome. See `docs/BACKLOG.md`.
 
+  **THE 1% IS HISTORY — corrected 2026-08-23.** The settled retry (rounds
+  064/065) fixed it, and those charts group now: over the last 12 rounds it is
+  20 of 20. The all-time figure still reads 66% because it is pooled over 39
+  rounds that predate the fix, which is why `npm run rounds` now prints a recent
+  window and a per-round sequence beside it — **quote those, never the pooled
+  percentage.** The diagnosis above is kept because it is correct and it is what
+  the fix was built from; only the rate is stale.
+
+  Read the sequence rather than either percentage. Over the last eight rounds
+  the fresh-slide population is empty — `[0/0 0/0 …]` — because the in-place
+  update now handles those charts and a chart that is not redrawn never lands on
+  a fresh slide. A percentage over an emptying population is the thing to watch
+  for here.
+
   `scenarioBlame` is the split, and it is evidence rather than judgement: a
   failure is host-degraded only when the run recorded the host refusing
   something INSIDE that scenario (an id it would not resolve, an empty

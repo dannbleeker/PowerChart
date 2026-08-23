@@ -58,6 +58,33 @@ export function cyclePlan({ wide = "Presentation64", tall = "Presentation67" } =
   ];
 }
 
+/**
+ * What to launch each leg with — `--fresh` on every leg but the first.
+ *
+ * THE PAIR DISCIPLINE AND THE FRESH-PANE DISCIPLINE WERE IN DIRECT CONFLICT,
+ * and this is the only sanctioned way to run a pair, so the conflict lived
+ * here. Measured 2026-08-22: pane age separates post-retry 0.4 from 4.6, and
+ * NOTHING IN THE DRIVER FRESHENS THE PANE between rounds — the reload was
+ * removed because it raises a beforeunload prompt over unsaved work and has
+ * cost the sideload twice, after rounds 124 and 132. What actually freshened it
+ * was a MERGE, which makes the pane stale so recovery reloads it.
+ *
+ * A cycle runs its legs back to back with no merge between them, so every leg
+ * after the first inherited a pane hundreds of seconds old. Rounds 159 and 161
+ * started at 696s and 666s and were both the worse half of their pair; the four
+ * fresh-pane rounds beside them refused no group at all.
+ *
+ * `--fresh` closes the BROWSER, which the persistent profile survives, and costs
+ * one extra attempt while recovery reopens the pane from the ribbon. Leg 3 gets
+ * it too: it is a second-in-sequence round with the same aged pane, and only its
+ * deck differs.
+ */
+export function roundArgs(leg, dir, retry) {
+  const args = ["scripts/round.mjs", "--dir", dir, "--retry", retry];
+  if (leg.leg > 1) args.push("--fresh");
+  return args;
+}
+
 /** The driver's account of the round that just ran, or null if it left none. */
 export function readReceipt(path = RECEIPT_PATH, exists = existsSync, read = readFileSync) {
   if (!exists(path)) return null;
@@ -168,7 +195,24 @@ if (isMain(import.meta.url, process.argv[1])) {
     } catch {
       /* nothing to clear is the normal case on the first leg */
     }
-    const r = spawnSync(process.execPath, ["scripts/round.mjs", "--dir", dir, "--retry", retry], {
+    // `--fresh` ON EVERY LEG BUT THE FIRST, which is the whole point of a pair
+    // and was missing from the only sanctioned way to run one.
+    //
+    // Measured 2026-08-22. The pane is what separates post-retry 0.4 from 4.6,
+    // and NOTHING IN THE DRIVER FRESHENS IT between rounds — the reload was
+    // removed because it raises a beforeunload prompt over unsaved work and has
+    // cost the sideload twice. What actually freshened it was a MERGE, which
+    // makes the pane stale so recovery reloads it. So the pair discipline and
+    // the fresh-pane discipline were in direct conflict: a cycle runs its legs
+    // back to back with no merge, and every leg after the first inherited a
+    // pane hundreds of seconds old. Rounds 159 and 161 started at 696s and 666s
+    // and were both the worse half of their pair.
+    //
+    // `--fresh` closes the BROWSER, which the persistent profile survives, and
+    // costs one extra attempt while recovery reopens the pane from the ribbon.
+    // The brief has said "not optional" since that measurement; this is what
+    // makes `npm run cycle` obey it.
+    const r = spawnSync(process.execPath, roundArgs(leg, dir, retry), {
       stdio: "inherit",
       env: { ...process.env, PW_DECK: leg.deck, PW_EXPECT_SIZE: leg.size },
     });

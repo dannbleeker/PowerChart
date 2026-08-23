@@ -131,4 +131,34 @@ describe("a night's cycle", () => {
     ).toBeNull();
     expect(readReceipt("x", () => false)).toBeNull();
   });
+
+  it("runs every leg but the first with --fresh", () => {
+    // THE PAIR DISCIPLINE AND THE FRESH-PANE DISCIPLINE WERE IN DIRECT CONFLICT,
+    // and `npm run cycle` is the only sanctioned way to run a pair, so the
+    // conflict lived here: the brief has said "run the second round with
+    // `--fresh`, not optional" since 2026-08-22, and this script never passed it.
+    //
+    // Pane age separates post-retry 0.4 from 4.6, and nothing in the driver
+    // freshens the pane between rounds — the reload was removed because it
+    // raises a beforeunload prompt over unsaved work and cost the sideload after
+    // rounds 124 and 132. What freshened it was a MERGE, and a cycle runs its
+    // legs back to back with no merge. Rounds 159 and 161 started on panes of
+    // 696s and 666s and were both the worse half of their pair.
+    const { roundArgs } = cycle as unknown as {
+      roundArgs: (leg: { leg: number }, dir: string, retry: string) => string[];
+    };
+    expect(roundArgs({ leg: 1 }, ".pw", "6"), "the FIRST leg follows a merge, so its pane is already fresh").toEqual([
+      "scripts/round.mjs",
+      "--dir",
+      ".pw",
+      "--retry",
+      "6",
+    ]);
+    expect(roundArgs({ leg: 2 }, ".pw", "6")).toContain("--fresh");
+    // LEG 3 TOO. It is a second-in-sequence round with the same aged pane; only
+    // its deck differs, and the 4:3 validation is compared against the 16:9
+    // pair, so letting it run on a stale pane reintroduces the confound the
+    // other two just removed.
+    expect(roundArgs({ leg: 3 }, ".pw", "6"), "the 4:3 leg inherits an aged pane like any other").toContain("--fresh");
+  });
 });
