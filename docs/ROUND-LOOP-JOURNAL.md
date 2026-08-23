@@ -4925,3 +4925,66 @@ rather than Z" — an absolute would read FAILED on every round where the fallba
 simply never ran. Forcing a conditional into an absence-shaped claim kind is
 exactly what produced #684's false `held`. The criterion is written here instead,
 where it can be checked by eye against one grep.
+
+## Round 181 — STOPPED: the tab is on a Microsoft sign-in error
+
+The night ends here, on the credential boundary. **This is the owner's to clear
+and nothing was touched.**
+
+    heading "Sign in"
+    "Sorry, but we're having trouble signing you in."
+    AADSTS900561: The endpoint only accepts POST requests. Received a GET request.
+    Timestamp: 2026-08-23T03:09:02Z
+
+`--fresh` closes the browser and reopens it at `https://onedrive.live.com/`.
+That navigation landed on the sign-in flow and the flow errored, so the tab holds
+an error page instead of a deck. Everything the driver then reported follows from
+that: `deck ? slide(s)` because there is no deck, `the pane is closed` because
+there is no document, and seven attempts because none of it is recoverable by
+reloading.
+
+### The diagnosis took four wrong turns, and three of them were mine
+
+**1. "The widen is too narrow."** REAL, and fixed in #698 — `ensureRibbonRoom`
+asked for 1900px against a `MIN_RIBBON_WIDTH` of 2375, so it could not reach the
+bar it exists to clear. It had been wrong for weeks and the device scale factor
+hid it: a request of 1900 usually ARRIVES as 3800 CSS px, so every round printed
+"widened to 3800px". `--fresh` reopened at 1:1 and 1900 arrived as 1900.
+
+**Not the cause of this failure.** The retry widened to 3088px and failed
+identically. A real defect found while chasing a different one — worth having,
+and it is not the answer.
+
+**2. "The session key is wrong."** WRONG. `list --all` showed the browser under
+workspace `/` and the driver keys by cwd string, which is the trap that cost an
+afternoon earlier in this archive. But running `list` from
+`C:\devtools\PowerChart\.pw-session` shows it fine. The key was never wrong.
+
+**3. "The browser is named `ms`, so session-keyed calls miss it."** WRONG, and
+this one is instructive: `snapshot` from my shell answered *"The browser
+'default' is not open"*, which reads exactly like a driver defect. The driver
+passes `-s=ms` on every call. **My probe was mis-specified and I nearly filed its
+output as a finding about the driver.** The rule this project applies to agents
+applies to hand queries too: an instrument that disagrees with a working system
+is usually the instrument.
+
+**4. The actual answer** took one command — `-s=ms --raw snapshot` — and was
+sitting on the page the whole time.
+
+### What is landed
+
+Rounds 154-180 are archived and every fix is on main at `e47fe6b`. Round 181 has
+no archive because it never ran; that is correct, not a gap.
+
+### What the next session needs to know
+
+The signature of a sign-in wall, so it is not chased as an add-in or a pane
+problem:
+
+    deck ? slide(s)   AND   pane ?   AND   host not asked
+    on EVERY attempt, from the first
+
+A lost add-in looks different: the slide list READS and `button "Insert chart"`
+is absent. A stale pane reads a build stamp. **Only a dead document reads
+nothing at all from the first attempt**, and the one command that settles it is
+`-s=ms --raw snapshot` from `.pw-session`.
