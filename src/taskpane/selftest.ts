@@ -95,6 +95,68 @@ import {
 } from "../render/powerpoint";
 import { trace, traceAbout, traceElapsed } from "../core/trace";
 
+/**
+ * How long to sit still between the deck scan and the first chart of a run.
+ *
+ * AN INSTRUMENT, NOT A FIX, and it is here to settle one question.
+ *
+ * Rounds 204-208 put the first chart of a multi-chart update at 36189-43837ms
+ * against 16273-20967ms for the same size later in the same run — n=11, and the
+ * two distributions DO NOT OVERLAP. Three explanations are already excluded by
+ * the archive: not the slide (18233 against 17033 at 18 of 24, ranges
+ * overlapping), not a cold host (an ordinary update on chart 1's OWN slide 87s
+ * earlier cost 2330ms against a fit predicting 2491), and not our sync count
+ * (four syncs either way, and the fourth is not the expensive one).
+ *
+ * What mining CANNOT exclude is the deck scan, because every run's chart 1 is
+ * preceded by one and no later chart is — 1237ms and 1231ms ahead of it in the
+ * two legs of the 207/208 pair. A variable that never varies cannot be split out
+ * of an archive however it is read. Only sitting still separates it.
+ *
+ * OFF UNLESS ASKED, and read per run rather than cached, so both arms can be run
+ * against one build without a rebuild:
+ *
+ *     localStorage.setItem("powerchart-scan-settle-ms", "3000")
+ *
+ * It only PAYS as a product change if the pause is shorter than the ~20s it
+ * saves. That is not what this measures — this measures whether the pause moves
+ * chart 1 at all. If it does not, the scan is excluded and the search moves on;
+ * if it does, the next question is how little of it is enough.
+ *
+ * TRACED EVERY RUN INCLUDING ZERO. A round that does not say which arm it was in
+ * cannot be pooled with one that does, and this archive is read by splitting
+ * rounds on exactly this kind of field. An untraced default is how an experiment
+ * quietly contaminates its own control.
+ *
+ * Clamped rather than trusted, because a typo that parks the pane for an hour
+ * costs a round: `Number("")` is 0 but `Number("abc")` is NaN, and a NaN
+ * setTimeout fires immediately rather than failing loudly.
+ */
+export const SCAN_SETTLE_KEY = "powerchart-scan-settle-ms";
+export const SCAN_SETTLE_MAX_MS = 60_000;
+
+export function scanSettleMs(read: (key: string) => string | null = readScanSettle): number {
+  let raw: string | null;
+  try {
+    raw = read(SCAN_SETTLE_KEY);
+  } catch {
+    // A pane whose storage throws is not a pane that asked for a pause.
+    return 0;
+  }
+  if (raw === null || raw.trim() === "") return 0;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  return Math.min(Math.round(n), SCAN_SETTLE_MAX_MS);
+}
+
+function readScanSettle(key: string): string | null {
+  try {
+    return typeof localStorage === "undefined" ? null : localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
 /** One scenario's verdict, as it goes into the run log. */
 export interface ScenarioResult {
   name: string;
@@ -515,6 +577,13 @@ const sameScaleAcrossDeck: Scenario = async (prefix) => {
   // not grouped, so its tag falls back to a handle this host refuses. The deltas
   // below put that on the verdict line itself.
   const frictionBeforeRescale = hostFrictionCounts();
+  // THE SCAN/FIRST-CHART CONFOUND — see `scanSettleMs`. Between the deck scan
+  // above and the first update below, which is the only gap where a pause can
+  // tell the two apart. Traced at zero as well, so every archived round says
+  // which arm it ran in.
+  const settleMs = scanSettleMs();
+  trace("selftest", "settling before the first chart of the run", { settleMs, charts: charts.length });
+  if (settleMs > 0) await new Promise((resolve) => setTimeout(resolve, settleMs));
   for (const [n, c] of charts.entries()) {
     const next: ChartConfig = { ...c.cfg, scale: { max } };
     // Which chart of how many, on every line these calls write — the draw

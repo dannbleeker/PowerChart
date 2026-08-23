@@ -6707,3 +6707,51 @@ taking the tag writes batched into the same sync with it — which means isolati
 would have to be a separate SYNC, not a separate guard. Thread 1's proposal was
 right, and now for a reason rather than by analogy.
 
+
+## The blind-gauge detector was itself reporting from the wrong population
+
+Reading round 207 printed this, and I repeated it in a report as a finding:
+
+    emptyReReads has NEVER been non-zero in any scenario in any round — it
+    measures nothing.
+
+**It is non-zero in 72 of 184 archived rounds, across 136 events.**
+
+The sentence is derived from whatever logs `poolScenarioFriction` is handed. Over
+the archive it is nearly true and harmless — `npm run rounds` does not print it
+at all, because pooled over 183 rounds the counter is not dead. Run on ONE round,
+which is how every fresh round is read, **it asserted a fact about 184 rounds
+from n=1.**
+
+The counter is gated behind the settle retry running out. Rounds 207 and 208 each
+took 6 first asks and 1 second ask that rescued its chart, so neither reached the
+counting site. That is a TRUE ZERO — precisely the reading this file's own
+blind-gauge warning exists to separate from a broken gauge, printed as though the
+separation had been done.
+
+Tenth time a correct number has carried a sentence about a population it did not
+describe, and this one was inside the instrument that reports that class. It now
+says what it measured over: below two rounds it reports silence and names both
+readings rather than picking one.
+
+**And the archive already knew.** `emptyReReads` last fired recently enough to be
+live, while `a chart's tag could not even be queued` (round 065) and `settle
+pass: could not repair any config tag` (round 078) are the genuinely dead ones —
+three counters, one dead-looking output, and the difference is only visible by
+reading the code that writes each.
+
+## The pause experiment is built, and off
+
+`scanSettleMs()` in `src/taskpane/selftest.ts`, between the deck scan and the
+first chart of the rescale run — the only gap where a pause separates them.
+`localStorage.setItem("powerchart-scan-settle-ms", "3000")` turns it on; nothing
+else does. **The value is traced every run including zero**, so a round always
+says which arm it ran in; an untraced default is how an experiment contaminates
+its own control.
+
+It does not measure whether a pause is worth shipping — it only measures whether
+sitting still moves chart 1 at all. With the distributions not overlapping at
+n=11, one round in each arm decides it. If chart 1 stays at ~37s the deck scan is
+excluded and the search moves to what else is true of a run's first chart and of
+nothing else in it.
+

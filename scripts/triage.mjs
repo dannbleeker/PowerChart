@@ -1539,6 +1539,35 @@ export function poolOriginTagLosses(logs) {
   return out;
 }
 
+/**
+ * A counter that did not move, said at the scope it was actually measured at.
+ *
+ * THIS LINE USED TO SAY "in any scenario in any round", from whatever logs it
+ * was handed. Run over the archive that is nearly true and harmless. Run on ONE
+ * round — `node scripts/triage.mjs rounds/207-6314a58.json`, which is how a
+ * fresh round is read — it asserted a fact about 184 rounds from n=1.
+ *
+ * It was wrong. `emptyReReads` is non-zero in 72 of 184 archived rounds, 136
+ * events; round 207 simply had none. The counter is gated behind the settle
+ * retry running out (see `hostFriction.emptyReReads`), so a round where every
+ * retry rescued its chart reports a TRUE zero — the thing the blind-gauge
+ * warning elsewhere in this file exists to distinguish, printed here as though
+ * the distinction had been made.
+ *
+ * A single round cannot tell a dead counter from a quiet one, so it no longer
+ * claims to. Below two rounds it reports silence and names the alternative
+ * rather than picking one.
+ */
+export function deadCounterNote(dead, rounds) {
+  const names = dead.join(", ");
+  if (rounds < 2)
+    return `${names} did not move in this round — which a single round cannot tell from a counter that never moves.`;
+  return (
+    `${names} was never non-zero in the ${rounds} round(s) pooled here — either a dead gauge or a fault ` +
+    `that did not occur. Pool more rounds before calling it either.`
+  );
+}
+
 /** What each scenario cost the host — the meter nothing read for 63 rounds. */
 function reportScenarioFriction(logs) {
   const o = poolScenarioFriction(logs);
@@ -1558,8 +1587,7 @@ function reportScenarioFriction(logs) {
   // DERIVED, NOT DECLARED. A counter that has never moved and a counter that
   // never varies are both worthless, and printing them beside real numbers is
   // how a reader comes to trust one of them.
-  if (o.dead.length)
-    console.log(`    ${o.dead.join(", ")} has NEVER been non-zero in any scenario in any round — it measures nothing.`);
+  if (o.dead.length) console.log("    " + deadCounterNote(o.dead, o.rounds));
   for (const c of o.constant)
     console.log(
       `    \`${c.name}\` reports ${c.key}=${c.value} EVERY round — a constant, not a signal (its deliberate abort).`,

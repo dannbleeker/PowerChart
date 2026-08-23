@@ -3044,3 +3044,42 @@ describe("the host-friction counters", () => {
     expect(emitted).toContain("reReadsRepaired");
   });
 });
+
+describe("the pause that breaks the scan/first-chart confound", () => {
+  it("is off unless someone asks for it", async () => {
+    const { scanSettleMs } = await import("../src/taskpane/selftest");
+    // An instrument that is on by default is not a control arm, it is a
+    // silent product change that every later round is measured against.
+    expect(scanSettleMs(() => null)).toBe(0);
+    expect(scanSettleMs(() => "")).toBe(0);
+    expect(scanSettleMs(() => "   ")).toBe(0);
+  });
+
+  it("refuses a value that would park the pane rather than pausing it", async () => {
+    const { scanSettleMs, SCAN_SETTLE_MAX_MS } = await import("../src/taskpane/selftest");
+    // `Number("abc")` is NaN and a NaN setTimeout fires IMMEDIATELY — so an
+    // unparseable value would silently produce the control arm while the round
+    // recorded it as the treated one.
+    expect(scanSettleMs(() => "abc")).toBe(0);
+    expect(scanSettleMs(() => "-5")).toBe(0);
+    expect(scanSettleMs(() => "0")).toBe(0);
+    // A typo of an extra three zeros costs a round, not an hour.
+    expect(scanSettleMs(() => "9999999")).toBe(SCAN_SETTLE_MAX_MS);
+  });
+
+  it("takes a value it can use", async () => {
+    const { scanSettleMs } = await import("../src/taskpane/selftest");
+    expect(scanSettleMs(() => "3000")).toBe(3000);
+    expect(scanSettleMs(() => "2500.6")).toBe(2501);
+  });
+
+  it("treats storage that throws as nobody asking", async () => {
+    const { scanSettleMs } = await import("../src/taskpane/selftest");
+    // A pane with storage disabled must run the round, not fail it.
+    expect(
+      scanSettleMs(() => {
+        throw new Error("SecurityError");
+      }),
+    ).toBe(0);
+  });
+});

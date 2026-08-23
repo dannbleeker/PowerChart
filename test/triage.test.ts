@@ -3087,3 +3087,28 @@ describe("signals a round records that nothing reads", () => {
     expect(unreadSignals({ trace: {} }, "")).toEqual([]);
   });
 });
+
+describe("a counter that did not move, at the scope it was measured", () => {
+  it("will not call a counter dead from a single round", async () => {
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { deadCounterNote } = await import("../scripts/triage.mjs");
+    // THE DEFECT THIS REPLACES: the line said "in any scenario in any round"
+    // from whatever logs it was handed. On one round file - which is how a
+    // fresh round is read - it asserted a fact about 184 rounds from n=1, and
+    // `emptyReReads` is non-zero in 72 of them.
+    const one = deadCounterNote(["emptyReReads"], 1);
+    expect(one).not.toContain("any round");
+    expect(one).not.toContain("measures nothing");
+    expect(one, "a single round cannot tell dead from quiet").toContain("cannot tell");
+  });
+
+  it("names both readings once there are rounds to pool", async () => {
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { deadCounterNote } = await import("../scripts/triage.mjs");
+    const many = deadCounterNote(["emptyReReads"], 183);
+    expect(many, "the scope has to be the pool it was measured over").toContain("183 round(s)");
+    expect(many).toContain("dead gauge");
+    expect(many, "a fault that did not occur is the other reading").toContain("did not occur");
+    expect(many).not.toContain("measures nothing");
+  });
+});
