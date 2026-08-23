@@ -227,7 +227,6 @@ vi.mock("../src/render/powerpoint", () => ({
     emptyReReads: 0,
     shortReReads: 0,
     unmatchedReReads: 0,
-    settledByBinding: 0,
     reReadsRepaired: 0,
   }),
   canInsertPicture: vi.fn(() => host.canPicture),

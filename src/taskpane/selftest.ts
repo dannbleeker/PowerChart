@@ -158,7 +158,6 @@ export interface ScenarioResult {
     emptyReReads: number;
     shortReReads: number;
     unmatchedReReads: number;
-    settledByBinding: number;
     reReadsRepaired: number;
   };
 }

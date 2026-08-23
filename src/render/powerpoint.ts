@@ -755,16 +755,6 @@ const hostFriction = {
    */
   unmatchedReReads: 0,
   /**
-   * Config tags the settle pass rescued through a BINDING.
-   *
-   * The number that says whether the binding route works on the real host. The
-   * settle's other two routes are measured dead here — an id this host will not
-   * give back (`withId: 0`, six rounds) and a collection read that lists shapes
-   * under ids that are not ours (rounds 068/069) — so anything above zero is a
-   * rescue neither of them could have made.
-   */
-  settledByBinding: 0,
-  /**
    * Charts whose re-read was short or empty FIRST and complete after a pause.
    *
    * The number that says whether `REREAD_RETRY_MS` is buying anything on the
@@ -1342,7 +1332,7 @@ export async function insertSceneIntoSlide(
   // drawing context could not write is settled and tagged from a fresh one.
   // See `settleAndTagChart`: on PowerPoint web this is the difference between
   // an inserted chart and a re-editable one.
-  const untagged: { key: string; slideId: string; tagData: string; shapeId?: string; bindingId?: string }[] = [];
+  const untagged: { key: string; slideId: string; tagData: string; shapeId?: string }[] = [];
   const inserted = await PowerPoint.run(async (context) => {
     // Held for the whole draw, and that is a KNOWN, UNFIXED risk when the
     // caller names a freshly-added slide.
@@ -1454,8 +1444,7 @@ export async function insertSceneIntoSlide(
       });
       return null;
     }
-    if (!tagged?.tagged && opts.tagData)
-      untagged.push({ key: t.id, slideId, tagData: opts.tagData, shapeId: t.id, bindingId: tagged?.bindingId });
+    if (!tagged?.tagged && opts.tagData) untagged.push({ key: t.id, slideId, tagData: opts.tagData, shapeId: t.id });
     return {
       slideId,
       shapeId: t.id,
@@ -2123,7 +2112,7 @@ export async function updateChartsInSlides(
   // context could not write, settled and tagged from a fresh one afterwards.
   // This is the path `same scale across the deck` drives, and the one that
   // reported "3 of 8 charts carry the shared scale" on a real host.
-  const untagged: { key: string; slideId: string; tagData: string; shapeId?: string; bindingId?: string }[] = [];
+  const untagged: { key: string; slideId: string; tagData: string; shapeId?: string }[] = [];
   /**
    * Charts that reached the slide and came back with NO tagged target.
    *
@@ -3919,33 +3908,33 @@ function bindingShape(context: PowerPoint.RequestContext, bindingId: string): Po
 }
 
 /**
- * Resolve a chart through its binding and write the config tag.
+ * ~~settleByBinding~~ — REMOVED. It rescued 0 config tags in 180 rounds.
  *
- * Tried BEFORE the by-id route in `settleAndTagChart`, because the id route is
- * the one measured to be unreachable here (`withId: 0`, six rounds).
+ * `docs/BACKLOG.md` asked for this decision in as many words: "the
+ * settle-by-binding route is dead weight riding along with a one-line side
+ * effect. Worth deciding deliberately rather than leaving both." The archive
+ * decides it.
+ *
+ *     succeeded                                    0   in 180 rounds
+ *     refused (`the binding could not name the chart`)  16   all in rounds 077-078
+ *     config tags written, by route                group 225, created 25, binding 0
+ *
+ * The route census is an independent second source: 250 tags written across the
+ * archive and not one of them came through a binding.
+ *
+ * WHAT IS DELIBERATELY KEPT: `bindings.add` itself. The backlog established that
+ * its value was never the settle handle but an upstream side effect — binding a
+ * shape in the DRAWING BATCH stabilises its identity, so the pre-grouping
+ * re-read stops listing shapes under ids we cannot match, and `cfg5010` went
+ * from 8 per round to 0. Removing the write would give that back.
+ *
+ * That is also why the obvious follow-up — isolating `bindings.add` in its own
+ * sync so a refused binding cannot cost the chart's config tag — is NOT done
+ * here. Since round 070 the bindings API is the only remaining cause of a lost
+ * chart (63 of 63), so the motive is real; but the benefit above comes from
+ * being in the drawing batch, and moving it out is exactly what would remove
+ * it. That needs a round, not a drive-by.
  */
-async function settleByBinding(bindingId: string, tagData: string): Promise<boolean> {
-  if (!supports("1.8")) return false;
-  try {
-    return await PowerPoint.run(async (context) => {
-      const bindings = (
-        context.presentation as unknown as {
-          bindings?: { getItem(id: string): { getShape(): PowerPoint.Shape } };
-        }
-      ).bindings;
-      if (!bindings?.getItem) return false;
-      bindings.getItem(bindingId).getShape().tags.add(CHART_TAG, tagData);
-      await boundedSync(context, "settling the config tag through its binding");
-      return true;
-    });
-  } catch (err) {
-    trace("settle", "the binding could not name the chart", {
-      bindingId,
-      error: errorText(err),
-    });
-    return false;
-  }
-}
 
 /**
  * Move a shape by a delta — the self-test's stand-in for a user's drag.
@@ -3993,22 +3982,13 @@ export async function moveShapeBy(slideId: string, shapeId: string, dx: number, 
   }
 }
 
-async function settleAndTagChart(
-  slideId: string,
-  tagData: string,
-  shapeId?: string,
-  bindingId?: string,
-): Promise<boolean> {
+async function settleAndTagChart(slideId: string, tagData: string, shapeId?: string): Promise<boolean> {
   if (!supports("1.3") || !tagData) return false;
   // THE BINDING FIRST, because the two routes below are the ones this host has
   // been measured refusing: an id it will not give back, and a collection read
   // that lists shapes under ids that are not ours. A binding was taken from the
   // live proxy and needs neither.
-  if (bindingId && (await settleByBinding(bindingId, tagData))) {
-    hostFriction.settledByBinding += 1;
-    trace("settle", "the config tag went on through the chart's binding", { bindingId });
-    return true;
-  }
+
   // With an id, try the cheap thing first — one batch, resolve and write, no
   // collection read at all.
   //
@@ -4206,7 +4186,7 @@ async function settleByCollectionRead(slideId: string, tagData: string, shapeId?
  * run log it shares with the drawing.
  */
 async function settleUntaggedCharts(
-  pending: { key: string; slideId: string; tagData: string; shapeId?: string; bindingId?: string }[],
+  pending: { key: string; slideId: string; tagData: string; shapeId?: string }[],
 ): Promise<Set<string>> {
   const settled = new Set<string>();
   if (!pending.length) return settled;
@@ -4215,8 +4195,7 @@ async function settleUntaggedCharts(
   // legitimately undefined there — and keying on it collapsed every such chart
   // into one bucket, so one settle landing would have cleared the `lost` marker
   // off all of them.
-  for (const p of pending)
-    if (await settleAndTagChart(p.slideId, p.tagData, p.shapeId, p.bindingId)) settled.add(p.key);
+  for (const p of pending) if (await settleAndTagChart(p.slideId, p.tagData, p.shapeId)) settled.add(p.key);
   // Say which of the three happened, in the MESSAGE. It used to be one
   // sentence — "settled the config tag the drawing context could not write" —
   // with the numbers underneath, and the 2026-08-08 round printed it five times

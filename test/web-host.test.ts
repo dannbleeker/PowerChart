@@ -1323,52 +1323,24 @@ describe("asking the host what it actually ran", () => {
  * should have to make twice.
  */
 describe("what the settle says when it comes up empty", () => {
-  it("rescues a config tag through the BINDING when neither an id nor a read can reach the chart", async () => {
-    // THE ONE ROUTE THAT NEEDS NEITHER, and the rounds are why it exists.
-    //
-    //   withId: 0        six rounds — this host gives no usable id back for a
-    //                    shape it has just made, so the settle's by-id route is
-    //                    not failing, it is unreachable
-    //   withOwnId 7/7    rounds 068/069 — and the collection lists the slide
-    //   matched   0      under ids that are not the ones it gave us
-    //
-    // A binding is taken from the LIVE proxy in the batch that drew the shape,
-    // so it goes through neither. This arms both of the measured refusals at
-    // once and asserts the tag lands anyway.
-    const slide = makeSlide("s1");
-    installHost([slide]);
-    setTracing(true);
-    const mark = traceMark();
-    // ONE refused tag write, not two. `refuseTagWrites` is a blunt counter and
-    // the binding's own write is a tag write — arming it at 2 refuses the very
-    // route under test, which is how the first draft of this test failed.
-    faults.refuseTagWrites = 1;
-    // The by-id route is killed by its own fault instead, which is also the
-    // honest model: this host does not refuse the WRITE, it refuses to name the
-    // shape at all (`withId: 0`, six rounds).
-    faults.refuseShapeById = true;
-    // ...and the collection read that would otherwise rescue it comes back
-    // empty, which is what a real round shows.
-    faults.hollowReads = 50;
-    try {
-      const cfg = { ...sampleConfig("clustered"), ...DEFAULT_SIZE };
-      await insertSceneIntoSlide(buildChart(cfg), { tagData: JSON.stringify(cfg) });
-      const said = traceLog(mark).entries.map((e) => e.message);
-      expect(said, "the binding route never ran, so this proves nothing").toContain(
-        "the config tag went on through the chart's binding",
-      );
-      // THE TAG ITSELF, not just the trace line. The whole claim is that the
-      // chart ends up re-editable when both measured routes are dead.
-      const tagged = slide.created.find((s) => s.tagStore.get(CHART_TAG));
-      expect(tagged, "no shape carries the config, so nothing was rescued").toBeTruthy();
-      expect(tagged!.tagStore.get(CHART_TAG)).toBe(JSON.stringify(cfg));
-    } finally {
-      faults.refuseTagWrites = 0;
-      faults.refuseShapeById = false;
-      faults.hollowReads = 0;
-      setTracing(false);
-    }
-  });
+  // ~~rescues a config tag through the BINDING~~ — REMOVED WITH THE ROUTE,
+  // and it is the reason nobody noticed the route was dead.
+  //
+  // This test passed for 180 rounds. The route it proved rescued **0 config
+  // tags in those same 180 rounds** and was refused 16 times. An independent
+  // census agrees: of 250 tags written across the archive, 225 came through
+  // `group` and 25 through `created`, and not one through a binding.
+  //
+  // The fake accepted what the host refuses. That is this repo's documented
+  // trap — a double that answers a call production never answers — and here it
+  // kept a dead branch looking alive for six months of rounds. The lesson is
+  // not that the test was wrong to exist; it is that a green fake test and an
+  // archive of zero successes are not in tension, and the archive wins.
+  //
+  // `bindTagTarget` (the WRITE) is deliberately kept: its value was never this
+  // route but an upstream side effect — binding a shape in the drawing batch
+  // stabilises its identity, and `cfg5010` went from 8 a round to 0 when it
+  // arrived. See the epitaph on `settleByBinding` in powerpoint.ts.
 
   it("traces an empty re-read instead of returning silently", async () => {
     const slide = makeSlide("s1");

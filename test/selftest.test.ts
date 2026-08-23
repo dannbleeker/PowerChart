@@ -2848,7 +2848,6 @@ describe("whose fault a red scenario was", () => {
     emptyReReads: 0,
     shortReReads: 0,
     unmatchedReReads: 0,
-    settledByBinding: 0,
     reReadsRepaired: 0,
   };
 
@@ -3019,8 +3018,12 @@ describe("the host-friction counters", () => {
     const mod = await import("../src/render/powerpoint");
     expect(
       Object.keys(mod.hostFrictionCounts()).length,
-      "expected the eight documented counters",
-    ).toBeGreaterThanOrEqual(8);
+      // SEVEN, not eight: `settledByBinding` went with the route it counted,
+      // which rescued 0 config tags in 180 rounds and was refused 16 times.
+      // Asserted as a number rather than left open, so shrinking the set again
+      // has to be a decision somebody writes down instead of a quiet drift.
+      "expected the seven documented counters",
+    ).toBeGreaterThanOrEqual(7);
   });
 
   it("puts every counter on the run-finished line, including the one nothing else reads", async () => {
@@ -3037,7 +3040,6 @@ describe("the host-friction counters", () => {
     const mod = await import("../src/render/powerpoint");
     const emitted = Object.keys(mod.hostFrictionCounts());
     expect(emitted, "unmatchedReReads is the counter this was written for").toContain("unmatchedReReads");
-    expect(emitted).toContain("settledByBinding");
     expect(emitted).toContain("shortReReads");
     expect(emitted).toContain("reReadsRepaired");
   });
