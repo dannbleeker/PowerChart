@@ -5121,3 +5121,71 @@ all eight with something real underneath.** Sub-agents locate unread signals
 reliably and interpret them badly. Take the LOCATION as the deliverable and treat
 the CONCLUSION as a hypothesis — and re-derive every number from the archive
 before repeating it to anyone.
+
+## Round 181 — the parts-list fix is INERT, and the reason is the whole story
+
+    181  1e8455e  ok 13/13 | grouped 9 | refused 0 | threw 0 | fullest 5
+
+A clean round, and the first to run tonight's product changes. **One of them
+does nothing.**
+
+### What was claimed and what happened
+
+#702 changed `ungroupedFallback` to take the ids already in hand rather than
+re-read them, on the strength of `withOwnId: 7` in the re-read trace. Round 181:
+
+    PARTS where= the id read-back threw   charts=1  gotPartsList=0  grouped=0
+
+The new `the ids were already loaded` exit was never taken. `needLoading` was
+full, the 5010 fired exactly as before, and the loose chart got no parts list.
+
+**The premise was wrong in a way worth naming.** `withOwnId` is measured inside
+`chooseGroupMembers`, and that only runs when a refresh was asked for. Round 181
+carried no `re-read named none` at all, so there was no such reading — and in
+the ordinary path the created proxies carry no loaded ids at fallback time.
+Which is precisely why the code loads them.
+
+I read one field, saw 7 of 7, and generalised it to a path where it is not
+measured. Same shape as the `shape.id` error four hours earlier: **a reading
+taken in one context, asserted about another.**
+
+The change is KEPT because it cannot cost anything — it only skips a call whose
+answer is in hand — but it is not a fix and the parts list is still 0.
+
+### The obvious next step is a trap already paid for
+
+"Load the ids in the drawing batch" is what `tagAnchorIndex` spent four rounds
+and a host probe on. From this file's own history:
+
+> the tag write goes through the handle that DREW the shape, and **this host
+> refuses such a handle once a `load()` has resolved it into
+> `shapes.getItem(id)`**
+
+That is the mechanism behind `from: created` — **235 tagging failures, the
+largest bucket in the archive.** Loading ids earlier buys a parts list and spends
+the tag write that makes the chart re-editable at all. It is a trade, not a fix,
+and it is a bad one.
+
+### One root, three symptoms
+
+The parts list is blocked behind the same thing as the grouping and the re-read:
+
+    shapes-items-count-honest    unreadable 140   short-0 16    (156 rounds)
+
+**The shape collection will not honestly report freshly added shapes.** That one
+fact produces the failed re-read, the positional guess, the addGroup throw, and
+the missing parts list. Every workaround attempted at the symptom has cost more
+than it bought — the tag-anchor move (reverted), the id load (implicated in 235
+failures), and now this.
+
+Fix the collection read and three symptoms go with it. Work around it downstream
+and the workaround is the next defect.
+
+### What is confirmed working
+
+The widened window: 2020px → 6176px on the live host, against a 2375px
+threshold. Round 181 started first time on it after the sign-in scare.
+
+The positional guard has still not been exercised — no guess fired in 181.
+`Shape.group` still threw its deterministic 2, unchanged, because the parts
+list is still 0 and every chart therefore still reaches it.
