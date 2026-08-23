@@ -2296,4 +2296,60 @@ describe("a browser this session cannot reach", () => {
       "never opened one",
     ).toBe(true);
   });
+
+  it("asks for a window at least as wide as a ribbon command needs", async () => {
+    // THE WIDEN COULD NOT REACH THE BAR IT EXISTS TO CLEAR. `ensureRibbonRoom`
+    // requested 1900px while `MIN_RIBBON_WIDTH` was 2375. 1900 was generous when
+    // the threshold was 1600; raising the threshold left the request behind, and
+    // the two are constants that have to move together.
+    //
+    // It hid behind the device scale factor. On this machine a request of 1900
+    // usually ARRIVES as 3800 CSS px, so every round printed "widened to 3800px"
+    // and nothing looked wrong. Round 181 reopened the browser with `--fresh`,
+    // the scale came back 1:1, 1900 arrived as 1900, the Add-ins command stayed
+    // in the overflow, and SEVEN consecutive attempts could not reopen the pane.
+    // A whole round lost to a number that had been too small the entire time.
+    //
+    // This is the guard that would have caught it the moment the threshold moved.
+    const calls: string[][] = [];
+    let width = 1009;
+    const sh = ((...args: string[]) => {
+      calls.push(args);
+      if (args[0] === "resize") {
+        // The honest 1:1 case — the arrival equals the request. Anything that
+        // relies on a scale factor to clear the bar is relying on luck.
+        width = Number(args[1]);
+        return "";
+      }
+      return `{"width":${width}}`;
+    }) as unknown as ((...a: string[]) => string) & { dir?: string; state: Record<string, unknown> };
+    sh.state = { lastFailed: false, lastError: null };
+
+    const after = await driver.ensureRibbonRoom(sh, async () => {});
+    const resize = calls.find((c) => c[0] === "resize");
+    expect(resize, "never asked for a wider window at all").toBeDefined();
+    expect(
+      Number(resize![1]),
+      `asked for ${resize?.[1]}px, under the ${driver.MIN_RIBBON_WIDTH}px a ribbon command needs`,
+    ).toBeGreaterThanOrEqual(driver.MIN_RIBBON_WIDTH);
+    expect(after, "the widen returned a width still under the threshold").toBeGreaterThanOrEqual(
+      driver.MIN_RIBBON_WIDTH,
+    );
+  });
+
+  it("leaves a window that is already wide enough alone", async () => {
+    // The early return matters: a resize costs three seconds of sleep on every
+    // attempt, and a round that retries seven times would pay it seven times.
+    const calls: string[][] = [];
+    const sh = ((...args: string[]) => {
+      calls.push(args);
+      return `{"width":${driver.MIN_RIBBON_WIDTH + 100}}`;
+    }) as unknown as ((...a: string[]) => string) & { dir?: string; state: Record<string, unknown> };
+    sh.state = { lastFailed: false, lastError: null };
+    await driver.ensureRibbonRoom(sh, async () => {});
+    expect(
+      calls.some((c) => c[0] === "resize"),
+      "resized a window that was already wide enough",
+    ).toBe(false);
+  });
 });
