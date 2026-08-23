@@ -2669,62 +2669,52 @@ describe("what it took to start each round", () => {
     expect(c.changeLandedAgo, "an era was invented for rounds that never ran the build").toBeNull();
     expect(c.sinceLastSurvivor).toBe(0);
   });
-  it("sizes a batch by its DELTA, because upTo is a running total", async () => {
-    // WHAT THIS COST: a wrong product conclusion, caught before it was committed.
+  it("sizes a batch by its DELTA, and bands it by what the run already drew", async () => {
+    // TWO WRONG ANSWERS ARE PINNED HERE, and both of them reached a commit.
     //
-    // `batch issued` records {upTo, total, prevBatchMs}. `upTo` is how many
-    // shapes have been sent SO FAR, and `prevBatchMs` times the batch described
-    // by the PRECEDING line. Bucketing by `upTo` reads the second batch of ten
-    // as a batch of twenty, and produced this:
+    // 1. `upTo` is a RUNNING TOTAL. Bucketing by it read the second batch of
+    //    ten as a batch of twenty and produced "payload is free, so raise
+    //    `SHAPES_PER_SYNC`". Every batch in the archive is ten; there is no
+    //    second size to compare against.
     //
-    //     10 shapes  n=1831  median 5778ms
-    //     20 shapes  n=1082  median 5592ms
-    //
-    // — from which "doubling the payload is free, so raise SHAPES_PER_SYNC".
-    // Both buckets were batches of ten. Every batch in the archive is ten, so
-    // the data cannot compare batch sizes at all, and the tidy table showing
-    // that it could was an artifact of one misread field.
+    // 2. `onSlideKey === "(visible)"` is the sentinel for an UNLOADED SLIDE
+    //    ID, not a claim about the screen. Splitting on it gave "drawing where
+    //    the user is looking costs 2.3x per shape" — from batches whose median
+    //    `onSlide` was 0 against 10 for the others, so the EMPTIER targets
+    //    were the slower ones, and first batches cost 5802ms against 5591ms
+    //    for later ones. The label never carried the meaning put on it.
     // @ts-expect-error — plain .mjs tool, no types.
-    const { poolBatchCost } = await import("../scripts/triage.mjs");
-    const issued = (upTo: number, onSlideKey: string, prevBatchMs?: number) => ({
+    const { poolDrawCostCurve } = await import("../scripts/triage.mjs");
+    const issued = (upTo: number, onSlide: number, prevBatchMs?: number) => ({
       message: "batch issued",
-      data: prevBatchMs === undefined ? { upTo, onSlideKey } : { upTo, onSlideKey, prevBatchMs },
+      data: prevBatchMs === undefined ? { upTo, onSlide } : { upTo, onSlide, prevBatchMs },
     });
 
-    // A 16-shape chart off-screen: ten, then six. One timing, for the ten.
-    const pooled = poolBatchCost([{ trace: { entries: [issued(10, "s1"), issued(16, "s1", 4000)] } }]);
-    expect(pooled.offscreen.n).toBe(1);
-    expect(pooled.offscreen.sizes, "upTo was read as a batch size").toEqual([10]);
-    expect(pooled.offscreen.perShape, "4000ms over ten shapes").toBe(400);
+    // THREE BATCHES PER DRAW, NOT TWO, and that is load-bearing.
+    //
+    // With two, the only batch that gets timed is the FIRST — and the first
+    // batch's size is 10 whether you read `upTo` as a delta or as a running
+    // total, because the running total starts at zero. So a two-batch fixture
+    // passes with the bug put back: it never reaches a batch where the two
+    // readings disagree. Mutation caught that; the assertions had looked fine.
+    //
+    // The third entry times the SECOND batch, which is a ten by delta and a
+    // twenty by running total. That is the only place the trap is visible.
+    // A band needs at least ten samples to be reported, so twelve draws each.
+    const entries: unknown[] = [];
+    for (let i = 0; i < 12; i++) entries.push(issued(10, 0), issued(20, 0, 4000), issued(30, 0, 4000));
+    for (let i = 0; i < 12; i++) entries.push(issued(10, 40), issued(20, 40, 14000), issued(30, 40, 14000));
+    const c = poolDrawCostCurve([{ trace: { entries } }]);
 
-    // And the visible/off-screen split is on the slide key, not on order.
-    const split = poolBatchCost([
-      {
-        trace: {
-          entries: [
-            issued(10, "(visible)"),
-            issued(20, "(visible)", 12000), // times the FIRST ten, on the visible slide
-            issued(10, "s2"),
-            issued(20, "s2", 4000), //         times a ten off-screen
-          ],
-        },
-      },
-    ]);
-    expect(split.visible.n).toBe(1);
-    expect(split.offscreen.n).toBe(1);
-    expect(split.visible.perShape).toBe(1200);
-    expect(split.offscreen.perShape).toBe(400);
-    // The whole point of the split: the two must not be pooled into one number.
-    expect(split.visible.perShape).not.toBe(split.offscreen.perShape);
-
-    // A second chart restarts the count. Read as a running total across charts,
-    // the restart looks like a negative batch and the sample is silently lost.
-    const restart = poolBatchCost([
-      { trace: { entries: [issued(10, "s1"), issued(20, "s1", 4000), issued(10, "s1", 4000)] } },
-    ]);
-    expect(restart.offscreen.n, "the batch after a restart was dropped").toBe(2);
-    expect(restart.offscreen.sizes).toEqual([10]);
+    // Batch SIZE is the delta, so every sample is a ten and never a twenty.
+    expect(c.sizes, "upTo was read as a batch size").toEqual([10]);
+    const band = (lo: number) => c.rows.find((r: { lo: number }) => r.lo === lo);
+    expect(band(0)?.median, "the empty-target band").toBe(4000);
+    expect(band(21)?.median, "the filled-target band").toBe(14000);
+    // The curve is the whole point: the bands must not collapse together.
+    expect(band(21).median).toBeGreaterThan(band(0).median);
   });
+
   it("reads the deck inventory the gate has printed all along", async () => {
     // EIGHT OF THE LAST THIRTY ROUNDS ended with a slide holding between 11 and
     // 48 shapes, and every one of them reported 13 of 13 scenarios passed —

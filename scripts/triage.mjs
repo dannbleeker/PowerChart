@@ -2866,9 +2866,43 @@ function reportTagRoutes(logs) {
  * `prevBatchMs` times the batch described by the PRECEDING line, so the size it
  * belongs to is that line's delta, not this one's.
  */
-export function poolBatchCost(logs) {
-  const visible = [];
-  const offscreen = [];
+/**
+ * What a batch of shapes costs, against HOW MUCH THIS RUN HAS ALREADY DRAWN on
+ * the same slide.
+ *
+ * `batch issued` has carried `prevBatchMs` and `onSlide` for the whole archive
+ * and nothing had ever pooled either. Together they price the product's biggest
+ * latency number: a chart redraw takes about twenty seconds.
+ *
+ * TWO TRAPS ARE ENCODED HERE, BOTH PAID FOR.
+ *
+ * 1. `upTo` is a RUNNING TOTAL, not a batch size. Bucketing by it showed
+ *    10-shape and 20-shape batches costing the same — therefore payload is
+ *    free, therefore raise the batch size. Both buckets were batches of ten;
+ *    the second was later in a sequence. Every batch in the archive is ten, so
+ *    this data cannot compare batch sizes at all.
+ *
+ * 2. `onSlideKey === "(visible)"` DOES NOT MEAN THE SLIDE IS ON SCREEN. It is
+ *    the sentinel `slideKeyFor` returns when the slide's id has not been
+ *    loaded. A first pass at this split batches on it and reported "drawing
+ *    where the user is looking costs 2.3x per shape" — which was committed,
+ *    and is wrong. Checked afterwards: sentinel-keyed batches have median
+ *    `onSlide` of 0 against 10 for id-keyed ones, so they draw onto EMPTIER
+ *    targets, and first batches cost 5802ms against 5591ms for later ones —
+ *    no setup effect either. The label never carried the meaning the finding
+ *    put on it.
+ *
+ * What survives is the curve below, and it is the one the source already
+ * described: `shapesDrawnOn` is exported precisely so a caller can avoid a
+ * slide it has been filling.
+ *
+ * NOTE WHAT `onSlide` COUNTS: shapes THIS RUN drew on that slide, not the
+ * slide's total occupancy. A slide arriving with content already on it reads
+ * as 0 here. So this measures a run slowing itself down, which is a real and
+ * documented effect, and it is NOT a measurement of drawing onto a busy slide.
+ */
+export function poolDrawCostCurve(logs) {
+  const pts = [];
   for (const log of logs ?? []) {
     let prev = null;
     let cum = 0;
@@ -2876,15 +2910,15 @@ export function poolBatchCost(logs) {
       if (String(e.message ?? "") !== "batch issued") continue;
       const d = e.data ?? {};
       if (typeof d.prevBatchMs === "number" && prev && prev.size > 0)
-        (prev.visible ? visible : offscreen).push({ ms: d.prevBatchMs, size: prev.size });
+        pts.push({ ms: d.prevBatchMs, size: prev.size, drawnHere: prev.drawnHere });
       if (typeof d.upTo !== "number") {
         prev = null;
         cum = 0;
         continue;
       }
-      // A new chart restarts the count, so a smaller upTo means a fresh run.
+      // A new draw restarts the count, so a smaller upTo begins a fresh one.
       const size = d.upTo > cum ? d.upTo - cum : d.upTo;
-      prev = { visible: String(d.onSlideKey ?? "") === "(visible)", size };
+      prev = { size, drawnHere: typeof d.onSlide === "number" ? d.onSlide : null };
       cum = d.upTo;
     }
   }
@@ -2893,79 +2927,65 @@ export function poolBatchCost(logs) {
     const b = [...a].sort((x, y) => x - y);
     return b[Math.floor(b.length / 2)];
   };
-  const side = (rows) => {
-    const sizes = new Set(rows.map((r) => r.size));
-    return {
-      n: rows.length,
-      median: median(rows.map((r) => r.ms)),
-      perShape: median(rows.filter((r) => r.size > 0).map((r) => r.ms / r.size)),
-      sizes: [...sizes].sort((a, b) => a - b),
-    };
+  const bands = [
+    [0, 0],
+    [1, 20],
+    [21, 50],
+    [51, 100],
+    [101, Infinity],
+  ];
+  const rows = [];
+  for (const [lo, hi] of bands) {
+    const a = pts.filter((p) => p.drawnHere != null && p.drawnHere >= lo && p.drawnHere <= hi).map((p) => p.ms);
+    if (a.length < 10) continue;
+    rows.push({ lo, hi, n: a.length, median: median(a) });
+  }
+  return {
+    n: pts.length,
+    sizes: [...new Set(pts.map((p) => p.size))].sort((a, b) => a - b),
+    rows,
   };
-  return { visible: side(visible), offscreen: side(offscreen) };
 }
 
 /**
  * The empty round-trip, for scale.
  *
- * Without it a batch median is a number with nothing to be big compared to —
- * and this project spent an hour arguing about whether round-trips dominate
- * drawing while the answer was printed above every round.
+ * Without it a batch median is a number with nothing to be big compared to, and
+ * this project spent an hour arguing about whether round-trips dominate drawing
+ * while the answer was printed above every round.
  */
 export const EMPTY_ROUNDTRIP_MS = 5; // driver ping: slides.getCount() + one sync
 
 /**
- * What a batch costs BY WHERE IT DRAWS, pooled over every round.
- *
- * Not to be confused with `reportBatchCost` further down, which is older and
- * asks a different question: that one takes ONE round and looks for two
- * populations in its batch times. This one pools the archive and splits on
- * whether the slide was the one the user is looking at. Both are wanted; the
- * name collision was mine, and it is recorded here so the next reader does not
- * assume one supersedes the other.
+ * The draw-cost curve. Not to be confused with `reportBatchCost` further down,
+ * which takes ONE round and looks for two populations in its batch times.
  */
-function reportBatchCostByPlace(logs) {
-  const b = poolBatchCost(logs);
-  if (!b.visible.n && !b.offscreen.n) return;
+function reportDrawCostCurve(logs) {
+  const c = poolDrawCostCurve(logs);
+  if (!c.rows.length) return;
   console.log("\n  WHAT A BATCH OF SHAPES COSTS — the product's biggest latency number");
-  const row = (name, s) => {
-    if (!s.n) return;
-    console.log(
-      "    " +
-        name.padEnd(22) +
-        String(s.n).padStart(5) +
-        " batches   median " +
-        String(Math.round(s.median) + "ms").padStart(8) +
-        "   " +
-        Math.round(s.perShape) +
-        "ms/shape",
-    );
-  };
-  row("on the visible slide", b.visible);
-  row("off-screen", b.offscreen);
-  console.log("    " + "an empty round-trip".padEnd(22) + "            " + EMPTY_ROUNDTRIP_MS + "ms");
-  if (b.visible.n && b.offscreen.n && b.offscreen.perShape > 0) {
-    const ratio = b.visible.perShape / b.offscreen.perShape;
-    console.log(
-      "    Drawing where the user is looking costs " +
-        ratio.toFixed(1) +
-        "x per shape. That is the only latency lever here:",
-    );
-    console.log(
-      "    batching is not one — the round-trip is " + EMPTY_ROUNDTRIP_MS + "ms against a batch of thousands.",
-    );
+  console.log("    shapes this run already drew here    median batch    n");
+  for (const r of c.rows) {
+    const band = r.hi === Infinity ? r.lo + "+" : r.lo + "-" + r.hi;
+    console.log("      " + band.padEnd(34) + String(Math.round(r.median) + "ms").padStart(8) + "   " + r.n);
   }
-  // AND SAY WHEN THE DATA CANNOT ANSWER THE OBVIOUS QUESTION. Every batch in
-  // the archive is the same size, so nothing here compares batch sizes — a
-  // reader who takes these medians as evidence about SHAPES_PER_SYNC is
-  // reading a constant, not a result.
-  const sizes = new Set([...b.visible.sizes, ...b.offscreen.sizes]);
-  if (sizes.size <= 1)
+  const first = c.rows[0];
+  const last = c.rows[c.rows.length - 1];
+  if (first && last && first.median > 0 && last !== first)
     console.log(
-      "    Every batch here is " +
-        [...sizes][0] +
-        " shapes, so this says NOTHING about batch size — there is no second size to compare.",
+      "    A run slows ITSELF down " +
+        (last.median / first.median).toFixed(1) +
+        "x by piling onto one slide. `shapesDrawnOn` is exported to avoid exactly this.",
     );
+  console.log(
+    "    An empty round-trip is " + EMPTY_ROUNDTRIP_MS + "ms, so batching is not a lever here — drawing is the cost.",
+  );
+  // AND SAY WHAT THIS CANNOT ANSWER, because the last two attempts at this
+  // section both answered a question the data did not cover.
+  if (c.sizes.length <= 1)
+    console.log("    Every batch here is " + c.sizes[0] + " shapes, so this says NOTHING about batch size.");
+  console.log("    `onSlide` counts what THIS RUN drew, not the slide's occupancy — a slide that");
+  console.log("    arrived with content reads as 0, so this is not a measure of drawing onto a busy slide.");
 }
 /**
  * The build that first carried the SECOND SETTLE ASK (#709, `REREAD_ATTEMPTS` 1 -> 2).
@@ -3974,7 +3994,7 @@ if (invokedDirectly) {
     reportPartsListOutcome(pooled);
     reportPositionalGuess(pooled);
     reportSettleAsks(pooled);
-    reportBatchCostByPlace(pooled);
+    reportDrawCostCurve(pooled);
     reportTagRoutes(pooled);
     reportTagFaults(pooled);
     reportPool(pooled);

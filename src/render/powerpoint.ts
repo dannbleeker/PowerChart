@@ -8199,11 +8199,28 @@ export function needsPreGroupRefresh(created: PowerPoint.Shape[], opts: InsertOp
  * known to be nil is the wrong direction. Lowering it is the defensible change,
  * and it wants its own rounds rather than a drive-by.
  *
- * The real lever these batches point at is elsewhere: 533ms per shape
- * off-screen against 1228ms per shape on the visible slide, at identical batch
- * size — draw off-screen, then reveal. (Different scenarios feed those two
- * buckets, so the shapes inside may differ in complexity; it is a strong lead,
- * not a proven 2.3x for one identical chart.)
+ * The lever these batches point at is the one this file already documents on
+ * `shapesDrawnOn`: cost grows with what THIS RUN has already drawn on the target.
+ * Pooled over 2,917 batches, all of them ten shapes:
+ *
+ *     already drawn here      median batch
+ *       0                        3886ms
+ *       1-20                     5490ms
+ *      21-50                    13995ms
+ *      51-100                   18074ms
+ *
+ * A run slows itself 4.7x by piling onto one slide, which is why `shapesDrawnOn`
+ * is exported for callers to avoid it.
+ *
+ * AN EARLIER VERSION OF THIS COMMENT SAID SOMETHING ELSE AND WAS WRONG: "533ms
+ * per shape off-screen against 1228ms on the visible slide — draw off-screen,
+ * then reveal". It split the batches on `onSlideKey === "(visible)"`, which is
+ * not a statement about the screen at all: it is the sentinel `slideKeyFor`
+ * returns when the slide's id has not been loaded yet. Checked afterwards,
+ * sentinel-keyed batches draw onto EMPTIER targets (median `onSlide` 0 against
+ * 10), and first batches cost 5802ms against 5591ms for later ones — so there is
+ * no visibility effect and no setup effect in that gap either. The 2.3x was a
+ * split on a label that never meant what the conclusion needed it to mean.
  */
 const SHAPES_PER_SYNC_OFFSCREEN = 40;
 

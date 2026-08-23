@@ -5815,3 +5815,86 @@ all of it — the 2.3x per shape, the 24s chart on the visible slide against
 not. **Draw off-screen, then reveal** is the one direction the evidence keeps
 pointing at, and nothing in 169 rounds has tested it.
 
+
+## Retraction: I committed a 2.3x, and the label it rests on does not mean that
+
+Commit c5ecd94 said: **"drawing where the user is looking costs 2.3x per shape.
+That is the only latency lever here."** It is wrong, it was pushed, and this is
+the correction.
+
+The split was on `onSlideKey === "(visible)"`. That is not a statement about the
+screen. `slideKeyFor` returns the sentinel when the slide's id has not been
+loaded yet:
+
+    if (opts.slideId) return opts.slideId;
+    const id = loadedValue(() => getSlide().id);
+    return typeof id === "string" && id ? id : "(visible)";
+
+The comment above it even records the sentinel being wrong before — 260 shapes
+keyed to it across eight different slides. I read the word and not the
+function.
+
+### Three checks, and the finding fails all three
+
+    sentinel-keyed batches   median onSlide  0     (emptier targets)
+    id-keyed batches         median onSlide 10
+
+    FIRST batch of a draw    5802ms  n=1835
+    LATER batches            5591ms  n=1083
+
+If visibility were the cause, the sentinel batches would be drawing onto the
+busy slide the user is on; they draw onto emptier ones and are still slower. If
+setup were the cause, first batches would stand out; they are within 4% of
+later ones. **Two candidate mechanisms, both excluded, and the effect I named
+is left with nothing behind it.**
+
+### What actually holds, and it was already written down
+
+    shapes this run already drew here    median batch
+      0                                     3886ms
+      1-20                                  5490ms
+      21-50                                13995ms
+      51-100                               18074ms
+
+**A run slows ITSELF down 4.7x by piling onto one slide.** Which is exactly what
+`shapesDrawnOn`'s own docstring says — "about +0.44s per shape present, measured
+… quadratically" — and it is exported precisely so a caller can avoid the slide
+it has been filling. My pooling rediscovered a documented effect and then
+attached it to the wrong cause.
+
+Note what `onSlide` counts: shapes THIS RUN drew there, not the slide's
+occupancy. A slide that arrives with content reads as 0. So even this curve is
+not "drawing onto a busy slide is slow" — it is "a run that keeps choosing the
+same target slows itself down". Stated in the reader, so the next person does
+not make my mistake one level down.
+
+### And "draw off-screen, then reveal" is withdrawn
+
+That was the closing line of the previous entry and the headline of the report
+above it. It rested entirely on the 2.3x. There is no measurement here that
+drawing off-screen is cheaper, because nothing in this archive distinguishes
+on-screen from off-screen at all. The idea may still be right; **this data has
+never spoken to it.**
+
+### The pattern, now five deep in one day
+
+Four scope errors this morning, then the era error, then this. Every one is a
+number that is real, measured, and reproducible, carrying a sentence about a
+population it never covered. The number is never the problem. The clause
+attached to it is.
+
+What caught this one: going to read what `(visible)` meant before building the
+next thing on top of it. What did NOT catch it: a green gate, a passing test, a
+clean mutation run, and a commit message that explained the reasoning at
+length. The test pinned the arithmetic perfectly and the arithmetic was never
+in doubt.
+
+### A third vacuous test, same session
+
+The replacement test fixture had two batches per draw. The only batch that gets
+timed with two is the FIRST — whose size is 10 whether `upTo` is read as a delta
+or as a running total, because a running total starts at zero. So it passed
+with the bug restored. It needed a THIRD batch to reach the place the two
+readings disagree. Caught by mutation, like the other two today; there is no
+other way I have found to catch these.
+
