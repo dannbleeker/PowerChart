@@ -5056,3 +5056,68 @@ Upstream of the match, not at it: **make the pre-grouping re-read return the
 shapes just drawn, or stop depending on a re-read at all.** The guard shipped in
 #696 stays — it converts a certain double loss into a loose-but-tagged chart —
 but it is a seatbelt, not the fix.
+
+## The product sweep, verified by hand — eight claims, five wrong
+
+A four-lens workflow asked what 180 rounds teach about the PRODUCT rather than
+the harness. Every headline was then re-derived here. **Five of eight did not
+survive contact with the archive**, and every one of those five had something
+real underneath.
+
+| claim | verdict |
+| --- | --- |
+| Set Same Scale costs ~2½ minutes | **confirmed** — 158s median, 3x the next scenario |
+| the parts list has never been produced | **confirmed** — 0 across 872 charts |
+| `Shape.group` throws every update round | **confirmed** — exactly 2/round, deterministic |
+| `setSelectedShapes` never wedges this host | **confirmed** — 1,092 measurements, 0 wedges |
+| every chart group is named `PowerChart` | **confirmed** — 1,782 in the inventories |
+| `shape.id` is volatile | **refuted** — see the correction above |
+| the repair pass never runs | **refuted** — it runs every time and FAILS 137 of 172 |
+| a 100% tag route the code ignores | **refuted and inverted** |
+
+### The three that matter most
+
+**`Shape.group` poisons a batch, twice a round, forever.** Microsoft's reference
+says `.group` returns GeneralException when the shape is not a group. The
+archive has it 76 times across 38 rounds and **exactly 2 in every one of the last
+20**, always `statement: var group = itemOrNullObject1.group;` — and the next
+trace line is `a by-id lookup refused the whole resolve — re-reading the slides
+instead`. The comment above it claimed "it costs no extra round trip". It costs
+a whole extra resolve.
+
+It fires on every chart because it is guarded by `parts.length`, and the parts
+list has never been produced. **So the parts repair may remove this by itself** —
+a chart arriving with parts never queues `.group`. Left for a round to measure
+rather than restructured on the theory; that batch has three shipped-broken
+fixes on record behind it.
+
+**Set Same Scale costs 158 seconds.** Median over the last 20 rounds, against 49s
+for the next-slowest scenario. And it is not setup: `sameScaleAcrossDeck`
+DISCOVERS its charts with `probeCharts` rather than drawing them, so that is the
+real cost of the user pressing the button on eight charts — about 20s each.
+
+**The wedge this project designed around does not happen.** 1,092 selection
+measurements, zero wedges, and `which selection call wedges the host` has passed
+156 of 156 with "the host answered all 7 rung(s)". office-js#3698 reports
+`setSelectedShapes([])` never resolving; on this host, across the whole archive,
+it always has.
+
+### The tag-route inversion, because acting on it would have hurt
+
+The claim was that a route measured at 100% is ignored while the code prefers one
+that fails. Failures by route, all 156 rounds: `created` 235, `undefined` 61,
+`group` 51, `by-id` 26. **The code prefers `by-id` — the fewest failures.** The
+probe the claim rests on is measured on a scratch shape, and production
+disagrees with it 235 times.
+
+But neither number is a rate: the tag write recorded FAILURES by route and
+successes not at all. Both the claim and its opposite were unsupported, and the
+missing denominator now ships.
+
+### The rule this is now the second demonstration of
+
+Across both sweeps: **eight headlines hand-checked, five overstated or inverted,
+all eight with something real underneath.** Sub-agents locate unread signals
+reliably and interpret them badly. Take the LOCATION as the deliverable and treat
+the CONCLUSION as a hypothesis — and re-derive every number from the archive
+before repeating it to anyone.
