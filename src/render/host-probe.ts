@@ -790,6 +790,28 @@ function threw(err: unknown): { answer: string; detail?: string } {
   return { answer: "threw", detail: short(err) };
 }
 
+/**
+ * A shape's creationId, or a word for why there is none.
+ *
+ * FEATURE-DETECTED, never gated on `isSetSupported`, which is this file's rule:
+ * a requirement set a host CLAIMS is a claim, and PowerPointApi 1.10 advertising
+ * `creationId` does not mean this host fills it in. The documentation is one
+ * sentence and says as much — "Returns null if the shape has no creation ID".
+ *
+ * Three outcomes that must not be folded together: `absent` (the property is not
+ * on the object at all — the set is not really there), `null` (the host has the
+ * property and this shape has no id), and a string.
+ */
+function readCreationId(shape: unknown): string | null | "absent" {
+  try {
+    const v = (shape as { creationId?: string | null }).creationId;
+    if (v === undefined) return "absent";
+    return v === null ? null : String(v);
+  } catch {
+    return "absent";
+  }
+}
+
 /** A shape's id, or undefined if the host did not answer the load. */
 function readShapeId(shape: { id?: string }): string | undefined {
   try {
@@ -2413,6 +2435,151 @@ const PROBES: Probe[] = [
           return { answer: has ? "yes" : "no" };
         },
       },
+    },
+  },
+  {
+    id: "creationid-on-fresh-shape",
+    resample: true,
+    question: "Does a shape this run just added report a creationId, or null?",
+    /**
+     * THE FIRST OF THREE, and the one that decides whether the other two are
+     * worth asking.
+     *
+     * Every user-visible defect left in this product traces to one thing: the
+     * add-in identifies shapes by `shape.id`, and this host reassigns them. The
+     * chain is a re-read that matches none of our ids, a positional guess at the
+     * tail of a stale listing, another chart's shapes, `addGroup` throwing, and
+     * a chart left as loose rectangles that cannot be re-edited — 6 of the last
+     * 20 rounds.
+     *
+     * `Shape.creationId` (PowerPointApi 1.10, which this host advertises) is the
+     * obvious answer, and **the documentation does not say what this project
+     * has been assuming.** Checked 2026-08-23, the whole of it:
+     *
+     *     readonly creationId: string | null;
+     *     "Gets the creation ID of the shape. Returns null if the shape has no
+     *      creation ID."
+     *
+     * That is all. Nothing about when it is assigned, nothing about surviving a
+     * save or a session, and an explicit `null` for shapes that have none.
+     * "Durable" is an inference from the NAME — this repo's own backlog calls it
+     * "a durable per-shape identifier" and cites no source for it.
+     *
+     * So it is measured before anything is built on it. `null` here and the
+     * whole plan is dead on this host, which is worth one probe slot to learn
+     * before it is worth a migration to find out.
+     */
+    ask: async (ctx) => {
+      const [shape] = await scratchShapes(ctx, [{ left: 120, top: 10, width: 20, height: 20 }], "creationId,id");
+      const creationId = readCreationId(shape);
+      const id = readShapeId(shape as unknown as { id?: string });
+      if (creationId === "absent") return { answer: "absent", detail: "the property is not on the shape at all" };
+      if (creationId === null) return { answer: "null", detail: `a fresh shape has no creation id; id=${String(id)}` };
+      // BOTH, because the point is whether they are different things. If the
+      // host simply returns `id` here the property is decoration and the plan
+      // is no better than what it replaces.
+      return {
+        answer: String(creationId) === String(id) ? "same-as-id" : "yes",
+        detail: `creationId=${String(creationId)} id=${String(id)}`,
+      };
+    },
+  },
+  {
+    id: "creationid-survives-a-sync",
+    resample: true,
+    question: "Does a shape's creationId still read the same a sync later, when its id may not?",
+    /**
+     * THE PROPERTY THE PRODUCT ACTUALLY NEEDS. `shape.id` is the thing that goes
+     * stale — `shape-proxy-survives-one-sync` answers `unreadable` in 133 of 133
+     * rounds, and the whole "only an id crosses a sync, never a handle" rule
+     * exists because of it.
+     *
+     * This asks whether creationId is any better ACROSS THE SAME BOUNDARY. If it
+     * changes too, the migration buys nothing; if it holds while `id` moves, it
+     * is exactly the identifier the grouping path has been missing.
+     *
+     * Re-fetched by POSITION rather than by id on purpose: fetching by id would
+     * make the answer depend on the very thing under test.
+     */
+    ask: async (ctx) => {
+      const [shape] = await scratchShapes(ctx, [{ left: 150, top: 10, width: 20, height: 20 }], "creationId,id");
+      const before = readCreationId(shape);
+      const idBefore = readShapeId(shape as unknown as { id?: string });
+      if (before === "absent" || before === null)
+        return { answer: "no-creation-id", detail: `before=${String(before)}` };
+      try {
+        const again = ctx.scratch().shapes.getItemAt(0);
+        again.load("creationId,id");
+        await ctx.sync();
+        const after = readCreationId(again);
+        const idAfter = readShapeId(again as unknown as { id?: string });
+        if (after === "absent") return { answer: "unreadable", detail: "the host would not load it a sync later" };
+        return {
+          answer: String(after) === String(before) ? "stable" : "changed",
+          detail: `creationId ${String(before)} -> ${String(after)}; id ${String(idBefore)} -> ${String(idAfter)}`,
+        };
+      } catch (err) {
+        return threw(err);
+      }
+    },
+  },
+  {
+    id: "creationid-survives-grouping",
+    resample: true,
+    question: "Does a shape keep its creationId after it is absorbed into a group?",
+    /**
+     * THE STEP THE DEFECT DIES OR SURVIVES ON.
+     *
+     * The chain that costs a chart is: the pre-grouping re-read matches none of
+     * our ids, so the code guesses positionally, and the guess takes shapes that
+     * have ALREADY BEEN GROUPED — round 179 recorded `mine [35..41]` against
+     * `chose [27..33]`, zero overlap. Grouping is precisely where identity gets
+     * lost today.
+     *
+     * If creationId survives being grouped, the re-read can match on it and the
+     * guess never runs. If it does not, the migration fixes the in-place
+     * mapping (worth having on its own — see BACKLOG, "Retire the positional
+     * group-member mapping") but NOT the defect that is costing charts, and the
+     * two must not be conflated in whatever gets built next.
+     *
+     * `burnsTheSlide` because grouping does: a question placed under a
+     * slide-burner finds the scratch slide gone, which starved two probes for
+     * 125 rounds before anyone noticed.
+     */
+    burnsTheSlide: true,
+    ask: async (ctx) => {
+      const made = await scratchShapes(
+        ctx,
+        [0, 1].map((i) => ({ left: 180 + i * 25, top: 10, width: 20, height: 20 })),
+        "creationId,id",
+      );
+      const before = made.map((s) => readCreationId(s));
+      if (before.some((c) => c === "absent" || c === null))
+        return { answer: "no-creation-id", detail: `before=${JSON.stringify(before)}` };
+      try {
+        const group = ctx.scratch().shapes.addGroup(made);
+        group.load("id");
+        await ctx.sync();
+        const members = (group as unknown as { group?: { shapes?: PowerPoint.ShapeScopedCollection } }).group?.shapes;
+        if (!members) return { answer: "no-members", detail: "the group would not name a shapes collection" };
+        members.load("items/creationId");
+        await ctx.sync();
+        let items: PowerPoint.Shape[] | undefined;
+        try {
+          items = members.items;
+        } catch {
+          items = undefined;
+        }
+        if (!Array.isArray(items)) return { answer: "unreadable", detail: "the group would not list its members" };
+        const after = items.map((s) => readCreationId(s));
+        const kept = before.filter((c) => after.some((a) => String(a) === String(c))).length;
+        return {
+          answer: kept === before.length ? "kept" : kept ? "partial" : "lost",
+          detail: `${kept} of ${before.length} kept; before=${JSON.stringify(before)} after=${JSON.stringify(after)}`,
+        };
+      } catch (err) {
+        return threw(err);
+      }
     },
   },
 ];

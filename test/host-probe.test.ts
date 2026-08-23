@@ -502,6 +502,22 @@ describe("the fake host's answer sheet", () => {
         "tags-on-fresh-shape",
         // Needs a shape to create, read an id off, and then re-fetch by that id.
         "tag-through-refetched-shape",
+        // The creationId questions need a shape to read it off. The FAKE DOES
+        // NOT MODEL `creationId` and deliberately still does not: a double that
+        // handed back a plausible id would make them read `yes`, `stable` and
+        // `kept` in the suite while saying nothing whatever about the real host,
+        // which is the one thing they exist to ask.
+        //
+        // `creationid-on-fresh-shape` is NOT in this list, and the reason is a
+        // property of the fake rather than of the probe. It is the first of the
+        // three to run, and it absorbs the `pendingHostError` the PRECEDING
+        // probe's refused add left queued — so the throw reaches it outside
+        // `scratchShapes` and it answers `threw`, truthfully, rather than
+        // `no-scratch-shape`. Its two siblings run after the error is consumed
+        // and demonstrate the contract this list is about. Listing it here would
+        // assert something about the probe that is really about ordering.
+        "creationid-survives-a-sync",
+        "creationid-survives-grouping",
         // Needs a shape to age.
         "how-many-syncs-a-creation-handle-survives",
         // Needs a shape to hold a handle onto across the collection read.
@@ -536,6 +552,13 @@ describe("the fake host's answer sheet", () => {
       // refusal, so a host that refuses every add agrees with the fake there.
       const d = diffAnswers(answers, FAKE_BASELINE);
       expect(d.differ.map((x: { id: string }) => x.id).sort()).toEqual([
+        // Diverges for the ordering reason given above: it is the first of the
+        // creationId questions to run, absorbs the pending refusal the previous
+        // probe left queued, and answers `threw` where the baseline says
+        // `absent`. A truthful answer that differs from the fake's — which is
+        // exactly what a divergence IS, so it belongs here rather than being
+        // smoothed away.
+        "creationid-on-fresh-shape",
         "shape-add-fresh-getitem-slide",
         "shape-add-fresh-slide-proxy",
         "shape-add-positional-slide-proxy",
@@ -1812,7 +1835,18 @@ describe("under slide pressure the later passes ask only the shortlist", () => {
     // measured rather than picked: the assertion below reads the ratio the run
     // actually saw, so a fake that stops refusing early fails loudly instead of
     // passing for the wrong reason.
-    faults.newSlideRefusedForFirst = 40;
+    // DERIVED, because 40 was silently a function of how many probes existed.
+    // The fault refuses the FIRST N new-slide requests, so a hardcoded N stops
+    // spanning both passes the moment a probe is added: three new questions in
+    // 2026-08 pushed pass 1 past 40 on its own, the fault was spent before pass
+    // 2 began, and every settled question got a second slide — the exact
+    // opposite of what this test asserts, from a change that had nothing to do
+    // with scheduling.
+    //
+    // Scaled to the question count so the pressure lasts into pass 2 whatever
+    // the sheet holds. The precondition below still measures what the run
+    // actually saw rather than trusting this number.
+    faults.newSlideRefusedForFirst = Math.round(PROBE_IDS.length * 1.5);
     try {
       const sheet = await runHostProbes("fake-under-slide-pressure", "test");
       const asked = sheet.answers.filter((a) => a.id !== SCRATCH_CLEANUP_ID);

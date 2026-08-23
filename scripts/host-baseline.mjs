@@ -12,6 +12,18 @@
  */
 /** The fake's frozen answers, as asserted in `test/host-probe.test.ts`. */
 export const FAKE_BASELINE = {
+  // THE FAKE DOES NOT MODEL `creationId`, AND DELIBERATELY DOES NOT. A double
+  // that handed back a plausible id would make these read `yes`, `stable` and
+  // `kept` in every suite run while saying nothing whatever about the real host
+  // — which is the only thing they exist to ask. `absent` is the truthful answer
+  // for an object without the property, and a real host answering anything else
+  // is exactly the divergence worth seeing.
+  //
+  // See `reference_fake_populates_on_request`: a fake that fills in what the
+  // host refuses cannot fail, and it hid a 56-round defect once already.
+  "creationid-on-fresh-shape": "absent",
+  "creationid-survives-a-sync": "no-creation-id",
+  "creationid-survives-grouping": "no-creation-id",
   "load-isnullobject-populates": "unreadable",
   "load-id-populates-isnullobject": "yes",
   "getitemornullobject-missing": "null-object",
@@ -327,6 +339,34 @@ export const UNSTABLE_ANSWERS = {
  * Every entry here is a reason to ask the owner for a probe run.
  */
 export const PENDING_QUESTIONS = {
+  "creationid-on-fresh-shape":
+    "Added 2026-08-23, and it decides whether the only live user-visible defect can be fixed at all. Every chart " +
+    "this product loses traces to ONE thing: it identifies shapes by `shape.id`, and this host reassigns them. The " +
+    "chain is a pre-grouping re-read that matches none of our ids, a positional guess at the tail of a stale " +
+    "listing, another chart's shapes, `addGroup` throwing InvalidArgument, a chart left as seven loose rectangles, " +
+    "and a config tag that then fails at BindingCollection.add — 6 of the last 20 rounds, and the throw and the tag " +
+    "failure coincide 6 for 6 because they are one event. `Shape.creationId` (PowerPointApi 1.10, which this host " +
+    "advertises) is the obvious identifier to switch to. WHAT THE DOCUMENTATION ACTUALLY SAYS, checked 2026-08-23, " +
+    'in full: `readonly creationId: string | null` and "Gets the creation ID of the shape. Returns null if the ' +
+    'shape has no creation ID." That is everything — nothing about when it is assigned, nothing about surviving a ' +
+    "save or a session, and an explicit null for shapes that have none. THIS REPO'S OWN BACKLOG calls it \"a durable " +
+    'per-shape identifier" and cites no source; that word is an inference from the NAME. So it is measured before ' +
+    "a migration is built on it. `null` or `absent` here kills the plan on this host, which is worth one probe slot " +
+    "to learn rather than a migration to discover.",
+  "creationid-survives-a-sync":
+    "Added 2026-08-23. The property the product actually needs, not the one the name promises. `shape.id` is what " +
+    "goes stale — `shape-proxy-survives-one-sync` has answered `unreadable` in 133 of 133 rounds, and the rule " +
+    '"only an id crosses a sync, never a handle" exists because of it. This asks whether creationId is any better ' +
+    "across the SAME boundary. `changed` and the migration buys nothing; `stable` while `id` moves and it is exactly " +
+    "the identifier the grouping path has been missing. The shape is re-fetched by POSITION rather than by id, " +
+    "because fetching by id would make the answer depend on the thing under test.",
+  "creationid-survives-grouping":
+    "Added 2026-08-23, and it is the step the defect dies or survives on. Grouping is precisely where identity is " +
+    "lost today: round 179 recorded the positional guess taking `[27..33]` while the chart had drawn `[35..41]` — " +
+    "zero overlap, another chart's shapes, already absorbed into a group. If creationId survives being grouped the " +
+    "re-read can match on it and the guess never runs. If it does not, the migration still fixes the in-place " +
+    'positional mapping (worth having on its own — see BACKLOG, "Retire the positional group-member mapping") but ' +
+    "NOT the defect that is costing charts, and the two must not be conflated in whatever is built next.",
   "how-many-collection-reads-a-context-survives":
     "ANSWERED AND UNANSWERABLE, round 049: `unreadable-at-1`, three samples, stable — the scratch slide would not " +
     "enumerate its collection even ONCE, so there was never a baseline to degrade from. It is the THIRD question to " +
