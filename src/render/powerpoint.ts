@@ -9513,8 +9513,35 @@ async function ungroupedFallback(
     tracePartsOutcome(items, grouped, tagTargets, siblings, partsJson, "no loose chart had siblings");
     return partsJson;
   }
-  // THE IDS ARE USUALLY ALREADY HERE, and asking for them again is what has
-  // cost every parts list this project has ever tried to write.
+  // ROUND 181 SAYS THIS FAST PATH IS INERT, and the record should say so before
+  // anyone reads the code and assumes otherwise.
+  //
+  // It shipped believing `it.created` carries loaded ids by the time the
+  // fallback runs, on the strength of `withOwnId: 7` in the re-read trace. That
+  // reading only exists when a REFRESH was asked for. Round 181 had no
+  // `re-read named none` at all, the ids were unloaded, `needLoading` was full,
+  // and the 5010 fired exactly as before — `gotPartsList: 0`, one loose chart,
+  // no parts list. The early return below has never once been taken on a host.
+  //
+  // IT IS KEPT because it cannot cost anything: it only skips a call whose
+  // answer is already in hand. It is NOT a fix, and the parts list is still 0.
+  //
+  // AND THE OBVIOUS NEXT STEP IS A TRAP THIS PROJECT HAS ALREADY PAID FOR.
+  // "Just load the ids in the drawing batch" is exactly what `tagAnchorIndex`
+  // investigated over four rounds and a host probe: **this host refuses a
+  // creation handle once a `load()` has resolved it into `shapes.getItem(id)`**,
+  // which is the mechanism behind `from: created` — 235 tagging failures, the
+  // largest bucket in the archive. Loading ids earlier buys a parts list and
+  // spends the tag write that makes the chart re-editable at all.
+  //
+  // So the parts list is blocked behind the same root as the grouping and the
+  // re-read: **the shape collection will not honestly report freshly added
+  // shapes** (`shapes-items-count-honest`: unreadable 140, short-0 16, of 156).
+  // One root, three symptoms. Fix that and this fixes itself; work around it
+  // here and the workaround costs more than the defect.
+  //
+  // THE IDS ARE SOMETIMES ALREADY HERE, and asking for them again is what costs
+  // the parts list when they are.
   //
   // `withParts` is **0 across 872 charts in 156 rounds** — CHART_PARTS_TAG has
   // never once been produced on this host. The exits say why: 50 events died at
