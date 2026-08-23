@@ -1,0 +1,12 @@
+# LF in the working tree, on every platform.
+#
+# Prettier's `endOfLine` defaults to "lf", and `format:check` is the FIRST step
+# of `scripts/gate.mjs`. Without this file a clone on a Windows machine with the
+# default `core.autocrlf=true` checks out CRLF and fails that step on every file
+# in the repo — 248 of them on 2026-08-23, on a clone whose tree was byte-clean
+# against HEAD. The repair looks like `prettier --write .`, which rewrites the
+# whole repo into a diff that hides whatever was actually being worked on.
+#
+# `text=auto` so git still keeps binaries out of it; `eol=lf` so the checkout
+# matches what the gate demands rather than what the platform prefers.
+* text=auto eol=lf

@@ -6511,3 +6511,94 @@ is a real possibility and an unmeasured one. Scanning earlier, while the user
 is idle, would be the version that costs nothing. Neither is worth building
 before a round tests the first.
 
+
+## A fresh clone cannot run a round, and every message about it named the wrong cause
+
+A session opened on a second machine, cloning from scratch for the first time
+since the loop began. Three separate stops before a round could start, and **not
+one of them said what was actually wrong.**
+
+### 1. The gate failed on all 248 files
+
+`format:check` rejected the entire repo on a tree that was byte-clean against
+HEAD. The repo has no `.gitattributes`; git's global `core.autocrlf=true` on a
+Windows machine checks out CRLF; prettier's `endOfLine` defaults to `lf`.
+
+The obvious repair is `prettier --write .`, which rewrites all 248 files and
+buries whatever was actually being worked on in the diff. The correct repair is
+to fix the CHECKOUT — `core.autocrlf=false`, re-checkout — and then to make the
+next clone self-correcting, which is what `* text=auto eol=lf` now does.
+
+### 2. A test that could only pass where the driver could not run
+
+    FAIL  finds the CLI entry beside node, or says it cannot
+    expected 'C:\Users\...\playwright-cli.js' to be null
+
+`cliEntry` returns `process.env.PLAYWRIGHT_CLI_JS` on its first line, before the
+injected `exists` predicate is consulted. The variable is set on any machine
+that has ever run a round. So `cliEntry(execPath, () => false)` never reached
+the branch the assertion names, and the test really asserted *"nobody exported
+that variable"* — **green on CI, red on the only machine that runs rounds.**
+
+The test thirty lines below it carries a comment warning about exactly this
+hazard for the injected `entry`, ending "a test about spawn results must not
+depend on whether a tool is installed." The lesson was learned once and not
+carried up the file.
+
+### 3. The one that cost the round: a missing directory reported as a missing tool
+
+    NOT READY
+      - playwright-cli could not be run. Install it (`npm i -g @playwright/cli`)
+        the call that could not be spawned: `find --regex /[0-9a-f]{7} ·/`
+        — spawnSync C:\Program Files\nodejs\node.exe ENOENT
+
+The tool was installed and answered `0.1.18`. Node was on PATH. **`.pw-session/`
+is gitignored, so a fresh clone has no session directory** — and Node reports a
+missing `cwd` as ENOENT *against the executable*:
+
+    missing cwd -> spawnSync <node.exe> ENOENT
+    valid cwd   -> error: undefined | out: 0.1.18
+
+One errno, two causes, and the message asserted the one that was false. Only
+`scripts/pw.sh` created that directory, with `mkdir -p`; the driver assumed
+somebody had sourced it, which is true of every machine that has run a round
+before and of no machine setting one up.
+
+**This is the fourth appearance of the same defect in this file.** The code
+directly above the message already said it: *"'playwright-cli could not be run'
+sent two rounds' worth of debugging at an install that was fine, because the
+message named the tool and the tool was never the problem."* The fix made then
+— surface the subcommand and the errno — is what made this diagnosable in one
+step, and it earned its keep. **The remedy text was left naming the install
+anyway.** A comment that admits "the install has never once been the problem"
+sat directly above a sentence beginning "Install it".
+
+### What changed
+
+`ensureSessionDir()`, called from `cli()` **before** `sessionDir()`. The
+ordering carries a second fix: `realpathSync.native` throws on a path that does
+not exist, and the fallback returns the un-normalised string — the 8.3
+short-name bug `sessionDir` exists to prevent, reached silently whenever the
+directory was absent.
+
+Spawn failures now record `entryMissing` and `cwdMissing` as CHECKED facts, and
+`spawnFailureRemedy()` names the input that was missing. Both paths are
+checkable, so neither is guessed. When both exist it says so, because naming
+either would be the same guess in a new coat.
+
+Seven mutants, each killed by the test that names it — including the one the
+original `cliEntry` test could not have caught.
+
+### What this session did NOT do
+
+**No round ran. The archive is unchanged at 182.** Threads 1, 2 and 3 —
+`bindings.add`, the first chart's 2.2x write syncs, the 27 untagged charts —
+have no new data. Everything above is setup infrastructure, and none of it is
+product.
+
+One thing is left open and unexplained: after recovery opened the browser, the
+deck loaded and sat on screen, signed in, ribbon fully rendered — and the driver
+spent nine minutes on one attempt without reaching the pane. Attempt 1's
+`browser-gone` was CORRECT, because nothing was open. What attempt 2 was waiting
+on is not known, and it is the first thing the next round will hit.
+

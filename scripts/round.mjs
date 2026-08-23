@@ -38,7 +38,17 @@
  * `CLAUDE.md` "Looking at the task pane" for the browser traps this encodes.
  */
 import { spawnSync } from "child_process";
-import { readFileSync, writeFileSync, existsSync, readdirSync, realpathSync, copyFileSync, statSync, rmSync } from "fs";
+import {
+  readFileSync,
+  writeFileSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  realpathSync,
+  copyFileSync,
+  statSync,
+  rmSync,
+} from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 import { isMain } from "./is-main.mjs";
@@ -61,6 +71,44 @@ import { collectCrashEvidence } from "./crash-forensics.mjs";
 export function buildOf(text) {
   const m = /\b([0-9a-f]{7})\s+·/.exec(String(text ?? ""));
   return m ? m[1] : null;
+}
+
+/**
+ * What to DO about a spawn that never ran — off checked facts, not the errno.
+ *
+ * `ENOENT` from this driver's `spawnSync` has two causes and names neither:
+ * Node reports a missing working directory as ENOENT AGAINST THE EXECUTABLE, so
+ * a missing `.pw-session/` and a missing playwright-cli print the same line —
+ *
+ *     spawnSync <the node.exe that would have run it> ENOENT
+ *
+ * — and the old message answered both with "Install it". The comment above it
+ * already said "the install has never once been the problem" and the text still
+ * said to install it. It cost the first round of the 2026-08-23 session: the
+ * tool was installed, node was on PATH, and the clone simply had no session
+ * directory, because `.pw-session/` is gitignored and only `scripts/pw.sh`
+ * created it.
+ *
+ * The two inputs are CHECKABLE, so they are checked — see `cli`. This function
+ * only reads the answer. The last branch is the honest one: when both exist,
+ * naming either would be the same guess in a new coat.
+ */
+export function spawnFailureRemedy(at) {
+  if (at?.cwdMissing)
+    return (
+      "the session directory does not exist — nothing below was actually measured. " +
+      "Create it (`. scripts/pw.sh` does, with `mkdir -p`), or pass an existing --dir."
+    );
+  if (at?.entryMissing)
+    return (
+      "playwright-cli is not at the path this driver was given — nothing below was actually measured. " +
+      "Install it (`npm i -g @playwright/cli`), or point PLAYWRIGHT_CLI_JS at its entry point."
+    );
+  return (
+    "playwright-cli could not be run — nothing below was actually measured. " +
+    "Its entry point and the session directory both exist, so this is " +
+    "neither a missing install nor a missing directory."
+  );
 }
 
 /**
@@ -135,12 +183,20 @@ export function readiness({
   // First, and on its own: everything below reads as "the browser said nothing"
   // when the truth is that nobody asked it. See `cli`.
   if (!reachable) {
-    // WHICH of the two unreachable states this is. A tool that is missing and a
-    // machine that was too busy to start it produce the same empty string here,
-    // and they want opposite handling: fail fast, or retry. Classified off the
-    // errno, and the headline now names the CONDITION rather than guessing at a
-    // cause — "Install it" was the first thing the old message said, and the
-    // install has never once been the problem.
+    // WHICH of the three unreachable states this is. A tool that is missing, a
+    // session directory that is missing, and a machine too busy to start the
+    // tool all produce the same empty string here, and they want different
+    // handling: fail fast with one remedy, fail fast with another, or retry.
+    //
+    // Split in two passes because the two questions are different. Retry-or-not
+    // is decided off the ERRNO, which is the only thing that separates "too busy
+    // just now" from "not there at all". Which-remedy is decided off the two
+    // paths, CHECKED — because the errno cannot tell a missing entry from a
+    // missing cwd, Node reporting both as ENOENT against the executable.
+    //
+    // The headline names the CONDITION rather than guessing at a cause. This
+    // comment said so while the message underneath it still opened with
+    // "Install it" — and the install has never once been the problem.
     const transient = unreachableAt && spawnFailureIsTransient(unreachableAt.error);
     return {
       ok: false,
@@ -149,8 +205,7 @@ export function readiness({
         (transient
           ? "playwright-cli could not be STARTED — the machine was busy, not the tool missing. " +
             "Nothing below was actually measured; the next attempt is expected to clear it."
-          : "playwright-cli could not be run — nothing below was actually measured. " +
-            "Install it (`npm i -g @playwright/cli`), or set PLAYWRIGHT_CLI_JS to its entry point.") +
+          : spawnFailureRemedy(unreachableAt)) +
           // The call and the errno, when there is one. Without them this message
           // points at the install every time, and the install is almost never it.
           (unreachableAt
@@ -463,6 +518,16 @@ export function cliEntry(execPath = process.execPath, exists = existsSync) {
  * reported as its own precondition, ahead of everything it would otherwise
  * poison.
  */
+export function ensureSessionDir(dir) {
+  try {
+    mkdirSync(dir, { recursive: true });
+  } catch {
+    // Leave it. The spawn then fails with `cwdMissing`, and `spawnFailureRemedy`
+    // says so in words a reader can act on — better than an ENOENT stack thrown
+    // out of the driver's first line, before anything has been reported.
+  }
+}
+
 export function sessionDir(dir, real = realpathSync.native) {
   // The daemon keys its sessions by the working directory STRING, and Windows
   // gives the same directory two names. Opened from a shell that resolved
@@ -759,8 +824,27 @@ export function roundConfigArg(exists = existsSync) {
   return exists(p) ? [`--config=${p}`] : [];
 }
 
-export function cli(run, dir, entry = cliEntry()) {
+export function cli(run, dir, entry = cliEntry(), ensure = ensureSessionDir) {
   const state = { unreachable: false };
+  // MAKE THE SESSION DIRECTORY BEFORE ANYTHING IS SPAWNED INTO IT.
+  //
+  // `.pw-session/` is gitignored, so a FRESH CLONE does not have one — and
+  // `spawnSync` reports a missing `cwd` as ENOENT against the EXECUTABLE:
+  //
+  //     spawnSync <the node.exe that would have run it> ENOENT
+  //
+  // which reads as a broken node install, and which the readiness message used
+  // to answer with "install playwright-cli". Three wrong answers from one errno.
+  // It cost the first round of the 2026-08-23 session, on a clone where the tool
+  // was installed, node was on PATH, and the directory was the entire problem.
+  // `scripts/pw.sh` has always done this with `mkdir -p`; the driver assumed
+  // someone had sourced it first, which is true of every machine that has run a
+  // round before and of no machine setting one up.
+  //
+  // BEFORE `sessionDir`, not after: `realpathSync.native` throws on a path that
+  // does not exist, and the fallback hands back the un-normalised string — the
+  // 8.3 short-name bug that function exists to prevent.
+  ensure(dir);
   const cwd = sessionDir(dir);
   const sh = (...args) => {
     if (!entry) {
@@ -810,7 +894,16 @@ export function cli(run, dir, entry = cliEntry()) {
       // two rounds' worth of debugging at an install that was fine, because the
       // message named the tool and the tool was never the problem. A spawn
       // failure has a subcommand and an errno and both were being thrown away.
-      state.unreachableAt ??= { args: args.join(" ").slice(0, 80), error: String(r.error?.message ?? r.error) };
+      state.unreachableAt ??= {
+        args: args.join(" ").slice(0, 80),
+        error: String(r.error?.message ?? r.error),
+        // WHICH OF THE TWO INPUTS WAS ABSENT — checked, not inferred from the
+        // errno. A spawn ENOENT here has two causes, the entry and the working
+        // directory, and the remedy for either is useless for the other. Read at
+        // failure time because both can appear or vanish mid-run.
+        entryMissing: !existsSync(entry),
+        cwdMissing: !existsSync(cwd),
+      };
     }
     // A failed CLI call and a page that answered with nothing are the same empty
     // string, and the difference decides whether a round is alive. Recorded, not

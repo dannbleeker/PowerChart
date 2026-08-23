@@ -15,6 +15,8 @@ const {
   stripImages,
   cliEntry,
   sessionDir,
+  ensureSessionDir,
+  spawnFailureRemedy,
   pingScript,
   readPing,
   refFor,
@@ -1012,8 +1014,85 @@ describe("talking to the browser at all", () => {
   });
 
   it("finds the CLI entry beside node, or says it cannot", () => {
-    expect(cliEntry("C:/n/node.exe", () => true)).toContain("playwright-cli.js");
-    expect(cliEntry("C:/n/node.exe", () => false)).toBe(null);
+    // THE OVERRIDE IS PART OF THIS FUNCTION, so the test has to control it.
+    //
+    // Leaving it to the ambient environment is what made this test green on CI
+    // and RED on the only machine that runs rounds. `PLAYWRIGHT_CLI_JS` is set
+    // there; `cliEntry` returns it on its first line, before `exists` is ever
+    // consulted; so the `() => false` case never reached the branch it names and
+    // the assertion was really testing "nobody exported a variable". That is the
+    // same defect as the injected `entry` thirty lines below — learned once,
+    // and not carried up the file.
+    const saved = process.env.PLAYWRIGHT_CLI_JS;
+    try {
+      delete process.env.PLAYWRIGHT_CLI_JS;
+      expect(cliEntry("C:/n/node.exe", () => true)).toContain("playwright-cli.js");
+      expect(cliEntry("C:/n/node.exe", () => false)).toBe(null);
+      // And when it IS set it wins, unconditionally — which is what makes it an
+      // override rather than a second guess. Asserted, because the unchecked
+      // return is load-bearing: it is why a bad path reaches `spawnSync` at all,
+      // and `spawnFailureRemedy` is what makes that legible when it does.
+      process.env.PLAYWRIGHT_CLI_JS = "C:/elsewhere/playwright-cli.js";
+      expect(cliEntry("C:/n/node.exe", () => false)).toBe("C:/elsewhere/playwright-cli.js");
+    } finally {
+      if (saved === undefined) delete process.env.PLAYWRIGHT_CLI_JS;
+      else process.env.PLAYWRIGHT_CLI_JS = saved;
+    }
+  });
+
+  it("makes the session directory before it spawns anything into it", () => {
+    // `.pw-session/` is gitignored, so a FRESH CLONE has none — and spawnSync
+    // reports a missing `cwd` as ENOENT against the EXECUTABLE, which reads as a
+    // broken node install and used to be answered with "install playwright-cli".
+    // A round was lost to that on 2026-08-23 with the tool installed and node on
+    // PATH. `scripts/pw.sh` has always done this; the driver assumed someone had
+    // sourced it.
+    const made: string[] = [];
+    const sh = cli(
+      () => ({ status: 0, stdout: "" }),
+      "C:/nowhere/.pw-session",
+      "C:/fake/playwright-cli.js",
+      (d: string) => made.push(d),
+    );
+    sh("list");
+    expect(made, "the directory has to be MADE, not assumed").toEqual(["C:/nowhere/.pw-session"]);
+  });
+
+  it("survives a session directory it cannot create", () => {
+    // A driver that throws out of its own first line reports nothing at all. The
+    // spawn below fails anyway, and `spawnFailureRemedy` says why in words.
+    expect(() => ensureSessionDir("package.json/nope")).not.toThrow();
+  });
+
+  it("records WHICH of the two inputs was absent when a spawn fails", () => {
+    // The errno cannot tell these apart — both are ENOENT, and both name the
+    // executable. Checked at failure time instead of inferred.
+    const sh = cli(
+      () => ({ error: new Error("spawnSync C:/Program Files/nodejs/node.exe ENOENT") }),
+      ".",
+      "C:/fake/playwright-cli.js",
+      () => {},
+    );
+    sh("find", "x");
+    expect(sh.state.unreachableAt?.entryMissing, "C:/fake is not on this machine").toBe(true);
+    expect(sh.state.unreachableAt?.cwdMissing, '"." is').toBe(false);
+  });
+
+  it("names the input that was missing instead of guessing at the install", () => {
+    expect(spawnFailureRemedy({ cwdMissing: true, entryMissing: false })).toContain("session directory");
+    expect(spawnFailureRemedy({ cwdMissing: true, entryMissing: false })).toContain("scripts/pw.sh");
+    expect(spawnFailureRemedy({ cwdMissing: false, entryMissing: true })).toContain("npm i -g @playwright/cli");
+    // A missing directory must NOT be answered with an install. That answer cost
+    // a round; it is the whole reason this function exists.
+    expect(
+      spawnFailureRemedy({ cwdMissing: true, entryMissing: false }),
+      "the install has never once been the problem",
+    ).not.toContain("npm i -g");
+    // And when both are present, saying either would be a guess. The comment
+    // above the old message already admitted this and the message ignored it.
+    const neither = spawnFailureRemedy({ cwdMissing: false, entryMissing: false });
+    expect(neither).not.toContain("npm i -g");
+    expect(neither).toContain("neither a missing install nor a missing directory");
   });
 
   it("normalises a session directory, because 8.3 short names are a different session", () => {
