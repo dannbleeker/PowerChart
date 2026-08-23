@@ -6602,3 +6602,108 @@ spent nine minutes on one attempt without reaching the pane. Attempt 1's
 `browser-gone` was CORRECT, because nothing was open. What attempt 2 was waiting
 on is not known, and it is the first thing the next round will hit.
 
+**Answered by the next round, and it was ours:** `the window was 1280px and hides
+ribbon commands — widened to 3088px`. The cramped ribbon, which `ensureRibbonRoom`
+clears by itself once it is given a browser it opened. Nothing was wrong with the
+host.
+
+
+## The pair says deterministic — and corrects the clue the last entry called sharpest
+
+Rounds 207 and 208, one build, second leg `--fresh`.
+
+    chart  changed/of   207 ms   208 ms      207 syncMs              208 syncMs
+     1/8    18/24        36252    36650   [11565,11189,12511,982] [11642,11832,12472,702]
+     2/8     9/16        11494    11621   [ 5900, 4819,       773] [ 5938, 5085,      598]
+     3/8     9/16        11560    11963   [ 5821, 4935,       804] [ 5902, 5255,      805]
+     4/8    18/24        16785    16572   [ 5396, 5449, 5350, 588] [ 5264, 5201, 5535,570]
+     8/8    18/24        17292    16924   [ 5869, 5230, 5469, 722] [ 5482, 5134, 5492,816]
+
+The first chart differs by **1.1%** across the pair. Tags 11 of 11 written in
+both. The settle retry: 6 first asks and 1 second ask that rescued its chart, in
+both. The binding probe answered `commit-threw` 3 of 3 in both. The gap from the
+deck scan to chart 1: 1237ms and 1231ms.
+
+This is rounds 066/067 again — deterministic, not mood — and it is what makes
+everything below sayable at all.
+
+### The first chart is a rate now, not a lead
+
+Every 18-of-24 update in the archive, by position:
+
+    first chart of the run    n=11   median 37140   range 36189-43837
+    later, same slide         n=10   median 18233   range 17395-18999
+    later, other slide        n=45   median 17033   range 16273-20967
+
+**The distributions do not overlap.** The slowest later chart ever recorded is
+15 seconds faster than the fastest first chart ever recorded. The previous entry
+called this "a shape worth more rounds before anyone names it". It is named.
+
+**And it is not the slide**, which was previously unscorable because every 9-of-16
+sample shared the first chart's slide. At 18 of 24 the comparison is clean:
+18233 against 17033, with ranges that overlap almost entirely. The slide is worth
+about a second and possibly nothing; being first is worth twenty.
+
+**Nor is the host cold.** An ordinary 1-of-24 update on chart 1's OWN slide, 87
+seconds earlier in round 207, cost 2330ms against a fit predicting ~2491 — dead
+on it. The context was warm, the slide was warm, and chart 1 still paid 36s.
+Whatever this is, it is a property of the RUN.
+
+### CORRECTION — the tag sync is not flat, and that sentence came from one round
+
+The previous entry says:
+
+> the tag sync, the fourth, is ~650ms on every chart including the first:
+> identical whether the chart is dear or cheap.
+
+and builds on it: *"The tag sync being flat across all charts is the sharpest
+clue."* **It was written from round 204 alone.** The five first-chart tag syncs
+now on record:
+
+    204: 690    205: 904    206: 841    207: 982    208: 702
+
+Median 841 against a later-chart median of 644 — **1.31x, not 1.00x.** Only round
+204's value is ~650, and it was read as the population.
+
+What survives is the inference, and the pair strengthens it: the three write
+syncs are 2.11x, 2.23x and 2.28x with complete separation, and the tag sync is
+plainly not that. The expense really is concentrated in the shape writes.
+
+What does not survive is the word "identical", and the number. Three of the five
+first-chart tag syncs sit INSIDE the later-chart range of 503-846, and two do
+not, at n=5 — which is not a measured elevation and not a measured absence
+either. The honest form: **the tag sync does not share the writes' 2.2x, and
+whether it is mildly elevated is unsettled.**
+
+Ninth time in this file that a correct number carried a sentence about a
+population it did not describe. This one was load-bearing: it was the evidence
+for "nothing run-wide is elevated", and a 1.31x tag sync is a run-wide thing.
+
+### What the pair still cannot separate
+
+Every run's chart 1 is preceded by a deck scan, and no later chart is —
+1237ms and 1231ms ahead of it in the two legs. The confound is total, and no
+amount of mining separates a variable that never varies. The instrument is the
+experiment the last entry already framed: a settling pause between the scan and
+chart 1, traced beside chart 1's `syncMs`. With complete separation at n=11, one
+round decides it — chart 1 normalises or it does not.
+
+### Two instruments whose populations died
+
+`a chart's tag could not even be queued` last fired in round **065**, 143 rounds
+ago. `settle pass: could not repair any config tag` last fired in round **078**.
+The trace that says which half of the queue key was missing was built to be read
+"once rounds accumulate"; the rounds accumulated and the fault stopped happening
+first. `tagging failed` is the live counter — 374 events, last fired round 206,
+and zero in both legs of this pair.
+
+### And a narrowing on bindings, from reading the code that writes the field
+
+`bindTagTarget` is already wrapped in its own try/catch and returns `false`; the
+caller clears the binding id and the `target.tags.add` on the next line still
+runs. **A synchronous refusal cannot cost the chart its tag today.** The only
+surviving mechanism is a queued `bindings.add` that fails at `context.sync()`,
+taking the tag writes batched into the same sync with it — which means isolation
+would have to be a separate SYNC, not a separate guard. Thread 1's proposal was
+right, and now for a reason rather than by analogy.
+
