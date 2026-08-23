@@ -2766,6 +2766,64 @@ function reportPositionalGuess(logs) {
     );
 }
 
+/**
+ * Which target route the config tag was written through — both halves.
+ *
+ * ONLY THE FAILURES WERE EVER COUNTED. `tagging failed` carries `from`, and
+ * pooled over the archive it reads created 235, undefined 61, group 51, by-id
+ * 26. That looks like a verdict on the creation proxy and is not one: a route
+ * chosen ten times as often fails ten times as often at the same rate, and
+ * nothing counted how often each was chosen.
+ *
+ * It is not academic. The probe sheet answers
+ * `tag-the-creation-proxy-a-sync-later => yes` 148 of 148, so on that evidence
+ * the creation proxy is the route to PREFER — while the raw failure counts say
+ * the opposite. One of those is measured on a scratch shape and one has no
+ * denominator, and a change made on either would be made blind.
+ */
+export function poolTagRoutes(logs) {
+  const ok = {};
+  const failed = {};
+  let rounds = 0;
+  for (const log of logs ?? []) {
+    let any = false;
+    for (const e of log?.trace?.entries ?? []) {
+      const m = String(e.message ?? "");
+      if (m === "config tags written, by target route") {
+        for (const [k, n] of Object.entries(e.data?.from ?? {})) ok[k] = (ok[k] ?? 0) + (Number(n) || 0);
+        any = true;
+      } else if (/^tagging failed/.test(m)) {
+        const k = String(e.data?.from ?? "undefined");
+        failed[k] = (failed[k] ?? 0) + (Number(e.data?.charts) || 1);
+        any = true;
+      }
+    }
+    if (any) rounds++;
+  }
+  const routes = [...new Set([...Object.keys(ok), ...Object.keys(failed)])].sort();
+  return { rounds, routes: routes.map((r) => ({ route: r, ok: ok[r] ?? 0, failed: failed[r] ?? 0 })) };
+}
+
+/** The tag routes, with the denominator that was missing. */
+function reportTagRoutes(logs) {
+  const t = poolTagRoutes(logs);
+  if (!t.routes.length) return;
+  console.log(`
+  CONFIG TAG BY TARGET ROUTE — over ${t.rounds} round(s)`);
+  for (const r of t.routes) {
+    const n = r.ok + r.failed;
+    const rate = r.ok ? `${Math.round((100 * r.ok) / n)}% written` : n ? "0% written" : "";
+    console.log(
+      `    ${r.route.padEnd(12)} ${String(r.ok).padStart(5)} written · ${String(r.failed).padStart(4)} failed  ${rate}`,
+    );
+  }
+  if (t.routes.every((r) => !r.ok))
+    console.log(
+      `    NO SUCCESS COUNTS YET — every round above predates the line that records them, so these
+` + `    are failures without a denominator and no route can be compared to another on them.`,
+    );
+}
+
 function reportStarvedQuestions(logs) {
   const dead = poolStarvedQuestions(logs);
   if (!dead.length) return;
@@ -3592,6 +3650,7 @@ if (invokedDirectly) {
     reportIdChurn(pooled);
     reportPartsListOutcome(pooled);
     reportPositionalGuess(pooled);
+    reportTagRoutes(pooled);
     reportTagFaults(pooled);
     reportPool(pooled);
     process.exit(failed ? 1 : 0);
@@ -3642,6 +3701,7 @@ if (invokedDirectly) {
     reportIdChurn(pooled);
     reportPartsListOutcome(pooled);
     reportPositionalGuess(pooled);
+    reportTagRoutes(pooled);
     reportTagFaults(pooled);
     reportPool(pooled);
     if (!results.length && !selftest.length && !log?.trace)
