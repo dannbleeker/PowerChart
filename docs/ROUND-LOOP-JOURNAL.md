@@ -6253,3 +6253,66 @@ Recording it because the alternative is the failure this session has made six
 times already: watching a number replicate, feeling the confidence rise, and
 not noticing that the design could never have answered the question.
 
+
+## I shipped the house defect, and round 202 printed it back at me
+
+The previous commit put `syncsOf(context)` on the update's trace line to split the
+first-chart cost two ways — more syncs, or slower syncs. Round 202:
+
+    chart  changed/of   ms       syncs  contextSyncs
+     1/8    18/24        37140       0             0
+     2/8     9/16        11705       0             0
+     4/8    18/24        17077       0             0
+     …            all eight, all zero
+
+**A 37-second update that issues no syncs is not a finding, it is a broken
+gauge.** Zero there meant NOT MEASURED — the exact defect this journal has been
+cataloguing all day, written by the person cataloguing it, and caught only
+because the number was absurd on its face.
+
+### The cause is bigger than the gauge
+
+`tryInPlaceUpdate` syncs through `step(…, () => context.sync())` directly, and only
+`boundedSync` increments the WeakMap. Counted across the file:
+
+    27  boundedSync call sites
+    74  direct context.sync() calls
+
+**About three quarters of this file's syncs increment nothing.** And the
+docstring on `syncsPerContext` said, in as many words:
+
+> Every sync in this file goes through `boundedSync`, which is what makes one
+> counter enough.
+
+It is false, and it is false in the worst possible place: that counter exists
+to test whether `same scale across the deck` degrades inside one context, and
+`tryInPlaceUpdate` IS that scenario. **The decay hypothesis has never been
+measurable on the path it was written about**, and the comment asserting
+otherwise is what stopped anyone noticing.
+
+### The fix, and what was deliberately not fixed
+
+The update path counts its own syncs now — a local counter incremented beside
+the calls it counts, where it cannot go blind. `contextSyncs` is GONE rather
+than shipped reading 0, because a field that is always zero gets read as a
+measurement of zero.
+
+Routing the other 74 sites through `boundedSync` was NOT done. It would put a
+`BATCH_TIMEOUT_MS` on every one of them — a behaviour change to the whole file,
+on a path that currently has no deadline at all, unattended, at the end of a
+long session. That wants its own rounds. What is fixed is the CLAIM: a counter
+that admits its blind spot can be reasoned about, one that denies it cannot.
+
+### And the fork is nearly answered anyway
+
+`IN_PLACE_WRITES_PER_SYNC` is 6, so a chart changing 18 shapes issues 3 write
+syncs plus 1 for the tags — **four, first chart or not**. Charts 1/8 and 4/8
+both change 18 of 24. If the count is the same and the first costs 37s against
+17s, then its syncs are **slower**, not more numerous — roughly 9.3s each
+against 4.3s.
+
+That is derived from a constant rather than measured, which is precisely the
+kind of reasoning this session keeps having to retract. Round 203 will carry
+the counted number, and the derivation is written down here so it can be
+checked against one rather than quietly replaced by it.
+

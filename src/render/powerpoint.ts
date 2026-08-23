@@ -1191,8 +1191,31 @@ export function _setSelectionTimeoutForTest(ms: number): void {
  * measurement has to be taken in production.
  *
  * A WeakMap keyed by the context, so the count dies with it and never leaks
- * across calls. Every sync in this file goes through `boundedSync`, which is
- * what makes one counter enough.
+ * across calls.
+ *
+ * **IT DOES NOT COUNT MOST OF THIS FILE'S SYNCS, and the line that used to sit
+ * here said the opposite.** It read: "Every sync in this file goes through
+ * `boundedSync`, which is what makes one counter enough." Counted on 2026-08-23:
+ * **27 `boundedSync` call sites against 74 direct `context.sync()` calls** — so about
+ * three quarters of the syncs in this file increment nothing.
+ *
+ * That matters most where this counter was aimed. The docstring above is about
+ * `same scale across the deck` degrading inside one context, and
+ * `tryInPlaceUpdate` — the whole of that scenario — syncs through
+ * `step(…, () => context.sync())` directly. **The decay hypothesis has never been
+ * measurable on the path it was written about.**
+ *
+ * Found by shipping it: a commit put `syncsOf(context)` on the update's trace line
+ * to ask whether the first chart of a run issues more syncs or slower ones, and
+ * round 202 answered `syncs: 0, contextSyncs: 0` for eight charts costing 12-37
+ * seconds each. Zero there meant NOT MEASURED. That path now counts its own
+ * syncs locally, beside the calls it counts, where it cannot go blind.
+ *
+ * Left as it is rather than widened, deliberately: routing 74 sites through
+ * `boundedSync` would also put a `BATCH_TIMEOUT_MS` on every one of them, which is a
+ * behaviour change to the whole file and wants its own rounds. What is fixed
+ * here is the CLAIM — a counter that admits its blind spot can be reasoned
+ * about; one that denies it cannot.
  */
 const syncsPerContext = new WeakMap<PowerPoint.RequestContext, number>();
 
@@ -10255,7 +10278,25 @@ async function tryInPlaceUpdate(
 ): Promise<boolean> {
   const { it, old, groupMembers } = entry;
   let parts = entry.parts;
-  // HOW WORN THE CONTEXT ALREADY WAS, and how many syncs this update adds.
+  // HOW MANY SYNCS THIS UPDATE ISSUES, counted here rather than read from
+  // `syncsPerContext` — and the reason is a correction to the commit before this
+  // one.
+  //
+  // That commit emitted `syncsOf(context)` on this line to split the first-chart
+  // cost two ways: more syncs, or slower syncs. Round 202 came back with
+  // `syncs: 0, contextSyncs: 0` on all eight charts — a 37-second update that
+  // issues no syncs is not a finding, it is a broken gauge, and ZERO THERE
+  // MEANT NOT MEASURED.
+  //
+  // The cause is that this function syncs through `step(…, () => context.sync())`
+  // directly, and only `boundedSync` increments the WeakMap. The docstring on
+  // `syncsPerContext` says "Every sync in this file goes through boundedSync,
+  // which is what makes one counter enough" — there are 27 `boundedSync` call
+  // sites and 74 direct `context.sync()` calls, so about three quarters of this
+  // file's syncs have never been counted, this path among them.
+  //
+  // A local count cannot go blind the same way: it is incremented beside the
+  // calls it counts.
   //
   // `syncsPerContext` was built for exactly this question and has only ever
   // been emitted on the GROUPING path (three sites), never here — while the
@@ -10273,7 +10314,7 @@ async function tryInPlaceUpdate(
   // What it cannot say is WHY, and there are two shapes: the first update
   // issues MORE SYNCS, or it issues the same number and they are SLOWER. One is
   // our batching, the other is the host. These two numbers separate them.
-  const syncsAtStart = syncsOf(context);
+  let syncsHere = 0;
   // WHAT THIS PATH COSTS, which nothing has ever recorded.
   //
   // `same scale across the deck` is the most expensive scenario in the round —
@@ -10436,6 +10477,7 @@ async function tryInPlaceUpdate(
     for (let i = 0; i < plan.changed.length; i += IN_PLACE_WRITES_PER_SYNC) {
       for (const n of plan.changed.slice(i, i + IN_PLACE_WRITES_PER_SYNC))
         applyNodeInPlace(shapes[n], it.scene.nodes[n], dx, dy, opts);
+      syncsHere++;
       await step("updating the shapes a chart actually changed", () => context.sync());
     }
     // The tags LAST, and in their own sync. They are what makes the chart
@@ -10443,6 +10485,7 @@ async function tryInPlaceUpdate(
     // leave a chart whose config claims an edit its shapes have not taken.
     old.tags.add(CHART_TAG, it.opts.tagData);
     old.tags.add(CHART_SCENE_TAG, sceneFingerprint(it.scene));
+    syncsHere++;
     await step("writing the chart's tags after an in-place update", () => context.sync());
   } catch (err) {
     trace("draw", "in-place update refused — redrawing instead", {
@@ -10491,10 +10534,15 @@ async function tryInPlaceUpdate(
     // more to touch, which this file measures elsewhere at 4.7x. Without the id
     // those two are indistinguishable however long the loop runs.
     slideId: it.target.slideId,
-    // How many syncs the shared context had already spent before this chart, and
-    // how many this chart spent. Wear, and work.
-    contextSyncs: syncsAtStart,
-    syncs: syncsOf(context) - syncsAtStart,
+    // How many syncs THIS update issued. With `IN_PLACE_WRITES_PER_SYNC` at 6,
+    // a chart changing 18 shapes should always issue 3 write syncs plus 1 for
+    // the tags — first chart or not — so if the first chart is dearer at the
+    // same count, its syncs are SLOWER rather than more numerous.
+    //
+    // `contextSyncs` is deliberately gone rather than shipped reading 0: the
+    // global counter cannot see this path at all, and a field that is always
+    // zero is read as a measurement of zero.
+    syncs: syncsHere,
   });
   return true;
 }
