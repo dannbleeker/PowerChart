@@ -4684,3 +4684,63 @@ failure, so it passes whenever grouping fails, which is what rounds 159, 161 and
 So the verifier's REAL was right about the mechanism and wrong about the
 present tense. An agent's finding is a lead, not a result — the same rule this
 project applies to its own instruments.
+
+## Round 174 — the instrument found the hole in the instrument beside it
+
+`poolFullestSlide` landed in round 173's build. Round 174 is the first round it
+judged, and it immediately contradicted the story it was built on.
+
+    GROUPING: 8 of 8 attempt(s) grouped, 0 refused
+    fullest slide per round, last 8: [11,5,5,5,5,5,5,11]
+
+**Zero refusals and an 11-shape slide.** The account written a round earlier —
+"a chart that fails to group is left as its loose shapes" — named the wrong
+mechanism. Nothing was refused. Something threw.
+
+### Grouping has three outcomes and the counter knew two
+
+    grouped the chart's shapes      success
+    not grouping: …                 declined by rule
+    grouping the chart's shapes     THREW — carries an `error`, usually InvalidArgument
+
+Only the first two were counted. So a round where a group threw printed
+`8 of 8 attempt(s) grouped, 0 refused` — **the missing attempt was the defect,
+and the count written to expose it hid it.** Both halves of the ratio moved
+together, which is the one way a ratio can lie while every number in it is true.
+
+Pooled: **183 throws across 65 of 150 rounds.** They match the loose-shape slides
+exactly, with no exceptions in the recent window:
+
+    round  159 160 161 162 163 164 165 166 167 168 169 170 171 172 173 174
+    threw    1   0   1   0   0   0   0   0   1   0   0   0   0   0   0   1
+    fullest 17   5  17   5   5   5   5   5  11   5   5   5   5   5   5  11
+
+Four for four and twelve for twelve. A chart whose group throws is left as its
+shapes; `poolFullestSlide` was seeing that from the deck side while
+`poolGroupingOutcome` reported a clean sweep from the trace side.
+
+`attempts per round` now reads a flat `[9,9,9,9,9,9,9,9]`. It was moving before
+— 9,9,8,9,8 — and that movement was the throws leaving the denominator. **A
+denominator that shrinks by exactly the number of failures cannot show a failure
+rate.**
+
+### What it cost, and what it did not
+
+Nothing shipped is wrong: the chart is drawn, and its shapes are on the slide.
+What is lost is that it is not a chart any more — no group, so no config tag
+through the group handle, and the user sees eight rectangles they cannot edit.
+That is the failure `13 of 13` has been passing over, and it happens about once
+every four rounds.
+
+### The lesson, which is not the one from an hour ago
+
+I wrote yesterday that a summary can outlive the regime it summarised. This is
+narrower and worse: **a count can be wrong at the moment it is written, because
+the thing it does not count also leaves the denominator.** No staleness
+involved. `poolGroupingOutcome` has counted two of three outcomes since the day
+it was written, and every round it ever reported read as perfect.
+
+The sweep flagged this — "the grouping instrument drops a chart whose addGroup
+threw from BOTH the numerator and the denominator" — and I had it in the queue
+behind four other findings. Round 174 produced it live before I got there, which
+is the better provenance: the archive said it, not an agent.
