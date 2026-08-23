@@ -1,11 +1,14 @@
 # PowerChart round loop — brief
 
 One round per cycle: run it, mine it, fix what it exposes, journal it, land it.
-Repeat. Last round **118** (`rounds/118-796605c.json`, 12 of 13, 2026-08-20),
-paired with 117 at 4:3. **Read `PAIR POSITION` in the gate before comparing any
-two rounds:** the second round of a build is worse than the first in 15 of the
-17 pairs that moved. A 1st-round number and a 2nd-round number are not two
-samples of one condition.
+Repeat. **Read `PAIR POSITION` in the gate before comparing any two rounds:** the
+second round of a build is worse than the first in 20 of the 22 pairs that moved.
+A 1st-round number and a 2nd-round number are not two samples of one condition —
+and the cause is the PANE, which is why the second leg runs `--fresh`.
+
+**No round number here.** It said "last round 118" for 55 rounds. A header that
+has to be edited by hand to stay true is a header that will be wrong; the gate
+prints the count, and `npm run rounds` prints the table.
 
 **Move that line with the loop.** It was once twenty-one rounds out of date —
 reading `067 … 10 of 12` while a paragraph further down this same file cited
@@ -172,18 +175,38 @@ This is what "the second round of a pair is worse" always was — the second rou
 is the one that inherits a pane. Position, profile and observer load were all
 stand-ins for it, and each was published as a cause before being refuted.
 
-**AND IT IS FIXED, as of `1867e12`.** `collectRound` reloads the tab and reopens
-the pane after the sweep, so every round starts fresh. Round 126 is the first
-SECOND round in this archive to score a first round's numbers — post-retry 0, 20
-grouped / 0 refused, a 16-shape deck, 13 of 13.
+**IT WAS FIXED IN `1867e12` AND THE FIX WAS THEN REMOVED — corrected 2026-08-23.**
+`collectRound` reloaded the tab and reopened the pane after the sweep, and round
+126 is the first SECOND round in this archive to score a first round's numbers:
+post-retry 0, 20 grouped / 0 refused, a 16-shape deck, 13 of 13.
+
+It also broke the session about one round in four. A reload of a tab with
+unsaved work raises PowerPoint's beforeunload prompt, and `dialog-accept` means
+LEAVE WITHOUT SAVING — while the sweep immediately before it GUARANTEES unsaved
+work, having just deleted slides. The add-in was gone from the ribbon after the
+reload following round 124 and again after 132. `round.mjs` records the removal
+at the call site; this paragraph went on claiming the reload was live, and the
+gate repeated it — *"the driver reloads it between rounds now, so this count is
+mostly history"* — until 2026-08-22.
+
+**What replaces it is `--fresh` on the second round of a pair**, which closes the
+browser rather than reloading a page holding unsaved work. See the pair rule
+above; `npm run cycle` passes it on every leg but the first.
 
 **And the 4:3 profile effect was never real.** Rounds 124-128 compared the two
 profiles on one deck with every round starting fresh — identical on every
 counter, post-retry 0 throughout. The profile finding, like position and
 observer load before it, was an artefact of reused panes.
 
-What survives all of it: **the cold re-read fails 10-11 times a round**, at both
-profiles, on a fresh pane, with everything else clean.
+What survives all of it: **the cold re-read still falls short every round** — at
+both profiles, on a fresh pane, with everything else clean.
+
+**It was 10-11 a round when that was written and it is 5 now** (corrected
+2026-08-23; rounds 162-173 read 5,5,5,4,5,5,5,5,5,5,5,5). Halved, not cured, and
+the number moved because the in-place update stopped redrawing charts that did
+not need it — fewer draws, fewer cold re-reads — rather than because anything
+fixed the read itself. A count that falls for a reason unrelated to the defect is
+still the same defect.
 
 **The blind visibility gate is FIXED, settled over 13 rounds.** `rasterGap`
 waits three seconds before re-rasterising a slide the host has just rasterised.

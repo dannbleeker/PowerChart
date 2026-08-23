@@ -12,8 +12,12 @@ written, which is exactly how the two below went unnoticed for several rounds.
 
 ### 1. Mine the whole trace, not the headline
 
-A round carries 380-440 entries and the pane summary names a fraction. The headline is never all of
-it, and cross-referencing against earlier rounds is where the finding usually is.
+A round carries roughly 400-580 entries and the pane summary names a fraction. The headline is never
+all of it, and cross-referencing against earlier rounds is where the finding usually is.
+
+_(This said "380-440" until 2026-08-23, when 7 of 149 rounds fell in that band and 133 were above it.
+The median is 518. A band written from early rounds and never re-measured — the same defect the
+gate's own instruments keep being caught in.)_
 
 Round 28 is the case for this. It PASSED `does a rasterise poison the next draw`, and in the same
 round SKIPPED `the chart is actually visible` on "PowerPoint did not respond while drawing shapes
@@ -475,8 +479,12 @@ conclusion.
 The three above are about the thirteen named scenarios. The gate also reads the
 TRACE, which is ~95K characters per round and which nobody can count by eye —
 round 081 was 512 entries collapsing to 44 distinct shapes, **none of them new**
-against 57 prior rounds, and the archive's entire vocabulary is 81 signatures.
+against 57 prior rounds, and the archive's vocabulary was 81 signatures then.
 Reading all of it to rediscover that is the cost this exists to cut.
+
+_(81 was true in round 081; the gate prints 102 as of round 173. Quote the gate,
+not this sentence — a vocabulary only grows, so a number written down here is
+wrong from the next round onward.)_
 
 **It does not replace reading the trace.** It says where to start. Three buckets,
 none fatal:
@@ -648,9 +656,24 @@ as a tab, and a leg runs with:
 
     PW_DECK="<the 4:3 deck>" PW_EXPECT_SIZE=4:3 node scripts/round.mjs --dir .pw-session --retry 6
 
-Creating the deck and sideloading into it are owner-only. `sideloadAddIn` exists
-but has never once succeeded on a real host — its only live outing was against a
-disconnected document, where every ribbon button was disabled.
+Creating the deck is owner-only. **Re-sideloading is not, since 2026-08-21**, and
+`sideloadAddIn` has succeeded on a real host since this paragraph was written —
+it walks Home ▸ Add-ins ▸ See all installed add-ins ▸ More Add-ins ▸ MY ADD-INS ▸
+Manage My Add-ins ▸ Upload My Add-in ▸ Browse. The sentence it replaces said it
+"has never once succeeded", which was true of its first outing against a
+disconnected document where every ribbon button was disabled.
+
+**And the archive cannot settle this either way, which is the more useful
+finding.** `sideloadAddIn` writes NO TRACE AT ALL: `grep`ping 149 archived rounds
+for any sideload line returns zero. The recovery path whose failure costs the
+most — a lost add-in ends the night — is the one path with no instrumentation, so
+its success rate is known only from whoever watched it happen. Everything else
+the driver does is recorded.
+
+**The credential boundary is unchanged and is not part of this.** Re-sideloading
+uploads a manifest; it never asks for a password. Signing in remains the owner's
+alone — if a `login.live.com` prompt appears, leave it untouched and stop all
+host work.
 
 **SETTING THE SIZE IS NOT OWNER-ONLY, and this paragraph said it was until
 2026-08-20.** `PW_SET_SIZE=1` writes `slideWidth`/`slideHeight` through the pane.
