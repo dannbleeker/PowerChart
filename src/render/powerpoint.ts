@@ -416,6 +416,28 @@ async function step<T>(label: string, fn: () => Promise<T>): Promise<T> {
       // loses nothing: 929 of 929.
       if (/InvalidParam passed to GetItem/i.test(text)) hostFriction.idRefusals += 1;
       if (/GeneralException/i.test(text)) hostFriction.generalExceptions += 1;
+      // A HOST THAT WILL NOT READ `Shape.group` SAYS SO ONCE, AND IS BELIEVED.
+      //
+      // `queueGroupMembers` queues `shape.group.shapes` behind a try/catch and
+      // its comment calls the attempt best-effort and silent, because "on a
+      // host that has not implemented it the property access itself can throw
+      // synchronously". On this host it does not: the access only QUEUES a
+      // proxy read, and the GeneralException arrives later at the sync — under
+      // a different label, outside that try, in a batch it can poison.
+      //
+      // Measured across 180 archived rounds: **0 in the 118 rounds before build
+      // 408d00b, and exactly 1 in every one of the 62 rounds since** — the
+      // build that added the group read (#642). Every one is
+      // `errorLocation: Shape.group` on `var group = itemOrNullObject1.group;`.
+      // The probe sheet had already settled the same fact from the other side:
+      // `group-of-existing-shape-readable = no-group-id` and
+      // `group-reports-its-children = threw`.
+      //
+      // So the feature has never once worked here and has cost an exception and
+      // a failed resolve every round for 62 rounds. Latching on the first
+      // refusal makes that once per session instead, and costs nothing on a
+      // host where the read works — there it simply never fires.
+      if (isGroupReadRefusal(text)) groupReadRefused = true;
       trace("error", label, { error: text });
     }
     throw err;
@@ -1401,7 +1423,37 @@ export async function insertSceneIntoSlide(
     // not answer leaves nothing to re-open — the same answer as an untagged
     // chart, and better than an EditTarget naming a slide we cannot name.
     const slideId = loadedValue(() => slide.id);
-    if (!t || typeof slideId !== "string") return null;
+    if (!t || typeof slideId !== "string") {
+      // SAY WHICH CHART FELL OUT OF THE SETTLE QUEUE, AND WHY.
+      //
+      // A chart that reaches here is never pushed to `untagged`, so the settle
+      // pass never sees it. Across 180 archived rounds, **25 rounds carry a
+      // `tagging failed` line and no `settle pass:` line at all** — 27 charts
+      // that failed tagging and got no repair attempt, and 26 of those rounds
+      // still reported `scenario passed`. The silence is the whole problem:
+      // `settleUntaggedCharts` traces unconditionally once it has anything to
+      // do, so no line means nothing was queued, which is indistinguishable
+      // from a settle that ran and failed.
+      //
+      // NOT REORDERED, and that was the tempting fix. The push needs BOTH
+      // `t.id` and `slideId` — a settle re-opens the slide to find the shape —
+      // so a chart missing either cannot be queued at all. The early return is
+      // right; its silence was not.
+      //
+      // Which of the two is missing decides whether anything could be done:
+      // no `t` is a chart with no identity, and there is nothing to settle; a
+      // good `t` with an unreadable slide id is a chart we can name but not
+      // place, which a deck-wide search could in principle still reach. The
+      // archive cannot say which of those the 27 were, because nothing
+      // recorded it. Now it does.
+      trace("insert", "not queueing a settle: the chart cannot be named and placed", {
+        haveTarget: !!t,
+        haveSlideId: typeof slideId === "string",
+        shapeId: t?.id,
+        wouldHaveNeededSettle: !tagged?.tagged && !!opts.tagData,
+      });
+      return null;
+    }
     if (!tagged?.tagged && opts.tagData)
       untagged.push({ key: t.id, slideId, tagData: opts.tagData, shapeId: t.id, bindingId: tagged?.bindingId });
     return {
@@ -10202,8 +10254,46 @@ function strokeColor(lf: PowerPoint.ShapeLineFormat, color: string): void {
  * back to the redraw it has always done. This can only ADD updates that were
  * previously refused; it can never make one that used to work stop working.
  */
+/**
+ * Has this host already refused a `Shape.group` read in this session?
+ *
+ * Set from the error classifier, which is where the refusal actually lands —
+ * the queue site's own try/catch never sees it, because the throw arrives at
+ * the sync rather than at the property access. See the comment there.
+ */
+let groupReadRefused = false;
+
+/**
+ * Is this error the host refusing to read `Shape.group`?
+ *
+ * Matched on the PARSED error location, not on the flattened text. The
+ * `idRefusals` counter beside this one spent 180 rounds matching `/GetItem/i`
+ * against a string that embeds Office.js `debugInfo` — including
+ * `surroundingStatements`, the echoed source of the failing batch — and so
+ * counted 150 errors that merely MENTIONED `getItemOrNullObject`. The same trap
+ * is one character away here: a batch that touches `.group` anywhere would echo
+ * it. Anchoring on the `errorLocation` field cannot match an echo.
+ */
+export function isGroupReadRefusal(text: string): boolean {
+  return /"errorLocation":"Shape\.group"/.test(String(text ?? ""));
+}
+
+/** Test seam: forget the refusal, so a case can exercise both sides. */
+export function _resetGroupReadRefusedForTest(): void {
+  groupReadRefused = false;
+}
+
+/** Whether the group read has been refused this session. Exported for tests. */
+export function groupReadHasBeenRefused(): boolean {
+  return groupReadRefused;
+}
+
 function queueGroupMembers(shape: PowerPoint.Shape): PowerPoint.ShapeScopedCollection | undefined {
   if (!supports("1.8")) return undefined;
+  // Asked once per session, not once per round. The refusal is a fact about
+  // the host, and repeating a question it has already answered costs an
+  // exception inside somebody else's batch.
+  if (groupReadRefused) return undefined;
   try {
     const members = (shape as unknown as { group?: { shapes?: PowerPoint.ShapeScopedCollection } }).group?.shapes;
     if (!members) return undefined;
