@@ -6460,3 +6460,54 @@ reading "a gate that claims to cover everything is the original defect".
 Three properties are mutation-proven: dropping `format:check` fails, carrying on
 past a failing step fails, and emptying the not-covered list fails.
 
+
+## Not one slow sync — three. The warm-up fix is dead before it was built.
+
+Round 204, each sync timed in order:
+
+    chart  changed/of   ms      syncs  syncMs
+     1/8    18/24        36189      4   [11801, 11421, 12274, 690]
+     2/8     9/16        12122      3   [ 6156,  5238,        726]
+     3/8     9/16        11615      3   [ 6076,  4872,        664]
+     4/8    18/24        16515      4   [ 5412,  5130,  5318, 654]
+     5/8    18/24        16855      4   [ 5594,  5176,  5390, 694]
+     8/8    18/24        16643      4   [ 5283,  5418,  5340, 601]
+
+**All three of the first chart's write syncs are slow, uniformly, at about
+2.2x.** Not the first one with three normal ones behind it — every one of
+them. And the tag sync, the fourth, is ~650ms on every chart including the
+first: identical whether the chart is dear or cheap.
+
+### What that kills
+
+The obvious product fix was a cheap warm-up sync before the run: if the first
+sync of a run pays a one-time host initialisation, a 5ms round-trip could pay
+it instead and save ~20s on every multi-chart update. **That fix cannot work.**
+There is no single expensive sync to absorb — the expense is a STATE that lasts
+the whole of the first chart and is gone by the fourth.
+
+The previous entry recorded both worlds before the measurement and said they
+wanted opposite fixes. This is why that was worth writing down: the mean of
+10959ms was equally consistent with one 28.5s sync and with three 11.8s ones,
+and the fix I would have reached for is the one that is now excluded.
+
+### What it leaves
+
+The tag sync being flat across all charts is the sharpest clue. It is the same
+call, on the same context, in the same run, and it costs the same everywhere —
+so whatever is expensive is specific to the SHAPE WRITES, not to the context,
+the connection, or the run as a whole.
+
+Charts 2 and 3 hint at a decay rather than a cliff: their first write syncs are
+6156 and 6076 against second syncs of 5238 and 4872. Slightly elevated, on
+smaller charts, right after the expensive one. That is a shape worth more
+rounds before anyone names it.
+
+**A hypothesis, held as one:** the deck scan runs 1383ms before chart 1 and
+returns, but the host may keep working afterwards, and chart 1's writes may be
+competing with it. That predicts a pause after the scan would normalise chart
+1 — and it is only a WIN if the pause is shorter than the ~19s it saves, which
+is a real possibility and an unmeasured one. Scanning earlier, while the user
+is idle, would be the version that costs nothing. Neither is worth building
+before a round tests the first.
+

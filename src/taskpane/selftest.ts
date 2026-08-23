@@ -137,7 +137,30 @@ export interface ScenarioResult {
    * died read exactly like a round in which the add-in had a bug — and this
    * project has spent whole sessions on the difference. See `scenarioBlame`.
    */
-  friction?: { errors: number; idRefusals: number; generalExceptions: number; emptyReReads: number };
+  /**
+   * ALL EIGHT COUNTERS, not the four that existed when this was written.
+   *
+   * The four-name list had gone stale in four places. A previous fix put the
+   * whole snapshot on the `run finished drawing` trace instead — and that line
+   * is on the DEMO-DECK path, which no self-test scenario exercises: it has
+   * appeared in **0 of 180 archived rounds**, so the counters it carried
+   * reached nothing. The commit that added it claimed it put all eight in the
+   * round either way. It did not.
+   *
+   * This delta is the one thing that does reach every round, so it is where
+   * the widening belongs. `scenarioBlame` reads three of these by name and is
+   * unaffected by the extra five.
+   */
+  friction?: {
+    errors: number;
+    idRefusals: number;
+    generalExceptions: number;
+    emptyReReads: number;
+    shortReReads: number;
+    unmatchedReReads: number;
+    settledByBinding: number;
+    reReadsRepaired: number;
+  };
 }
 
 /**
@@ -2945,12 +2968,12 @@ export async function runSelfTest(
     // On the RESULT as well as the trace line, because `describeSelfTest` has
     // to tell our defects from this host's weather and the trace is not
     // available to it. Same numbers, one source.
-    result.friction = {
-      errors: f1.errors - f0.errors,
-      idRefusals: f1.idRefusals - f0.idRefusals,
-      generalExceptions: f1.generalExceptions - f0.generalExceptions,
-      emptyReReads: f1.emptyReReads - f0.emptyReReads,
-    };
+    // Every counter the snapshot has, differenced. Written as a loop over the
+    // snapshot's own keys rather than a list, because the list is what went
+    // stale — the same reason `resetHostFriction` is a loop.
+    result.friction = Object.fromEntries(
+      Object.keys(f1).map((k) => [k, (f1 as Record<string, number>)[k] - (f0 as Record<string, number>)[k]]),
+    ) as NonNullable<ScenarioResult["friction"]>;
     const deckAfter = (await deckSlideIds().catch(() => undefined))?.length;
     trace("selftest", result.skipped ? "scenario skipped" : result.ok ? "scenario passed" : "scenario FAILED", {
       name,

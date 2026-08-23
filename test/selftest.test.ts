@@ -2837,7 +2837,20 @@ describe("whose fault a red scenario was", () => {
     ms: 1,
     ...over,
   });
-  const clean = { errors: 0, idRefusals: 0, generalExceptions: 0, emptyReReads: 0 };
+  // Every counter, zeroed. Explicit rather than derived, and safe to be:
+  // `SelfTestResult.friction` requires all of them, so adding a ninth counter
+  // fails typecheck here until this follows. The compiler maintains the list,
+  // which is what the four-name version never had.
+  const clean = {
+    errors: 0,
+    idRefusals: 0,
+    generalExceptions: 0,
+    emptyReReads: 0,
+    shortReReads: 0,
+    unmatchedReReads: 0,
+    settledByBinding: 0,
+    reReadsRepaired: 0,
+  };
 
   it("blames US for a failure the host did not interfere with", () => {
     // Round `89675b6`, `explode a degraded picture` — the picture regression.

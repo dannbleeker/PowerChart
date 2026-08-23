@@ -386,7 +386,35 @@ async function step<T>(label: string, fn: () => Promise<T>): Promise<T> {
       // else. Both are named in a dozen places in this file as the cause of a
       // lost chart; neither has ever been a NUMBER a reader could compare
       // between one scenario and the next.
-      if (/InvalidParam|GetItem/i.test(text)) hostFriction.idRefusals += 1;
+      //
+      // MATCHED ON THE ERROR, NOT ON THE ECHOED SOURCE. The test was
+      // `/InvalidParam|GetItem/i`, and `text` is `errorText(err)`, which embeds
+      // Office.js `debugInfo` — including `surroundingStatements`, the echoed
+      // source of the failing batch. Any error whose neighbouring statements
+      // merely MENTION `getItemOrNullObject` was therefore counted as an id
+      // refusal.
+      //
+      // Measured over 180 archived rounds: 1,079 counted, 929 real, **150
+      // false positives** — Shape.group 62, Presentation.bindings 52,
+      // ShapeCollection.addGroup 31, Shape.textFrame 5. None of the 150
+      // contains `InvalidParam` anywhere; every one matched on a lowercase
+      // `getItemOrNullObject` inside the echo.
+      //
+      // The inflation is time-skewed, which is what made it invisible: rounds
+      // 023-069 counted 14.00/round against 13.98 real (0.2%), but rounds
+      // 143-204 count 2.34 against 1.15 — **104%**. As the real 5010 storm was
+      // fixed the noise floor stayed, so the counter now says this host refuses
+      // ids about twice as often as it does.
+      //
+      // That matters because 88 of the 150 are counted HERE AND NOWHERE ELSE
+      // (bindings, addGroup, textFrame — the Shape.group 62 also increment
+      // `generalExceptions`). `scenarioBlame` ORs the two, so the 62 cannot
+      // change a verdict and the 88 are exactly the ones that can.
+      //
+      // Every real refusal in the archive reads `InvalidParam passed to
+      // GetItem` at errorLocation `ShapeCollection.getItem`, so the narrow test
+      // loses nothing: 929 of 929.
+      if (/InvalidParam passed to GetItem/i.test(text)) hostFriction.idRefusals += 1;
       if (/GeneralException/i.test(text)) hostFriction.generalExceptions += 1;
       trace("error", label, { error: text });
     }
