@@ -9246,6 +9246,26 @@ async function groupAndTagAll(
       // separate sync and a separate risk — losing it costs drag tracking,
       // not re-editability — so `tagged` is decided at THIS line, not after.
       for (const { i } of queued) taggedOk.add(i);
+      // WHICH ROUTE WORKED, because only the failures were ever recorded and a
+      // rate needs both halves.
+      //
+      // `tagging failed` carries `from`, and pooled over the archive it reads
+      // created 235, undefined 61, group 51, by-id 26 — which looks damning for
+      // the creation proxy and says nothing, because nothing counted the
+      // SUCCESSES per route. A route chosen ten times as often will fail ten
+      // times as often at the same rate.
+      //
+      // It is not academic: the probe sheet answers
+      // `tag-the-creation-proxy-a-sync-later => yes` 148 of 148, so on that
+      // evidence alone the creation proxy is the route to prefer — and the
+      // failure counts alone say the opposite. Neither is a rate. This line is
+      // the missing denominator, and until a round carries it, no comparison
+      // between these routes is worth making.
+      {
+        const per: Record<string, number> = {};
+        for (const { i } of queued) per[String(targetFrom[i])] = (per[String(targetFrom[i])] ?? 0) + 1;
+        trace("group", "config tags written, by target route", { charts: queued.length, from: per });
+      }
 
       // The frame origin the chart was drawn at, AND the position its tagged
       // shape ended up at ("anchor"). Both are needed, and the anchor is only
