@@ -346,6 +346,13 @@ export const UNSTABLE_ANSWERS = {
  */
 export const PENDING_QUESTIONS = {
   "shapes-by-index-vs-items":
+    "**ANSWERED, ROUND 184: `no-count` — getCount did not populate, so the premise is gone.** The probe was built " +
+    "on `getcount-populates-same-sync` answering `yes` 158 of 158 — and THAT PROBE MEASURES " +
+    "`ctx.slides.getCount()` on the DECK, carrying `noSlideNeeded: true` and the comment 'No slide of ours " +
+    "involved'. It says nothing about `slide.shapes.getCount()`, which is what an index walk would need. A FOURTH " +
+    "scope error, caught by the probe before it could become a design: `shapes.getCount()` does not populate " +
+    "either, the walk has no length to walk, and the index lead is closed. Kept on `resample` to see whether it " +
+    "ever answers differently. Original rationale follows. " +
     "Added 2026-08-23. CORRECTED THE SAME DAY, and the correction is the useful part. It was written claiming " +
     "'the shape collection will not honestly report freshly added shapes', citing `shapes-items-count-honest` at " +
     "`unreadable` 142 / `short-0` 16 of 158. **That is the PROBE's answer, measured on a SCRATCH slide, and " +
@@ -367,6 +374,14 @@ export const PENDING_QUESTIONS = {
     "addressable rather than only worked around. `index-unreadable` closes the last cheap idea and is worth as " +
     "much — this project has spent four rounds on a downstream fix a probe would have refused.",
   "creationid-on-fresh-shape":
+    "**ANSWERED, ROUND 184: `absent` — the property is not on the shape at all.** `Shape.creationId` DOES NOT " +
+    "EXIST on this host's shapes, though the host advertises requirement set 1.10, which is where it is " +
+    "documented. Its two siblings answered `no-creation-id` on the same sheet, `before=[absent,absent]`. The whole " +
+    "creationId route is closed: there is nothing to record at draw time, nothing to match on, and nothing to " +
+    "migrate to. **This is what the probe was for.** Had the migration been built on the backlog's phrase 'a " +
+    "durable per-shape identifier' — which cited no source — it would have been built on a property that is not " +
+    "there. Three probes, one round, question settled. Kept on `resample` for now because one round is one round " +
+    "and this archive's noise floor is real; retire them once the answer repeats. Original rationale follows. " +
     "Added 2026-08-23, and CORRECTED the same day. It was added believing `shape.id` was volatile on this host and " +
     "that creationId would fix the live defect. THE IDS ARE STABLE: round 179's chart reported `mine [35..41]` and " +
     "those seven ids sit in that round's own end-of-round deck inventory under their real names (title, category-0, " +

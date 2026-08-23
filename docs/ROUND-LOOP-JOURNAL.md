@@ -5256,3 +5256,110 @@ do branch work before or after a round, or in a worktree. The refusal is the
 driver working — it caught a comparison that would have been meaningless — but
 the round is lost and the pair with it.
 
+
+## Round 184 — two leads closed in one round, both by measurement
+
+    184  a133cf7  13/13 | grouped 9 | threw 0 | GenEx 2 | gotParts 0 | fullest 5
+
+The fourth identical round in a row, and the first to carry the two probes
+written to settle the product's open questions. Both answered, both negative,
+both worth more than the plans they killed.
+
+### `Shape.creationId` does not exist on this host
+
+    creationid-on-fresh-shape     => absent | the property is not on the shape at all
+    creationid-survives-a-sync    => no-creation-id | before=absent
+    creationid-survives-grouping  => no-creation-id | before=[absent,absent]
+
+Not null. Not equal to `id`. **Absent** — the property is not on the object,
+though the host advertises requirement set 1.10, which is where Microsoft
+documents it.
+
+So there is nothing to record at draw time, nothing to match on, and nothing to
+migrate to. The route is closed.
+
+**This is the clearest vindication of the night's discipline.** The backlog
+called creationId "a durable per-shape identifier" and cited no source; I read
+the same word off the API name and proposed a migration on it. The documentation
+turned out to be one sentence that promises nothing and permits null. Three
+probes and one round settled what a migration would have discovered after
+however many rounds of building on a property that is not there.
+
+### The index walk is closed too, and its premise was a fourth scope error
+
+    shapes-by-index-vs-items => no-count | getCount did not populate — the premise is gone
+
+The probe was built on `getcount-populates-same-sync` answering `yes` 158 of 158.
+**That probe measures `ctx.slides.getCount()` on the DECK.** It carries
+`noSlideNeeded: true` and the comment "No slide of ours involved". It never
+said anything about `slide.shapes.getCount()`, which is what an index walk needs.
+
+On the real host `shapes.getCount()` does not populate either. There is no length
+to walk and no index route around the collection read.
+
+That is the fourth scope error in a night — a number measured in one place,
+asserted about another — and the first one caught BEFORE it became a design
+rather than after it became a commit message. The probe cost one scratch slide.
+
+### Where that leaves the product
+
+Two cheap ideas are gone and the picture is simpler for it:
+
+- the collection read fails about **4.3% of charts**, roughly one round in four
+- when it fails, the re-read matches nothing, the positional guess takes another
+  chart's shapes, addGroup throws, and no parts list is written
+- there is **no alternative identifier** (creationId is absent) and **no
+  alternative enumeration** (getCount does not populate on a slide's shapes)
+
+So the next work has to be about the 4% itself — why the read misses, and
+whether anything the product already holds can tell a stale listing from a good
+one before it acts on it. Not about replacing the mechanism.
+
+
+## STOPPED — a real sign-in prompt, and this time it is the genuine article
+
+    0: (current) [Sign in to your account](https://login.microsoft.com/consumers/fido/get?...)
+
+One tab, `login.microsoft.com`, a FIDO flow. **The page was not touched and no
+host work continues.** Signing in is the owner's alone.
+
+### It is distinguishable from the false alarm eight hours earlier, by the test
+### written down after that one
+
+    earlier   title 'Home - OneDrive', account active, AADSTS900561 on a redirect
+              -> the session was ALIVE and stopping was a misread
+    now       title 'Sign in to your account', login.microsoft.com, sole tab
+              -> the session is gone
+
+The rule from ROUND-LOOP-BRIEF, applied and working: *a dead browser is not a
+lost sign-in — only a redirect to a login host needs the owner.* Checking the
+TITLE is what separates them, and it took one command.
+
+### How it got here
+
+Round 185 ran with `--fresh`, which closes the browser and reopens it. The
+persistent profile has carried the sign-in across every previous `--fresh`; this
+time it did not. Seven attempts, each reporting `deck ? slide(s)` and a closed
+pane, because the browser was sitting on a sign-in page the whole time.
+
+Round 185 has no archive. That is correct rather than a gap: nothing ran.
+
+### State at the stop
+
+Rounds 001-184 archived. Everything landed and green. The last four rounds are
+identical on every counter:
+
+    181  1e8455e  13/13 | grouped 9 | threw 0 | GenEx 2 | gotParts 0 | fullest 5
+    182  1e8455e  13/13 | grouped 9 | threw 0 | GenEx 2 | gotParts 0 | fullest 5
+    183  7eaa1ae  13/13 | grouped 9 | threw 0 | GenEx 2 | gotParts 0 | fullest 5
+    184  a133cf7  13/13 | grouped 9 | threw 0 | GenEx 2 | gotParts 0 | fullest 5
+
+### To resume
+
+Sign in, open `Presentation64.pptx`, and confirm **Insert chart** is in the Home
+ribbon. Then `node scripts/round.mjs --check --dir .pw-session` confirms the
+pane, and the loop restarts at 185.
+
+If the add-in is gone from the ribbon after signing in, that is the agent's to
+fix — `sideloadAddIn` uploads a manifest and never asks for a password.
+
