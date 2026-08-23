@@ -10456,6 +10456,22 @@ async function tryInPlaceUpdate(
     // this says what the work that remained actually took. Together they are the
     // only numbers from which the threshold above could ever be tuned.
     ms: Date.now() - startedAt,
+    // WHICH SLIDE, because without it one open question cannot be answered by any
+    // number of rounds.
+    //
+    // Round 198 timed `same scale across the deck` and chart 1/8 cost 39355ms
+    // against ~18000ms for charts 4/8-8/8 at identical `changed` and `of` — about
+    // 21s of excess on the first chart of a run. Two explanations survive its own
+    // data. "The first update after a deck scan is cold" is NOT one of them: the
+    // three single-chart updates elsewhere in that round began 1020ms, 581ms and
+    // 3243ms after a scan — nearer one than chart 1/8 was — and every one landed
+    // on the fit with no excess at all.
+    //
+    // What is left is position in the run, which the `chart` field above already
+    // carries, and THE SLIDE ITSELF: a chart on a slide holding more shapes costs
+    // more to touch, which this file measures elsewhere at 4.7x. Without the id
+    // those two are indistinguishable however long the loop runs.
+    slideId: it.target.slideId,
   });
   return true;
 }

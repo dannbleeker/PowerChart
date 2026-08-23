@@ -6153,3 +6153,61 @@ was believed and when, and editing one after the fact to reflect what was
 learned later is the one thing that would make the ledger worthless. The note
 belongs here instead.
 
+
+## The update path finally has a clock, and it accounts for 94% of the worst scenario
+
+`ms` landed on `updated only the shapes that changed` in 05a27fd. Round 198 is
+the first to carry it:
+
+    {"chart":"1/8","changed":18,"of":24,"ms":39355}
+    {"chart":"2/8","changed":9, "of":16,"ms":12583}
+    {"chart":"3/8","changed":9, "of":16,"ms":12565}
+    {"chart":"4/8","changed":18,"of":24,"ms":18333}
+    {"chart":"5/8","changed":18,"of":24,"ms":17992}
+    {"chart":"6/8","changed":18,"of":24,"ms":18999}
+    {"chart":"7/8","changed":18,"of":24,"ms":17928}
+    {"chart":"8/8","changed":18,"of":24,"ms":18768}
+
+**156.5s of the scenario's 166s — 94%.** The measurement accounts for nearly the
+whole of the product's largest cost, which the batch pooler could not see at
+all. Within one chart size: **~1589ms fixed + ~930ms per changed shape**.
+
+### And chart 1/8 costs 2.1x its own siblings
+
+39355ms against ~18000ms, at identical `changed: 18` and `of: 24`. The fit
+predicts 18407ms, so about **21 seconds of excess on the first chart of a run**.
+
+One observation. The reader prints its own caveat — "n=1 first-chart sample(s)
+— a LEAD, not a rate" — and stops at n=5. The rounds will decide it.
+
+### One explanation is already dead, killed by the same round
+
+The obvious story is a cold start: chart 1/8 begins 1352ms after a deck scan.
+But the round contains three single-chart updates elsewhere, and they begin
+**nearer** a scan than chart 1/8 did:
+
+    (solo)  changed=1  of=24  ms=2727   1020ms after a scan
+    (solo)  changed=1  of=24  ms=2290    581ms after a scan
+    (solo)  changed=1  of=24  ms=2519   3243ms after a scan
+
+The fit predicts 2519ms for one changed shape. All three land on it. **No
+excess anywhere, at closer range to a scan than the expensive chart.** "The
+first update after a deck scan is cold" is refuted, on data already in hand,
+before a single round was spent on it.
+
+### What is left, and the field that had to be added to tell them apart
+
+Two explanations survive:
+
+    position in the run     the `chart` field already carries it
+    the slide itself        a chart on a fuller slide costs more to touch
+
+The second is not idle speculation — this file measures a 4.7x curve in exactly
+that variable on the draw path. And the update line **did not record which
+slide**, so those two were indistinguishable no matter how long the loop ran.
+A hundred rounds of a two-way ambiguity is still a two-way ambiguity.
+
+`slideId` now rides on the line. It is one field, it is free, and it is the
+difference between a question that resolves and one that accumulates evidence
+forever without ever deciding.
+
