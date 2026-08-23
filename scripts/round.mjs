@@ -1044,15 +1044,38 @@ export function pageWidth(sh) {
 export async function ensureRibbonRoom(sh, sleep) {
   const before = pageWidth(sh);
   if (before !== null && before >= MIN_RIBBON_WIDTH) return before;
-  // Generous on purpose. The relationship between the requested size and the
-  // page's own width depends on the device scale factor, which varies by
-  // machine and by monitor — so ask for plenty and MEASURE what arrived rather
-  // than computing what should have.
-  sh("resize", "1900", "1000");
+  // DERIVED FROM THE THRESHOLD, never a literal beside it. This asked for 1900
+  // while `MIN_RIBBON_WIDTH` was 2375: **the widen could not reach the bar it
+  // exists to clear.** 1900 was generous when the threshold was 1600, and
+  // raising the threshold left the request behind — a pair of constants that
+  // have to move together, one of which moved.
+  //
+  // It hid for weeks behind the device scale factor. On this machine a request
+  // of 1900 usually ARRIVES as 3800 CSS px, comfortably over, so the rounds all
+  // said "widened to 3800px" and nothing looked wrong. Round 181 reopened the
+  // browser with `--fresh`, the scale came back 1:1, 1900 arrived as 1900, the
+  // Add-ins command stayed in the overflow, and seven attempts in a row could
+  // not reopen the pane. A round lost to a number that was too small for the
+  // whole time it was too small.
+  //
+  // The margin is for the scale going the OTHER way — a request that arrives
+  // smaller than asked — and the measurement below is what settles it either
+  // way. Ask for plenty and MEASURE what arrived, which is what the previous
+  // comment said and the previous number did not do.
+  sh("resize", String(Math.round(MIN_RIBBON_WIDTH * 1.3)), "1000");
   await sleep(3000);
   const after = pageWidth(sh);
   if (after !== null && before !== null && after > before)
     console.log(`  the window was ${before}px and hides ribbon commands — widened to ${after}px`);
+  // AND SAY SO WHEN IT DID NOT WORK. `after` was returned and never compared to
+  // the threshold, so a widen that fell short was indistinguishable from one
+  // that succeeded — the caller saw a number and read it as a fix. That is the
+  // house defect in the one function whose entire job is to reach a number.
+  if (after !== null && after < MIN_RIBBON_WIDTH)
+    console.log(
+      `  STILL ${after}px, under the ${MIN_RIBBON_WIDTH}px a ribbon command needs to render — ` +
+        `expect "the add-in is missing" from a command that is merely collapsed`,
+    );
   return after;
 }
 
