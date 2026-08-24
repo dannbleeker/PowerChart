@@ -3145,6 +3145,65 @@ export function poolUpdateCost(logs) {
   };
 }
 
+/** Print the dormant instruments, loudest first, or say nothing when there are none. */
+function reportDormant(pooled) {
+  const rows = dormantInstruments(pooled);
+  if (!rows.length) return;
+  console.log(`\n  INSTRUMENTS THAT HAVE GONE QUIET — ${rows.length} trace line(s), none in 40+ rounds`);
+  for (const r of rows.slice(0, 8))
+    console.log(
+      `    ${String(r.events).padStart(5)}x  last round ${String(r.lastRound).padStart(3)} (${r.gap} ago)  ${r.message.slice(0, 58)}`,
+    );
+  if (rows.length > 8) console.log(`    … and ${rows.length - 8} more`);
+  console.log("    A zero here is EITHER a fault that stopped OR a line nothing can emit any more,");
+  console.log("    and this cannot tell them apart — check the source before reading one as clean.");
+  console.log("    Thread 3 waited on a counter that had been silent for 160 rounds and nothing said so.");
+}
+
+/**
+ * Trace lines this archive USED to see and has not seen for a long time.
+ *
+ * A zero in a report is two different facts — the fault stopped happening, or
+ * nothing can produce that line any more — and the reader cannot tell them
+ * apart. Thread 3 waited on `a chart's tag could not even be queued` to
+ * "accumulate rounds"; the rounds accumulated and the line had last fired in
+ * round 065, 160 rounds earlier. Nothing said so.
+ *
+ * ARCHIVE-ONLY ON PURPOSE. The obvious refinement is to grep `src/` and report
+ * whether the build can still emit the line — and the first attempt at that said
+ * `rasterising a slide` was still emittable when the only occurrences left are
+ * three COMMENTS about it. A tool that answers "is this reachable?" by string
+ * search is the same defect it exists to catch, so this one does not claim to
+ * answer it. It reports the silence and names both readings.
+ *
+ * Counted in ROUNDS, not in events: a line that fired 155 times and then stopped
+ * is the interesting shape, and an event count alone hides when it stopped.
+ */
+export function dormantInstruments(logs, minGap = 40) {
+  const last = new Map();
+  const total = new Map();
+  let newest = 0;
+  for (const log of logs ?? []) {
+    const n = Number(String(log?.roundName ?? "").slice(0, 3));
+    if (!Number.isFinite(n)) continue;
+    newest = Math.max(newest, n);
+    for (const e of log?.trace?.entries ?? []) {
+      const m = String(e?.message ?? "");
+      if (!m) continue;
+      total.set(m, (total.get(m) ?? 0) + 1);
+      last.set(m, Math.max(last.get(m) ?? 0, n));
+    }
+  }
+  const rows = [];
+  for (const [m, n] of last) {
+    const gap = newest - n;
+    if (gap > minGap) rows.push({ message: m, lastRound: n, gap, events: total.get(m) ?? 0 });
+  }
+  // Loudest first: a line that fired 155 times before going quiet is worth more
+  // of a reader's attention than one that fired twice.
+  return rows.sort((a, b) => b.events - a.events);
+}
+
 /**
  * Passed, skipped and failed — three outcomes, said as three.
  *
@@ -4491,7 +4550,13 @@ if (invokedDirectly) {
   const pooled = logPaths
     .map((p) => {
       try {
-        return JSON.parse(readFileSync(p, "utf8"));
+        const parsed = JSON.parse(readFileSync(p, "utf8"));
+        // WHICH ROUND THIS IS, from the filename, because nothing inside the
+        // file says. `dormantInstruments` counts silence in rounds and cannot do
+        // it from a build stamp shared by a whole pair. Attached here rather
+        // than re-derived, so there is one place that knows the naming.
+        parsed.roundName = p.replace(/^.*[\\/]/, "");
+        return parsed;
       } catch {
         return null;
       }
@@ -4565,6 +4630,7 @@ if (invokedDirectly) {
     reportBatchCost(log);
     const failed = reportSelfTest(selftest);
     reportStability(pooled);
+    reportDormant(pooled);
     reportPredictions(pooled);
     reportFreshVsEstablished(pooled);
     reportGroupVsTag(pooled);
@@ -4622,6 +4688,7 @@ if (invokedDirectly) {
     reportBatchCost(log);
     reportSelfTest(selftest);
     reportStability(pooled);
+    reportDormant(pooled);
     reportPredictions(pooled);
     reportFreshVsEstablished(pooled);
     reportGroupVsTag(pooled);

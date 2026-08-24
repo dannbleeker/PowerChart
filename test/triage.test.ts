@@ -3300,3 +3300,61 @@ describe("skipped is a third outcome, not half a failure", () => {
     expect(clean).toBe("2 of 2 scenarios passed");
   });
 });
+
+describe("instruments that have gone quiet", () => {
+  const log = (name: string, ...messages: string[]) => ({
+    roundName: name,
+    trace: { entries: messages.map((message) => ({ message })) },
+  });
+
+  it("reports a line that stopped, and not one still firing", async () => {
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { dormantInstruments } = await import("../scripts/triage.mjs");
+    const rows = dormantInstruments([
+      log("065-aaa.json", "a chart's tag could not even be queued", "still firing"),
+      log("225-bbb.json", "still firing"),
+    ]);
+    expect(rows.map((r: { message: string }) => r.message)).toEqual(["a chart's tag could not even be queued"]);
+    expect(rows[0].lastRound).toBe(65);
+    expect(rows[0].gap, "225 - 65").toBe(160);
+  });
+
+  it("counts silence in ROUNDS, and orders by how loud the line used to be", async () => {
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { dormantInstruments } = await import("../scripts/triage.mjs");
+    const rows = dormantInstruments([
+      log("010-a.json", "quiet one", "loud one", "loud one", "loud one"),
+      log("225-b.json", "current"),
+    ]);
+    // A line that fired three times before going quiet deserves the reader
+    // ahead of one that fired once.
+    expect(rows[0].message).toBe("loud one");
+    expect(rows[0].events).toBe(3);
+  });
+
+  it("says nothing when every line is current", async () => {
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { dormantInstruments } = await import("../scripts/triage.mjs");
+    expect(dormantInstruments([log("224-a.json", "x"), log("225-b.json", "x")])).toEqual([]);
+    expect(dormantInstruments([])).toEqual([]);
+  });
+
+  it("ignores files whose name is not a round", async () => {
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { dormantInstruments } = await import("../scripts/triage.mjs");
+    // `rounds/predictions.json` lives beside the rounds and has been counted as
+    // one before, which made a header disagree with its own pooling.
+    //
+    // The ledger must be SKIPPED, not merely absent from the output: its name
+    // parses to NaN, and letting that reach the newest-round arithmetic makes
+    // every comparison NaN and the whole report silently empty. So the assertion
+    // is that a genuinely dormant line is still found ALONGSIDE it.
+    const rows = dormantInstruments([
+      log("predictions.json", "ledger"),
+      log("010-a.json", "went quiet"),
+      log("225-b.json", "current"),
+    ]);
+    expect(rows.map((r: { message: string }) => r.message), "the ledger is not a round").toEqual(["went quiet"]);
+    expect(rows[0].gap).toBe(215);
+  });
+});
