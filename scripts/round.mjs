@@ -2855,14 +2855,33 @@ export const SESSION_GAP_MS = 45 * 60 * 1000;
  * a filesystem or a clock.
  */
 export function sessionPosition(prev, nowMs, gapMs = SESSION_GAP_MS) {
+  const fresh = (at) => ({
+    index: 1,
+    sincePrevMs: null,
+    startedAt: Number.isFinite(at) ? new Date(at).toISOString() : null,
+    elapsedMs: 0,
+  });
   const prevAt = Date.parse(prev?.at ?? "");
-  if (!Number.isFinite(prevAt) || !Number.isFinite(nowMs)) return { index: 1, sincePrevMs: null };
+  if (!Number.isFinite(prevAt) || !Number.isFinite(nowMs)) return fresh(nowMs);
   const since = nowMs - prevAt;
   // A receipt from the FUTURE is a clock that moved, not a session. Treated as
   // a fresh start rather than trusted into a negative gap.
-  if (since < 0 || since > gapMs) return { index: 1, sincePrevMs: null };
+  if (since < 0 || since > gapMs) return fresh(nowMs);
   const prevIndex = Number(prev?.sessionIndex);
-  return { index: (Number.isFinite(prevIndex) && prevIndex > 0 ? prevIndex : 1) + 1, sincePrevMs: since };
+  // ELAPSED TIME, NOT JUST THE COUNT — and this is the number the finding is
+  // actually indexed by. The 2026-08-24 drift table reads in MINUTES-IN
+  // (0/65/116/186/224), not in rounds, because rounds vary from 684s to 1085s
+  // and a count cannot tell a fast session from a slow one. Recording the index
+  // alone would have measured a proxy for the variable and called it the
+  // variable.
+  const startedAt = Date.parse(prev?.sessionStartedAt ?? "");
+  const start = Number.isFinite(startedAt) ? startedAt : nowMs;
+  return {
+    index: (Number.isFinite(prevIndex) && prevIndex > 0 ? prevIndex : 1) + 1,
+    sincePrevMs: since,
+    startedAt: new Date(start).toISOString(),
+    elapsedMs: Math.max(0, nowMs - start),
+  };
 }
 
 /**
@@ -2889,7 +2908,7 @@ export function sessionPosition(prev, nowMs, gapMs = SESSION_GAP_MS) {
  * Pure, and separate from the writing, so the shape can be tested without a
  * filesystem.
  */
-export function outcomeReceipt({ reason, codes, roundFile, build, size, threw, at, sessionIndex }) {
+export function outcomeReceipt({ reason, codes, roundFile, build, size, threw, at, sessionIndex, sessionStartedAt }) {
   return {
     reason: reason ?? null,
     // Always an array. A reader doing `codes.includes(...)` on a `finished`
@@ -2924,6 +2943,9 @@ export function outcomeReceipt({ reason, codes, roundFile, build, size, threw, a
     // its own process and there is nowhere else that outlives one — see
     // `sessionPosition`, and the 2x within-session drift that made it necessary.
     sessionIndex: sessionIndex ?? null,
+    // The SESSION start, chained so every later round can say how many minutes
+    // into the session it ran — the variable the drift is indexed by.
+    sessionStartedAt: sessionStartedAt ?? null,
   };
 }
 
@@ -3054,6 +3076,8 @@ async function main(argv, deps = {}) {
             startedAt: new Date(startedAtMs).toISOString(),
             sessionIndex: session.index,
             sincePrevRoundMs: session.sincePrevMs,
+            sessionStartedAt: session.startedAt,
+            sessionElapsedMs: session.elapsedMs,
           },
         },
         sh,
@@ -3075,7 +3099,16 @@ async function main(argv, deps = {}) {
         write(
           RECEIPT_PATH,
           JSON.stringify(
-            outcomeReceipt({ reason, codes, roundFile, build, size, threw, sessionIndex: session.index }),
+            outcomeReceipt({
+              reason,
+              codes,
+              roundFile,
+              build,
+              size,
+              threw,
+              sessionIndex: session.index,
+              sessionStartedAt: session.startedAt,
+            }),
             null,
             2,
           ),

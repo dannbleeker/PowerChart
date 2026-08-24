@@ -7076,3 +7076,171 @@ row of question marks on every one of those is noise, not information.
 
 Ten mutants across the four changes, each killed by the test that names it.
 
+
+## The upstream audit: one stale citation, and an answer nobody had asked for
+
+`issue-status.mjs` flags **8 of 23 cited issues as closed/completed** and says
+"re-read what cites it". Read properly, most of those citations had already been
+re-read and deliberately kept — but not all.
+
+### office-js#5022 — the citation was current, and the probe had an answer
+
+`host-probe.ts` already carries: *"CLOSED AS COMPLETED on 2024-11-18 — checked
+against the GitHub API on 2026-08-14, not read off a stale note. It is kept and
+still asked, because a fix upstream is a claim about the service and this probe
+is the only thing here that can check it."*
+
+That is exactly right, and **nobody had ever pooled the probe's answers.** Across
+201 rounds `picture-then-shape-read` says:
+
+    520  unreadable
+     19  yes
+      9  threw
+     55  no-scratch-slide
+
+So of the 28 DECIDED answers, 19 say the symptom did not reproduce, and `yes`
+appears as recently as rounds 222 and 225. The probe was built to answer whether
+the upstream fix reached this host; it has been answering for a year and the
+answer was never read. It is not clean — 9 throws — but it is not the 2024 bug
+either.
+
+### office-js#3014 — genuinely stale, and the repo contradicted itself
+
+`reconcile.ts` said a grouped slide's children are "unreachable on every
+PowerPoint (office-js#3014)". `powerpoint.ts` says of the same issue: *"that note
+is from 2022 and is now out of date"*. **Two statements about one issue in one
+repo, one of them treating a bug closed in March 2025 as a current fact** — and
+`docs/ROUNDS.md` already names this exact citation as its worked example of
+reasoning from something Microsoft fixed eighteen months ago.
+
+The behaviour it justifies is right anyway, and the archive says so far more
+strongly than the ticket ever did. Across 201 rounds:
+
+    group-reports-its-children      548 threw,       0 answered
+    group-children-via-getcount     544 unreadable,  0 answered
+    addgroup-returns-usable         541 unreadable,  0 answered
+
+**1633 observations that the fix has not reached this host.** So the claim is
+kept and re-grounded in what this host does, measured, rather than in an upstream
+ticket. That is the same doctrine the #5022 comment states, applied in the
+direction nobody had applied it: an upstream fix is a claim about the service,
+and here the archive refutes it locally.
+
+### What the audit did NOT find
+
+The other six citations are either already self-audited (`#5022`, `#225`,
+`#1650`) or sit in docs and watch-lists where a closed issue is the point.
+`powerpoint.ts`'s `#3014` block is one of the best-evidenced comments in the
+repo — it refutes its own earlier claim with 76 archived occurrences. Nothing
+there needed touching.
+
+### And one thread-1 crumb, from the same pass
+
+`does-a-failed-group-poison-the-tag` answered **`tags-gone` in rounds 209 and
+221** — twice in the last twenty. A failed group taking the tag with it is not
+historical; it is still happening, and it is the mechanism thread 1 is about.
+39 `tags-gone` against 476 `no-refusal` across the archive.
+
+
+## Thread 3, re-scoped: the trace it waits on has been dead for 161 rounds
+
+The standing item reads *"27 charts failed tagging and got no repair attempt. A
+new trace now says which half of the queue key was missing — read it once rounds
+accumulate."*
+
+The rounds accumulated. The trace did not fire.
+
+    a chart's tag could not even be queued   last round 065   dead 161 rounds
+    tagging failed                           last round 206   73 of 202 rounds
+
+**The instrument was built for a fault that stopped happening before it shipped.**
+Waiting for more rounds cannot help; nothing in 161 of them produced the line.
+
+What is still alive is `tagging failed`, and it is SPARSE rather than gone: 73 of
+202 rounds carry at least one, but only rounds 179 and 206 in the last
+twenty-five, almost always exactly one chart. That is the fault worth carrying
+forward, and it wants a different question from the one thread 3 asks — not
+"which half of the queue key was missing" (that path is unreachable) but "what
+distinguishes the one chart in a round that fails to tag from the ten that do
+not".
+
+Thread 3 as written is **closed**. Its successor is a sparse single-chart tagging
+failure, and at roughly one round in twelve it needs either a long series or a
+narrower trigger before it can be studied at all.
+
+The dormancy report now prints this class automatically, so the next instrument
+built for a dead population should announce itself before anyone waits on it.
+
+
+## Thread 1 cannot be tested right now, and building it would prove nothing
+
+The proposal is to isolate `bindings.add` in its own sync, so a refused binding
+stops costing the chart's config tag. The code reading holds up: `bindTagTarget`
+is already wrapped in its own try/catch and returns `false`, the caller clears
+the id, and `target.tags.add` on the next line still runs — so a SYNCHRONOUS
+refusal cannot cost the tag today. The only surviving mechanism is a queued
+`bindings.add` failing at `context.sync()` and taking the batched tag writes with
+it, which is why isolation would have to be a separate SYNC rather than a
+separate guard.
+
+**And the fault has stopped happening.**
+
+    build     n   tags-undefined  cfg-tag-5010  group-5010  no-queue  tagging-failed
+    77fc64f  10         0              0            0          0            0
+    07c25ae   1         0              0            0            0          0
+
+Last tag fault of ANY kind: build `beec9a6`, round 206 — about twenty rounds ago.
+`cfg5010` last fired in round **069**, 157 rounds back. `tags-undefined` appears
+in **zero of 202 rounds**. A failed config-tag route: zero of 202.
+
+So both arms of the experiment would score zero. The change would merge, the next
+pair would show no difference, and "no difference" would be read as "the
+isolation is safe" when it actually means **the fault did not occur in either
+arm**. That is precisely the shape this file already recorded for the settle
+retry — *"THE POPULATION DRIED UP BEFORE THE CHANGE: 8 clean rounds came FIRST,
+so the quiet rounds since are NOT evidence for it"* — and for `tagAnchorIndex`,
+which merged, produced no measured effect across five rounds and four builds, and
+was reverted.
+
+**Not built.** Not deferred either: what it needs is stated, so the next session
+does not re-derive it.
+
+- A **trigger that reproduces tag loss on demand** — a scenario that forces the
+  batch to be refused — turns this from a waiting game into a measurement. That
+  is the instrument, and it is the whole deliverable for thread 1.
+- Failing that, a **long series** to catch the sparse survivor: `tagging failed`
+  runs at roughly one round in twelve lately, so a pair cannot see it and even
+  ten rounds is a coin flip.
+
+The counter-argument in the standing notes — that the binding's value is an
+upstream side effect of being in the drawing batch, since `cfg5010` went 8/round
+to 0 when it arrived — is now **unfalsifiable from the archive for the same
+reason**. `cfg5010` has been 0 for 157 rounds. Whether that is the binding doing
+its job or the fault having left on its own cannot be told apart by removing the
+binding and watching a zero stay zero.
+
+
+## The noise floor still is not measured, and here is the protocol that would
+
+Ten rounds on one build produced within-session drift, not a floor: `laterMed`
+doubles across a session, which is larger than whatever run-to-run noise sits
+underneath it. Pooling them measures the trend.
+
+A floor needs rounds at a **constant session position**. Concretely:
+
+1. **The first round of N separate sessions**, `--fresh`, on ONE build, with at
+   least 45 minutes of idle before each so `sessionIndex` reads 1 — which the
+   round now records, so the constraint is checkable after the fact instead of
+   trusted.
+2. **N of at least 8.** The existing floor came from one build run twice
+   (`cabb357` scored 1 and 5 for tags-undefined), which is a range of two
+   observations and has been carrying every "is this a change?" judgement since.
+3. **Compare `laterMed`, tag faults and scenario skips**, and report the SPREAD,
+   not the mean. The question a floor answers is "how far apart can two identical
+   rounds be", and a mean cannot answer it.
+
+That is calendar days, not machine hours — eight sessions with an hour between
+them is a working day of mostly waiting. It is written down here so it can be
+run rather than re-derived, and so nobody pools ten back-to-back rounds again and
+calls the spread a floor.
+

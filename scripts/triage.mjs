@@ -3252,9 +3252,20 @@ export function driverRunLine(dr) {
   if (typeof dr.attempts === "number") bits.push(`${dr.attempts} attempt(s)`);
   if (dr.fresh) bits.push("fresh browser");
   if (typeof dr.sessionIndex === "number") {
-    const mins =
-      typeof dr.sincePrevRoundMs === "number" ? `, ${Math.round(dr.sincePrevRoundMs / 60000)}m after the last` : "";
-    bits.push(`round ${dr.sessionIndex} of this session${mins}`);
+    // MINUTES INTO THE SESSION, because that is what the drift is indexed by —
+    // rounds run 684s to 1085s, so a count is a proxy and the clock is the
+    // variable. The gap since the last round is kept beside it because a rested
+    // round and a back-to-back one at the same index are different samples.
+    const into = typeof dr.sessionElapsedMs === "number" ? `, ${Math.round(dr.sessionElapsedMs / 60000)}m in` : "";
+    // Sub-minute gaps read as "0m after the last", which is true and useless:
+    // every back-to-back round is ~17s apart. Seconds below a minute.
+    const gap =
+      typeof dr.sincePrevRoundMs === "number"
+        ? dr.sincePrevRoundMs < 60000
+          ? `, ${Math.round(dr.sincePrevRoundMs / 1000)}s after the last`
+          : `, ${Math.round(dr.sincePrevRoundMs / 60000)}m after the last`
+        : "";
+    bits.push(`round ${dr.sessionIndex} of this session${into}${gap}`);
   }
   if (dr.startedAt) bits.push(`started ${String(dr.startedAt).replace("T", " ").slice(0, 16)}Z`);
   const rec = Array.isArray(dr.recovered) ? dr.recovered : [];

@@ -178,9 +178,9 @@ export interface SlotVerdict {
    * Whether `shapes` was COUNTED, or copied from `expected` because the host
    * would not count it.
    *
-   * A grouped slide's children are unreachable on every PowerPoint
-   * (office-js#3014), so "could not measure" is the normal case here, not the
-   * edge one — and when it happens this file reports the slide complete and
+   * A grouped slide's children are unreachable on this host, so "could not
+   * measure" is the normal case here, not the edge one — and when it happens
+   * this file reports the slide complete and
    * prints the expected count in `shapes`. Both are defensible: the group is
    * itself proof the render reached the end, and the intent is the most useful
    * number available. What is not defensible is printing it identically to a
@@ -190,6 +190,24 @@ export interface SlotVerdict {
    * equal to `expected` — 253/253, 176/176, 122/122 — on a host observed
    * answering `shapesSeen=0`. Read as measurements they say the deck is
    * perfect. They are assumptions, and nothing in the output said so.
+   *
+   * THIS USED TO CITE office-js#3014 AND SAY "on every PowerPoint". That issue
+   * was CLOSED AS COMPLETED in March 2025, and `powerpoint.ts` says as much a
+   * few thousand lines away — two statements about the same issue in one repo,
+   * one of them treating a fixed bug as a current fact. `docs/ROUNDS.md` names
+   * this exact citation as the worked example of reasoning from a bug Microsoft
+   * fixed eighteen months ago.
+   *
+   * The behaviour it justifies is right anyway, and the archive says so far more
+   * strongly than the issue ever did. Across 201 rounds:
+   *
+   *     group-reports-its-children      548 threw,       0 answered
+   *     group-children-via-getcount     544 unreadable,  0 answered
+   *     addgroup-returns-usable         541 unreadable,  0 answered
+   *
+   * So the claim is grounded where it belongs — in what THIS host does, measured
+   * — rather than in an upstream ticket. A fix upstream is a claim about the
+   * service; these are 1633 observations that it has not reached here.
    */
   measured: boolean;
   /** Deck index of the slide kept for this item, or null when lost. */

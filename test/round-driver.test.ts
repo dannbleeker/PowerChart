@@ -2439,9 +2439,16 @@ describe("where in a run of rounds this one sits", () => {
   const T0 = Date.parse("2026-08-24T08:00:00.000Z");
   it("counts up while rounds keep coming", () => {
     // Consecutive rounds land 12-20 minutes apart; 15 is an ordinary gap.
-    const p = sessionPosition({ at: "2026-08-24T08:00:00.000Z", sessionIndex: 4 }, T0 + 15 * 60000);
+    const p = sessionPosition(
+      { at: "2026-08-24T08:00:00.000Z", sessionIndex: 4, sessionStartedAt: "2026-08-24T07:00:00.000Z" },
+      T0 + 15 * 60000,
+    );
     expect(p.index).toBe(5);
     expect(p.sincePrevMs).toBe(15 * 60000);
+    // MINUTES INTO THE SESSION is what the drift is indexed by — rounds run
+    // 684s to 1085s, so the count is a proxy and the clock is the variable.
+    expect(p.startedAt).toBe("2026-08-24T07:00:00.000Z");
+    expect(p.elapsedMs, "07:00 to 08:15 is 75 minutes").toBe(75 * 60000);
   });
 
   it("starts over after a long enough gap", () => {
@@ -2449,6 +2456,9 @@ describe("where in a run of rounds this one sits", () => {
     const p = sessionPosition({ at: "2026-08-24T08:00:00.000Z", sessionIndex: 9 }, T0 + 90 * 60000);
     expect(p.index, "a new session, not the tenth round of the old one").toBe(1);
     expect(p.sincePrevMs).toBe(null);
+    // A new session starts its own clock at zero rather than inheriting one.
+    expect(p.elapsedMs).toBe(0);
+    expect(p.startedAt).toBe(new Date(T0 + 90 * 60000).toISOString());
   });
 
   it("treats no previous round as the first", () => {
@@ -2463,6 +2473,18 @@ describe("where in a run of rounds this one sits", () => {
     const p = sessionPosition({ at: "2026-08-24T09:00:00.000Z", sessionIndex: 3 }, T0);
     expect(p.index).toBe(1);
     expect(p.sincePrevMs).toBe(null);
+  });
+
+  it("never reports a negative time-into-session", () => {
+    // Reachable: `at` is in the past and inside the gap, so the session
+    // continues, while `sessionStartedAt` sits ahead of now because the clock
+    // moved between the two writes. A negative "minutes in" is worse than no
+    // reading, because it looks like data.
+    const p = sessionPosition(
+      { at: "2026-08-24T07:50:00.000Z", sessionIndex: 2, sessionStartedAt: "2026-08-24T09:00:00.000Z" },
+      T0,
+    );
+    expect(p.elapsedMs).toBe(0);
   });
 
   it("recovers when the previous receipt has no index yet", () => {
