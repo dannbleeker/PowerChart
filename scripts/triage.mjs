@@ -3146,6 +3146,70 @@ export function poolUpdateCost(logs) {
 }
 
 /**
+ * Passed, skipped and failed — three outcomes, said as three.
+ *
+ * A skip means the scenario did not run to a verdict: the host stopped
+ * answering, or the deck could not set the question up. NOTHING WAS CHECKED. It
+ * is not a pass and it is emphatically not a failure of the code under test, and
+ * folding it into "N of M passed" makes a host having a bad afternoon look like
+ * a product regression — which is exactly how the 2026-08-24 block first read.
+ */
+export function selfTestHeadline(selftest) {
+  const all = Array.isArray(selftest) ? selftest : [];
+  const passed = all.filter((s) => s.ok).length;
+  const skipped = all.filter((s) => !s.ok && s.skipped).length;
+  const failed = all.filter((s) => !s.ok && !s.skipped).length;
+  const parts = [`${passed} of ${all.length} scenarios passed`];
+  // Named separately even at zero-of-one-kind, because the interesting case is
+  // "12 of 14" and the reader needs to know WHICH kind the missing two were.
+  if (skipped) parts.push(`${skipped} skipped (nothing was checked)`);
+  if (failed) parts.push(`${failed} FAILED`);
+  return parts.join(" · ");
+}
+
+/**
+ * What the driver went through to produce this round, in one line.
+ *
+ * Every field here was already archived and none of it was ever printed. A round
+ * that took three attempts and cleared a PowerPoint crash on the way rendered
+ * identically to one that walked straight through — and on 2026-08-24 that cost
+ * two consecutive wrong reports of the same ten-round block: first "nothing
+ * failed, the host just slowed down" when the host had crashed three times, then
+ * a correction that attributed the crashes to the wrong rounds and claimed the
+ * round files did not record them. `recovered` says `crashed` in plain text on
+ * exactly the three rounds concerned.
+ *
+ * The session fields are the other half — see `sessionPosition`. `laterMed`
+ * doubles across a session, so a round's position in one is as load-bearing as
+ * its build, and until now only the build was visible.
+ *
+ * Returns "" rather than a placeholder line for the rounds archived before any
+ * of this existed: 190 of them, and a row of question marks on every one is
+ * noise, not information.
+ */
+export function driverRunLine(dr) {
+  if (!dr || typeof dr !== "object") return "";
+  const bits = [];
+  if (typeof dr.attempts === "number") bits.push(`${dr.attempts} attempt(s)`);
+  if (dr.fresh) bits.push("fresh browser");
+  if (typeof dr.sessionIndex === "number") {
+    const mins =
+      typeof dr.sincePrevRoundMs === "number" ? `, ${Math.round(dr.sincePrevRoundMs / 60000)}m after the last` : "";
+    bits.push(`round ${dr.sessionIndex} of this session${mins}`);
+  }
+  if (dr.startedAt) bits.push(`started ${String(dr.startedAt).replace("T", " ").slice(0, 16)}Z`);
+  const rec = Array.isArray(dr.recovered) ? dr.recovered : [];
+  // NAMED, not counted. "recovered from 2" invites the reader to skim; "crashed"
+  // is the word that stops them.
+  const recovered = rec.length ? `\n  recovered from: ${rec.join(", ")}` : "";
+  const drift =
+    typeof dr.sessionIndex === "number" && dr.sessionIndex >= 5
+      ? `\n  DEEP IN A SESSION — the in-place update cost roughly doubles by round 6-8 and scenarios start being skipped; compare against rounds at a similar position, not against round 1`
+      : "";
+  return (bits.length ? `\n  ${bits.join(" · ")}` : "") + recovered + drift;
+}
+
+/**
  * A run of ONE, read against the two arms it sits between.
  *
  * The first chart of a multi-chart run costs ~2.2x a later chart of the same
@@ -3917,7 +3981,13 @@ export function reportBatchCost(log) {
 export function reportSelfTest(selftest) {
   if (!selftest.length) return 0;
   const failed = selftest.filter((s) => !s.ok && !s.skipped).length;
-  console.log(`\n  SELF-TEST ${selftest.filter((s) => s.ok).length} of ${selftest.length} scenarios passed\n`);
+  // SKIPPED IS NOT FAILED, AND NEITHER IS PASSED. "12 of 14 scenarios passed"
+  // reads as two failures; on 2026-08-24 every one of those was a SKIP — the
+  // host stopped answering mid-scenario and NOTHING WAS CHECKED. That is a
+  // third outcome and the headline had two, so a degrading host looked like a
+  // regressing product. The per-line marks have always said `skip`; the line
+  // people quote did not.
+  console.log(`\n  SELF-TEST ${selfTestHeadline(selftest)}\n`);
   for (const s of selftest) {
     const mark = s.skipped ? "skip" : s.ok ? "ok" : "FAIL";
     console.log(`  ${pad(mark, 6)}${pad(s.name, 46)}${s.detail}`);
@@ -4481,6 +4551,13 @@ if (invokedDirectly) {
     console.log(
       `\n  ROUND — no deck supplied, so slots are not joined` +
         `\n  build ${log.build ?? "?"} · ${log.host ?? "?"}` +
+        // HOW THE ROUND WENT BEFORE IT PRODUCED ANYTHING. `driverRun` has been
+        // archived since it was added and NEVER printed, so a round rescued from
+        // a crash read exactly like one that never needed rescuing. On
+        // 2026-08-24 that cost two wrong reports of the same block: three
+        // crashes went unnoticed, and were then attributed to the wrong rounds
+        // — while the field naming them sat in every file the whole time.
+        driverRunLine(log.driverRun) +
         (runs.length ? `\n  ${runs.length} insert run(s) in this file — pass the .pptx to check their slots` : ""),
     );
     reportDeckEvidence(log.deck);

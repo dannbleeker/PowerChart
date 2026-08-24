@@ -2797,8 +2797,73 @@ export function sweepDeck(sh) {
   return Number(left) <= 1;
 }
 
+/**
+ * The last round's receipt, or null when there is not one worth having.
+ *
+ * Separate from `sessionPosition` so that one stays pure: a missing file, an
+ * unreadable one and a half-written one are all "no previous round" here, and
+ * none of them should stop a round from running.
+ */
+export function readReceipt(path = RECEIPT_PATH, read = readFileSync) {
+  try {
+    return JSON.parse(String(read(path, "utf8")));
+  } catch {
+    return null;
+  }
+}
+
 /** Where the driver leaves its account of how the round ended. */
 export const RECEIPT_PATH = ".round-outcome.json";
+
+/**
+ * How long a gap ends a SESSION of rounds.
+ *
+ * A round takes 11-18 minutes and the loop starts the next one immediately, so
+ * consecutive rounds land 12-20 minutes apart. 45 minutes is comfortably past
+ * that and comfortably short of "came back after lunch", which is the
+ * distinction this needs to make and the only one it needs to make.
+ */
+export const SESSION_GAP_MS = 45 * 60 * 1000;
+
+/**
+ * WHERE IN A RUN OF ROUNDS THIS ONE SITS — and it is not cosmetic.
+ *
+ * Ten rounds on one build, 2026-08-24, every one `--fresh`:
+ *
+ *     minutes-in     0     65    116    186    224
+ *     laterMed   19321  24423  40469  29023  40067
+ *
+ * The most repeated measurement in this harness roughly DOUBLES over two hours
+ * of back-to-back rounds, and past ~90 minutes scenarios start being skipped
+ * because the host stops answering. It is not the machine: `--fresh` rebuilds
+ * the browser every round and 8.6 GB of 15.7 GB was free at the bottom of the
+ * run.
+ *
+ * **No archived round records when it ran.** The file carries the BUILD stamp
+ * and nothing else, so session position is unrecoverable from 190 rounds — and
+ * it is worth 2x on the headline number. Every cross-round comparison this
+ * archive has ever made is confounded by a variable nobody could see, and the
+ * noise-floor note already had its finger on it without knowing the cause:
+ * "the second run is usually the worse one, so a floor measured this way
+ * includes an effect as well as noise."
+ *
+ * Chained through the receipt because each round is its own PROCESS — there is
+ * no long-lived thing to hold a counter, and inferring position from file mtimes
+ * works only until the files are committed and checked out again.
+ *
+ * Pure, and separate from the reading, so the arithmetic can be tested without
+ * a filesystem or a clock.
+ */
+export function sessionPosition(prev, nowMs, gapMs = SESSION_GAP_MS) {
+  const prevAt = Date.parse(prev?.at ?? "");
+  if (!Number.isFinite(prevAt) || !Number.isFinite(nowMs)) return { index: 1, sincePrevMs: null };
+  const since = nowMs - prevAt;
+  // A receipt from the FUTURE is a clock that moved, not a session. Treated as
+  // a fresh start rather than trusted into a negative gap.
+  if (since < 0 || since > gapMs) return { index: 1, sincePrevMs: null };
+  const prevIndex = Number(prev?.sessionIndex);
+  return { index: (Number.isFinite(prevIndex) && prevIndex > 0 ? prevIndex : 1) + 1, sincePrevMs: since };
+}
 
 /**
  * What just happened, as structure rather than prose.
@@ -2824,7 +2889,7 @@ export const RECEIPT_PATH = ".round-outcome.json";
  * Pure, and separate from the writing, so the shape can be tested without a
  * filesystem.
  */
-export function outcomeReceipt({ reason, codes, roundFile, build, size, threw, at }) {
+export function outcomeReceipt({ reason, codes, roundFile, build, size, threw, at, sessionIndex }) {
   return {
     reason: reason ?? null,
     // Always an array. A reader doing `codes.includes(...)` on a `finished`
@@ -2855,6 +2920,10 @@ export function outcomeReceipt({ reason, codes, roundFile, build, size, threw, a
     // again". The receipt contradicted the console in the same output.
     recoverable: shouldRetry(reason, 0, 1, codes),
     at: at ?? new Date().toISOString(),
+    // WHERE IN A RUN OF ROUNDS THIS ONE SAT. Chained here because each round is
+    // its own process and there is nowhere else that outlives one — see
+    // `sessionPosition`, and the 2x within-session drift that made it necessary.
+    sessionIndex: sessionIndex ?? null,
   };
 }
 
@@ -2916,6 +2985,11 @@ async function main(argv, deps = {}) {
   // took three attempts and then failed two scenarios that had never failed in
   // 109 rounds, and no archived field could connect those two facts.
   const recovered = [];
+  // WHEN THIS ROUND BEGAN, and where in the session it sits. Read once, before
+  // any attempt, so a round that needed three recoveries still reports the time
+  // the work actually started rather than the time it finally succeeded.
+  const startedAtMs = (deps.now ?? Date.now)();
+  const session = sessionPosition((deps.readReceipt ?? readReceipt)(), startedAtMs);
   // A fresh browser before the first attempt, when asked for. See `startFresh`.
   if (argv.includes("--fresh")) {
     console.log("  closing the browser — this round starts from a fresh session");
@@ -2974,6 +3048,12 @@ async function main(argv, deps = {}) {
             recovered: [...recovered],
             fresh: argv.includes("--fresh"),
             waitedForDeploy: argv.includes("--wait-for-deploy"),
+            // WHEN, and WHERE IN THE SESSION. The archive had neither, and
+            // without them "this build is slower" and "this round ran later in
+            // the day" are the same sentence — see `sessionPosition`.
+            startedAt: new Date(startedAtMs).toISOString(),
+            sessionIndex: session.index,
+            sincePrevRoundMs: session.sincePrevMs,
           },
         },
         sh,
@@ -2992,7 +3072,14 @@ async function main(argv, deps = {}) {
       // a failed write, and turning one into a non-zero exit would make the
       // paperwork more important than the evidence.
       try {
-        write(RECEIPT_PATH, JSON.stringify(outcomeReceipt({ reason, codes, roundFile, build, size, threw }), null, 2));
+        write(
+          RECEIPT_PATH,
+          JSON.stringify(
+            outcomeReceipt({ reason, codes, roundFile, build, size, threw, sessionIndex: session.index }),
+            null,
+            2,
+          ),
+        );
       } catch (err) {
         console.error(`  (could not write ${RECEIPT_PATH}: ${err?.message ?? err})`);
       }

@@ -3249,3 +3249,54 @@ describe("what the first-chart cost was standing in for", () => {
     expect(occupancySplit([{ of: 24, changed: 18, ms: 1, drawnThereBefore: null }], 24, 18)).toEqual([]);
   });
 });
+
+describe("what the driver went through, finally printed", () => {
+  it("names a crash instead of hiding it in an attempt count", async () => {
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { driverRunLine } = await import("../scripts/triage.mjs");
+    const line = driverRunLine({ attempts: 3, fresh: true, recovered: ["not-ready:pane-closed", "crashed"] });
+    expect(line, "the word that stops a reader skimming").toContain("crashed");
+    expect(line).toContain("3 attempt(s)");
+  });
+
+  it("says nothing at all for rounds archived before the field existed", async () => {
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { driverRunLine } = await import("../scripts/triage.mjs");
+    // 190 archived rounds have no driverRun. A row of question marks on every
+    // one is noise, not information.
+    expect(driverRunLine(undefined)).toBe("");
+    expect(driverRunLine(null)).toBe("");
+  });
+
+  it("warns when a round sits deep in a session", async () => {
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { driverRunLine } = await import("../scripts/triage.mjs");
+    const deep = driverRunLine({ attempts: 1, sessionIndex: 6, sincePrevRoundMs: 900000 });
+    expect(deep, "laterMed roughly doubles by round 6-8").toContain("DEEP IN A SESSION");
+    expect(deep).toContain("round 6 of this session");
+    expect(deep).toContain("15m after the last");
+    const shallow = driverRunLine({ attempts: 1, sessionIndex: 2 });
+    expect(shallow).not.toContain("DEEP IN A SESSION");
+  });
+});
+
+describe("skipped is a third outcome, not half a failure", () => {
+  it("separates skipped from failed in the headline", async () => {
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { selfTestHeadline } = await import("../scripts/triage.mjs");
+    // 2026-08-24: every missing scenario was a SKIP - the host stopped
+    // answering and nothing was checked - and "12 of 14 passed" read as two
+    // product failures.
+    const h = selfTestHeadline([{ ok: true }, { ok: true }, { ok: false, skipped: true }, { ok: false }]);
+    expect(h).toContain("2 of 4 scenarios passed");
+    expect(h).toContain("1 skipped (nothing was checked)");
+    expect(h).toContain("1 FAILED");
+  });
+
+  it("stays quiet about the kinds that did not happen", async () => {
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { selfTestHeadline } = await import("../scripts/triage.mjs");
+    const clean = selfTestHeadline([{ ok: true }, { ok: true }]);
+    expect(clean).toBe("2 of 2 scenarios passed");
+  });
+});

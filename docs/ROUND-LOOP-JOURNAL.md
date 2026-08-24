@@ -7011,3 +7011,68 @@ Twelfth time in this file, and the plainest: the headline was written from one
 source when a second, richer one had been produced by the same run and was
 already on disk.
 
+### CORRECTION TO THE CORRECTION — the round files DID record the crashes
+
+The entry above says *"nothing in the round files says 'crash'"*. That is wrong,
+and it was wrong in the same way as the thing it was correcting: written without
+opening the field it was making a claim about.
+
+    round  attempts  recovered
+    216       2      ["not-ready:pane-closed"]
+    217       3      ["not-ready:pane-closed", "crashed"]
+    220       3      ["not-ready:deck-dirty+pane-closed", "crashed"]
+    223       3      ["not-ready:pane-closed", "crashed"]
+
+`driverRun.recovered` says **`crashed`**, in plain text, on exactly the three
+rounds concerned. The attribution above is also wrong: the crashes belong to
+rounds **217, 220 and 223**, not 218 — the first crash landed at 08:03 during
+round 217's first attempt, which is why 217 reads `attempts: 3`.
+
+Thirteenth time, and the first one that is a correction of a correction. The
+lesson is not "be more careful"; it is that **the field existed and nothing ever
+printed it.**
+
+## The gap under all three mistakes: archived and never rendered
+
+`driverRun` has been written into every round since it was added and **triage
+never printed a character of it.** A round rescued from a PowerPoint crash
+rendered identically to one that walked straight through. That is what made the
+same block readable wrongly twice in a row by someone with all the evidence.
+
+Now on the round header:
+
+    build 77fc64f · 2026-08-24 05:33Z · PowerPoint · OfficeOnline · 0.0.0.0
+    3 attempt(s) · fresh browser
+    recovered from: not-ready:deck-dirty+pane-closed, crashed
+
+Named rather than counted — *"recovered from 2"* invites a skim, `crashed` stops
+one.
+
+### Skipped is a third outcome and the headline had two
+
+`SELF-TEST 12 of 14 scenarios passed` reads as two failures. Every missing
+scenario in the block was a SKIP: the host stopped answering and **nothing was
+checked**. A degrading host looked like a regressing product. The per-line marks
+have always said `skip`; the line people quote did not:
+
+    SELF-TEST 12 of 14 scenarios passed · 2 skipped (nothing was checked)
+
+### And the round now records when it ran
+
+`sessionPosition` chains through `.round-outcome.json`, because each round is its
+own process and there is nowhere else that outlives one. A gap over 45 minutes
+starts a new session; a receipt from the FUTURE is a moved clock and is refused
+rather than trusted into a negative gap.
+
+`driverRun` gains `startedAt`, `sessionIndex` and `sincePrevRoundMs`, and any
+round at position 5 or later prints:
+
+    DEEP IN A SESSION — the in-place update cost roughly doubles by round 6-8 and
+    scenarios start being skipped; compare against rounds at a similar position,
+    not against round 1
+
+It says nothing at all for the 190 rounds archived before the field existed. A
+row of question marks on every one of those is noise, not information.
+
+Ten mutants across the four changes, each killed by the test that names it.
+

@@ -15,6 +15,8 @@ const {
   stripImages,
   cliEntry,
   sessionDir,
+  sessionPosition,
+  readReceipt,
   ensureSessionDir,
   spawnFailureRemedy,
   pingScript,
@@ -2430,5 +2432,57 @@ describe("a browser this session cannot reach", () => {
       calls.some((c) => c[0] === "resize"),
       "resized a window that was already wide enough",
     ).toBe(false);
+  });
+});
+
+describe("where in a run of rounds this one sits", () => {
+  const T0 = Date.parse("2026-08-24T08:00:00.000Z");
+  it("counts up while rounds keep coming", () => {
+    // Consecutive rounds land 12-20 minutes apart; 15 is an ordinary gap.
+    const p = sessionPosition({ at: "2026-08-24T08:00:00.000Z", sessionIndex: 4 }, T0 + 15 * 60000);
+    expect(p.index).toBe(5);
+    expect(p.sincePrevMs).toBe(15 * 60000);
+  });
+
+  it("starts over after a long enough gap", () => {
+    // Came back after lunch. This is the only distinction the gap has to make.
+    const p = sessionPosition({ at: "2026-08-24T08:00:00.000Z", sessionIndex: 9 }, T0 + 90 * 60000);
+    expect(p.index, "a new session, not the tenth round of the old one").toBe(1);
+    expect(p.sincePrevMs).toBe(null);
+  });
+
+  it("treats no previous round as the first", () => {
+    expect(sessionPosition(null, T0).index).toBe(1);
+    expect(sessionPosition({}, T0).index).toBe(1);
+    expect(sessionPosition({ at: "not a date" }, T0).index).toBe(1);
+  });
+
+  it("refuses a receipt from the future rather than trusting a negative gap", () => {
+    // A clock that moved is not a session. Round 2 with sincePrev of -40m would
+    // be worse than no reading at all, because it looks like data.
+    const p = sessionPosition({ at: "2026-08-24T09:00:00.000Z", sessionIndex: 3 }, T0);
+    expect(p.index).toBe(1);
+    expect(p.sincePrevMs).toBe(null);
+  });
+
+  it("recovers when the previous receipt has no index yet", () => {
+    // Every receipt written before this field existed. The round after one of
+    // those is the SECOND of its session, not the first.
+    const p = sessionPosition({ at: "2026-08-24T08:00:00.000Z" }, T0 + 12 * 60000);
+    expect(p.index).toBe(2);
+  });
+});
+
+describe("reading the last round's receipt", () => {
+  it("treats every unreadable receipt as no previous round", () => {
+    // A missing file, a half-written one and a corrupt one must not stop a
+    // round from running.
+    expect(
+      readReceipt("x", () => {
+        throw new Error("ENOENT");
+      }),
+    ).toBe(null);
+    expect(readReceipt("x", () => "{not json")).toBe(null);
+    expect(readReceipt("x", () => JSON.stringify({ sessionIndex: 3 }))).toEqual({ sessionIndex: 3 });
   });
 });
