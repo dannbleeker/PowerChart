@@ -2981,9 +2981,35 @@ function reportFlatFields(logs) {
  * gives a per-shape figure describing neither. Every comparison here is made
  * within one `of`, and the first-chart one within one `changed` as well.
  */
+/**
+ * How many shapes THIS RUN put on each slide, from the run's own batch lines.
+ *
+ * Joined rather than measured, and that is the point: asking the host for a
+ * slide's shape count inside the timed update would add a sync to the path being
+ * timed, which is the "adding counting sites moves the baseline" hazard this
+ * archive has been bitten by. `batch issued` already carries `onSlide` per
+ * `onSlideKey`, written while drawing, so the occupancy is already in every
+ * round — it had simply never been joined to the update rows.
+ *
+ * A FLOOR, not an occupancy: it counts what the run drew, so a slide that
+ * arrived with content reads low. Adequate here because every slide in the
+ * self-test deck starts empty.
+ */
+export function priorDrawsOnSlide(entries) {
+  const per = new Map();
+  for (const e of entries ?? []) {
+    const d = e?.data ?? {};
+    if (String(e?.message ?? "") !== "batch issued") continue;
+    if (typeof d.onSlideKey !== "string" || typeof d.onSlide !== "number") continue;
+    per.set(d.onSlideKey, Math.max(per.get(d.onSlideKey) ?? 0, d.onSlide));
+  }
+  return per;
+}
+
 export function poolUpdateCost(logs) {
   const rows = [];
   for (const log of logs ?? []) {
+    const drawnBefore = priorDrawsOnSlide(log?.trace?.entries);
     for (const e of log?.trace?.entries ?? []) {
       if (String(e.message ?? "") !== "updated only the shapes that changed") continue;
       const d = e.data ?? {};
@@ -3005,6 +3031,11 @@ export function poolUpdateCost(logs) {
         first: inRun && at === 1 && runLen > 1,
         alone,
         slideId: typeof d.slideId === "string" ? d.slideId : null,
+        // WHAT THE FIRST-CHART COST TURNED OUT TO BE. Rounds 213-215: a chart
+        // updated alone on the crowded slide cost 35033 and 39570ms, and the
+        // same arm on an uncrowded slide cost 15235ms — later-chart cost. The
+        // slide tracks it and the position does not.
+        drawnThereBefore: typeof d.slideId === "string" ? (drawnBefore.get(d.slideId) ?? null) : null,
       });
     }
   }
@@ -3097,6 +3128,9 @@ export function poolUpdateCost(logs) {
   const sameSlideUnscorable = sameSlideLater.length - sameSlideExcess.length;
   return {
     n: rows.length,
+    // The rows themselves, so the occupancy split can be taken without a second
+    // pass over every log — see `occupancySplit`.
+    rows,
     sizes,
     fits,
     firstVsRest,
@@ -3132,6 +3166,50 @@ export function poolUpdateCost(logs) {
  * midpoint a 37s reading against arms at 17s and 37s would look ambiguous when
  * it is exactly one of them.
  */
+/**
+ * The same updates, split by how much this run had already drawn on their slide.
+ *
+ * NOT "occupancy", and the distinction is this repo's own: `onSlide` counts what
+ * THIS RUN drew and reads 0 on a slide's first batch, so a slide that arrived
+ * with content reads low. The first version of this line printed "0 shapes" for
+ * slides the run had drawn ten shapes onto, which is the same misreading it was
+ * written to expose.
+ *
+ * THIS IS THE ANSWER TO "the first chart of a run costs 2.2x". It does not, or
+ * not for being first: in this harness the first chart of the deck-wide rescale
+ * is always the chart on the VISIBLE slide, which earlier scenarios have already
+ * piled onto — 42 shapes against 20-21 everywhere else. Position and occupancy
+ * were perfectly confounded for 14 samples across 10 rounds, and the label on
+ * the louder of the two variables stuck.
+ *
+ * Round 215 separated them by updating a lone chart on an UNCROWDED slide: it
+ * cost 15235ms, later-chart cost, against 35033 and 39570ms for the identical
+ * arm on the crowded slide in rounds 213 and 214. Visibility is excluded too,
+ * because the arm calls `showSlide` on its own target — so 215's cheap chart was
+ * the visible one.
+ *
+ * Prints nothing rather than one bucket: a split with only one side is the
+ * confound restated, not resolved.
+ */
+export function occupancySplit(rows, of, changed) {
+  const here = (rows ?? []).filter(
+    (r) => r.of === of && r.changed === changed && typeof r.drawnThereBefore === "number",
+  );
+  if (here.length < 2) return [];
+  const counts = [...new Set(here.map((r) => r.drawnThereBefore))].sort((a, b) => a - b);
+  if (counts.length < 2) return [];
+  const median = (a) => [...a].sort((x, y) => x - y)[Math.floor(a.length / 2)];
+  const lo = counts[0];
+  const hi = counts[counts.length - 1];
+  const loMs = median(here.filter((r) => r.drawnThereBefore === lo).map((r) => r.ms));
+  const hiMs = median(here.filter((r) => r.drawnThereBefore === hi).map((r) => r.ms));
+  const ratio = loMs ? (hiMs / loMs).toFixed(1) + "x" : "?";
+  return [
+    `by SHAPES THIS RUN HAD ALREADY DRAWN THERE, at ${changed} of ${of}: ${hi} drawn ${hiMs}ms vs ${lo} drawn ` +
+      `${loMs}ms (${ratio}) — which is what "first chart of a run" was standing in for`,
+  ];
+}
+
 export function aloneVerdict(c) {
   const { alone, first, rest, aloneN } = c;
   const near = Math.abs(Math.log(alone / first)) < Math.abs(Math.log(alone / rest)) ? "a FIRST chart" : "a LATER chart";
@@ -3165,6 +3243,7 @@ function reportUpdateCost(logs) {
         "      n=" + c.firstN + " first-chart sample(s) — a LEAD, not a rate. Needs rounds before it is anything.",
       );
     if (c.aloneN) console.log("      " + aloneVerdict(c));
+    for (const line of occupancySplit(u.rows, c.of, c.changed)) console.log("      " + line);
   }
   if (u.firstExcessN) {
     const a = Math.round(u.firstExcess);

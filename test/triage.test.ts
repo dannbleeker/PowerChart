@@ -3197,3 +3197,55 @@ describe("a run of one must not set the baseline it is scored against", () => {
     expect(c.rest, "median of 17000 and 17200 - the lone row is not one of them").toBe(17200);
   });
 });
+
+describe("what the first-chart cost was standing in for", () => {
+  it("reads prior draws per slide off the run's own batch lines", async () => {
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { priorDrawsOnSlide } = await import("../scripts/triage.mjs");
+    const m = priorDrawsOnSlide([
+      { message: "batch issued", data: { onSlideKey: "257", onSlide: 0 } },
+      { message: "batch issued", data: { onSlideKey: "257", onSlide: 42 } },
+      // OUT OF ORDER ON PURPOSE: the largest reading is not the last one, so a
+      // `set` that overwrites instead of maxing reports 32 and the slide reads
+      // less loaded than it was.
+      { message: "batch issued", data: { onSlideKey: "257", onSlide: 32 } },
+      { message: "batch issued", data: { onSlideKey: "262", onSlide: 0 } },
+      // Not a batch line, and must not be counted as one.
+      { message: "updated only the shapes that changed", data: { onSlideKey: "262", onSlide: 999 } },
+    ]);
+    expect(m.get("257"), "the largest reading, not the last").toBe(42);
+    expect(m.get("262")).toBe(0);
+  });
+
+  it("splits the update cost by that, not by position", async () => {
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { occupancySplit } = await import("../scripts/triage.mjs");
+    // Round 215: the crowded slide costs 2.2x whether the chart is first or
+    // alone, and the lone chart on a clear slide pays later-chart cost.
+    const rows = [
+      { of: 24, changed: 18, ms: 36350, drawnThereBefore: 42 },
+      { of: 24, changed: 18, ms: 16314, drawnThereBefore: 0 },
+      { of: 24, changed: 18, ms: 15235, drawnThereBefore: 0 },
+    ];
+    const [line] = occupancySplit(rows, 24, 18);
+    // ORDERED: the loaded slide first, then the clear one. Asserting only that
+    // both numbers appear passes with the buckets swapped, which would print
+    // the ratio upside down and read as the clear slide being dearer.
+    expect(line).toContain("42 drawn 36350ms vs 0 drawn 16314ms");
+    expect(line, "loaded over clear, so the ratio is above 1").toContain("(2.2x)");
+    expect(line, "the label has to say what the number counts").toContain("ALREADY DRAWN");
+    expect(line).not.toContain("OCCUPANCY");
+  });
+
+  it("prints nothing when there is only one bucket", async () => {
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { occupancySplit } = await import("../scripts/triage.mjs");
+    // A split with one side is the confound restated, not resolved.
+    const rows = [
+      { of: 24, changed: 18, ms: 36350, drawnThereBefore: 42 },
+      { of: 24, changed: 18, ms: 35000, drawnThereBefore: 42 },
+    ];
+    expect(occupancySplit(rows, 24, 18)).toEqual([]);
+    expect(occupancySplit([{ of: 24, changed: 18, ms: 1, drawnThereBefore: null }], 24, 18)).toEqual([]);
+  });
+});

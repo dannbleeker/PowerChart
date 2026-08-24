@@ -6825,3 +6825,71 @@ happens to absorb. If it pays 17s, the cost belongs to whatever the run does
 before its first chart that it does not do again — and the scan is already
 excluded from that list.
 
+
+## It was never the first chart. It was the slide it was standing on.
+
+Rounds 213, 214 and 215, the lone-chart arm:
+
+    round   first (slide 257)   alone     alone's slide   later (median)
+    213           35894ms       35033ms   257  SAME            15328ms
+    214           40328ms       39570ms   257  SAME            19564ms
+    215           36350ms       15235ms   262  different       16542ms
+
+**The arm that answered "the run is the unit" was picking `charts[0]` — the same
+chart the deck-wide rescale updates FIRST, and therefore the same slide.** It
+reproduced the confound it was built to break, and I reported its answer here
+before checking which slide it had landed on.
+
+Moved off that slide, the lone chart costs **15235ms** — the cheapest 18-of-24
+update in the round, below every later chart in it. Being first in a run does not
+cost anything.
+
+### What the slide was
+
+`onSlide` readings from round 215's own batch lines: slide 257 carried **42**
+shapes drawn by the run against 20-21 on every other slide. Slide 257 is the
+VISIBLE slide, which `insert onto a slide that already has content` and `edit a
+chart on the visible slide` have both already drawn onto by the time the rescale
+starts. **In this harness the first chart of a deck-wide rescale is always the
+chart on the busiest slide, by construction.** Position and load were perfectly
+confounded for 14 samples across 10 rounds, and the label on the more obvious of
+the two stuck.
+
+This file already measured the effect on the draw path — *"A run slows ITSELF
+down 4.6x by piling onto one slide"*, 5486ms at 1-20 shapes against 14044ms at
+21-50. The in-place update pays the same tax and nobody had joined the two.
+
+**Visibility is excluded for free.** The arm calls `showSlide` on its own target,
+so round 215's cheap chart was the visible one. Visible and clear is cheap;
+visible and loaded is dear.
+
+### Six exclusions, and the answer was in the archive the whole time
+
+Not the slide *identity*, not a cold host, not our sync count, not the deck scan,
+not queue depth, not a fixed timeout — and the ~20.5s excess that looked so
+suspiciously like a 20s constant is just what 22 extra shapes on a slide cost
+this host. The three write syncs each carrying ~+6.9s is the same story told per
+sync: every write into that slide is dearer, so all three inflate together, which
+is exactly what a timeout would NOT do.
+
+### The instrument, and a mistake inside the fix for the mistake
+
+`priorDrawsOnSlide` joins each update row to what the run had already drawn on
+that slide, off `batch issued` lines that every round already carries — no new
+host call, so no counting site added to a timed path and no baseline moved.
+
+The first version called it `slideOccupancy` and printed "0 shapes" for slides
+the run had drawn ten shapes onto. `onSlide` counts what THIS RUN drew and reads
+0 on a slide's first batch — and the warning saying exactly that is a comment in
+this repo, which I had read earlier in the same session and used as occupancy
+anyway. Renamed to what it measures. **Eleventh time, and the second inside a
+tool built to catch the tenth.**
+
+### What is left of thread 2
+
+Nothing to fix. A chart on a slide holding twice as many shapes costs about twice
+as much to update, on a host that has always behaved that way, and the open
+question was an artifact of a self-test deck that piles three charts onto its
+visible slide. The thread closes as **explained, not fixed** — and what closes it
+is a control arm moved by one slide.
+
