@@ -73,7 +73,7 @@ import {
  */
 const ADDS_TO_DEFEAT_ONE_SLIDE = 1 + MAX_ADD_RETRY_ROUNDS;
 import { readFileSync } from "fs";
-import { onTrace, setTracing, traceLog } from "../src/core/trace";
+import { onTrace, setTracing, traceAbout, traceLog } from "../src/core/trace";
 import { planReconcile } from "../src/core/reconcile";
 import { planSceneUpdate, worthUpdating } from "../src/core/scene-diff";
 import { buildChart, DEFAULT_SIZE } from "../src/core/chart";
@@ -6022,5 +6022,53 @@ describe("an in-place update writes in chunks", () => {
     // nothing else. An absolute count would break every time the surrounding
     // path gained or lost a sync.
     expect(twoChunks, "eight shapes went out in one batch — the write is not chunked").toBeGreaterThan(oneChunk);
+  });
+});
+
+describe("every draw carries a chart label, so its slide readings can be attributed", () => {
+  it("mints one when the caller named none", async () => {
+    // `traceAbout({ item })` wraps `runDemoDeck`, which the self-test never
+    // calls — `.item` appears in 0 of 203 archived rounds. So every draw a round
+    // makes arrived unlabelled, and the `onSlide` readings those draws emit
+    // could not be attributed to a chart. That blinded WHICH SLIDE THE CHART
+    // LANDED ON, whose pooling keys on `chart`, and the report ended up printing
+    // "freshly added, empty — 5 chart(s), 5 grouped = 100%" against a documented
+    // 1% baseline.
+    setTracing(true);
+    installHost([makeSlide("s1")]);
+    try {
+      await insertSceneIntoSlide(buildChart(config), { tagData: JSON.stringify(config), shapesPerSync: 1 });
+      const labelled = traceLog().entries.filter((e) => e.data && e.data.chart !== undefined);
+      expect(labelled.length, "no draw line carried a chart label").toBeGreaterThan(0);
+      expect(String(labelled[0].data!.chart)).toMatch(/^draw-\d+$/);
+    } finally {
+      setTracing(false);
+    }
+  });
+
+  it("lets a caller-supplied name win", async () => {
+    // The rescale wraps each chart in `traceAbout({ chart: "i/n" })`, and that
+    // label is what makes a deck run readable in order. `traceAbout` merges
+    // inner over outer, so minting unconditionally would clobber it — fixing one
+    // label by destroying another.
+    setTracing(true);
+    installHost([makeSlide("s1")]);
+    try {
+      await traceAbout({ chart: "3/8" }, () =>
+        insertSceneIntoSlide(buildChart(config), { tagData: JSON.stringify(config), shapesPerSync: 1 }),
+      );
+      const labels = new Set(
+        traceLog()
+          .entries.filter((e) => e.data && e.data.chart !== undefined)
+          .map((e) => String(e.data!.chart)),
+      );
+      expect(labels.has("3/8"), "the caller label was clobbered").toBe(true);
+      expect(
+        [...labels].some((l) => l.startsWith("draw-")),
+        "minted one anyway",
+      ).toBe(false);
+    } finally {
+      setTracing(false);
+    }
   });
 });

@@ -3361,3 +3361,32 @@ describe("instruments that have gone quiet", () => {
     expect(rows[0].gap).toBe(215);
   });
 });
+
+describe("a rate the sample cannot support", () => {
+  it("refuses to turn five observations into a percentage", async () => {
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { rateOrSilence } = await import("../scripts/triage.mjs");
+    // This was LIVE: "freshly added, empty - 5 chart(s), 5 grouped = 100%",
+    // printed above prose saying the recent window is what to quote, against a
+    // documented 1% baseline that BACKLOG.md calls READ THIS FIRST.
+    const five = rateOrSilence(5, 5);
+    expect(five).not.toContain("100%");
+    expect(five).toContain("n=5");
+  });
+
+  it("states a rate once the sample can carry one", async () => {
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { rateOrSilence, MIN_RATE_N } = await import("../scripts/triage.mjs");
+    expect(rateOrSilence(MIN_RATE_N, MIN_RATE_N)).toBe("100%");
+    expect(rateOrSilence(10, 40)).toBe("25%");
+    // The boundary itself counts as enough, not one past it.
+    expect(rateOrSilence(1, MIN_RATE_N - 1)).toContain("too few");
+  });
+
+  it("keeps the honest half — the counts are printed either way", async () => {
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { rateOrSilence } = await import("../scripts/triage.mjs");
+    // Nothing to rate at all is a dash, not a false zero.
+    expect(rateOrSilence(0, 0)).toBe("—");
+  });
+});

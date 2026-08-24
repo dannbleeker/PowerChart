@@ -18,7 +18,7 @@ import { planSceneUpdate, sceneFingerprint, worthUpdating } from "../core/scene-
 import { toHex6, alphaOf, isNamedColor } from "../core/color";
 import type { PolygonNode, Scene, SceneNode, TextNode, WedgeNode } from "../core/scene";
 import { NOT_COMPLETE_NAME, planReconcile } from "../core/reconcile";
-import { trace, traceAbout, tracing } from "../core/trace";
+import { trace, traceAbout, traceSubject, tracing } from "../core/trace";
 import type { Rect } from "../core/placement";
 import type { ExpectedItem, ReconcileOptions, ReconcilePlan, SlideSnapshot } from "../core/reconcile";
 import { parseSlideSizeEmu, EMU_PER_POINT } from "./ooxml";
@@ -1318,7 +1318,48 @@ async function blankLayoutId(context: PowerPoint.RequestContext): Promise<string
   return undefined;
 }
 
+/**
+ * A per-draw key for the trace, minted only when the caller has not named one.
+ *
+ * WHY IT IS HERE AND NOT AT THE CALL SITES. `traceAbout({ item: "i/n" })` wraps
+ * `runDemoDeck`, and `.item` has appeared in **0 of 203 archived rounds** — the
+ * self-test never calls `insertDemoDeck`, so the label lives on a path no round
+ * exercises. Every draw a round makes comes through `insertSceneIntoSlide`
+ * unlabelled, which means the `onSlide` readings those draws emit cannot be
+ * attributed to a chart.
+ *
+ * That blinded `WHICH SLIDE THE CHART LANDED ON`. Its pooling keys on `chart`,
+ * so it only ever saw the rescale's redraw fallback; when in-place updates
+ * started succeeding the redraws stopped, the window fell to 0/0, and the report
+ * printed "freshly added, empty — 5 chart(s), 5 grouped = 100%" against a
+ * documented 1% baseline. A flagship finding looked reversed on five samples
+ * from one unrepresentative path.
+ *
+ * At the RENDERER, because a label at the call sites is how this happened: it
+ * has to be remembered by every scenario, and the scenario added on 2026-08-24
+ * would have forgotten it exactly as the others did. A renderer cannot forget.
+ *
+ * ONLY WHEN ABSENT. `traceAbout` merges inner over outer, so minting
+ * unconditionally would clobber the rescale's readable `1/8` with an opaque
+ * ordinal — losing the label that makes a deck run's trace readable in order to
+ * fix a different one. The caller's name wins; this only guarantees there is a
+ * name at all.
+ */
+let drawSeq = 0;
+function drawKey(): Record<string, unknown> {
+  const named = traceSubject()?.chart;
+  return named === undefined ? { chart: `draw-${++drawSeq}` } : {};
+}
+
 export async function insertSceneIntoSlide(
+  scene: Scene,
+  opts: InsertOptions = {},
+  onPhase?: (phase: InsertPhase, detail?: string) => void,
+): Promise<EditTarget | null> {
+  return traceAbout(drawKey(), () => insertSceneIntoSlideInner(scene, opts, onPhase));
+}
+
+async function insertSceneIntoSlideInner(
   scene: Scene,
   opts: InsertOptions = {},
   onPhase?: (phase: InsertPhase, detail?: string) => void,

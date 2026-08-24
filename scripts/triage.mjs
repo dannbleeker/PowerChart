@@ -3161,6 +3161,37 @@ function reportDormant(pooled) {
 }
 
 /**
+ * The smallest sample this report will turn into a percentage.
+ *
+ * 5 of 5 is not 100%. Its 95% interval runs from roughly 48% to 100%, which is
+ * most of the range the number is supposed to discriminate within — and the
+ * baseline it would be read against is 1%.
+ */
+export const MIN_RATE_N = 20;
+
+/**
+ * A rate, or a refusal to state one.
+ *
+ * WHAT THIS FIXES, and it was live in the report: `freshly added, empty — 5
+ * chart(s), 5 grouped = 100%`, printed directly above prose telling the reader
+ * "the recent window is what to quote", against a documented baseline of 1% that
+ * `BACKLOG.md` calls READ THIS FIRST. A flagship finding read as reversed on five
+ * observations — and those five came from the rescale's redraw fallback, not from
+ * the inserts, because the draw path carries no per-chart label for the pooling
+ * to key on.
+ *
+ * The percentage was the wrong half to keep. `5 chart(s), 5 grouped` is the
+ * measurement and it is honest at any n; `= 100%` is an inference the sample
+ * cannot support. So the count stays and the rate goes silent, saying WHY rather
+ * than printing a dash a reader will fill in themselves.
+ */
+export function rateOrSilence(count, total, minN = MIN_RATE_N) {
+  if (!total) return "—";
+  if (total < minN) return `too few to rate (n=${total}, needs ${minN})`;
+  return `${Math.round((100 * count) / total)}%`;
+}
+
+/**
  * Trace lines this archive USED to see and has not seen for a long time.
  *
  * A zero in a report is two different facts — the fault stopped happening, or
@@ -3874,10 +3905,10 @@ function reportFreshVsEstablished(logs) {
   if (r && (r.established || r.fresh)) {
     console.log(`    last ${RECENT_ROUNDS} round(s) — the rate that is actually current:`);
     console.log(
-      `      slide already had shapes  ${String(r.established).padStart(3)} chart(s), ${String(r.establishedGrouped).padStart(3)} grouped = ${pct(r.establishedGrouped, r.established)}`,
+      `      slide already had shapes  ${String(r.established).padStart(3)} chart(s), ${String(r.establishedGrouped).padStart(3)} grouped = ${rateOrSilence(r.establishedGrouped, r.established)}`,
     );
     console.log(
-      `      freshly added, empty      ${String(r.fresh).padStart(3)} chart(s), ${String(r.freshGrouped).padStart(3)} grouped = ${pct(r.freshGrouped, r.fresh)}`,
+      `      freshly added, empty      ${String(r.fresh).padStart(3)} chart(s), ${String(r.freshGrouped).padStart(3)} grouped = ${rateOrSilence(r.freshGrouped, r.fresh)}`,
     );
     // A WINDOW IS A GUESS, A SEQUENCE IS EVIDENCE — and this population is
     // emptying, which no percentage can show. Over successive windows it reads
@@ -3893,7 +3924,10 @@ function reportFreshVsEstablished(logs) {
         `    back short or empty, so it fell through ungrouped and lost its config. Since the\n` +
         `    settled retry those charts DO group — rounds 064 and 065, both, on the same two\n` +
         `    charts. The all-time percentage above is pooled over 39 rounds that predate the\n` +
-        `    retry and cannot be read as the current rate; the recent window is what to quote.\n` +
+        `    retry and cannot be read as the current rate. The recent window was what to quote\n` +
+        `    UNTIL its population emptied — the in-place update took the redraws, and a chart\n` +
+        `    that is not redrawn never lands on a fresh slide, so the window now rates a\n` +
+        `    handful of samples from one unrepresentative path. Quote the per-round sequence.\n` +
         `    What such a chart still loses is the TAG, refused through the GROUP handle: the\n` +
         `    group hangs off a slide handle Office has rewritten to slides.getItem(id), and a\n` +
         `    freshly added slide's id does not round-trip on this host.\n` +
