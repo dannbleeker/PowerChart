@@ -6978,3 +6978,36 @@ underneath it, so pooling the ten gives a spread that is mostly the trend. A rea
 floor needs rounds at a CONSTANT session position — the first round of ten
 separate sessions, not ten rounds of one.
 
+### CORRECTION, from mining the block after reporting it
+
+The entry above says *"Nothing failed; the host simply stopped replying inside
+the budget."* **That is wrong. The host CRASHED three times during the block**,
+and the crash dumps were sitting in `crashes/` unread while the summary above was
+being written off the round files alone.
+
+    2026-08-24T06:12:20Z   crash 362s into a round    round 218
+    2026-08-24T07:17:15Z   crash 364s into a round    round 220/221
+    2026-08-24T08:26:07Z   crash 406s into a round    round 223
+
+Roughly hourly, and at a strikingly consistent **~6 minutes into the round**:
+362s, 364s, 406s. The driver recovered all three — which is why the rounds
+completed at all, and why `attempts` reads 2 or 3 on exactly those rounds — so
+nothing in the round files says "crash" and the summary read the recoveries as
+ordinary retries.
+
+`crash-forensics.mjs` earns its keep here for the second time. It is also the
+only artefact in this project that records a WALL CLOCK: `startedAt`, plus 400+
+steps of what the host was doing. The rounds have no such field, which is the
+instrument this block is asking for — and the crash dump shows the shape it
+should take.
+
+**What this changes.** "Slower under sustained use" and "crashes hourly under
+sustained use" are different claims with different fixes, and the second is the
+one the archive should carry. Whether the slow-down and the crashes are one
+mechanism or two is not settled here: the crashes land inside the degraded
+stretch, which is suggestive and not evidence.
+
+Twelfth time in this file, and the plainest: the headline was written from one
+source when a second, richer one had been produced by the same run and was
+already on disk.
+
