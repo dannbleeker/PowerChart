@@ -6755,3 +6755,73 @@ n=11, one round in each arm decides it. If chart 1 stays at ~37s the deck scan i
 excluded and the search moves to what else is true of a run's first chart and of
 nothing else in it.
 
+
+## The pause changed nothing. The deck scan is excluded.
+
+Rounds 211 and 212, one build, both `--fresh`, differing only in the pause:
+
+    arm                 chart 1/8      chart 4-8        round    redraws
+    settleMs = 0          35727ms   16229-16427ms       612s          3
+    settleMs = 10000      38552ms   16257-17413ms       627s          3
+
+**Ten seconds of sitting still did not move chart 1.** If scan contention were
+the cause it should have fallen toward the ~16.5s the same-sized later charts
+cost. It did not move toward it at all — it came out 2825ms SLOWER, inside the
+ordinary first-chart spread. The later charts are indistinguishable across the
+arms.
+
+That was the last hypothesis the archive could not reach by mining, and it is now
+dead by measurement rather than by argument. Four explanations are excluded: not
+the slide, not a cold host, not our sync count, not the deck scan. Whatever this
+is, it is true of a run's FIRST chart and of nothing else in that run.
+
+    18-of-24 updates, whole archive
+      first chart  n=14  median 36971  range 35727-43837
+      later chart  n=70  median 17021  range 16229-20967
+      separation still complete
+
+### ROUND 210 DOES NOT TEST THE PAUSE — do not read it as the null result
+
+The first attempt at the treated arm is archived and it is invalid. Both arms
+were run without `--fresh`, to keep them comparable. **That matched the flag and
+not the condition:** the control went through a recovery, which reloads the pane,
+and round 210 was the only round of six that started on a pane nobody had
+reloaded.
+
+    round  driverRun                                          length
+    207    attempts 3, recovered browser-gone, pane-closed      616s
+    208    attempts 2, recovered pane-closed, fresh              627s
+    209    attempts 2, recovered host-silent+pane-stale          618s
+    210    attempts 1, recovered []                             1657s
+
+It ran 2.7x slower overall and was already 3.5x behind before the rescale
+scenario started — 996642ms against 282740ms — so the difference predates the
+pause entirely. It then redrew all eight charts rather than updating them (12
+`no parts list and no readable group members` against 2), which means it carries
+no chart-1 update time to compare at all.
+
+This file already had the rule: *"The pane's age when a round STARTS is the best
+predictor of what that round will report"* — 0.43 post-retry fresh against 4.57
+reused. It was read earlier the same session and then not applied. **A control
+arm is a STATE, not a flag**, and the cheapest way to hold that state is to force
+it on both arms rather than to reason about which one the driver happened to give
+it to.
+
+Kept rather than discarded: it is the cleanest demonstration of the pane-age
+effect in the archive, and a 2.7x whole-round slowdown from pane age alone is
+worth having on record.
+
+### Where this leaves the first chart
+
+No fix, and no instrument left to build for the scan. What is left is the shape
+of the thing: three write syncs at 2.11x, 2.23x and 2.28x, a tag sync that does
+not share it, four syncs either way, and a cost that appears on the first chart
+of a run whether or not the slide, the context, the host or the scan is warm.
+
+The next question worth a round is whether "first of a run" survives being made
+NOT first — an eighth chart updated alone, in its own run, on a warm deck. If it
+pays the 37s, the run is the unit and the cost is a set-up the first chart
+happens to absorb. If it pays 17s, the cost belongs to whatever the run does
+before its first chart that it does not do again — and the scan is already
+excluded from that list.
+
