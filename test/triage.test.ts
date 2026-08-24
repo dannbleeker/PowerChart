@@ -3354,7 +3354,10 @@ describe("instruments that have gone quiet", () => {
       log("010-a.json", "went quiet"),
       log("225-b.json", "current"),
     ]);
-    expect(rows.map((r: { message: string }) => r.message), "the ledger is not a round").toEqual(["went quiet"]);
+    expect(
+      rows.map((r: { message: string }) => r.message),
+      "the ledger is not a round",
+    ).toEqual(["went quiet"]);
     expect(rows[0].gap).toBe(215);
   });
 });
