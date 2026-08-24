@@ -3087,3 +3087,30 @@ describe("the pause that breaks the scan/first-chart confound", () => {
     ).toBe(0);
   });
 });
+
+describe("which chart the lone-run arm picks", () => {
+  it("never picks a chart on the first chart's slide", async () => {
+    const { pickLoneChart } = await import("../src/taskpane/selftest");
+    // Rounds 213/214 ran this arm on charts[0] and so landed on slide 257,
+    // which held 42 shapes against 20-21 elsewhere. Every expensive 18-of-24
+    // sample sat on that slide and every cheap one sat elsewhere, so the arm
+    // could not tell run-position from slide-occupancy.
+    expect(pickLoneChart(["257", "257", "257", "258", "262"])).toBe(4);
+    expect(pickLoneChart(["257", "258"])).toBe(1);
+  });
+
+  it("returns nothing when the deck cannot break the confound", async () => {
+    const { pickLoneChart } = await import("../src/taskpane/selftest");
+    // A number from a confounded arm is worse than no number.
+    expect(pickLoneChart(["257", "257", "257"])).toBe(null);
+    expect(pickLoneChart(["257"])).toBe(null);
+    expect(pickLoneChart([])).toBe(null);
+  });
+
+  it("prefers the LAST differing slide, not the first it stumbles on", async () => {
+    const { pickLoneChart } = await import("../src/taskpane/selftest");
+    // The last chart of the run is the one furthest from the first chart in
+    // both position and slide, which is the widest contrast the deck offers.
+    expect(pickLoneChart(["257", "258", "259", "262"])).toBe(3);
+  });
+});

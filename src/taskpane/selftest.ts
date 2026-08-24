@@ -510,6 +510,29 @@ const editOnVisibleSlide: Scenario = async (prefix) => {
  * finishes but that nothing is emptied on the way.
  */
 /**
+ * Which probe chart the lone-run arm should use — the LAST one that does not
+ * share the first chart's slide, or nothing.
+ *
+ * Pure, and separate from the scenario, because the choice IS the experiment.
+ * Rounds 213/214 ran this arm on `charts[0]` — the same chart the deck-wide
+ * rescale updates first — so it landed on slide 257, which held 42 shapes
+ * against 20-21 on every other slide in the deck. At 18 of 24 every expensive
+ * sample in those rounds sat on that slide and every cheap one sat elsewhere, so
+ * "alone costs what first costs" was equally well read as "both are on the
+ * crowded slide". The arm reproduced the confound it existed to break, and a
+ * number from a confounded arm is worse than no number.
+ *
+ * Returns null rather than a fallback: an arm that cannot separate the two
+ * variables must SKIP and say why, not quietly measure the thing it was built
+ * to rule out.
+ */
+export function pickLoneChart(slideIds: readonly string[]): number | null {
+  if (!slideIds.length) return null;
+  for (let i = slideIds.length - 1; i > 0; i--) if (slideIds[i] !== slideIds[0]) return i;
+  return null;
+}
+
+/**
  * One chart, updated alone, in its own run, on a deck that is already warm.
  *
  * THE THIRD ARM for the first-chart cost. The first chart of a multi-chart
@@ -545,7 +568,36 @@ const oneChartAlone: Scenario = async (prefix) => {
   const { found: charts, blind, gap } = await probeCharts(prefix);
   if (!charts.length)
     return blind ? blindSkip(gap) : { ok: false, skipped: true, detail: "no probe chart to update on its own" };
-  const c = charts[0];
+  // NOT charts[0], AND THAT IS THE WHOLE POINT OF THIS SCENARIO.
+  //
+  // It picked charts[0] first — the same chart the deck-wide rescale updates
+  // FIRST — and so landed on the same slide, which in rounds 213/214 was slide
+  // 257 holding 42 shapes against 20-21 on every other slide. Every expensive
+  // 18-of-24 sample in those rounds sat on that slide and every cheap one sat
+  // elsewhere, so "alone costs what first costs" was equally well read as "both
+  // are on the crowded slide". The arm reproduced the confound it was built to
+  // break, and this file measures slide occupancy as a first-order cost — a
+  // batch on a slide holding 21-50 shapes costs 14044ms against 5486ms at 1-20.
+  //
+  // The LAST probe chart sits on its own slide, uncrowded, so run-position and
+  // slide-occupancy finally vary independently:
+  //
+  //   pays ~35s on an uncrowded slide  → position is the cause, slide excluded.
+  //   pays ~15s on an uncrowded slide  → the SLIDE was the cause all along, and
+  //                                      "first chart of a run" was standing in
+  //                                      for "the chart on the busiest slide".
+  //
+  // Skipped rather than guessed when the deck will not provide the contrast:
+  // a lone chart that shares the first chart's slide measures nothing this
+  // scenario claims to measure.
+  const pick = pickLoneChart(charts.map((x) => x.target.slideId));
+  if (pick === null)
+    return {
+      ok: false,
+      skipped: true,
+      detail: "every probe chart shares the first chart's slide — the slide/position confound is not broken here",
+    };
+  const c = charts[pick];
   await showSlide(c.target.slideId);
   const values = (c.cfg.data?.series ?? [])
     .flatMap((s) => s.values)
