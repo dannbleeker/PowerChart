@@ -2988,14 +2988,22 @@ export function poolUpdateCost(logs) {
       if (String(e.message ?? "") !== "updated only the shapes that changed") continue;
       const d = e.data ?? {};
       if (typeof d.ms !== "number" || typeof d.changed !== "number" || typeof d.of !== "number") continue;
-      // `chart` is "1/8" style and present only when a run updates several.
+      // `chart` is "i/n" style. It USED to be present only when a run updated
+      // several, and `first` was `/^1\//` on that assumption — which `one chart
+      // alone on a warm deck` falsifies by design: it emits "1/1", and under the
+      // old test that row would have been pooled into the FIRST-CHART population
+      // it exists to be contrasted against. The two are the whole question.
       const inRun = typeof d.chart === "string";
+      const [at, runLen] = inRun ? String(d.chart).split("/").map(Number) : [];
+      const alone = inRun && runLen === 1;
       rows.push({
         ms: d.ms,
         changed: d.changed,
         of: d.of,
         inRun,
-        first: inRun && /^1\//.test(d.chart),
+        // First OF SEVERAL. A run of one has no "rest" to be worse than.
+        first: inRun && at === 1 && runLen > 1,
+        alone,
         slideId: typeof d.slideId === "string" ? d.slideId : null,
       });
     }
@@ -3008,7 +3016,12 @@ export function poolUpdateCost(logs) {
   const sizes = [...new Set(rows.map((r) => r.of))].sort((a, b) => a - b);
   const fits = [];
   for (const of of sizes) {
-    const here = rows.filter((r) => r.of === of && !r.first);
+    // ALONE ROWS ARE OUT OF THE FIT, for the reason the comment below gives
+    // about first rows: if a run of one turns out to carry the first-chart cost,
+    // letting it into the baseline is the outlier defining itself away. No
+    // archived round emits one, so every fit computed before this line existed
+    // is unchanged by it.
+    const here = rows.filter((r) => r.of === of && !r.first && !r.alone);
     const changes = [...new Set(here.map((r) => r.changed))].sort((a, b) => a - b);
     if (changes.length < 2) continue;
     const lo = changes[0];
@@ -3024,9 +3037,24 @@ export function poolUpdateCost(logs) {
     for (const changed of changedHere) {
       const same = (r) => r.of === of && r.changed === changed;
       const f = rows.filter((r) => same(r) && r.first).map((r) => r.ms);
-      const rest = rows.filter((r) => same(r) && r.inRun && !r.first).map((r) => r.ms);
+      const rest = rows.filter((r) => same(r) && r.inRun && !r.first && !r.alone).map((r) => r.ms);
+      // The third arm, and the reason this scenario exists: a chart that is the
+      // first of its run AND the only one in it. If it costs what a first chart
+      // costs, the run is the unit and the cost is set-up the first chart
+      // absorbs. If it costs what a later chart costs, the cost needs the rest
+      // of the queue to exist.
+      const alone = rows.filter((r) => same(r) && r.alone).map((r) => r.ms);
       if (!f.length || !rest.length) continue;
-      firstVsRest.push({ of, changed, firstN: f.length, restN: rest.length, first: median(f), rest: median(rest) });
+      firstVsRest.push({
+        of,
+        changed,
+        firstN: f.length,
+        restN: rest.length,
+        first: median(f),
+        rest: median(rest),
+        aloneN: alone.length,
+        alone: median(alone),
+      });
     }
   }
   // EXCESS ABOVE THE FIT, which is the measurement that actually discriminates.
@@ -3083,6 +3111,35 @@ export function poolUpdateCost(logs) {
   };
 }
 
+/**
+ * A run of ONE, read against the two arms it sits between.
+ *
+ * The first chart of a multi-chart run costs ~2.2x a later chart of the same
+ * size, with the two distributions not overlapping across 14 and 70 samples. The
+ * slide, a cold host, our sync count and the deck scan are all excluded. What is
+ * left is that the cost attaches to a run's FIRST chart, and a run of one splits
+ * the two readings of that:
+ *
+ *   pays like a FIRST chart  → the run is the unit; the cost is per-run set-up
+ *                              that chart 1 happens to absorb.
+ *   pays like a LATER chart  → the cost needs the rest of the queue to exist,
+ *                              and "first" was standing in for "has work behind
+ *                              it".
+ *
+ * Says which of the two it is nearer, and REFUSES to call it at n=1 — the same
+ * discipline the first-chart line above learned. Nearness is judged on the log
+ * scale so "2.2x above" and "2.2x below" are the same distance; on a linear
+ * midpoint a 37s reading against arms at 17s and 37s would look ambiguous when
+ * it is exactly one of them.
+ */
+export function aloneVerdict(c) {
+  const { alone, first, rest, aloneN } = c;
+  const near = Math.abs(Math.log(alone / first)) < Math.abs(Math.log(alone / rest)) ? "a FIRST chart" : "a LATER chart";
+  const head = "alone in its own run: " + Math.round(alone) + "ms — nearer " + near;
+  if (aloneN < 2) return head + " (n=1, a lead; one round cannot tell this from weather)";
+  return head + " (n=" + aloneN + ")";
+}
+
 /** What an in-place update costs, and whether the first one in a run is worse. */
 function reportUpdateCost(logs) {
   const u = poolUpdateCost(logs);
@@ -3107,6 +3164,7 @@ function reportUpdateCost(logs) {
       console.log(
         "      n=" + c.firstN + " first-chart sample(s) — a LEAD, not a rate. Needs rounds before it is anything.",
       );
+    if (c.aloneN) console.log("      " + aloneVerdict(c));
   }
   if (u.firstExcessN) {
     const a = Math.round(u.firstExcess);

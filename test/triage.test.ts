@@ -3112,3 +3112,88 @@ describe("a counter that did not move, at the scope it was measured", () => {
     expect(many).not.toContain("measures nothing");
   });
 });
+
+describe("a run of one, told apart from the first of many", () => {
+  it("does not pool a run of one into the first-chart arm", async () => {
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { poolUpdateCost } = await import("../scripts/triage.mjs");
+    const entry = (chart: string, ms: number) => ({
+      message: "updated only the shapes that changed",
+      data: { chart, ms, changed: 18, of: 24, slideId: "s1" },
+    });
+    const log = {
+      trace: {
+        entries: [
+          entry("1/8", 37000),
+          entry("2/8", 17000),
+          entry("3/8", 17200),
+          // The run of one. Under the old `/^1//` test this was a FIRST chart.
+          entry("1/1", 17100),
+        ],
+      },
+    };
+    const u = poolUpdateCost([log]);
+    const c = u.firstVsRest.find((x: { of: number; changed: number }) => x.of === 24 && x.changed === 18);
+    expect(c, "the 18-of-24 comparison should exist").toBeTruthy();
+    expect(c.firstN, "only the 1/8 row is a first chart").toBe(1);
+    expect(c.aloneN, "the 1/1 row is its own arm").toBe(1);
+    expect(c.first, "a run of one must not drag the first-chart median").toBe(37000);
+  });
+
+  it("names which arm the lone chart landed nearer", async () => {
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { aloneVerdict } = await import("../scripts/triage.mjs");
+    const later = aloneVerdict({ alone: 17100, first: 37000, rest: 17000, aloneN: 3 });
+    expect(later).toContain("a LATER chart");
+    const first = aloneVerdict({ alone: 36500, first: 37000, rest: 17000, aloneN: 3 });
+    expect(first).toContain("a FIRST chart");
+  });
+
+  it("refuses to call it from a single round", async () => {
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { aloneVerdict } = await import("../scripts/triage.mjs");
+    // The first-chart line already learned this the expensive way.
+    expect(aloneVerdict({ alone: 36500, first: 37000, rest: 17000, aloneN: 1 })).toContain("n=1");
+    expect(aloneVerdict({ alone: 36500, first: 37000, rest: 17000, aloneN: 1 })).toContain("cannot tell");
+  });
+});
+
+describe("a run of one must not set the baseline it is scored against", () => {
+  const entry = (chart: string | undefined, ms: number, changed: number) => ({
+    message: "updated only the shapes that changed",
+    data: { ...(chart ? { chart } : {}), ms, changed, of: 24, slideId: "s1" },
+  });
+
+  it("keeps a lone chart out of the per-shape fit", async () => {
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { poolUpdateCost } = await import("../scripts/triage.mjs");
+    const log = {
+      trace: {
+        entries: [
+          entry("2/8", 10000, 9),
+          entry("3/8", 17000, 18),
+          // 37000ms alone. If this reaches the fit it more than triples the
+          // per-shape slope and the outlier defines its own baseline away -
+          // the exact hazard the comment above `here` names for first rows.
+          entry("1/1", 37000, 18),
+        ],
+      },
+    };
+    const fit = poolUpdateCost([log]).fits.find((f: { of: number }) => f.of === 24);
+    expect(fit, "a fit needs two change counts").toBeTruthy();
+    expect(Math.round(fit.perShape), "(17000-10000)/9 - the lone row must not be in it").toBe(778);
+  });
+
+  it("keeps a lone chart out of the rest arm", async () => {
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { poolUpdateCost } = await import("../scripts/triage.mjs");
+    const log = {
+      trace: {
+        entries: [entry("1/8", 37000, 18), entry("2/8", 17000, 18), entry("3/8", 17200, 18), entry("1/1", 17100, 18)],
+      },
+    };
+    const c = poolUpdateCost([log]).firstVsRest.find((x: { of: number }) => x.of === 24);
+    expect(c.restN, "two later charts, not three").toBe(2);
+    expect(c.rest, "median of 17000 and 17200 - the lone row is not one of them").toBe(17200);
+  });
+});

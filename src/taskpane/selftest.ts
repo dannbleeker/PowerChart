@@ -509,6 +509,73 @@ const editOnVisibleSlide: Scenario = async (prefix) => {
  * whose redraw stalls is left blank, so what matters is not only that it
  * finishes but that nothing is emptied on the way.
  */
+/**
+ * One chart, updated alone, in its own run, on a deck that is already warm.
+ *
+ * THE THIRD ARM for the first-chart cost. The first chart of a multi-chart
+ * update costs ~2.2x a later chart of the same size — n=14 against n=70, and the
+ * distributions DO NOT OVERLAP. Four explanations are excluded by measurement:
+ * not the slide, not a cold host, not our sync count, and not the deck scan,
+ * which rounds 211/212 killed with a 10s pause that moved chart 1 by nothing.
+ *
+ * What survives is that the cost attaches to a run's FIRST chart, and that has
+ * two readings this scenario separates:
+ *
+ *   pays ~37s  → the run is the unit. The cost is per-run set-up that chart 1
+ *                absorbs, and it is paid even when nothing follows it.
+ *   pays ~17s  → "first" was standing in for "has work queued behind it", and
+ *                the cost belongs to the queue rather than to the position.
+ *
+ * RUNS AFTER THE DECK-WIDE RESCALE, deliberately: that leaves the deck, the
+ * host and the context as warm as this harness ever gets them, so a slow reading
+ * here cannot be blamed on start-up.
+ *
+ * A DIFFERENT HEADROOM from the deck rescale, and that is load-bearing. The
+ * rescale leaves every chart at `max = tallest * 1.5`; re-applying that same
+ * ceiling changes NOTHING, and an update that changes nothing measures nothing —
+ * it would report a fast run of zero work as evidence about a run of eighteen
+ * shapes. 2.25 moves the same bars again.
+ *
+ * The measurement is `updated only the shapes that changed`, labelled `1/1` so
+ * the archive can tell a run of one from the first of eight. `poolUpdateCost`
+ * was keying `first` off `/^1\//` and would have pooled this row INTO the
+ * first-chart arm it exists to be contrasted with; it reads the run length now.
+ */
+const oneChartAlone: Scenario = async (prefix) => {
+  const { found: charts, blind, gap } = await probeCharts(prefix);
+  if (!charts.length)
+    return blind ? blindSkip(gap) : { ok: false, skipped: true, detail: "no probe chart to update on its own" };
+  const c = charts[0];
+  await showSlide(c.target.slideId);
+  const values = (c.cfg.data?.series ?? [])
+    .flatMap((s) => s.values)
+    .map(Number)
+    .filter((v) => Number.isFinite(v));
+  if (!values.length) return { ok: false, skipped: true, detail: "the probe chart carries no numbers to scale" };
+  const ALONE_HEADROOM = 2.25;
+  const max = Math.round(Math.max(...values) * ALONE_HEADROOM);
+  // The same guard the deck rescale carries, for the same reason: a ceiling that
+  // redraws the identical scene makes this a timing of nothing.
+  const wasInk = barInk(buildChart(c.cfg));
+  const nowInk = barInk(buildChart({ ...c.cfg, scale: { max } }));
+  if (wasInk > 0 && nowInk === wasInk)
+    return { ok: false, detail: `scale.max=${max} redraws the chart identically — the run would time no work` };
+  const next: ChartConfig = { ...c.cfg, scale: { max } };
+  const back = await traceAbout({ chart: "1/1" }, () =>
+    updateChartInSlide(buildChart(next), c.target, { tagData: JSON.stringify(next) }),
+  );
+  if (back === null) return { ok: false, detail: "the chart was gone before it could be updated alone" };
+  // The TIMING is the deliverable and it is already traced by the update itself.
+  // This verdict only has to say the run was real work that survived — a lost
+  // config here would mean the timing described a redraw, not an update.
+  return {
+    ok: !back.lost,
+    detail: back.lost
+      ? `updated alone but lost its config (${back.lost}) — the timing describes a redraw, not an update`
+      : `updated alone in its own run on a warm deck, config intact — see \`chart 1/1\` for the cost`,
+  };
+};
+
 const sameScaleAcrossDeck: Scenario = async (prefix) => {
   const { found: charts, blind, gap } = await probeCharts(prefix);
   if (charts.length < 2)
@@ -2692,6 +2759,9 @@ const SCENARIOS: {
   { name: "edit a chart on the visible slide", run: editOnVisibleSlide },
   { name: "insert onto a slide that already has content", run: insertOntoUsedSlide },
   { name: "same scale across the deck", run: sameScaleAcrossDeck },
+  // AFTER the deck-wide rescale, so the deck it measures is as warm as this
+  // harness gets — see `oneChartAlone`.
+  { name: "one chart alone on a warm deck", run: oneChartAlone },
   // AFTER the scenarios that insert, because it needs a chart to move, and
   // BEFORE the selection ladder, because it must not run against a wedged host.
   { name: "an update follows a moved chart", run: dragThenUpdate },

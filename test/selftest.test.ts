@@ -129,6 +129,10 @@ describe("the host self-test battery", () => {
       "edit a chart on the visible slide",
       "insert onto a slide that already has content",
       "same scale across the deck",
+      // The third arm for the first-chart cost — a run of ONE. Directly after
+      // the deck-wide rescale, because the reading is only worth anything on a
+      // deck that is already warm. See `oneChartAlone`.
+      "one chart alone on a warm deck",
       // The drag round trip, in the only form that can be scripted. After the
       // inserting scenarios because it needs a chart to move, and before the
       // ladder because it must not run against a wedged host.
