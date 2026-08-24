@@ -6893,3 +6893,88 @@ question was an artifact of a self-test deck that piles three charts onto its
 visible slide. The thread closes as **explained, not fixed** — and what closes it
 is a control arm moved by one slide.
 
+
+## Rounds get slower the longer you run them, and no round records when it ran
+
+Ten rounds, one build, every one `--fresh`, run back to back for four hours to
+measure this project's noise floor properly for the first time. It measured
+something else instead.
+
+    round  finished   min-in    len   laterMed   scenarios
+    216    07:57         0     699s     19321      14/14
+    217    08:23        26     684s     18810      14/14
+    218    08:40        44     747s     22689      14/14
+    219    09:02        65     935s     24423      14/14
+    220    09:31        94     889s     31089      13/14
+    221    09:52       116     957s     40469      12/14
+    222    10:10       133     724s      (none)    12/14
+    223    10:43       166    1085s     36712      12/14
+    224    11:03       186     847s     29023      14/14
+    ---- 15 minutes idle ----
+    225    11:40       224    1011s     40067      11/14
+
+`laterMed` is the median in-place update of an 18-of-24 chart on its own slide —
+the most repeated measurement this harness makes. **It roughly doubles over two
+hours**, and past about ninety minutes scenarios start being SKIPPED because the
+host stops answering mid-scenario. Nothing failed; the host simply stopped
+replying inside the budget.
+
+### It is not this machine
+
+`--fresh` closes the browser and opens a new one before every round, so the
+client is destroyed and rebuilt ten times across that table and the degradation
+walks straight through it. The machine had **8.6 GB of 15.7 GB free** at the
+bottom of the run with Chrome at 1.9 GB. There is no local resource curve here.
+
+### A 15-minute rest did not clear it
+
+That was the experiment worth the last half hour, staked in advance: recovery
+toward ~19000 would mean transient load that decays, and the rule would be to
+space rounds out. **It came back 40067 — worse than the 29023 immediately before
+the rest.**
+
+Held honestly, this is ONE rested round in a regime that is bouncing between
+29023 and 40469, so it does not *prove* the effect is cumulative. What it does is
+remove the cheap fix: fifteen idle minutes is not a remedy, and anyone reaching
+for "just wait a bit" should know it was tried.
+
+What is left un-separated: document growth, account-level throttling, and plain
+time-of-day server load all remain live, and this block cannot tell them apart.
+
+### The part that reaches back through the whole archive
+
+**No round records when it ran.** The round file carries the BUILD stamp
+(`77fc64f · 2026-08-24 05:33Z`) and nothing about the round's own wall clock. So
+session position is unrecoverable from 190 archived rounds, and every cross-round
+comparison ever made here is confounded by a variable that moves the headline
+measurement by 2x.
+
+The noise-floor note already had its finger on this without knowing it:
+
+> NOT symmetric: see PAIR POSITION below — the second run is usually the worse
+> one, so a floor measured this way includes an effect as well as noise.
+
+That asymmetry is real, it was never explained, and this is the explanation. A
+pair run back to back does not have two equivalent legs — **the second leg is
+systematically disadvantaged**, and how much depends on how deep into a session
+it lands.
+
+### The instrument, and it is the deliverable of this block
+
+Stamp every round with its own start time and its position in the session, so the
+archive can be split on both. Until that exists, "this build is slower" and "this
+round ran later in the day" are the same sentence, and 190 rounds cannot say
+which one they mean.
+
+Not built here: HEAD was frozen for the whole block, deliberately, because a
+commit moves HEAD ahead of the deployed site and the driver then refuses every
+subsequent round as `site-behind`. It is the first thing to build next.
+
+### What the block did NOT produce
+
+**A noise floor.** That was the stated deliverable and it is not in these ten
+rounds: within-session drift is larger than whatever run-to-run noise exists
+underneath it, so pooling the ten gives a spread that is mostly the trend. A real
+floor needs rounds at a CONSTANT session position — the first round of ten
+separate sessions, not ten rounds of one.
+
