@@ -2587,13 +2587,12 @@ export function poolBatchSpanVsGroup(logs) {
 function reportBatchSpanVsGroup(logs) {
   const b = poolBatchSpanVsGroup(logs);
   if (!b.multi && !b.single) return;
-  const pct = (n, d) => (d ? `${Math.round((100 * n) / d)}%` : "—");
   console.log(`\n  DID THE CHART SPAN BATCHES — pooled over ${logs.length} round(s)`);
   console.log(
-    `    spanned batches  ${String(b.multi).padStart(4)} draw(s), ${String(b.multiGrouped).padStart(4)} grouped = ${pct(b.multiGrouped, b.multi)}`,
+    `    spanned batches  ${String(b.multi).padStart(4)} draw(s), ${String(b.multiGrouped).padStart(4)} grouped = ${rateOrSilence(b.multiGrouped, b.multi)}`,
   );
   console.log(
-    `    one batch only   ${String(b.single).padStart(4)} draw(s), ${String(b.singleGrouped).padStart(4)} grouped = ${pct(b.singleGrouped, b.single)}`,
+    `    one batch only   ${String(b.single).padStart(4)} draw(s), ${String(b.singleGrouped).padStart(4)} grouped = ${rateOrSilence(b.singleGrouped, b.single)}`,
   );
   console.log(
     `    OURS, not the host's. refreshShapes USED to be set from spansBatches(), so only a\n` +
@@ -3885,13 +3884,12 @@ function reportStarvedQuestions(logs) {
 function reportFreshVsEstablished(logs) {
   const f = poolFreshVsEstablished(logs);
   if (!f.established && !f.fresh) return;
-  const pct = (n, d) => (d ? `${Math.round((100 * n) / d)}%` : "—");
   console.log(`\n  WHICH SLIDE THE CHART LANDED ON — pooled over ${logs.length} round(s)`);
   console.log(
-    `    slide already had shapes  ${String(f.established).padStart(3)} chart(s), ${String(f.establishedGrouped).padStart(3)} grouped = ${pct(f.establishedGrouped, f.established)}`,
+    `    slide already had shapes  ${String(f.established).padStart(3)} chart(s), ${String(f.establishedGrouped).padStart(3)} grouped = ${rateOrSilence(f.establishedGrouped, f.established)}`,
   );
   console.log(
-    `    freshly added, empty      ${String(f.fresh).padStart(3)} chart(s), ${String(f.freshGrouped).padStart(3)} grouped = ${pct(f.freshGrouped, f.fresh)}`,
+    `    freshly added, empty      ${String(f.fresh).padStart(3)} chart(s), ${String(f.freshGrouped).padStart(3)} grouped = ${rateOrSilence(f.freshGrouped, f.fresh)}`,
   );
   // THE CURRENT RATE, because the pooled one is known to be unreadable and this
   // report said so in prose and printed it anyway: "pooled over 39 rounds that
@@ -3939,7 +3937,6 @@ function reportFreshVsEstablished(logs) {
 function reportGroupVsTag(logs) {
   const g = poolGroupVsTag(logs);
   if (!g.grouped && !g.ungrouped) return;
-  const pct = (n, d) => (d ? `${((100 * n) / d).toFixed(0)}%` : "—");
   const cov = poolGroupVsTagCoverage(logs);
   console.log(`\n  DOES GROUPING SAVE THE CONFIG — over the charts of the DECK-WIDE RESCALE, ${logs.length} round(s)`);
   // THE DENOMINATOR THE READER WOULD OTHERWISE ASSUME. These two columns are
@@ -3952,10 +3949,10 @@ function reportGroupVsTag(logs) {
       ` events carry a chart key; the rest of the round is not in these numbers.`,
   );
   console.log(
-    `    grouped      ${String(g.grouped).padStart(3)} chart(s), ${String(g.groupedLost).padStart(3)} lost the tag = ${pct(g.groupedLost, g.grouped)}`,
+    `    grouped      ${String(g.grouped).padStart(3)} chart(s), ${String(g.groupedLost).padStart(3)} lost the tag = ${rateOrSilence(g.groupedLost, g.grouped)}`,
   );
   console.log(
-    `    NOT grouped  ${String(g.ungrouped).padStart(3)} chart(s), ${String(g.ungroupedLost).padStart(3)} lost the tag = ${pct(g.ungroupedLost, g.ungrouped)}`,
+    `    NOT grouped  ${String(g.ungrouped).padStart(3)} chart(s), ${String(g.ungroupedLost).padStart(3)} lost the tag = ${rateOrSilence(g.ungroupedLost, g.ungrouped)}`,
   );
   // Said out loud, because the number's whole value is what it implies about
   // where to work, and that was missed for eleven rounds while it sat here.
