@@ -2267,3 +2267,168 @@ describe("a slide add that lands more than it was asked for", () => {
     expect(unnamed, "counted a slide it had just named").toBe(0);
   });
 });
+
+/**
+ * Asking again, once the round has something the host will name.
+ *
+ * A round builds its sheet before the battery draws anything, so a question
+ * needing a named id is put at the one moment none exists. These cover the two
+ * halves of the repair: narrowing a run to the deferred questions, and folding
+ * what comes back into the sheet that deferred them.
+ */
+describe("re-asking what an empty deck could not answer", () => {
+  const sheetWith = (rows: { id: string; answer: string; passes?: number[] }[]): HostAnswerSheet => ({
+    kind: "powerchart-host-answers",
+    source: "fake",
+    build: "test",
+    requirementSets: ["1.5"],
+    answers: rows.map((r) => ({
+      id: r.id,
+      question: r.id,
+      answer: r.answer,
+      ms: 1,
+      samples: (r.passes ?? [1, 2, 3]).map((pass) => ({
+        answer: r.answer,
+        pass,
+        atMs: pass,
+        regime: "healthy" as const,
+        scratch: "first-slide" as const,
+      })),
+    })),
+  });
+
+  it("names only the questions lost for want of a shape", async () => {
+    const { deferredForLackOfShape } = await import("../src/render/host-probe");
+    // `no-scratch-slide` is a DIFFERENT setup failure and a re-ask cannot help
+    // it — the deck refused a slide, and drawing a chart does not change that.
+    // Pulling it in would spend a re-ask on a question certain to fail again.
+    const picked = deferredForLackOfShape(
+      sheetWith([
+        { id: "a", answer: "no-scratch-shape" },
+        { id: "b", answer: "no-scratch-slide" },
+        { id: "c", answer: "yes" },
+        { id: "d", answer: "no-scratch-shape" },
+      ]),
+    );
+    expect(picked).toEqual(["a", "d"]);
+  });
+
+  it("puts only the questions it was given", async () => {
+    installHost([makeSlide("s1")]);
+    const sheet = await runHostProbes("fake", "test", {
+      only: ["shape-resolve-held-slide-proxy"],
+      passes: 1,
+    });
+    // The cleanup row is bookkeeping about the slide the run borrowed, not a
+    // question anyone asked — it is appended to every sheet regardless.
+    const asked = sheet.answers.filter((r) => r.id !== SCRATCH_CLEANUP_ID);
+    expect(asked.map((r) => r.id)).toEqual(["shape-resolve-held-slide-proxy"]);
+    expect(asked[0].samples).toHaveLength(1);
+  });
+
+  it("asks nothing when the selection names nothing real", async () => {
+    installHost([makeSlide("s1")]);
+    // A caller asking for two questions and silently getting twenty-odd is the
+    // opposite of what it wanted, and on a real host it is minutes of deck churn
+    // nobody asked for.
+    const sheet = await runHostProbes("fake", "test", { only: ["not-a-question"], passes: 1 });
+    expect(sheet.answers.filter((r) => r.id !== SCRATCH_CLEANUP_ID)).toEqual([]);
+  });
+
+  it("lets a real answer displace the deferral it replaces", async () => {
+    const { mergeHostSheets } = await import("../src/render/host-probe");
+    const base = sheetWith([
+      { id: "a", answer: "no-scratch-shape" },
+      { id: "b", answer: "yes" },
+    ]);
+    const merged = mergeHostSheets(base, sheetWith([{ id: "a", answer: "unreadable", passes: [1] }]));
+    expect(merged.answers.find((r) => r.id === "a")!.answer).toBe("unreadable");
+    // The re-ask asked ONE question. Everything else keeps what it said.
+    expect(merged.answers.find((r) => r.id === "b")!.answer).toBe("yes");
+    expect(merged.answers).toHaveLength(2);
+  });
+
+  it("keeps an answer the round already had", async () => {
+    const { mergeHostSheets } = await import("../src/render/host-probe");
+    // The rule `record` uses inside a run, and for the same reason: the FIRST
+    // real answer is the row's answer, so a sheet means today what it meant
+    // yesterday. A re-ask is extra evidence, not a correction.
+    const merged = mergeHostSheets(
+      sheetWith([{ id: "a", answer: "yes" }]),
+      sheetWith([{ id: "a", answer: "no", passes: [1] }]),
+    );
+    expect(merged.answers[0].answer).toBe("yes");
+    // …and the disagreement is still visible rather than hidden.
+    expect(merged.answers[0].samples!.map((x) => x.answer)).toContain("no");
+    expect(merged.answers[0].stable).toBe(false);
+  });
+
+  it("numbers the re-ask's passes after the ones already taken", async () => {
+    const { mergeHostSheets } = await import("../src/render/host-probe");
+    // Both runs number their passes from 1. Left alone the row would read
+    // `1,2,3,1` and this file's own per-pass arithmetic — which finds a sample
+    // BY pass number — would take the last sample for the first.
+    const merged = mergeHostSheets(
+      sheetWith([{ id: "a", answer: "no-scratch-shape", passes: [1, 2, 3] }]),
+      sheetWith([{ id: "a", answer: "yes", passes: [1] }]),
+    );
+    expect(merged.answers[0].samples!.map((x) => x.pass)).toEqual([1, 2, 3, 4]);
+  });
+
+  it("does not rewrite the sheet the round already banked", async () => {
+    const { mergeHostSheets } = await import("../src/render/host-probe");
+    // The original is in the crash store precisely so a tab that dies next does
+    // not take the probe's answers with it. A merge that mutated it would edit
+    // the record whose whole job is to be already written.
+    const base = sheetWith([{ id: "a", answer: "no-scratch-shape" }]);
+    const before = JSON.stringify(base);
+    mergeHostSheets(base, sheetWith([{ id: "a", answer: "yes", passes: [1] }]));
+    expect(JSON.stringify(base)).toBe(before);
+  });
+
+  it("keeps a row the sheet has never seen", async () => {
+    const { mergeHostSheets } = await import("../src/render/host-probe");
+    // An answer this host gave. Dropping it because the base had no slot for it
+    // would lose it with nothing saying so.
+    const merged = mergeHostSheets(
+      sheetWith([{ id: "a", answer: "yes" }]),
+      sheetWith([{ id: "z", answer: "threw", passes: [1] }]),
+    );
+    expect(merged.answers.map((r) => r.id)).toEqual(["a", "z"]);
+  });
+});
+
+describe("deciding whether the round can ask yet", () => {
+  const deferredSheet = (): HostAnswerSheet => ({
+    kind: "powerchart-host-answers",
+    source: "fake",
+    build: "test",
+    requirementSets: ["1.5"],
+    answers: [
+      { id: "a", question: "a", answer: "no-scratch-shape", ms: 1 },
+      { id: "b", question: "b", answer: "yes", ms: 1 },
+    ],
+  });
+
+  it("asks once the battery has left a chart this host named", async () => {
+    const { reaskPlan } = await import("../src/render/host-probe");
+    expect(reaskPlan(deferredSheet(), { slideId: "s1", shapeId: "sh1" })).toEqual({ ask: ["a"], skipped: [] });
+  });
+
+  it("asks nothing when nothing got tagged", async () => {
+    const { reaskPlan } = await import("../src/render/host-probe");
+    // A re-ask without an id is the SAME question that already failed, and it
+    // would spend a scratch slide and a minute to fail identically. Worse, it
+    // would make `no-scratch-shape` look like a deferral when here it is true.
+    expect(reaskPlan(deferredSheet(), null)).toEqual({ ask: [], skipped: ["a"] });
+  });
+
+  it("asks nothing when nothing was deferred", async () => {
+    const { reaskPlan } = await import("../src/render/host-probe");
+    const answered: HostAnswerSheet = {
+      ...deferredSheet(),
+      answers: [{ id: "b", question: "b", answer: "yes", ms: 1 }],
+    };
+    expect(reaskPlan(answered, { slideId: "s1", shapeId: "sh1" })).toEqual({ ask: [], skipped: [] });
+  });
+});

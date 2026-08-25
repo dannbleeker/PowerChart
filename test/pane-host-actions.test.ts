@@ -493,6 +493,14 @@ vi.mock("../src/render/powerpoint", () => ({
   // out a scratch slide produces a complete sheet of `no-scratch-slide`, which
   // is exactly enough to test the bundling and nothing more.
   addScratchSlide: vi.fn(async () => null),
+  // No chart this host has agreed to name.
+  //
+  // This mock's whole point is a host that refuses a scratch slide, so every
+  // question comes back `no-scratch-slide` — not `no-scratch-shape` — and the
+  // round's re-ask has nothing to re-ask. Which is the honest state for a mock
+  // that never draws: `namedShape` is set by a chart whose TAG WROTE, and
+  // nothing here writes one.
+  namedShape: vi.fn(() => null),
   deleteSlideById: vi.fn(async (id: string) => {
     host.deletedSlides.push(id);
     return !host.refuseSlideDelete.includes(id);

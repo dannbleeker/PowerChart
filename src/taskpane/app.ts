@@ -57,6 +57,7 @@ import {
   type SlideInventory,
   type SlideShot,
   type UpdateWreckage,
+  namedShape,
 } from "../render/powerpoint";
 import { placeChart, type Placement } from "../core/placement";
 import { buildAgendaScene } from "../core/agenda";
@@ -101,7 +102,14 @@ import { contiguousStacks, dataToSheet, mountDatasheet, sheetToData, type SheetM
 import { BUILTIN_TEMPLATES } from "./templates";
 import { harveyScene, checkScene, flowScene, kpiScene, wireElementPreviews } from "./elements-ui";
 import { agendaChapters, wireAgendaPreview } from "./agenda-ui";
-import { runHostProbes, describeHostSheet, sheetNeedsAttention, type HostAnswerSheet } from "../render/host-probe";
+import {
+  runHostProbes,
+  describeHostSheet,
+  sheetNeedsAttention,
+  reaskPlan,
+  mergeHostSheets,
+  type HostAnswerSheet,
+} from "../render/host-probe";
 
 interface AppState {
   kind: ChartKind;
@@ -3876,7 +3884,7 @@ function wireInsert() {
           env: roundEnvironment(),
         });
         note("Round 1 of 2 — asking this PowerPoint what it actually does…", "busy");
-        const sheet = await runHostProbes(host, buildStamp);
+        let sheet = await runHostProbes(host, buildStamp);
         // Written into the bundle before the long half starts. A self-test that
         // takes the tab down must not also lose the probe's answers, which are
         // complete, cheap, and the half most likely to be worth reading.
@@ -3909,6 +3917,35 @@ function wireInsert() {
           // ones already reached.
           recordCrashFinding(`selftest:${r.name}`, r),
         );
+        // The questions an empty deck could not be asked.
+        //
+        // The sheet is built at the top of a round, before the battery has drawn
+        // anything — so a question needing an id THIS host has agreed to name is
+        // put at the one moment no such id exists.
+        // `shape-resolve-held-slide-proxy` answered `no-scratch-shape` in 216 of
+        // 216 rounds for that reason and never once reached its question.
+        //
+        // Re-asked HERE, after the battery has drawn and tagged charts, rather
+        // than by moving the sheet: the early write is what keeps the probe's
+        // answers when the battery takes the tab down, and that is the failure
+        // these rounds actually have. The merge re-banks the sheet, so the worst
+        // a re-ask can cost is the re-ask.
+        //
+        // Skipped when nothing got tagged. Then there IS no named id, and
+        // `no-scratch-shape` is the true answer rather than a deferral.
+        const plan = reaskPlan(sheet, namedShape());
+        if (plan.ask.length) {
+          note(`Re-asking ${plan.ask.length} question(s) now that a chart exists…`, "busy");
+          const again = await runHostProbes(host, buildStamp, { only: plan.ask, passes: 1 });
+          sheet = mergeHostSheets(sheet, again);
+          recordCrashFinding("hostAnswers", sheet);
+          trace("probe", "re-asked what the empty deck could not answer", {
+            asked: plan.ask,
+            answered: plan.ask.map((id) => sheet.answers.find((r) => r.id === id)?.answer ?? "missing"),
+          });
+        } else if (plan.skipped.length) {
+          trace("probe", "left questions deferred — no chart this host would name", { deferred: plan.skipped });
+        }
         // Gathered after the scenarios, before the file is written: this is the
         // upload that used to be the owner's job — save the deck, screenshot the
         // pane, attach both. It is a best-effort tail, so a host too far gone to

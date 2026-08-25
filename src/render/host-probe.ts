@@ -2784,7 +2784,41 @@ function short(err: unknown): string {
  * is the one worth having, so it must survive misbehaviour. Each question gets
  * its own context and its own budget for that reason.
  */
-export async function runHostProbes(source: string, build: string): Promise<HostAnswerSheet> {
+/**
+ * Narrow a probe run to some questions, for a caller that has changed the world.
+ *
+ * A round asks the whole list ONCE, at the top, before the battery has drawn
+ * anything — so any question needing something the battery produces is asked at
+ * the only moment it cannot be answered. `shape-resolve-held-slide-proxy` is the
+ * case that forced this: it needs an id this host has agreed to name, the
+ * self-test's tagged charts are the only such ids on this host, and they do not
+ * exist yet when the sheet is built.
+ *
+ * The answer is NOT to move the sheet after the battery. It is written early on
+ * purpose — a battery that takes the tab down must not also lose the probe's
+ * answers, which are complete, cheap, and the half more likely to be worth
+ * reading. So the sheet stays where it is and the few deferred questions get
+ * re-put afterwards, their samples merged in by `mergeHostSheets`.
+ */
+export interface ProbeRunOptions {
+  /** Ask only these question ids. Omit for the whole list. */
+  only?: readonly string[];
+  /**
+   * How many passes to make. Omit for `PROBE_PASSES`.
+   *
+   * A re-ask wants one: the sheet already holds this question's samples from the
+   * three passes it made at the top of the round, and the thing being tested is
+   * whether an id changes the answer — not whether the answer is stable, which
+   * those earlier samples already speak to.
+   */
+  passes?: number;
+}
+
+export async function runHostProbes(
+  source: string,
+  build: string,
+  opts: ProbeRunOptions = {},
+): Promise<HostAnswerSheet> {
   const answers: HostAnswer[] = [];
   /**
    * Every scratch slide this run has made, so all of them come back out.
@@ -3008,8 +3042,17 @@ export async function runHostProbes(source: string, build: string): Promise<Host
   };
   try {
     /** Questions the current pass will put. Pass 1 is always the whole list. */
-    let list: Probe[] = [...PROBES];
-    for (let pass = 1; pass <= PROBE_PASSES; pass++) {
+    /**
+     * The questions this run is allowed to put, before any per-pass shortening.
+     *
+     * An `only` naming nothing real would silently ask the entire list, which is
+     * the opposite of what a caller asking for two questions wants — so an empty
+     * selection stays empty and the run comes back with an empty sheet.
+     */
+    const asking = opts.only ? PROBES.filter((pr) => opts.only!.includes(pr.id)) : PROBES;
+    const passes = opts.passes ?? PROBE_PASSES;
+    let list: Probe[] = [...asking];
+    for (let pass = 1; pass <= passes; pass++) {
       if (pass > 1) {
         // Decided from the pass just finished, not from the run's whole
         // history: pressure comes and goes here in fifteen-second windows, and
@@ -3017,11 +3060,11 @@ export async function runHostProbes(source: string, build: string): Promise<Host
         const put = [...rows.values()].filter((r) => r.samples?.some((x) => x.pass === pass - 1));
         const lostLast = put.filter((r) => NOT_ASKED.has(r.samples!.find((x) => x.pass === pass - 1)!.answer)).length;
         const pressured = put.length > 0 && lostLast / put.length > PASS_PRESSURE_LIMIT;
-        list = pressured ? PROBES.filter((pr) => pr.resample) : [...PROBES];
+        list = pressured ? asking.filter((pr) => pr.resample) : [...asking];
         trace("probe", "starting another pass over the questions", {
           pass,
           asking: list.length,
-          of: PROBES.length,
+          of: asking.length,
           why: pressured ? `${lostLast} of ${put.length} were never put last pass — shortlist only` : "full list",
         });
         if (!list.length) break;
@@ -3513,6 +3556,81 @@ export async function runHostProbes(source: string, build: string): Promise<Host
     opened: { ms: openedMs, answered: opened !== undefined },
     answers,
   };
+}
+
+/**
+ * Questions this sheet lost for want of a shape it was allowed to name.
+ *
+ * `no-scratch-shape` is a SETUP failure, not a finding: it means the question
+ * never ran. This host declines to name the scratch shapes the probe mints, so
+ * on it the string means "ask me again when you have an id I will admit to".
+ * After the battery, the round has one — see `namedShape`.
+ */
+export function deferredForLackOfShape(sheet: HostAnswerSheet): string[] {
+  return sheet.answers.filter((r) => r.answer === "no-scratch-shape").map((r) => r.id);
+}
+
+/**
+ * Whether the round can put its deferred questions yet, and which.
+ *
+ * Pure, because it is the part of the re-ask that was got WRONG the first time.
+ * The original fix gave the probe a way to use a named id and left the ask at
+ * the top of the round, where no such id exists — so it changed nothing and the
+ * next round would have been read as the probe failing rather than the caller
+ * asking too early. A decision that subtle belongs somewhere a test can reach.
+ *
+ * `skipped` rather than silence: a round that draws nothing this host will name
+ * still deferred real questions, and that is worth a trace line. It is not a
+ * failure — `no-scratch-shape` is then simply true.
+ */
+export function reaskPlan(sheet: HostAnswerSheet, named: unknown): { ask: string[]; skipped: string[] } {
+  const deferred = deferredForLackOfShape(sheet);
+  return named ? { ask: deferred, skipped: [] } : { ask: [], skipped: deferred };
+}
+
+/**
+ * Fold a re-ask back into the sheet that deferred the question.
+ *
+ * Pure, and it returns a new sheet: the caller has already written the original
+ * into the crash store, and a merge that mutated it would rewrite a record whose
+ * entire purpose is to survive whatever happens next.
+ *
+ * The promotion rule is the one `record` uses within a run and for the same
+ * reason — the first NAMED answer is the row's answer, so a sheet means today
+ * what it meant yesterday. Here that rule is what makes the re-ask worth doing
+ * at all: `no-scratch-shape` is weak, so a real answer displaces it, and a
+ * question already answered at the top of the round keeps the answer it gave.
+ */
+export function mergeHostSheets(base: HostAnswerSheet, extra: HostAnswerSheet): HostAnswerSheet {
+  // Extra's passes are numbered from 1 again, because it was a separate run.
+  // Left alone, a merged row would read `pass 1, 2, 3, 1` and every reader —
+  // including this file's own per-pass shortlist arithmetic — would take the
+  // last sample for the first. Offsetting keeps the samples in the order they
+  // were actually taken, which is the one thing a pass number is for.
+  const after = Math.max(0, ...base.answers.flatMap((r) => (r.samples ?? []).map((x) => x.pass)));
+  const shifted = new Map(
+    extra.answers.map((r) => [r.id, { ...r, samples: (r.samples ?? []).map((x) => ({ ...x, pass: x.pass + after })) }]),
+  );
+  const merged = base.answers.map((row) => {
+    const again = shifted.get(row.id);
+    if (!again) return row;
+    shifted.delete(row.id);
+    const samples = [...(row.samples ?? []), ...(again.samples ?? [])];
+    const next: HostAnswer =
+      weakAnswer(row.answer) && !weakAnswer(again.answer)
+        ? { ...row, answer: again.answer, ms: again.ms, detail: again.detail, samples }
+        : { ...row, samples };
+    const verdict = stabilityOf(samples);
+    if (verdict !== undefined) next.stable = verdict;
+    else delete next.stable;
+    const support = thinSupport(samples);
+    if (support) next.support = support;
+    else delete next.support;
+    return next;
+  });
+  // A re-ask that produced a row the sheet has never seen is still an answer
+  // this host gave, and dropping it would lose it silently.
+  return { ...base, answers: [...merged, ...shifted.values()] };
 }
 
 /**
