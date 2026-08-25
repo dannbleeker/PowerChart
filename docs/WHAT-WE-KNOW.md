@@ -44,6 +44,16 @@ wrong. Unmarked lines are believed but unchecked, which is a weaker thing.
   PowerPoint.** Each was our own stale id, and round 247 proved it by listing the
   slide: `the id is NOT among the slide's 11 listed shapes`. Do not quote them.
   The claim counts only rounds whose detail says the shape WAS in the listing.
+- **✓ The probe gets its scratch slide back by asking the deck, not by adding
+  another.** `scratch-slides-are-re-acquired-not-rebought`
+  The id `addScratchSlide` captures is real when captured and names nothing
+  later — the run held `4123571114#123571113` while the deck listed the same
+  slide as `256#2587447327`. Two id spaces, not a renumbered neighbour. Round
+  254 against 252/253: slides bought **63 to 16**, deck peak **110 to 38**, probe
+  phase **133s to 73s**, and delete-by-id returned **21 where the whole archive
+  before it returned 0**. A STALE here means the run is silently buying a slide
+  per question again — silent because the replacement path still works, which is
+  how the cost hid for 250 rounds.
 - **✓ A by-id lookup that refuses is always rescued by re-reading the slide** —
   105 of 105, and not one re-read threw.
   `the-re-read-always-rescues-a-refused-lookup`

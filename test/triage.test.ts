@@ -4190,3 +4190,40 @@ describe("the probe's own scratch-slide churn", () => {
     expect(c.median).toBe(2);
   });
 });
+
+describe("the scratch re-acquire stays watched", () => {
+  const claimOf = async () => {
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { CLAIMS } = await import("../scripts/claims.mjs");
+    return CLAIMS.find((c: { id: string }) => c.id === "scratch-slides-are-re-acquired-not-rebought");
+  };
+  const round = (name: string, worked: boolean[]) => ({
+    roundName: name,
+    trace: {
+      entries: worked.map((w) => ({
+        message: "re-acquired the scratch slide by position instead of adding one",
+        data: { worked: w },
+      })),
+    },
+  });
+
+  it("holds while the cheap route keeps working", async () => {
+    const claim = await claimOf();
+    expect(claim.check([round("254-a.json", Array(21).fill(true).concat(Array(5).fill(false)))]).ok).toBe(true);
+  });
+
+  it("goes stale when the id stops settling and the run buys slides again", async () => {
+    const claim = await claimOf();
+    // The failure mode is SILENT: the replacement path still works, so the round
+    // still produces a sheet. What it costs is 63 slide adds, a deck of 110 and
+    // a minute of probe time — which is how this hid for 250 rounds.
+    const r = claim.check([round("300-a.json", Array(25).fill(false).concat([true]))]);
+    expect(r.ok).toBe(false);
+    expect(r.actual).toContain("4% worked");
+  });
+
+  it("says ? rather than boasting from a handful", async () => {
+    const claim = await claimOf();
+    expect(claim.check([round("254-a.json", [true, true, true])]).ok).toBe(null);
+  });
+});

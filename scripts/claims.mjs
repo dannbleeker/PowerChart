@@ -315,6 +315,34 @@ export const CLAIMS = [
     },
   },
   {
+    id: "scratch-slides-are-re-acquired-not-rebought",
+    says: "A probe run gets its scratch slide back by asking the deck for it, instead of adding another one.",
+    measured:
+      "2026-08-25, round 254: 21 of 26 re-acquires worked, slides bought fell 63 to 16, deck peak 110 to 38, and delete-by-id returned 21 where the whole archive before it returned 0",
+    check(logs) {
+      let tried = 0;
+      let worked = 0;
+      for (const log of logs ?? []) {
+        for (const e of log?.trace?.entries ?? []) {
+          if (!/^re-acquired the scratch slide by position/.test(String(e.message ?? ""))) continue;
+          tried++;
+          if (e.data?.worked) worked++;
+        }
+      }
+      // A RATIO, not a count of slides bought. The number of replacements
+      // depends on how badly the host is behaving that day; what this claim is
+      // about is whether the cheap route still works when it is needed.
+      //
+      // If this goes stale the id no longer settles the way round 253 measured,
+      // and the run is back to buying a slide per question — 63 of them, a deck
+      // of 110, and a minute of probe time. It would be silent otherwise: the
+      // replacement path still works, which is exactly how the old cost hid.
+      if (tried < MIN_EVENTS) return { ok: null, actual: `only ${tried} re-acquire(s) recorded` };
+      const pct = Math.round((100 * worked) / tried);
+      return { ok: pct >= 50, actual: `${worked}/${tried} = ${pct}% worked` };
+    },
+  },
+  {
     id: "the-re-read-always-rescues-a-refused-lookup",
     says: "When a by-id lookup refuses the whole resolve, re-reading the slide's shapes always finds them.",
     measured: "2026-08-25, 105 of 105 shapes across 105 rounds, and not one re-read threw",
