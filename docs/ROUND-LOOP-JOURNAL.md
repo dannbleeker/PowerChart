@@ -7360,6 +7360,27 @@ Standing at three supporting cases, one false positive (round 232) and one
 inapplicable. Not a rule, and the honest next step is still to read the crash
 after this one rather than to adjust the number.
 
+### The fifth crash: threshold up to 4 of 5, scenario pattern down to 3 of 5
+
+Round 240's first attempt, 2026-08-25. It reached `chart 1/9` at **49997ms** and
+died in **`explode a degraded picture`** — a THIRD scenario.
+
+Both tallies move, in opposite directions:
+
+- **The threshold gains a case.** 49997ms is above the 45s line and the round
+  crashed. Four supporting, one false positive (round 232 at 53138ms, no crash),
+  one inapplicable. Still not a rule — a line with a known false positive on
+  either side of it is a hint — but it survived a real test rather than a
+  convenient one.
+- **The scenario pattern loses one.** "All crashes happen in the rescale" is now
+  **3 of 5**: three in `same scale across the deck`, one in `insert onto a slide
+  that already has content`, one in `explode a degraded picture`. Written as a
+  rule at n=3, a majority at n=4, and barely that at n=5.
+
+The pattern is dissolving as the sample grows, which is what a pattern read from
+three observations usually does. The threshold is holding. Neither is settled and
+both are now written where the next crash can be checked against them.
+
 
 ## The host is unversioned — but the probes are a fingerprint, and it has not moved
 
