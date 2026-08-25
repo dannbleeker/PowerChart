@@ -3204,6 +3204,67 @@ function reportClaims(pooled) {
 
 /** Print the dormant instruments, loudest first, or say nothing when there are none. */
 /**
+ * A round's shape: how much of it is probe, how much battery, how much neither.
+ *
+ * Reconstructed by hand three times on 2026-08-25 to answer "why does a round
+ * take fourteen minutes", and each reconstruction cost the same twenty minutes
+ * and produced two wrong leads before the right accounting:
+ *
+ *   - a 37-second gap that looked like a wait and was the first chart's own
+ *     update, the 2.2x this archive already claims;
+ *   - 56 seconds before the first probe question that looked like a slow deck
+ *     read and is the harness's lead-in — the entry carries
+ *     `observedBeforeTheRound`, so it was captured before the round's trace
+ *     window and replayed into it.
+ *
+ * Neither was a product cost and both were nearly "optimised". A standing
+ * breakdown is cheaper than rediscovering the same two non-findings.
+ *
+ * OUTSIDE is deliberately not called overhead. It holds the lead-in, the deck
+ * evidence, the rasterises and the sweep — real work, some of it the harness's
+ * own, and naming it overhead would invite someone to cut it without looking.
+ */
+export function roundAnatomy(logs, minN = 5) {
+  const rows = [];
+  for (const log of logs ?? []) {
+    const entries = log?.trace?.entries ?? [];
+    if (!entries.length) continue;
+    const span = entries[entries.length - 1]?.ms;
+    if (typeof span !== "number" || span <= 0) continue;
+    const probe = entries
+      .filter((e) => e.message === "answered" || e.message === "partner answered")
+      .reduce((a, e) => a + (e.data?.ms ?? 0), 0);
+    const battery = (Array.isArray(log.selftest) ? log.selftest : []).reduce((a, s) => a + (s?.ms ?? 0), 0);
+    rows.push({ span, probe, battery, outside: Math.max(0, span - probe - battery) });
+  }
+  if (rows.length < minN) return null;
+  const med = (key) => {
+    const s = rows.map((r) => r[key]).sort((a, b) => a - b);
+    return s[Math.floor(s.length / 2)];
+  };
+  return { n: rows.length, span: med("span"), probe: med("probe"), battery: med("battery"), outside: med("outside") };
+}
+
+/** Print the round's shape, so "rounds feel slow" has somewhere to start. */
+function reportRoundAnatomy(pooled) {
+  const a = roundAnatomy(pooled);
+  if (!a) return;
+  const pct = (v) => (a.span ? Math.round((100 * v) / a.span) : 0);
+  console.log(`\n  WHAT A ROUND IS MADE OF — medians over ${a.n} round(s), ${Math.round(a.span / 1000)}s end to end`);
+  console.log(
+    `    battery  ${String(Math.round(a.battery / 1000)).padStart(4)}s  ${String(pct(a.battery)).padStart(2)}%   the scenarios, priced one by one above`,
+  );
+  console.log(
+    `    probe    ${String(Math.round(a.probe / 1000)).padStart(4)}s  ${String(pct(a.probe)).padStart(2)}%   the question sheet`,
+  );
+  console.log(
+    `    outside  ${String(Math.round(a.outside / 1000)).padStart(4)}s  ${String(pct(a.outside)).padStart(2)}%   lead-in, deck evidence, rasterises, the sweep`,
+  );
+  console.log("    `outside` is NOT overhead — it is the harness's own work plus the evidence a round exists to");
+  console.log("    collect. Two things in it have already been mistaken for waste and were not.");
+}
+
+/**
  * What each scenario costs, pooled — the half of a round nothing had priced.
  *
  * The probe half has been measured all day and is now 60 seconds cheaper. The
@@ -5355,6 +5416,7 @@ if (invokedDirectly) {
     reportBatchCost(log);
     const failed = reportSelfTest(selftest);
     reportStability(pooled);
+    reportRoundAnatomy(pooled);
     reportScenarioCost(pooled);
     reportScratchChurn(pooled);
     reportPassBias(pooled);
@@ -5418,6 +5480,7 @@ if (invokedDirectly) {
     reportBatchCost(log);
     reportSelfTest(selftest);
     reportStability(pooled);
+    reportRoundAnatomy(pooled);
     reportScenarioCost(pooled);
     reportScratchChurn(pooled);
     reportPassBias(pooled);

@@ -4328,3 +4328,89 @@ describe("whether buying a slide is worth it", () => {
     expect(claim.check([round("256-a.json", Array(18).fill(true))]).ok).toBe(null);
   });
 });
+
+describe("what a round is made of", () => {
+  const round = (spanMs: number, probeMs: number[], batteryMs: number[]) => ({
+    roundName: "230-a.json",
+    selftest: batteryMs.map((ms, i) => ({ ok: true, skipped: false, name: `s${i}`, ms })),
+    trace: {
+      entries: [
+        ...probeMs.map((ms) => ({ message: "answered", data: { ms }, ms: 1 })),
+        { message: "done", data: {}, ms: spanMs },
+      ],
+    },
+  });
+
+  it("splits a round into battery, probe and what is neither", async () => {
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { roundAnatomy } = await import("../scripts/triage.mjs");
+    const a = roundAnatomy(Array.from({ length: 6 }, () => round(600000, [50000, 30000], [300000, 100000])));
+    expect(a.battery).toBe(400000);
+    expect(a.probe).toBe(80000);
+    expect(a.outside).toBe(120000);
+  });
+
+  it("counts the partner questions as probe time", async () => {
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { roundAnatomy } = await import("../scripts/triage.mjs");
+    // A partner question is a probe question that another question triggered.
+    // Leaving it out would push its cost into `outside`, where it would read as
+    // harness overhead rather than as the sheet's own work.
+    const withPartner = Array.from({ length: 6 }, () => ({
+      roundName: "230-a.json",
+      selftest: [],
+      trace: {
+        entries: [
+          { message: "answered", data: { ms: 1000 }, ms: 1 },
+          { message: "partner answered", data: { ms: 2000 }, ms: 2 },
+          { message: "done", data: {}, ms: 10000 },
+        ],
+      },
+    }));
+    expect(roundAnatomy(withPartner).probe).toBe(3000);
+  });
+
+  it("never reports a negative outside", async () => {
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { roundAnatomy } = await import("../scripts/triage.mjs");
+    // The battery and the probe overlap the span imperfectly — scenario time is
+    // wall-clock and probe `ms` is per-question — so the arithmetic can go past
+    // the span. A negative would read as a round that finished before it began.
+    const a = roundAnatomy(Array.from({ length: 6 }, () => round(1000, [50000], [300000])));
+    expect(a.outside).toBe(0);
+  });
+
+  it("says nothing from a handful of rounds", async () => {
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { roundAnatomy } = await import("../scripts/triage.mjs");
+    expect(roundAnatomy([round(600000, [1000], [2000])])).toBe(null);
+  });
+
+  it("skips a round whose trace has entries but no clock", async () => {
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { roundAnatomy } = await import("../scripts/triage.mjs");
+    // Distinct from an EMPTY trace, which an earlier guard drops. A crashed
+    // round can archive entries whose last one carries no `ms` — the span is
+    // then unknown, not zero, and treating it as zero makes `outside` the whole
+    // battery and drags every median with it.
+    const noClock = {
+      roundName: "231-a.json",
+      selftest: [{ ok: true, skipped: false, name: "s", ms: 5000 }],
+      trace: { entries: [{ message: "answered", data: { ms: 10 } }] },
+    };
+    const mixed = [...Array.from({ length: 6 }, () => round(600000, [50000], [300000])), noClock];
+    expect(roundAnatomy(mixed).n).toBe(6);
+  });
+
+  it("skips a round whose trace never started", async () => {
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { roundAnatomy } = await import("../scripts/triage.mjs");
+    // A crashed round can archive an empty trace. Counting its span as zero
+    // would drag every median toward a round that produced nothing.
+    const mixed = [
+      ...Array.from({ length: 6 }, () => round(600000, [50000], [300000])),
+      { roundName: "231-a.json", selftest: [], trace: { entries: [] } },
+    ];
+    expect(roundAnatomy(mixed).n).toBe(6);
+  });
+});
