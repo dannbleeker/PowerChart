@@ -4291,3 +4291,40 @@ describe("where the battery's time goes", () => {
     expect(rows[0].q3).toBeGreaterThan(rows[0].median);
   });
 });
+
+describe("whether buying a slide is worth it", () => {
+  const claimOf = async () => {
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { CLAIMS } = await import("../scripts/claims.mjs");
+    return CLAIMS.find((c: { id: string }) => c.id === "buying-a-replacement-slide-rescues-the-question");
+  };
+  const round = (name: string, rescued: boolean[]) => ({
+    roundName: name,
+    trace: { entries: rescued.map((r) => ({ message: "the replacement slide answered", data: { rescued: r } })) },
+  });
+
+  it("holds while the bought slide usually answers", async () => {
+    const claim = await claimOf();
+    expect(
+      claim.check([
+        round("256-a.json", Array(15).fill(true).concat(Array(3).fill(false))),
+        round("257-a.json", Array(4).fill(true)),
+      ]).ok,
+    ).toBe(true);
+  });
+
+  it("goes stale when the buy stops paying", async () => {
+    const claim = await claimOf();
+    // The direction that matters. If this drops, 18 slide adds a round are being
+    // spent on nothing and the buy should be reconsidered — which is a decision
+    // that needs a number, not the impression that adds look wasteful.
+    const r = claim.check([round("300-a.json", Array(20).fill(false).concat([true, true]))]);
+    expect(r.ok).toBe(false);
+    expect(r.actual).toContain("9% rescued");
+  });
+
+  it("says ? on a single round's worth", async () => {
+    const claim = await claimOf();
+    expect(claim.check([round("256-a.json", Array(18).fill(true))]).ok).toBe(null);
+  });
+});

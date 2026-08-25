@@ -44,6 +44,12 @@ wrong. Unmarked lines are believed but unchecked, which is a weaker thing.
   PowerPoint.** Each was our own stale id, and round 247 proved it by listing the
   slide: `the id is NOT among the slide's 11 listed shapes`. Do not quote them.
   The claim counts only rounds whose detail says the shape WAS in the listing.
+- **✓ When the probe DOES buy a replacement slide, the question usually answers
+  on it** — 15 of 18. `buying-a-replacement-slide-rescues-the-question`
+  Including 9 of 12 where a SHAPE refusal prompted the buy, which the code's own
+  comment called "a weaker reason to suspect the slide". It is a weaker reason
+  and it pays. Recorded because 18 slide adds a round looks like pure waste from
+  the outside, and that is how a correct behaviour gets optimised away.
 - **✓ The probe gets its scratch slide back by asking the deck, not by adding
   another.** `scratch-slides-are-re-acquired-not-rebought`
   The id `addScratchSlide` captures is real when captured and names nothing

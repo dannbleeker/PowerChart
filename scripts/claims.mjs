@@ -315,6 +315,36 @@ export const CLAIMS = [
     },
   },
   {
+    id: "buying-a-replacement-slide-rescues-the-question",
+    says: "When the probe buys a replacement scratch slide, the question usually answers on it.",
+    measured:
+      "2026-08-25, round 256: 15 of 18 rescued — including 9 of 12 where a SHAPE refusal, not a slide one, is what prompted the buy",
+    check(logs) {
+      let bought = 0;
+      let rescued = 0;
+      for (const log of logs ?? []) {
+        for (const e of log?.trace?.entries ?? []) {
+          if (!/^the replacement slide answered/.test(String(e.message ?? ""))) continue;
+          bought++;
+          if (e.data?.rescued) rescued++;
+        }
+      }
+      // THE THEORY THE CODE RESTS ON, finally checked. The probe buys a slide on
+      // either kind of never-asked, and its own comment concedes the weaker
+      // half: "a slide that resolves and will not take a shape ... is a weaker
+      // reason to suspect the slide, but the cost is one add and one question".
+      //
+      // It pays. 9 of the 12 buys prompted by a SHAPE refusal answered on the
+      // new slide, which means the slide really was the problem. Before this
+      // there was no number either way, and 18 slide adds a round looked like
+      // pure waste from the outside — which is how a correct behaviour gets
+      // optimised away.
+      if (bought < MIN_EVENTS) return { ok: null, actual: `only ${bought} replacement(s) recorded` };
+      const pct = Math.round((100 * rescued) / bought);
+      return { ok: pct >= 50, actual: `${rescued}/${bought} = ${pct}% rescued` };
+    },
+  },
+  {
     id: "scratch-slides-are-re-acquired-not-rebought",
     says: "A probe run gets its scratch slide back by asking the deck for it, instead of adding another one.",
     measured:
