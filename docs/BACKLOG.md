@@ -478,6 +478,15 @@ should move `freshly added, empty` off 1% grouped. If it does not move, the
 settling delay is not our mechanism and the tracker lead is spent for the price
 of one round.
 
+> **ANSWERED, 2026-08-25 — it moved to 100%.** `freshly added, empty` reads 36 of
+> 36 across eight consecutive rounds. The prediction staked above was correct and
+> the mechanism is ours.
+>
+> **Read the delay before celebrating it.** The metric read `0/0` for the twenty
+> rounds before that, so this had been true for an unknown number of rounds with
+> nothing able to say so — see the entry in the journal. The prediction was
+> right; the loop simply could not hear the answer.
+
 **Stake the prediction before the round** (the method that earned itself
 overnight): charts 4 and 5 of `same scale across the deck` group, and the
 scenario stops failing at 34 of 34.

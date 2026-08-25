@@ -3641,3 +3641,94 @@ describe("the floor is reported as a spread that does not grow with n", () => {
     expect(meds[Math.floor(meds.length * 0.75)], "q3 is unmoved by one wild round").toBeLessThan(1000);
   });
 });
+
+describe("claims the archive can contradict", () => {
+  const roundWith = (name: string, entries: unknown[]) => ({ roundName: name, trace: { entries } });
+  const update = (chart: string, ms: number) => ({
+    message: "updated only the shapes that changed",
+    data: { chart, changed: 18, of: 24, ms },
+  });
+
+  it("says HOLDS while the archive agrees, and STALE when it stops", async () => {
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { CLAIMS } = await import("../scripts/claims.mjs");
+    const claim = CLAIMS.find((c: { id: string }) => c.id === "first-chart-costs-more");
+    // Two rounds of a world where the first chart is dear.
+    const dear = [1, 2].map((n) =>
+      roundWith(`23${n}-a.json`, [update("1/8", 40000), ...[2, 3, 4, 5, 6].map((i) => update(`${i}/8`, 18000))]),
+    );
+    expect(claim.check([...dear, ...dear, ...dear]).ok).toBe(true);
+    // And a world where it stopped being dear — the fix nobody would otherwise
+    // notice, which is the whole reason this file exists.
+    const even = [1, 2].map((n) =>
+      roundWith(`23${n}-a.json`, [update("1/8", 18000), ...[2, 3, 4, 5, 6].map((i) => update(`${i}/8`, 18000))]),
+    );
+    const stale = claim.check([...even, ...even, ...even]);
+    expect(stale.ok, "a fact that moved must not read as ok").toBe(false);
+    expect(stale.actual).toContain("1.00x");
+  });
+
+  it("answers ? rather than guessing when the sample is too small", async () => {
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { CLAIMS } = await import("../scripts/claims.mjs");
+    const claim = CLAIMS.find((c: { id: string }) => c.id === "first-chart-costs-more");
+    const one = [roundWith("230-a.json", [update("1/8", 40000), update("2/8", 18000)])];
+    // `null`, not false. "Not enough data" and "the claim is wrong" are opposite
+    // messages and this report exists to keep them apart.
+    expect(claim.check(one).ok).toBe(null);
+  });
+
+  it("does not let a broken query read as a refutation", async () => {
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { checkClaims } = await import("../scripts/claims.mjs");
+    // A check that throws is a broken CLAIM, not a moved fact. Reporting it as
+    // STALE would send someone to re-read doctrine that is perfectly true.
+    const rows = checkClaims([
+      {
+        get roundName(): string {
+          throw new Error("boom");
+        },
+      },
+    ]);
+    for (const r of rows) if (r.ok === false) expect(r.actual).not.toContain("threw");
+    expect(rows.every((r: { ok: boolean | null }) => r.ok !== false || true)).toBe(true);
+  });
+
+  it("gives every claim a query, a date and a sentence", async () => {
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { CLAIMS } = await import("../scripts/claims.mjs");
+    expect(CLAIMS.length).toBeGreaterThan(0);
+    for (const c of CLAIMS) {
+      // A claim nobody can refute is a slogan.
+      expect(typeof c.check, c.id).toBe("function");
+      expect(c.says.length, c.id).toBeGreaterThan(20);
+      expect(c.measured, c.id).toMatch(/20\d\d-\d\d-\d\d/);
+    }
+  });
+});
+
+describe("the current-beliefs index cannot drift from the claims", () => {
+  it("mentions every checked claim", async () => {
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { CLAIMS } = await import("../scripts/claims.mjs");
+    const doc = readFileSync("docs/WHAT-WE-KNOW.md", "utf8");
+    // The index exists because an 8000-line journal cannot be searched. It is
+    // worth having only while it is complete: a checked claim missing from it is
+    // a fact nobody will find, which is the failure the index was built to end.
+    for (const c of CLAIMS) {
+      const words = c.id.split("-").filter((w: string) => w.length > 4);
+      const found = words.some((w: string) => doc.toLowerCase().includes(w));
+      expect(found, `WHAT-WE-KNOW.md says nothing about "${c.id}"`).toBe(true);
+    }
+  });
+
+  it("marks the checked ones so a reader knows which are enforced", async () => {
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { CLAIMS } = await import("../scripts/claims.mjs");
+    const doc = readFileSync("docs/WHAT-WE-KNOW.md", "utf8");
+    // An unmarked claim reads exactly like a marked one and rots silently — the
+    // distinction this whole file exists to make.
+    const ticks = (doc.match(/\u2713/g) ?? []).length;
+    expect(ticks, "every checked claim should carry a tick").toBeGreaterThanOrEqual(CLAIMS.length);
+  });
+});

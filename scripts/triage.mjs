@@ -27,6 +27,7 @@
  * read — so it can gate as well as inform.
  */
 import { readFileSync, readdirSync } from "fs";
+import { checkClaims } from "./claims.mjs";
 import { join } from "path";
 import { readDeck, faultsIn } from "./verify-deck.mjs";
 
@@ -3163,6 +3164,32 @@ export function poolUpdateCost(logs) {
   };
 }
 
+/**
+ * What this project believes, checked against what the archive says.
+ *
+ * See `scripts/claims.mjs`. A STALE line is the most interesting thing in this
+ * report — it means a stated fact stopped being true and nothing else would have
+ * said so. On 2026-08-25 the fresh-slide failure had been fixed for an unknown
+ * number of rounds while the figure describing it went on being quoted.
+ */
+function reportClaims(pooled) {
+  const rows = checkClaims(pooled);
+  if (!rows.length) return;
+  console.log(`\n  WHAT THIS PROJECT BELIEVES — ${rows.length} claim(s), checked against the archive`);
+  for (const r of rows) {
+    // `staleIsGood` inverts the alarm, not the check: "no chart has ever carried
+    // a parts list" going stale is the parts list starting to WORK.
+    const mark = r.ok === null ? "  ?  " : r.ok ? " ok  " : r.staleIsGood ? "NEWS " : "STALE";
+    console.log(`    ${mark} ${r.id.padEnd(26)} ${r.actual}`);
+    if (r.ok === false) {
+      console.log(`          claim: ${r.says}`);
+      console.log(`          measured ${r.measured}`);
+      console.log(`          The archive no longer agrees. Re-read what cites this before quoting it.`);
+    }
+  }
+  console.log(`    A stale claim is not a failure — it is a fact that moved while nobody was looking.`);
+}
+
 /** Print the dormant instruments, loudest first, or say nothing when there are none. */
 function reportDormant(pooled) {
   const rows = dormantInstruments(pooled);
@@ -4957,6 +4984,7 @@ if (invokedDirectly) {
     reportStability(pooled);
     reportDormant(pooled);
     reportNoiseFloor(pooled);
+    reportClaims(pooled);
     reportPredictions(pooled);
     reportFreshVsEstablished(pooled);
     reportGroupVsTag(pooled);
@@ -5016,6 +5044,7 @@ if (invokedDirectly) {
     reportStability(pooled);
     reportDormant(pooled);
     reportNoiseFloor(pooled);
+    reportClaims(pooled);
     reportPredictions(pooled);
     reportFreshVsEstablished(pooled);
     reportGroupVsTag(pooled);
