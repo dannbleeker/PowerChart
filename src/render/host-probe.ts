@@ -1425,6 +1425,35 @@ const PROBES: Probe[] = [
         } catch {
           holds = "slide would not count its shapes";
         }
+        // IS THE ID ACTUALLY THERE? The count says the slide is not empty; this
+        // says whether the shape we asked for is one of the ones on it, and that
+        // is what finally separates the two readings of "no such shape".
+        //
+        // Present in the list and unresolvable by id: the host refuses a by-id
+        // lookup for a shape sitting right there, which is the finding and what
+        // `deleteShapesById` and `setShapeSelection` need to know. Absent: the
+        // chart is genuinely gone and the record that named it is still stale,
+        // which is ours to fix and not a fact about PowerPoint.
+        //
+        // Enumeration as CONTEXT, never as the question — the same line the
+        // count walks. `getItemAt` was tried AS this question and reverted for
+        // making it answerable and worthless; the verdict above still comes from
+        // `getItemOrNullObject(<id>)` exactly as the production sites use it.
+        //
+        // Best-effort last: this host has answered `unreadable` and `not-listed`
+        // for the shape collection in other rounds, and a collection that will
+        // not list must not cost the answer already in hand.
+        let listed = "shapes not listed";
+        try {
+          held.shapes.load("items/id");
+          await ctx.sync();
+          const ids = held.shapes.items.map((x) => (x as unknown as { id?: string }).id);
+          listed = ids.includes(id)
+            ? `the id IS among the slide's ${ids.length} listed shapes`
+            : `the id is NOT among the slide's ${ids.length} listed shapes`;
+        } catch {
+          listed = "the slide would not list its shapes";
+        }
         const matched = back === id;
         // ONLY WHEN THE ID DID NOT COME BACK. Round 244 answered `yes` and
         // carried "the shape resolved but would not read back" in the same
@@ -1453,7 +1482,7 @@ const PROBES: Probe[] = [
             known
               ? ` (through a tagged chart's id ${id}, on slide ${String(
                   (held as unknown as { id?: string }).id,
-                )}) — ${lost ? `${lost}; ` : ""}${holds}`
+                )}) — ${lost ? `${lost}; ` : ""}${holds}; ${listed}`
               : ""
           }`,
         };

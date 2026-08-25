@@ -2533,6 +2533,9 @@ describe("resolving a shape through a tagged chart's own slide", () => {
       // id belonged to that slide, which is a different bug with a different fix.
       expect(row.detail).toContain("the shape resolved but would not read back");
       expect(row.detail).not.toContain("no such shape");
+      // Here the shape IS on the slide and the listing says so, which is what
+      // makes this reading the host's fault rather than a stale id of ours.
+      expect(row.detail).toContain("the id IS among the slide's");
     } finally {
       faults.shapeIdNeverPopulates = false;
     }
@@ -2558,6 +2561,12 @@ describe("resolving a shape through a tagged chart's own slide", () => {
     // …and the id it actually tried, so the pairing can be checked against the
     // draw trace rather than assumed.
     expect(row.detail).toContain("no-such-shape");
+    // THE DISCRIMINATOR. An id absent from the slide's own listing is a shape
+    // that is gone — ours to fix. An id PRESENT in the listing and still
+    // unresolvable by `getItemOrNullObject` is the host refusing a lookup for a
+    // shape sitting right there, which is the finding. Without this the two
+    // arrive as the same `no such shape on that slide`.
+    expect(row.detail).toContain("is NOT among the slide's");
   });
 
   it("counts a slide that never resolved as a question never put", async () => {
