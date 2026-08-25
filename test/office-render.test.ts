@@ -6381,3 +6381,35 @@ describe("the wreckage sweep and the named id", () => {
     _resetNamedShapeForTest();
   });
 });
+
+describe("taking the named id from a chart the deck has now", () => {
+  it("takes a chart the scan actually found", async () => {
+    const { refreshNamedShapeFromDeck, namedShape, _resetNamedShapeForTest, _rememberNamedShapeForTest } =
+      await import("../src/render/powerpoint");
+    const slide = makeSlide("s1");
+    installHost([slide]);
+    await insertSceneIntoSlide(buildChart(config), { tagData: JSON.stringify(config) });
+    // A stale record standing before the scan — the exact state rounds 242-247
+    // were in. The scan must replace it, not be skipped because something was
+    // already remembered.
+    _rememberNamedShapeForTest("gone-slide", "gone-shape");
+    const found = await refreshNamedShapeFromDeck();
+    expect(found, "the deck has a chart and the scan found it").toBeTruthy();
+    expect(found!.shapeId).not.toBe("gone-shape");
+    expect(namedShape()).toEqual(found);
+    _resetNamedShapeForTest();
+  });
+
+  it("clears a remembered id when the deck holds no chart", async () => {
+    const { refreshNamedShapeFromDeck, namedShape, _resetNamedShapeForTest, _rememberNamedShapeForTest } =
+      await import("../src/render/powerpoint");
+    installHost([makeSlide("s1")]);
+    _rememberNamedShapeForTest("s1", "shape-1");
+    // Nothing on this deck is a chart this host has named. Saying so costs the
+    // probe one honest deferral; keeping the id costs a confident wrong answer,
+    // which is what four rounds reported as office-js #2903.
+    expect(await refreshNamedShapeFromDeck()).toBe(null);
+    expect(namedShape()).toBe(null);
+    _resetNamedShapeForTest();
+  });
+});

@@ -58,6 +58,7 @@ import {
   type SlideShot,
   type UpdateWreckage,
   namedShape,
+  refreshNamedShapeFromDeck,
 } from "../render/powerpoint";
 import { placeChart, type Placement } from "../core/placement";
 import { buildAgendaScene } from "../core/agenda";
@@ -3933,7 +3934,21 @@ function wireInsert() {
         //
         // Skipped when nothing got tagged. Then there IS no named id, and
         // `no-scratch-shape` is the true answer rather than a deferral.
-        const plan = reaskPlan(sheet, namedShape());
+        // OBSERVED, not remembered. See `refreshNamedShapeFromDeck`: a chart
+        // recorded when its tag was written is only as good as the minutes that
+        // follow, and a round spends those redrawing and sweeping. Rounds 242,
+        // 243, 246 and 247 all answered `unreadable` off an id whose shape was
+        // no longer on the slide, and 247 proved it by listing the slide.
+        //
+        // Best-effort: a scan that throws must not cost the re-ask, which can
+        // still run on whatever the record holds.
+        let observed = namedShape();
+        try {
+          observed = await refreshNamedShapeFromDeck();
+        } catch (err) {
+          trace("probe", "could not scan the deck for a chart to name", { error: errorText(err) });
+        }
+        const plan = reaskPlan(sheet, observed);
         if (plan.ask.length) {
           note(`Re-asking ${plan.ask.length} question(s) now that a chart exists…`, "busy");
           const again = await runHostProbes(host, buildStamp, { only: plan.ask, passes: 1 });

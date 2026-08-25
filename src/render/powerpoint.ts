@@ -507,6 +507,37 @@ export function namedShape(): { slideId: string; shapeId: string } | null {
   return lastNamedShape;
 }
 
+/**
+ * Take the named id from a chart the deck HAS, right now.
+ *
+ * Remembering was the wrong mechanism and four rounds paid for it. A record
+ * written when a chart is tagged is only as good as the minutes that follow, and
+ * a round spends those minutes redrawing, replacing and sweeping. Round 247
+ * settled it: the recorded pair came from chart 7/8, four further updates ran
+ * after it, and the id was NOT among the eleven shapes its slide actually held.
+ * The probe then reported `unreadable` — which reads as office-js #2903 and was
+ * nothing of the kind.
+ *
+ * A scan is an OBSERVATION rather than a memory: every pair it returns was just
+ * enumerated off a slide, so the shape existed a second ago rather than at some
+ * point earlier in the round. That is the property the probe needs and the one
+ * `rememberNamedShape` could not promise.
+ *
+ * Clears the record when the deck holds no charts at all. There is then nothing
+ * this host has agreed to name, and saying so costs the probe one honest
+ * deferral — where keeping a stale id costs a confident wrong answer.
+ *
+ * A failed scan leaves the record alone: it has said nothing about the deck, and
+ * discarding evidence on no evidence is its own mistake.
+ */
+export async function refreshNamedShapeFromDeck(): Promise<{ slideId: string; shapeId: string } | null> {
+  const scan = await listChartsInDeck();
+  const found = scan.charts.find((c) => c.target.slideId && c.target.shapeId && c.target.slideId !== VISIBLE_SLIDE_KEY);
+  if (found) rememberNamedShape(found.target.slideId, found.target.shapeId);
+  else lastNamedShape = null;
+  return lastNamedShape;
+}
+
 /** Test seam — a suite must not inherit an id from the test before it. */
 export function _resetNamedShapeForTest(): void {
   lastNamedShape = null;

@@ -501,6 +501,10 @@ vi.mock("../src/render/powerpoint", () => ({
   // that never draws: `namedShape` is set by a chart whose TAG WROTE, and
   // nothing here writes one.
   namedShape: vi.fn(() => null),
+  // No chart to observe either. This mock refuses a scratch slide and draws
+  // nothing, so a scan finds no chart and the round's re-ask has nothing to ask
+  // with — which is the honest state rather than a stubbed convenience.
+  refreshNamedShapeFromDeck: vi.fn(async () => null),
   deleteSlideById: vi.fn(async (id: string) => {
     host.deletedSlides.push(id);
     return !host.refuseSlideDelete.includes(id);
