@@ -353,6 +353,22 @@ export const faults = {
    */
   strictShapeReads: false,
   /**
+   * A shape resolves by id and then will not say what its id is.
+   *
+   * office-js #2903 itself, and the state this fake could not produce: every
+   * shape it finds reads back, so the two halves of an `unreadable` —
+   * "no such shape on that slide" and "found it, would not read it back" —
+   * were indistinguishable in any test. `shape-resolve-held-slide-proxy` exists
+   * to tell a real host's answer apart from exactly that, so the fake needs to
+   * be able to be the host on this point.
+   *
+   * NOT the same as `strictShapeReads`, which THROWS PropertyNotLoaded. Here
+   * the sync succeeds and the proxy is not null; the property is simply never
+   * populated, which is what a held slide handle does on PowerPoint web and why
+   * the failure is silent rather than caught.
+   */
+  shapeIdNeverPopulates: false,
+  /**
    * A shape cannot be NAMED in the batch that created it.
    *
    * `shape.load("id")` queued in the same sync as `addGeometricShape` is taken
@@ -1249,7 +1265,7 @@ function freshHandle(shape: FakeShape, override?: { id: string }): FakeShape {
  * "edit a chart on the visible slide", the first self-test scenario to fail on
  * a real host.
  */
-function nullObjectProxy<T extends object>(found: T | undefined) {
+function nullObjectProxy<T extends object>(found: T | undefined, kind: "slide" | "shape" = "slide") {
   let loaded = false;
   const base = found ?? ({ delete() {} } as unknown as T);
   // Read once, off the raw object, before any strictness gate can refuse it —
@@ -1298,6 +1314,10 @@ function nullObjectProxy<T extends object>(found: T | undefined) {
           );
         return !found;
       }
+      // See `faults.shapeIdNeverPopulates`. AFTER the isNullObject branch on
+      // purpose: the proxy is not null, which is the whole point — the host
+      // found the shape and answered nothing about it.
+      if (prop === "id" && kind === "shape" && found && faults.shapeIdNeverPopulates) return undefined;
       return Reflect.get(target, prop, recv);
     },
   });
@@ -1676,7 +1696,7 @@ export function makeSlide(id: string) {
         // stale proxies. The fake refusing this pattern made the ordinary
         // path's recovery untestable — it could only be written by making the
         // fake lie in the other direction.
-        return nullObjectProxy(found ? freshHandle(found) : undefined);
+        return nullObjectProxy(found ? freshHandle(found) : undefined, "shape");
       },
       // Top-level shape count the host reports on readback — non-deleted shapes.
       getCount: () => {

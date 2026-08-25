@@ -2465,6 +2465,49 @@ describe("resolving a shape through a tagged chart's own slide", () => {
     expect(row.detail).toContain("no-such-slide");
   });
 
+  it("says which kind of nothing came back when the shape is missing", async () => {
+    const { _rememberNamedShapeForTest } = await import("../src/render/powerpoint");
+    installHost([makeSlide("s1")]);
+    // A REAL slide, so the slide check passes and the shape is what fails. The
+    // two produce the same `unreadable` and mean different things: no such
+    // shape says the host never agreed the id belonged there, while a shape
+    // that resolves and will not read back is office-js #2903 proper.
+    _rememberNamedShapeForTest("s1", "no-such-shape");
+    const sheet = await runHostProbes("fake", "test", {
+      only: ["shape-resolve-held-slide-proxy"],
+      passes: 1,
+    });
+    const row = sheet.answers.find((r) => r.id === "shape-resolve-held-slide-proxy")!;
+    expect(row.answer).toBe("unreadable");
+    expect(row.detail).toContain("no such shape on that slide");
+    // The verdict itself must NOT split — 217 rounds of comparison rest on it.
+    expect(NOT_ASKED.has(row.answer)).toBe(false);
+  });
+
+  it("names the stale-proxy failure when the shape resolves and stays silent", async () => {
+    const { _rememberNamedShapeForTest } = await import("../src/render/powerpoint");
+    const deck = [makeSlide("s1")];
+    installHost(deck);
+    const real = deck[0].shapes.addGeometricShape("Rectangle", { left: 1, top: 1, width: 9, height: 9 });
+    _rememberNamedShapeForTest("s1", real.id);
+    faults.shapeIdNeverPopulates = true;
+    try {
+      const sheet = await runHostProbes("fake", "test", {
+        only: ["shape-resolve-held-slide-proxy"],
+        passes: 1,
+      });
+      const row = sheet.answers.find((r) => r.id === "shape-resolve-held-slide-proxy")!;
+      expect(row.answer).toBe("unreadable");
+      // office-js #2903 proper: the host FOUND it and would not read it back.
+      // The other `unreadable` — no such shape — means the host never agreed the
+      // id belonged to that slide, which is a different bug with a different fix.
+      expect(row.detail).toContain("the shape resolved but would not read back");
+      expect(row.detail).not.toContain("no such shape");
+    } finally {
+      faults.shapeIdNeverPopulates = false;
+    }
+  });
+
   it("counts a slide that never resolved as a question never put", async () => {
     // Same standing as `no-scratch-shape`: setup failed, so the question was not
     // asked. If it counted as an answer the diff would compare it against the

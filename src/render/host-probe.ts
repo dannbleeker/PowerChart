@@ -1385,10 +1385,37 @@ const PROBES: Probe[] = [
         shape.load("id");
         await ctx.sync();
         const back = (shape as unknown as { id: string }).id;
+        // WHICH KIND OF NOTHING, when the id does not come back.
+        //
+        // The same distinction this probe now draws for the slide, one level
+        // down, and it changes what the answer means. A null shape proxy says
+        // the host did not find that id on that slide — it lost the shape, or
+        // never agreed the id belonged there. A proxy that is NOT null but whose
+        // id never populated says the host found it and would not read it back,
+        // which is the stale-proxy failure of office-js #2903 proper.
+        //
+        // Recorded in the detail rather than as a new answer: `unreadable` is
+        // the right verdict for both — the id route through an aged slide handle
+        // does not work, which is what the three production sites need to know —
+        // and splitting the ANSWER would break every comparison with the 217
+        // rounds behind it.
+        const lost = (() => {
+          try {
+            return (shape as unknown as { isNullObject?: boolean }).isNullObject === true
+              ? "no such shape on that slide"
+              : "the shape resolved but would not read back";
+          } catch {
+            // `isNullObject` unreadable is itself an answer: the host populated
+            // nothing for this proxy, so the sync it took part in told us nothing.
+            return "the host populated nothing for the proxy";
+          }
+        })();
         return {
           answer: back === id ? "yes" : "unreadable",
           detail: `read ${String(back)}${
-            known ? ` (through a tagged chart's id, on slide ${String((held as unknown as { id?: string }).id)})` : ""
+            known
+              ? ` (through a tagged chart's id, on slide ${String((held as unknown as { id?: string }).id)}) — ${lost}`
+              : ""
           }`,
         };
       } catch (err) {
