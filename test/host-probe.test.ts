@@ -2313,6 +2313,36 @@ describe("re-asking what an empty deck could not answer", () => {
     expect(picked).toEqual(["a", "d"]);
   });
 
+  it("catches a question the slide blocked first and the shape blocked after", async () => {
+    const { deferredForLackOfShape } = await import("../src/render/host-probe");
+    // ROUND 245, exactly. `answer` holds the FIRST weak answer and nothing weak
+    // displaces it, so a question that failed once on the slide and three times
+    // on the shape reads `no-scratch-slide` forever. Reading only the row found
+    // no match, made no re-ask, and the round produced four samples where every
+    // round since 241 produced five.
+    const sheet = sheetWith([{ id: "a", answer: "no-scratch-slide" }]);
+    sheet.answers[0].samples = ["no-scratch-slide", "no-scratch-shape", "no-scratch-shape"].map((answer, i) => ({
+      answer,
+      pass: i + 1,
+      atMs: i,
+      regime: "healthy" as const,
+      scratch: "first-slide" as const,
+    }));
+    expect(deferredForLackOfShape(sheet)).toEqual(["a"]);
+  });
+
+  it("leaves alone a question that was actually answered", async () => {
+    const { deferredForLackOfShape } = await import("../src/render/host-probe");
+    // A real answer on a later pass settles it. Re-asking could only add samples
+    // to something already decided, and it costs a scratch slide to do it.
+    const sheet = sheetWith([{ id: "a", answer: "yes" }]);
+    sheet.answers[0].samples = [
+      { answer: "no-scratch-shape", pass: 1, atMs: 1, regime: "healthy", scratch: "first-slide" },
+      { answer: "yes", pass: 2, atMs: 2, regime: "healthy", scratch: "first-slide" },
+    ];
+    expect(deferredForLackOfShape(sheet)).toEqual([]);
+  });
+
   it("puts only the questions it was given", async () => {
     installHost([makeSlide("s1")]);
     const sheet = await runHostProbes("fake", "test", {

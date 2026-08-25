@@ -3667,7 +3667,26 @@ export async function runHostProbes(
  * After the battery, the round has one — see `namedShape`.
  */
 export function deferredForLackOfShape(sheet: HostAnswerSheet): string[] {
-  return sheet.answers.filter((r) => r.answer === "no-scratch-shape").map((r) => r.id);
+  return sheet.answers
+    .filter(
+      (r) =>
+        // NEVER REALLY ANSWERED. A question that got a real answer on any pass
+        // has its answer, and a re-ask could only add samples to something
+        // already settled.
+        NOT_ASKED.has(r.answer) &&
+        // AND blocked for want of a SHAPE on at least one pass — read from the
+        // samples, not from `answer`.
+        //
+        // `answer` holds the FIRST weak answer and nothing weak displaces it, so
+        // a question that failed once on the slide and three times on the shape
+        // reads `no-scratch-slide` forever. Round 245 is exactly that:
+        // `[no-scratch-slide, no-scratch-shape, no-scratch-shape,
+        // no-scratch-shape]`, and this function looked only at the row, found no
+        // match, and made no re-ask at all — so the round produced four samples
+        // where every other round since 241 produced five.
+        (r.answer === "no-scratch-shape" || (r.samples ?? []).some((x) => x.answer === "no-scratch-shape")),
+    )
+    .map((r) => r.id);
 }
 
 /**
