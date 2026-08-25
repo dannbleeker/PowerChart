@@ -144,6 +144,112 @@ export const CLAIMS = [
       return { ok: gap > 40, actual: last == null ? "never seen" : `last round ${last}, ${gap} rounds ago` };
     },
   },
+  {
+    id: "tag-sync-is-not-the-writes",
+    says: "The first chart's three write syncs cost ~2.2x a later chart's; its tag sync does not.",
+    measured: "2026-08-25, write quartiles do not overlap at n=27/135; the tag quartiles do",
+    check(logs) {
+      const first = [];
+      const later = [];
+      for (const log of logs ?? []) {
+        for (const e of log?.trace?.entries ?? []) {
+          if (String(e.message ?? "") !== "updated only the shapes that changed") continue;
+          const d = e.data ?? {};
+          if (!d.chart || d.changed !== 18 || d.of !== 24 || !Array.isArray(d.syncMs) || d.syncMs.length !== 4)
+            continue;
+          const [i, n] = String(d.chart).split("/").map(Number);
+          if (n === 1) continue;
+          (i === 1 ? first : later).push(d.syncMs);
+        }
+      }
+      if (first.length < 5 || later.length < 5) return { ok: null, actual: `n=${first.length}/${later.length}` };
+      const at = (rows, k) => median(rows.map((r) => r[k]));
+      const writes = [0, 1, 2].map((k) => at(first, k) / at(later, k));
+      const tag = at(first, 3) / at(later, 3);
+      const ok = writes.every((w) => w >= 1.8) && tag < 1.5;
+      return { ok, actual: `writes ${writes.map((w) => w.toFixed(2)).join("/")}x · tag ${tag.toFixed(2)}x` };
+    },
+  },
+  {
+    id: "rested-rounds-rarely-skip",
+    says: "A round taken as the first of its session skips far less than one run back to back.",
+    measured:
+      "2026-08-25. First written as 'skips NOTHING' from rounds 230-238, and this check refuted it " +
+      "within minutes: round 226 is rested, did not crash, and skipped the rescale anyway. The " +
+      "window had been hand-picked; the checker applied the claim to every eligible round. Restated " +
+      "as a RATE, which is what the data supports — 1 skip in 12 rested against 10 in 10 back to back.",
+    check(logs) {
+      let rested = 0;
+      let restedSkips = 0;
+      let deep = 0;
+      let deepSkips = 0;
+      for (const log of logs ?? []) {
+        const idx = log?.driverRun?.sessionIndex;
+        if (typeof idx !== "number") continue;
+        const skips = (log.selftest ?? []).filter((s) => !s.ok && s.skipped).length;
+        if (idx === 1) {
+          rested++;
+          restedSkips += skips;
+        } else {
+          deep++;
+          deepSkips += skips;
+        }
+      }
+      if (rested < 5 || deep < 3) return { ok: null, actual: `rested n=${rested}, deeper n=${deep}` };
+      const rRate = restedSkips / rested;
+      const dRate = deepSkips / deep;
+      // A RATE COMPARISON, not an absolute zero. Restating it this way is not
+      // moving a goalpost past its counterexample: the finding was always about
+      // the difference between the two populations, and "zero" was an artifact
+      // of the window it was first measured over.
+      return {
+        ok: dRate === 0 ? rRate === 0 : rRate <= dRate / 3,
+        actual: `${restedSkips}/${rested} rested (${rRate.toFixed(2)}/round) vs ${deepSkips}/${deep} deeper (${dRate.toFixed(2)}/round)`,
+      };
+    },
+  },
+  {
+    id: "first-chart-is-on-the-busiest-slide",
+    says: "The first chart of the deck-wide rescale always lands on the most loaded slide.",
+    measured: "2026-08-25, the confound behind four corrections — 3 shapes against 1",
+    check(logs) {
+      let seen = 0;
+      let busiest = 0;
+      for (const log of logs ?? []) {
+        for (const e of log?.trace?.entries ?? []) {
+          if (!/what each slide held before the rescale/.test(String(e.message))) continue;
+          const slides = (e.data ?? {}).slides ?? [];
+          const counts = slides.map((s) => s.shapes).filter((n) => typeof n === "number");
+          if (counts.length < 2) continue;
+          seen++;
+          if (counts[0] === Math.max(...counts)) busiest++;
+        }
+      }
+      // STALE HERE IS GOOD: it would mean the harness stopped confounding
+      // position with load, and the comparison becomes readable on its own.
+      if (!seen) return { ok: null, actual: "no occupancy reading in the archive yet" };
+      return { ok: busiest === seen, actual: `${busiest}/${seen} rounds`, staleIsGood: true };
+    },
+  },
+  {
+    id: "our-idle-is-negligible",
+    says: "The gap between the host answering and us issuing the next call is about a millisecond.",
+    measured: "2026-08-25, 1ms in the fastest round and the slowest alike",
+    check(logs) {
+      const idles = [];
+      for (const log of recent(logs)) {
+        for (const e of log?.trace?.entries ?? []) {
+          const d = e.data ?? {};
+          if (String(e.message ?? "") === "batch issued" && typeof d.idleMs === "number") idles.push(d.idleMs);
+        }
+      }
+      if (idles.length < 20) return { ok: null, actual: `n=${idles.length}` };
+      const m = median(idles);
+      // If this ever climbs, the slowdown stopped being purely the host's and
+      // every timing conclusion in the journal needs re-reading.
+      return { ok: m <= 5, actual: `median ${m}ms over ${idles.length} batches` };
+    },
+  },
 ];
 
 /** Run every claim and report what the archive says about it. */

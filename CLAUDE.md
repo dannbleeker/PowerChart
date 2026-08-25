@@ -630,6 +630,7 @@ deck` already says how many charts in a deck are re-editable, which is the
 
   **"Part-way through" is measured now, and it is not about position — it is
   **SUPERSEDED 2026-08-25: that 1% is now 36 of 36.** Kept because it is why the
+  — see `scripts/claims.mjs`, claim `fresh-slides-group`, re-checked every round.
   code exists, not because it describes the host today — see
   `docs/WHAT-WE-KNOW.md`, checked every round by `scripts/claims.mjs`.
 

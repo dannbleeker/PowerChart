@@ -8036,6 +8036,32 @@ back-to-back block. The skips and the crashes are the same failure at different
 severities — the host declining to finish the heavy work — and rest prevents
 both.
 
+### "Skips NOTHING" was refuted by its own checker, minutes after being written
+
+This finding became `rested-rounds-skip-nothing` in `scripts/claims.mjs`. The
+first run of that file reported it **STALE**:
+
+    STALE rested-rounds-skip-nothing   1 skip(s) across 12 rested round(s)
+
+**Round 226 is rested, did not crash, and skipped the rescale anyway.**
+
+The claim was true of rounds 230-238 and false of the population. I had measured
+a window I chose and stated the result as a property of rested rounds; the
+checker applied it to every round that qualified and found the counterexample
+immediately. That is the entire point of the file working on its first day, and
+it worked against the person who wrote it.
+
+Restated as `rested-rounds-rarely-skip` — a comparison of RATES, which is what
+the data supports. That is not a goalpost moved past its counterexample: the
+finding was always about the gap between two populations, and "zero" was an
+artifact of the window.
+
+**And the restated claim now reports `?`, which is also honest.** The 10-in-10
+back-to-back evidence comes from rounds 216-225, which predate `sessionIndex` —
+so the machine cannot see the comparison the human can. The strongest half of
+this finding rests on rounds recorded before the instrument that would let it be
+checked, and it will stay `?` until enough deeper rounds carry the field.
+
 Ten rounds on one build produced within-session drift, not a floor: `laterMed`
 doubles across a session, which is larger than whatever run-to-run noise sits
 underneath it. Pooling them measures the trend.

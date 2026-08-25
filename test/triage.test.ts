@@ -3715,10 +3715,12 @@ describe("the current-beliefs index cannot drift from the claims", () => {
     // The index exists because an 8000-line journal cannot be searched. It is
     // worth having only while it is complete: a checked claim missing from it is
     // a fact nobody will find, which is the failure the index was built to end.
+    // THE ID ITSELF, not a word from it. Matching any long word let
+    // `first-chart-is-on-the-busiest-slide` pass on the word "first", which
+    // appears in an unrelated line — a drift test that can be satisfied by
+    // coincidence is not a drift test.
     for (const c of CLAIMS) {
-      const words = c.id.split("-").filter((w: string) => w.length > 4);
-      const found = words.some((w: string) => doc.toLowerCase().includes(w));
-      expect(found, `WHAT-WE-KNOW.md says nothing about "${c.id}"`).toBe(true);
+      expect(doc, `WHAT-WE-KNOW.md does not name the claim "${c.id}"`).toContain(c.id);
     }
   });
 

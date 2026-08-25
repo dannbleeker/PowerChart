@@ -5616,6 +5616,7 @@ export function rasterGap(): Promise<void> {
  * the failure looked like a TAG problem. It is the wrong reading now: the
  * failure has been isolated to exactly the state the workaround addresses.
  * **SUPERSEDED 2026-08-25: that 1% is now 36 of 36.** The measurement below is
+ * — see `scripts/claims.mjs`, claim `fresh-slides-group`, re-checked every round.
  * kept because it is why the code exists, not because it describes the host
  * today — see `docs/WHAT-WE-KNOW.md`, checked every round by `scripts/claims.mjs`.
  *
