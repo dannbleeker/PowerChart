@@ -9,4 +9,24 @@
 #
 # `text=auto` so git still keeps binaries out of it; `eol=lf` so the checkout
 # matches what the gate demands rather than what the platform prefers.
+#
+# THE FAILURE IS WORSE THAN THE GATE STEP THAT FOUND IT. Diagnosed on branch
+# `claude/windows-clone-lf-and-cli-override`, 2026-08-21, four days before this
+# file landed and independently of it: Vite's shebang strip matches `#!...\n`
+# only, so `scripts/*.mjs` checked out as `#!/usr/bin/env node\r\n` have the
+# injected CJS import prepended onto the shebang's own line and rolldown stops at
+# ``Invalid Character `!` ``. **23 test files failed to PARSE**, every one naming
+# a script it imports rather than anything it asserts. `format:check` is simply
+# the first step that notices; it is not the extent of the damage.
 * text=auto eol=lf
+
+# Decks and images are bytes. Normalising them corrupts them.
+#
+# `text=auto` above already applies to these — `git check-attr` reports
+# `text: auto` on `examples/showcase.pptx` — so today they are protected by git's
+# binary HEURISTIC rather than by anything anyone wrote down. The heuristic is
+# good and these files are full of NUL bytes, so it holds. It is still a guess
+# standing in for a declaration, on the two artifacts `verify-deck` and
+# `validate-ooxml` run against.
+*.pptx binary
+*.png binary
