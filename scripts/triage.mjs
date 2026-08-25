@@ -3203,6 +3203,61 @@ function reportClaims(pooled) {
 }
 
 /** Print the dormant instruments, loudest first, or say nothing when there are none. */
+/**
+ * What the probe run spends on slides it could not keep.
+ *
+ * `replaced the scratch slide` fires about 78 times a round and nothing has ever
+ * counted it. Each one is a slide ADD on a host where that takes 0.2-4.0s, and
+ * the retry after it usually succeeds — so the sheet shows a `no-scratch-slide`
+ * answer roughly once in ten rounds while the run pays for it eighty times a
+ * round. A cost that only appears in the raw trace is a cost nobody is deciding
+ * about.
+ *
+ * Split by CAUSE, because the two want opposite fixes. `gone` means the host
+ * said `isNullObject: true` and the slide really is deleted; `silent` means it
+ * populated nothing, which is the same unanswered-proxy state the update path
+ * recovers from by re-reading the collection rather than adding anything —
+ * 105 of 105 on this host. `unrecorded` is every round before the cause was
+ * carried out of the catch, and it must not be read as a third behaviour.
+ */
+export function scratchChurn(logs) {
+  const perRound = [];
+  const why = new Map();
+  for (const log of logs ?? []) {
+    let n = 0;
+    for (const e of log?.trace?.entries ?? []) {
+      if (!/^replaced the scratch slide/.test(String(e.message ?? ""))) continue;
+      n++;
+      const k = String(e.data?.why ?? "unrecorded");
+      why.set(k, (why.get(k) ?? 0) + 1);
+    }
+    if (n) perRound.push(n);
+  }
+  perRound.sort((a, b) => a - b);
+  return {
+    rounds: perRound.length,
+    total: perRound.reduce((a, b) => a + b, 0),
+    median: perRound.length ? perRound[Math.floor(perRound.length / 2)] : null,
+    min: perRound[0] ?? null,
+    max: perRound[perRound.length - 1] ?? null,
+    why: [...why.entries()].sort((a, b) => b[1] - a[1]),
+  };
+}
+
+/** Print the scratch-slide churn, which is the run's own cost rather than the host's. */
+function reportScratchChurn(pooled) {
+  const c = scratchChurn(pooled);
+  if (!c.rounds) return;
+  console.log(
+    `\n  WHAT THE PROBE SPENDS ON SLIDES IT COULD NOT KEEP — ${c.total} replacement(s) over ${c.rounds} round(s)`,
+  );
+  console.log(`    per round: min ${c.min}, median ${c.median}, max ${c.max} — every one of them a slide ADD`);
+  for (const [k, n] of c.why) console.log(`      ${String(n).padStart(5)}  ${k}`);
+  console.log("    The retry after a replacement usually succeeds, so the SHEET shows this about once in ten");
+  console.log("    rounds while the run pays for it eighty times a round. `silent` is the same unanswered-proxy");
+  console.log("    state the update path recovers from WITHOUT adding a slide — see the re-read claim.");
+}
+
 /** Print where the sheet's headline answer is a pass-1 answer that pass 1 makes special. */
 function reportPassBias(pooled) {
   const rows = passPositionBias(pooled);
@@ -5236,6 +5291,7 @@ if (invokedDirectly) {
     reportBatchCost(log);
     const failed = reportSelfTest(selftest);
     reportStability(pooled);
+    reportScratchChurn(pooled);
     reportPassBias(pooled);
     reportDormant(pooled);
     reportNoiseFloor(pooled);
@@ -5297,6 +5353,7 @@ if (invokedDirectly) {
     reportBatchCost(log);
     reportSelfTest(selftest);
     reportStability(pooled);
+    reportScratchChurn(pooled);
     reportPassBias(pooled);
     reportDormant(pooled);
     reportNoiseFloor(pooled);

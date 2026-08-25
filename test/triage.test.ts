@@ -4134,3 +4134,59 @@ describe("the sheet reports pass 1, so pass 1 gets checked", () => {
     expect(new Set(rows.map((r: { answer: string }) => r.answer))).toEqual(new Set(["threw", "yes"]));
   });
 });
+
+describe("the probe's own scratch-slide churn", () => {
+  const round = (name: string, whys: string[]) => ({
+    roundName: name,
+    trace: { entries: whys.map((why) => ({ message: "replaced the scratch slide", data: { why } })) },
+  });
+
+  it("counts what only the raw trace has ever held", async () => {
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { scratchChurn } = await import("../scripts/triage.mjs");
+    const c = scratchChurn([round("230-a.json", ["silent", "silent", "gone"]), round("231-a.json", ["silent"])]);
+    expect(c.total).toBe(4);
+    expect(c.rounds).toBe(2);
+    expect(c.why).toEqual([
+      ["silent", 3],
+      ["gone", 1],
+    ]);
+  });
+
+  it("splits the causes, because they want opposite fixes", async () => {
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { scratchChurn } = await import("../scripts/triage.mjs");
+    // `gone` is a slide that really was deleted — something is removing it.
+    // `silent` is a proxy the host would not answer for, which the update path
+    // recovers from by re-reading the collection and adding nothing at all.
+    // Pooling them would hide the only one with a cheap fix.
+    const c = scratchChurn([round("230-a.json", ["gone", "silent"])]);
+    expect(new Map(c.why).get("gone")).toBe(1);
+    expect(new Map(c.why).get("silent")).toBe(1);
+  });
+
+  it("calls the old rounds `unrecorded` rather than inventing a cause", async () => {
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { scratchChurn } = await import("../scripts/triage.mjs");
+    // 16548 replacements were archived before the cause was carried out of the
+    // catch. Defaulting them to `silent` would manufacture 16548 observations of
+    // a thing nobody measured.
+    const c = scratchChurn([
+      { roundName: "1-a.json", trace: { entries: [{ message: "replaced the scratch slide" }] } },
+    ]);
+    expect(c.why).toEqual([["unrecorded", 1]]);
+  });
+
+  it("ignores rounds that never replaced one", async () => {
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { scratchChurn } = await import("../scripts/triage.mjs");
+    // A round with none must not drag the median toward zero — the statistic is
+    // "what it costs when it happens", and it happens in every round on record.
+    const c = scratchChurn([
+      round("230-a.json", ["silent", "silent"]),
+      { roundName: "231-a.json", trace: { entries: [] } },
+    ]);
+    expect(c.rounds).toBe(1);
+    expect(c.median).toBe(2);
+  });
+});

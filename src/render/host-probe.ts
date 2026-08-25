@@ -3263,7 +3263,7 @@ export async function runHostProbes(
         }
         const deadlinesBefore = deadlinesFired;
         trace("probe", "asking", { id: probe.id });
-        let result: { answer: string; detail?: string };
+        let result: { answer: string; detail?: string; why?: "gone" | "silent" };
         // One more attempt at a slide, every question, rather than writing the
         // rest of the sheet off.
         //
@@ -3316,6 +3316,11 @@ export async function runHostProbes(
                 id: probe.id,
                 scratchId: replacement,
                 after: result.answer,
+                // WHICH KIND of unavailable, so the archive can say whether this
+                // is a slide being deleted or a proxy going unanswered. Only the
+                // second is the case the update path already knows how to
+                // recover from without adding a slide at all.
+                why: result.why ?? "unrecorded",
               });
               const retry = await ask(probe, replacement, durableSlideId);
               // Only adopt a retry that actually got somewhere. A second failure
@@ -3833,12 +3838,25 @@ async function ask(
   probe: Probe,
   scratchId: string,
   durableSlideId?: string,
-): Promise<{ answer: string; detail?: string }> {
+): Promise<{ answer: string; detail?: string; why?: "gone" | "silent" }> {
   awaitingSetupShapes = false;
   try {
     return await withProbeContext(scratchId, PROBE_BUDGET_MS, probe.ask, durableSlideId, probe.noSlideNeeded);
   } catch (err) {
-    if (err instanceof ScratchSlideUnavailable) return { answer: "no-scratch-slide", detail: short(err) };
+    // WHY the slide was unavailable, carried out rather than flattened into
+    // prose. The two causes want opposite fixes and the archive cannot tell them
+    // apart today: `gone` means the host answered `isNullObject: true` and the
+    // slide really is deleted, so something is removing it; `silent` means the
+    // host populated nothing, which is the SAME unanswered-proxy state the
+    // update path recovers from by re-reading the collection — 105 of 105 on
+    // this host, per `the-re-read-always-rescues-a-refused-lookup`.
+    //
+    // Worth knowing because it is not rare. The run replaces its scratch slide
+    // about 78 times per round, 1495 of 1548 of them after a `no-scratch-slide`,
+    // and every one costs a slide add on a host where that takes 0.2-4.0s. The
+    // retry then usually succeeds, so the SHEET shows one such answer in ten
+    // rounds and the cost is invisible outside the trace.
+    if (err instanceof ScratchSlideUnavailable) return { answer: "no-scratch-slide", detail: short(err), why: err.why };
     if (err instanceof ProbeSetupFailed) return { answer: "no-scratch-shape", detail: short(err) };
     // A budget that fired while the setup shapes were still out is a setup
     // failure too, and `"silent"` is a comparable answer that would read as a
