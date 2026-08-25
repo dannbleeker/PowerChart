@@ -140,6 +140,16 @@ wrong. Unmarked lines are believed but unchecked, which is a weaker thing.
   buried the n=9 answer in the middle. It was read as "the floor is
   unmeasurable" and a four-hour plan to re-measure it was proposed against a
   figure the archive already held. It now leads with the best available floor.
+- **Every headline probe answer in the archive is a COLD answer.** `record`
+  keeps the first real answer and lets nothing real displace it — deliberately,
+  so a sheet means today what it meant yesterday. Measured 2026-08-25, the cost
+  of that rule is real: `shape-add-positional-slide-proxy` says `yes` 85% of the
+  time on pass 1 and 67% later; `binding-names-shape-later` is `silent` 15% cold
+  and ~0% warm; `shape-add-held-slide-proxy` says `yes` 3% cold and 11% warm.
+  The directions differ — **collection reads are worse cold, positional slide
+  reads are worse warm** — so this is the shape of the HARNESS, not of
+  PowerPoint. `npm run rounds` now prints the shifts. A single archived answer
+  should be read as "what this host said first", not "what this host does".
 - **A renamed trace message is indistinguishable from a fixed fault.** Both read
   as a zero. `a slide's shape count would not settle — not counting it` sat in
   the quiet-instruments list for 140 rounds while the instrument fired every

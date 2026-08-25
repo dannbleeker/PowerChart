@@ -4077,3 +4077,60 @@ describe("the by-id refusal recovery is watched, not assumed", () => {
     expect(claim.check(logs).ok).toBe(null);
   });
 });
+
+describe("the sheet reports pass 1, so pass 1 gets checked", () => {
+  const sheetOf = (samples: { answer: string; pass: number }[]) => ({
+    roundName: "230-a.json",
+    hostAnswers: { answers: [{ id: "q", answer: samples[0].answer, samples }] },
+  });
+  const many = (pass: number, answer: string, n: number) =>
+    Array.from({ length: n }, () => ({ answer, pass, atMs: 0, regime: "healthy", scratch: "first-slide" }));
+
+  it("names a question whose first answer is not like its later ones", async () => {
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { passPositionBias } = await import("../scripts/triage.mjs");
+    // `record` keeps the FIRST real answer, so the sheet's headline is a COLD
+    // answer. If cold differs, every archived answer inherits that — measured
+    // at up to 19 points on 2026-08-25.
+    const rows = passPositionBias([sheetOf([...many(1, "threw", 30), ...many(2, "yes", 30), ...many(3, "yes", 30)])]);
+    const threw = rows.find((r: { answer: string }) => r.answer === "threw");
+    expect(threw.p1).toBe(100);
+    expect(threw.later).toBe(0);
+  });
+
+  it("stays quiet when the passes agree", async () => {
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { passPositionBias } = await import("../scripts/triage.mjs");
+    expect(passPositionBias([sheetOf([...many(1, "yes", 30), ...many(2, "yes", 30)])])).toEqual([]);
+  });
+
+  it("ignores questions the harness could not put", async () => {
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { passPositionBias } = await import("../scripts/triage.mjs");
+    // `no-scratch-slide` is far commoner on later passes for reasons that are
+    // entirely ours — the run spends its scratch slides as it goes. Counting it
+    // would report the harness's own housekeeping as a host effect.
+    const rows = passPositionBias([
+      sheetOf([...many(1, "yes", 30), ...many(2, "yes", 30), ...many(3, "no-scratch-slide", 30)]),
+    ]);
+    expect(rows).toEqual([]);
+  });
+
+  it("says nothing on a sample too thin to mean anything", async () => {
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { passPositionBias } = await import("../scripts/triage.mjs");
+    // The same twenty the rest of this report uses. A 100%-versus-0% split on
+    // three observations is not a shift.
+    expect(passPositionBias([sheetOf([...many(1, "threw", 3), ...many(2, "yes", 3)])])).toEqual([]);
+  });
+
+  it("compares the SAME answer on both sides", async () => {
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { passPositionBias } = await import("../scripts/triage.mjs");
+    // Taking each side's own top answer would compare two different questions
+    // and call the difference a shift.
+    const rows = passPositionBias([sheetOf([...many(1, "threw", 30), ...many(2, "yes", 30), ...many(3, "yes", 30)])]);
+    for (const r of rows) expect(typeof r.answer).toBe("string");
+    expect(new Set(rows.map((r: { answer: string }) => r.answer))).toEqual(new Set(["threw", "yes"]));
+  });
+});

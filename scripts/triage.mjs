@@ -30,6 +30,13 @@ import { readFileSync, readdirSync } from "fs";
 import { checkClaims } from "./claims.mjs";
 import { join } from "path";
 import { readDeck, faultsIn } from "./verify-deck.mjs";
+// THE ONE COPY, imported rather than repeated. `host-probe.ts` and
+// `host-baseline.mjs` are pinned to each other by a test; this file kept a THIRD
+// copy inside a function body, and on 2026-08-25 a new word — `no-named-slide` —
+// was added to the two that are pinned and not to this one. A prediction reading
+// that answer would have judged a question "put and answered" when the harness
+// never asked it.
+import { NEVER_ASKED as NOT_ASKED_ANSWERS } from "./host-baseline.mjs";
 
 /**
  * Verdicts, worst first — the order they are printed and counted in.
@@ -602,7 +609,7 @@ export function poolEveryDraw(logs) {
  * `because` is where the thinking is.
  */
 export function judgePrediction(prediction, log) {
-  const NOT_ASKED = new Set(["no-scratch-slide", "no-scratch-shape", "not-asked"]);
+  const NOT_ASKED = NOT_ASKED_ANSWERS;
   // A THIRD CATEGORY, and keeping it out of NOT_ASKED is the point. A
   // CONDITIONAL probe's question only exists when the host misbehaves in a
   // particular way, and on a round where it behaved there is nothing to
@@ -3196,6 +3203,27 @@ function reportClaims(pooled) {
 }
 
 /** Print the dormant instruments, loudest first, or say nothing when there are none. */
+/** Print where the sheet's headline answer is a pass-1 answer that pass 1 makes special. */
+function reportPassBias(pooled) {
+  const rows = passPositionBias(pooled);
+  if (!rows.length) return;
+  console.log(`\n  THE SHEET REPORTS PASS 1, AND PASS 1 IS NOT LIKE THE OTHERS — ${rows.length} answer(s) shifted`);
+  // One line per QUESTION, taking its largest shift: both halves of a two-answer
+  // split appear in the rows and printing both says the same thing twice.
+  const seen = new Set();
+  for (const r of rows) {
+    if (seen.has(r.id)) continue;
+    seen.add(r.id);
+    console.log(
+      `    ${r.id.slice(0, 36).padEnd(38)}${r.answer.slice(0, 16).padEnd(17)}pass 1 ${r.p1.toFixed(0)}%  later ${r.later.toFixed(0)}%   n=${r.n1}/${r.n2}`,
+    );
+  }
+  console.log("    `record` keeps the FIRST real answer, on purpose — so a sheet means today what it meant");
+  console.log("    yesterday. The cost is that every headline answer is a COLD one, and cold is measurably");
+  console.log("    different: collection reads are worse cold, positional slide reads are worse warm.");
+  console.log("    This is the shape of the HARNESS, not of PowerPoint. Read a single answer accordingly.");
+}
+
 function reportDormant(pooled) {
   const rows = dormantInstruments(pooled);
   if (!rows.length) return;
@@ -3613,6 +3641,65 @@ export function dormancyCause(message, source) {
   if (source.includes(message)) return "stopped";
   const head = message.slice(0, RENAME_PREFIX);
   return head.length >= RENAME_PREFIX && source.includes(head) ? "renamed" : "removed";
+}
+
+/**
+ * How far apart a question's first answer is from its later ones.
+ *
+ * THE SHEET REPORTS THE PASS-1 ANSWER. `record` keeps the first REAL answer and
+ * lets nothing real displace it — deliberately, so a sheet means today what it
+ * meant yesterday. The cost of that rule was never measured: if pass 1 is not
+ * like passes 2 and 3, then every headline answer in the archive is a pass-1
+ * answer and inherits whatever makes pass 1 special.
+ *
+ * It is not like them. Measured 2026-08-25 over the whole archive:
+ *
+ *     shape-add-positional-slide-proxy    yes 85% on pass 1, 67% later
+ *     binding-names-shape-later           silent 15% on pass 1, ~0% later
+ *     does-a-failed-group-poison-the-tag  tags-gone 12% on pass 1, 4% later
+ *     shapes-items-via-positional-slide   short-0 9% on pass 1, 3% later
+ *
+ * The directions differ, which is why this reports a delta rather than a
+ * verdict: the collection reads are WORSE cold and the positional slide reads
+ * are worse warm. Both are facts about the harness's own shape, not about
+ * PowerPoint, and neither can be read off a sheet that shows one answer.
+ *
+ * Never-asked answers are excluded — a question that could not be put says
+ * nothing about pass position, and `no-scratch-slide` is far commoner on later
+ * passes for reasons that are entirely ours.
+ */
+export function passPositionBias(logs, minN = MIN_RATE_N, minDelta = 5) {
+  const per = new Map();
+  for (const log of logs ?? []) {
+    for (const row of log?.hostAnswers?.answers ?? []) {
+      for (const s of row.samples ?? []) {
+        if (NOT_ASKED_ANSWERS.has(s.answer)) continue;
+        if (!per.has(row.id)) per.set(row.id, { p1: new Map(), later: new Map() });
+        const side = per.get(row.id)[s.pass <= 1 ? "p1" : "later"];
+        side.set(s.answer, (side.get(s.answer) ?? 0) + 1);
+      }
+    }
+  }
+  const share = (c, answer) => {
+    const n = [...c.values()].reduce((a, b) => a + b, 0);
+    return n ? { pct: (100 * (c.get(answer) ?? 0)) / n, n } : null;
+  };
+  const rows = [];
+  for (const [id, { p1, later }] of per) {
+    // Compared on the SAME answer, which is what makes the two percentages
+    // commensurable. Taking each side's own top answer would compare different
+    // questions and call it a difference.
+    const answers = new Set([...p1.keys(), ...later.keys()]);
+    for (const answer of answers) {
+      const a = share(p1, answer);
+      const b = share(later, answer);
+      if (!a || !b || a.n < minN || b.n < minN) continue;
+      const delta = a.pct - b.pct;
+      if (Math.abs(delta) < minDelta) continue;
+      rows.push({ id, answer, p1: a.pct, later: b.pct, delta, n1: a.n, n2: b.n });
+    }
+  }
+  return rows.sort((x, y) => Math.abs(y.delta) - Math.abs(x.delta));
 }
 
 export function dormantInstruments(logs, minGap = 40, source = undefined) {
@@ -5149,6 +5236,7 @@ if (invokedDirectly) {
     reportBatchCost(log);
     const failed = reportSelfTest(selftest);
     reportStability(pooled);
+    reportPassBias(pooled);
     reportDormant(pooled);
     reportNoiseFloor(pooled);
     reportClaims(pooled);
@@ -5209,6 +5297,7 @@ if (invokedDirectly) {
     reportBatchCost(log);
     reportSelfTest(selftest);
     reportStability(pooled);
+    reportPassBias(pooled);
     reportDormant(pooled);
     reportNoiseFloor(pooled);
     reportClaims(pooled);
