@@ -32,6 +32,7 @@
  */
 import {
   addScratchSlide,
+  scratchSlideIdByPosition,
   deadlinesFired,
   deckSlideIds,
   deleteTrailingSlides,
@@ -3057,8 +3058,16 @@ export async function runHostProbes(
    */
   let scratchGeneration = 0;
   let scratchUsed = false;
-  const takeScratch = (id: string | null): string | null => {
-    if (id) {
+  const takeScratch = (id: string | null, { sameSlide = false } = {}): string | null => {
+    // `sameSlide` is the re-acquire: the deck listing handed back the id the
+    // scratch slide is CURRENTLY listed under, and it is the slide this run has
+    // been using all along. Bumping the generation there would report the next
+    // sample as `fresh-slide` on a slide that is nothing of the kind, and
+    // `scratch` is one of the few columns a reader uses to tell "the host
+    // refused a new slide" from "the host refused a slide it has had for a
+    // while". Everything else about the bookkeeping is unchanged, which is why
+    // this still goes through here rather than around it.
+    if (id && !sameSlide) {
       scratchGeneration++;
       scratchUsed = false;
     }
@@ -3307,6 +3316,50 @@ export async function runHostProbes(
           // shape. The second is a weaker reason to suspect the slide, but the
           // cost is one add and one question, and the alternative is a sheet
           // that gives up on eight questions because one slide went bad.
+          if (NOT_ASKED.has(result.answer)) {
+            // ASK THE DECK BEFORE BUYING A SLIDE, when the held id is what went
+            // bad. See `scratchSlideIdByPosition`: the id this run holds stops
+            // resolving while the slide is still in the deck, and round 253
+            // measured the bill — 61 of 64 replacements were `gone`, and the
+            // clean-up swept 107 slides out of a deck that started with one,
+            // recovering none of them by id.
+            //
+            // ONLY on `gone`. A `no-scratch-shape` means the slide resolved
+            // perfectly well and refused a shape, so re-acquiring the same slide
+            // asks the same question of the same slide and learns nothing.
+            if (result.why !== "gone") {
+              // SAID OUT LOUD, because the alternative is an untestable
+              // optimisation. Skipping the listing here is the whole value of
+              // gating on the cause — a round refuses shape adds often, and
+              // spending a deck listing on each would trade one cheap call for
+              // another. Without this line nothing distinguishes "we decided not
+              // to look" from "we looked and the id was the same".
+              trace("probe", "did not re-acquire — the slide resolved and the shape is what failed", {
+                id: probe.id,
+                answer: result.answer,
+              });
+            } else if (typeof deckAtStart === "number") {
+              const settled = await scratchSlideIdByPosition(deckAtStart);
+              if (settled && settled !== scratchId) {
+                const onSettled = await ask(probe, settled, durableSlideId);
+                trace("probe", "re-acquired the scratch slide by position instead of adding one", {
+                  id: probe.id,
+                  was: scratchId,
+                  now: settled,
+                  answer: onSettled.answer,
+                  worked: !NOT_ASKED.has(onSettled.answer),
+                });
+                if (!NOT_ASKED.has(onSettled.answer)) {
+                  // Recorded under the id the deck actually lists, which is also
+                  // the id the clean-up would need to delete it by.
+                  noteScratch(settled);
+                  scratchId = takeScratch(settled, { sameSlide: true });
+                  result = onSettled;
+                }
+              }
+            }
+          }
+          // Re-checked, because the re-acquire above may have answered it.
           if (NOT_ASKED.has(result.answer)) {
             const replacement = await addScratchSlide(SCRATCH_ADD_BUDGET_MS, noteScratch, noteUnnamed);
             if (replacement) {

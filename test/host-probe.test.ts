@@ -2638,3 +2638,107 @@ describe("writing the same tag key twice", () => {
     expect(row.detail).not.toContain("should be impossible");
   });
 });
+
+/**
+ * A held scratch id that stops naming the slide it named.
+ *
+ * Round 253 measured the bill: 61 of 64 scratch replacements happened because
+ * `getItemOrNullObject(<held id>)` answered `isNullObject: true` while the slide
+ * sat in the deck, and the clean-up swept 107 slides out of a deck of one
+ * because delete-by-id recovered none. The run held `4123571114#123571113`; the
+ * deck listed `256#2587447327`.
+ */
+describe("re-acquiring the scratch slide instead of buying another", () => {
+  afterEach(() => {
+    faults.newSlideIdSettlesAfter = null;
+  });
+
+  it("asks the deck for the settled id before adding a slide", async () => {
+    installHost([makeSlide("s1")]);
+    // TWO, not one. At one the id settles inside `addScratchSlide`'s own
+    // verification, so the slide never becomes usable and the run never reaches
+    // the state under test — the add fails instead. Two lets the add succeed and
+    // the NEXT lookup meet a stale id, which is the sequence a round sees.
+    faults.newSlideIdSettlesAfter = 2;
+    setTracing(true);
+    try {
+      await runHostProbes("fake", "test", { only: ["load-id-populates-isnullobject"], passes: 1 });
+      const reacquired = traceLog().entries.filter((e) =>
+        /re-acquired the scratch slide by position instead of adding one/.test(e.message),
+      );
+      expect(reacquired.length, "a stale held id must be re-acquired, not replaced").toBeGreaterThan(0);
+      // AND IT HAS TO WORK. A re-acquire that answers nothing is a listing spent
+      // for no reason, and the add still happens behind it.
+      expect(reacquired.some((e) => (e.data as { worked?: boolean }).worked)).toBe(true);
+    } finally {
+      setTracing(false);
+    }
+  });
+
+  it("buys no slide when the re-acquire answers", async () => {
+    installHost([makeSlide("s1")]);
+    faults.newSlideIdSettlesAfter = 2;
+    setTracing(true);
+    try {
+      await runHostProbes("fake", "test", { only: ["load-id-populates-isnullobject"], passes: 1 });
+      // The POINT of the whole change. Deck size proves nothing here — the sweep
+      // gives the slides back either way — so what has to be asserted is that no
+      // replacement was bought at all.
+      const replaced = traceLog().entries.filter((e) => /^replaced the scratch slide/.test(e.message));
+      expect(replaced, "a re-acquire that works must not be followed by an add").toHaveLength(0);
+    } finally {
+      setTracing(false);
+    }
+  });
+});
+
+describe("what the re-acquire must NOT do", () => {
+  afterEach(() => {
+    faults.newSlideIdSettlesAfter = null;
+    faults.refuseShapeAdds = false;
+    setTracing(false);
+  });
+
+  it("does not re-acquire when the slide was fine and the SHAPE failed", async () => {
+    installHost([makeSlide("s1")]);
+    // `no-scratch-shape` means the slide resolved perfectly well and then
+    // refused a shape. Re-acquiring asks the same question of the same slide and
+    // learns nothing — it just spends a deck listing on every refused add.
+    faults.refuseShapeAdds = true;
+    setTracing(true);
+    const sheet = await runHostProbes("fake", "test", { only: ["tags-on-fresh-shape"], passes: 1 });
+    const row = sheet.answers.find((r) => r.id === "tags-on-fresh-shape")!;
+    expect(row.answer, "the fixture needs a shape refusal, not a slide one").toBe("no-scratch-shape");
+    expect(traceLog().entries.filter((e) => /re-acquired the scratch slide/.test(e.message))).toHaveLength(0);
+    // And it SAID it decided not to, which is what separates "we chose not to
+    // look" from "we looked and the id had not moved". The saving is a deck
+    // listing per refused shape add, and without this line it is untestable.
+    expect(
+      traceLog().entries.some((e) =>
+        /did not re-acquire — the slide resolved and the shape is what failed/.test(e.message),
+      ),
+    ).toBe(true);
+  });
+
+  it("does not adopt a re-acquire that answered nothing", async () => {
+    installHost([makeSlide("s1")]);
+    // The id settles AND the shape adds are refused, so the re-acquired slide
+    // resolves and the question still cannot be put. Adopting that would record
+    // a never-asked as the question's answer and leave `scratchId` pointing at a
+    // slide the run never proved it could use.
+    faults.newSlideIdSettlesAfter = 2;
+    faults.refuseShapeAdds = true;
+    setTracing(true);
+    await runHostProbes("fake", "test", { only: ["tags-on-fresh-shape"], passes: 1 });
+    const tried = traceLog().entries.filter((e) => /re-acquired the scratch slide/.test(e.message));
+    expect(tried.length, "the fixture needs the re-acquire to actually be attempted").toBeGreaterThan(0);
+    expect((tried[0].data as { worked?: boolean }).worked, "the shape refusal must defeat it").toBe(false);
+    const replaced = traceLog().entries.filter((e) => /^replaced the scratch slide/.test(e.message));
+    expect(replaced.length, "a failed re-acquire must still be followed by the add").toBeGreaterThan(0);
+    // THE DISCRIMINATOR. If a failed re-acquire were adopted, `result` would
+    // become its `no-scratch-shape` and the replacement would be recorded as
+    // following a SHAPE failure — losing the fact that the slide is what went
+    // wrong, which is the only thing that would have explained the round.
+    expect((replaced[0].data as { after?: string }).after).toBe("no-scratch-slide");
+  });
+});

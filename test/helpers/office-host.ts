@@ -352,6 +352,8 @@ export const faults = {
    * gate models a HOST read, not the bookkeeping a test does afterwards.
    */
   strictShapeReads: false,
+  /** See `settleAddedSlideId`. Null is off; N settles the id after N lookups. */
+  newSlideIdSettlesAfter: null as number | null,
   /**
    * A shape resolves by id and then will not say what its id is.
    *
@@ -2089,6 +2091,45 @@ export function installHost(
    * slides are durable on every host anyone has met, and it is the freshly
    * made ones a real host lost.
    */
+  /**
+   * An added slide's id SETTLES to a different one after it has been used.
+   *
+   * The fake could not be this host on the point that costs the most. Round 253
+   * measured a probe run holding `4123571114#123571113` while the deck listed
+   * the same slide as `256#2587447327` — not a renumbered neighbour, a
+   * different id space — so `getItemOrNullObject(<held id>)` answers
+   * `isNullObject: true` while the slide sits in the deck. That is 61 of 64
+   * scratch replacements in a round, and a clean-up that swept 107 slides out of
+   * a deck of one because delete-by-id recovered none of them.
+   *
+   * `renumbersOnAdd` is the neighbouring fault and models the OTHER half — an
+   * existing slide renumbered when a new one appends. Neither could produce a
+   * held id going stale on the slide it names, which is the state the positional
+   * re-acquire exists for.
+   *
+   * Counted in resolutions rather than time so a test can be exact: the id works
+   * for the first N by-id lookups and is a different id afterwards.
+   */
+  const settleAddedSlideId = (id: string): void => {
+    if (faults.newSlideIdSettlesAfter === null) return;
+    if (!addedSlideIds.has(id)) return;
+    const used = addedSlideSettleLookups.get(id) ?? 0;
+    addedSlideSettleLookups.set(id, used + 1);
+    if (used + 1 < faults.newSlideIdSettlesAfter) return;
+    const slide = slides.find((sl) => sl.id === id);
+    if (!slide || settledSlideIds.has(id)) return;
+    settledSlideIds.add(id);
+    // A DIFFERENT SPACE, not an adjacent number, because that is what the host
+    // does and a near-miss id would let a buggy caller succeed by accident.
+    slide.id = `settled-${settleSeq++}`;
+    addedSlideIds.add(slide.id);
+    addedSlideOrder.set(slide.id, addedSlideOrder.get(id) ?? 0);
+  };
+
+  const addedSlideSettleLookups = new Map<string, number>();
+  const settledSlideIds = new Set<string>();
+  let settleSeq = 1;
+
   const newSlideLeaseSpent = (id: string): boolean => {
     if (!addedSlideIds.has(id)) return false;
     // The window: the first N added slides are refused outright, whatever their
@@ -2168,6 +2209,10 @@ export function installHost(
         // mistake ship — every caller here happens to load first today, and
         // this is what keeps that true.
         getItemOrNullObject: (id: string) => {
+          // Settle FIRST, so the lookup that spends the last use is the one that
+          // still works and the next one meets the new id. A caller that never
+          // looks a slide up never sees it settle, which is the host's own shape.
+          settleAddedSlideId(id);
           const found = slides.find((s) => s.id === id);
           const live = found && !newSlideLeaseSpent(id) ? found : undefined;
           // A freshly-added slide's by-id handle is single-sync when the fault

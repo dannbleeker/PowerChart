@@ -7582,6 +7582,38 @@ async function slideSizeFromDocumentFile(): Promise<{ width: number; height: num
  * Measured, the choice is easy: successful adds in that run ran 0.21s to 4.0s
  * and failures took the full ninety, so the two are nowhere near each other.
  */
+/**
+ * The scratch slide's id as the deck lists it NOW, without adding anything.
+ *
+ * The id `addScratchSlide` hands back is real when it is captured and stops
+ * resolving later. Round 253 measured what that costs: 61 of 64 scratch
+ * replacements happened because `getItemOrNullObject(<held id>)` answered
+ * `isNullObject: true`, and the clean-up then found 107 slides in a deck that
+ * started with one — `returned: 0, swept: 107`, every one of them removed by
+ * POSITION because delete-by-id recovered none.
+ *
+ * The two id lists in that trace are not near-misses, they are different
+ * spaces: the run held `4123571114#123571113` while the deck listed
+ * `256#2587447327`. So the slide is there and the host is not lying when it
+ * says the held id names nothing.
+ *
+ * `slides.add()` APPENDS — the same fact the sweep already relies on — and the
+ * probe is the only thing in a round that adds slides, so the last slide in the
+ * deck IS the scratch slide. Reading its id back costs one listing where the
+ * alternative costs a slide add on a host that takes 0.2-4.0s to do one, and
+ * leaves another slide behind for the sweep.
+ *
+ * Returns undefined when the deck will not list, or when it holds nothing the
+ * run could have added — a deck of one slide has no scratch slide in it, and
+ * claiming the user's own slide as scratch is the one mistake worth more than
+ * every add this saves.
+ */
+export async function scratchSlideIdByPosition(deckAtStart: number): Promise<string | undefined> {
+  const ids = await slideIds();
+  if (!ids || ids.length <= Math.max(0, deckAtStart)) return undefined;
+  return ids[ids.length - 1];
+}
+
 export async function addScratchSlide(
   budgetMs?: number,
   /**
