@@ -3668,6 +3668,30 @@ describe("claims the archive can contradict", () => {
     expect(stale.actual).toContain("1.00x");
   });
 
+  it("refuses a ratio whose middle halves overlap", async () => {
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { CLAIMS } = await import("../scripts/claims.mjs");
+    const claim = CLAIMS.find((c: { id: string }) => c.id === "first-chart-costs-more");
+    // A 2x ratio of medians sitting on top of a distribution that overlaps it
+    // completely. The measured noise floor between two rounds of the SAME build
+    // is IQR 14% and RANGE 73%, so a difference this smeared is not a difference
+    // — and until now the check would have called it a fact because the medians
+    // divided nicely.
+    const smeared = [1, 2, 3].map((n) =>
+      roundWith(`23${n}-a.json`, [
+        update("1/8", 40000),
+        update("2/8", 4000),
+        update("3/8", 4000),
+        update("4/8", 60000),
+        update("5/8", 60000),
+        update("6/8", 4000),
+      ]),
+    );
+    const r = claim.check([...smeared, ...smeared]);
+    expect(r.ok, "a smeared difference must not read as a fact").toBe(false);
+    expect(r.actual).toContain("OVERLAP");
+  });
+
   it("answers ? rather than guessing when the sample is too small", async () => {
     // @ts-expect-error - plain .mjs tool, no types.
     const { CLAIMS } = await import("../scripts/claims.mjs");
@@ -3951,5 +3975,52 @@ describe("the noise floor section leads with the answer", () => {
     const said = await say([round("thin1", 226, 20000), round("thin2", 228, 20000)]);
     expect(said.some((l) => /NO BUILD HAS/.test(l))).toBe(true);
     expect(said.some((l) => /BEST AVAILABLE/.test(l))).toBe(false);
+  });
+});
+
+describe("the tag sync's non-difference is checked too", () => {
+  const roundWith = (name: string, entries: unknown[]) => ({ roundName: name, trace: { entries } });
+  const upd = (chart: string, syncMs: number[]) => ({
+    message: "updated only the shapes that changed",
+    data: { chart, changed: 18, of: 24, ms: syncMs.reduce((a, b) => a + b, 0), syncMs },
+  });
+
+  it("goes stale when the tag sync starts paying a premium of its own", async () => {
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { CLAIMS } = await import("../scripts/claims.mjs");
+    const claim = CLAIMS.find((c: { id: string }) => c.id === "tag-sync-is-not-the-writes");
+    // Writes still 2x, and the tag ratio is only 1.4 — under the 1.5 the check
+    // used to test alone. But the tag quartiles are now CLEAR of each other, so
+    // the tag sync is consistently dearer for the first chart.
+    //
+    // That matters more than its size: "the tag sync does not pay the 2.2x" is
+    // the sentence that located the cost in the writes. A small but consistent
+    // premium moves that conclusion, and a ratio under 1.5 would not notice.
+    const rounds = [1, 2, 3, 4, 5, 6].map((n) =>
+      roundWith(`23${n}-a.json`, [
+        upd("1/8", [20000, 20000, 20000, 140]),
+        ...[2, 3, 4, 5, 6].map((i) => upd(`${i}/8`, [9000, 9000, 9000, 100])),
+      ]),
+    );
+    const r = claim.check(rounds);
+    expect(r.actual).toContain("QUARTILES CLEAR");
+    expect(r.ok, "a tag sync that separates must not read as ok").toBe(false);
+  });
+
+  it("holds while the tag quartiles still overlap", async () => {
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { CLAIMS } = await import("../scripts/claims.mjs");
+    const claim = CLAIMS.find((c: { id: string }) => c.id === "tag-sync-is-not-the-writes");
+    // The world as measured: writes separate cleanly, the tag sync's spread
+    // straddles both, so its cost is the same whichever chart it belongs to.
+    const rounds = [1, 2, 3, 4, 5, 6].map((n) =>
+      roundWith(`23${n}-a.json`, [
+        upd("1/8", [20000, 20000, 20000, [70, 110, 150][n % 3]]),
+        ...[2, 3, 4, 5, 6].map((i) => upd(`${i}/8`, [9000, 9000, 9000, [60, 120, 160][i % 3]])),
+      ]),
+    );
+    const r = claim.check(rounds);
+    expect(r.actual).toContain("quartiles overlap");
+    expect(r.ok).toBe(true);
   });
 });

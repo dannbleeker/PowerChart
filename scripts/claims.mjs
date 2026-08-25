@@ -42,6 +42,27 @@ function updateRows(logs) {
 
 const median = (a) => (a.length ? [...a].sort((x, y) => x - y)[Math.floor(a.length / 2)] : null);
 
+/** q1 and q3 — the middle half, which is what a spread claim actually rests on. */
+const quartiles = (a) => {
+  const s = [...a].sort((x, y) => x - y);
+  return { q1: s[Math.floor(s.length * 0.25)], q3: s[Math.floor(s.length * 0.75)] };
+};
+
+/**
+ * Do two samples' middle halves stay clear of each other?
+ *
+ * THE BAR A DIFFERENCE HAS TO CLEAR HERE, and the reason is measured: the noise
+ * floor between two rounds of the same build is IQR 14% and RANGE 73% (build
+ * `eba1c4d`, nine first-of-session rounds). A ratio of medians can look decisive
+ * while the distributions sit on top of each other, and two claims died on their
+ * error bars on 2026-08-25 for exactly that.
+ *
+ * Ranges are deliberately NOT used: the range only ever grows with n, so a claim
+ * tested on non-overlapping ranges gets harder to hold as evidence accumulates,
+ * which is backwards. The archive's own note says the same thing about the floor.
+ */
+const middleHalvesClear = (hi, lo) => quartiles(hi).q1 > quartiles(lo).q3;
+
 /** The last N rounds, so a claim about "now" is not answered by 2026-08-12. */
 function recent(logs, n = 20) {
   return (logs ?? []).slice(-n);
@@ -84,14 +105,28 @@ export const CLAIMS = [
   {
     id: "first-chart-costs-more",
     says: "The first chart of a multi-chart update costs about twice a later chart of the same size.",
-    measured: "2026-08-24, n=14 first against n=70 later, no overlap in range",
+    measured:
+      "2026-08-25, n=20 first against n=100 later — middle halves clear, q1 37137ms against q3 27456ms. The spread is now CHECKED, not just asserted here.",
     check(logs) {
       const rows = updateRows(logs).filter((r) => r.changed === 18 && r.of === 24 && r.n > 1);
       const first = rows.filter((r) => r.i === 1).map((r) => r.ms);
       const later = rows.filter((r) => r.i > 1).map((r) => r.ms);
       if (first.length < 5 || later.length < 5) return { ok: null, actual: `n=${first.length}/${later.length}` };
       const ratio = median(first) / median(later);
-      return { ok: ratio >= 1.8, actual: `${ratio.toFixed(2)}x (${median(first)}ms vs ${median(later)}ms)` };
+      // THE SPREAD, not just the ratio. This line said "no overlap in range" for
+      // months while the check tested only the ratio of medians — so the claim
+      // asserted something nobody was verifying, which is the defect the whole
+      // file exists to end. It holds comfortably: q1 37137 against q3 27456 at
+      // n=20/100 on 2026-08-25.
+      const clear = middleHalvesClear(first, later);
+      const { q1 } = quartiles(first);
+      const { q3 } = quartiles(later);
+      return {
+        ok: ratio >= 1.8 && clear,
+        actual: `${ratio.toFixed(2)}x (${median(first)}ms vs ${median(later)}ms) · middle halves ${
+          clear ? "clear" : `OVERLAP (${q1} vs ${q3})`
+        }`,
+      };
     },
   },
   {
@@ -163,11 +198,29 @@ export const CLAIMS = [
         }
       }
       if (first.length < 5 || later.length < 5) return { ok: null, actual: `n=${first.length}/${later.length}` };
-      const at = (rows, k) => median(rows.map((r) => r[k]));
+      const col = (rows, k) => rows.map((r) => r[k]);
+      const at = (rows, k) => median(col(rows, k));
       const writes = [0, 1, 2].map((k) => at(first, k) / at(later, k));
       const tag = at(first, 3) / at(later, 3);
-      const ok = writes.every((w) => w >= 1.8) && tag < 1.5;
-      return { ok, actual: `writes ${writes.map((w) => w.toFixed(2)).join("/")}x · tag ${tag.toFixed(2)}x` };
+      // BOTH HALVES TESTED, because this claim asserts a difference AND a
+      // non-difference. `measured` has said "write quartiles do not overlap; the
+      // tag quartiles do" since it was written, and the check verified neither —
+      // it compared medians, which is the statistic that can least tell those
+      // two situations apart.
+      //
+      // The negative half matters more than it looks. "The tag sync does not pay
+      // the 2.2x" is the sentence that located the cost in the writes; if the
+      // tag quartiles ever separate, that conclusion moves, and a ratio under
+      // 1.5 would not notice.
+      const writesClear = [0, 1, 2].every((k) => middleHalvesClear(col(first, k), col(later, k)));
+      const tagClear = middleHalvesClear(col(first, 3), col(later, 3));
+      const ok = writes.every((w) => w >= 1.8) && writesClear && tag < 1.5 && !tagClear;
+      return {
+        ok,
+        actual: `writes ${writes.map((w) => w.toFixed(2)).join("/")}x (${
+          writesClear ? "quartiles clear" : "QUARTILES OVERLAP"
+        }) · tag ${tag.toFixed(2)}x (${tagClear ? "QUARTILES CLEAR" : "quartiles overlap"})`,
+      };
     },
   },
   {
