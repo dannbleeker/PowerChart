@@ -6893,6 +6893,104 @@ question was an artifact of a self-test deck that piles three charts onto its
 visible slide. The thread closes as **explained, not fixed** — and what closes it
 is a control arm moved by one slide.
 
+### CORRECTION, same day: it is an interaction, and "load" alone is as wrong as "position"
+
+The paragraph above replaced *"position is the cause"* with *"the slide is the
+cause"*, and `triage.mjs` was edited to say so. Both are wrong, and the evidence
+against the second was sitting in a comment beside the code being edited.
+
+Round 200 put charts 1, 2 and 3 **all on crowded slide 257**. Chart 1 came in at
+**+19631** above fit; charts 2 and 3 at **+2768 and +3207**. Same slide, same
+load, later position — and the cost collapses.
+
+                     crowded slide        uncrowded slide
+    first of run     +19631  (dear)       ~0   (round 215: 15235ms)
+    later in run     ~+3000  (cheap)      ~0
+
+**Only first-position-on-a-loaded-slide is expensive.** Neither factor alone
+reproduces it: a later chart on the same crowded slide is cheap, and a first
+chart on a clear slide is cheap. It is an interaction.
+
+Three single-cause claims have now been printed as conclusions here — position,
+then load — and the trap each time was the same: a control that varied ONE factor
+while the other sat at a value that happened to matter. Round 215 varied the
+slide and held position at 1; round 200 varied position and held the slide
+crowded. Each looked decisive alone. Only the two together say anything.
+
+### AND THE INTERACTION CLAIM DIED TOO, an hour later, on the proxy underneath it
+
+Splitting every 18-of-24 update by position and load produced this:
+
+    first / clear    n=  3   median 48330   ← should be CHEAP under the interaction
+    first / loaded   n= 27   median 38552
+    later / clear    n=111   median 18628
+
+A first chart on a "clear" slide came out dearer than one on a loaded slide,
+which the interaction reading forbids. Then the three rows in that bucket turned
+out to be **slide 257 — the crowded one — reading load 16, 26 and 10.**
+
+`priorDrawsOnSlide` counts what THIS RUN's batches happened to record. The same
+slide reads 42 in one round and 10 in another, and **18 of 50 first-position
+charts have no reading at all.** It is not an occupancy measure. It never was:
+this file renamed it from `slideOccupancy` for exactly that reason, and the
+comment explaining the rename is four hundred lines up.
+
+**Then I used it as occupancy. Twice.** Once to conclude load was the cause, once
+to conclude it was an interaction. Both rest on a number that reports one slide
+as 10 and as 42.
+
+### What is actually known
+
+- The lone arm cost **15235ms on slide 262** and **35033/39570ms on slide 257**.
+  Direct observations, 2.3x apart, no proxy involved.
+- The two slides differ. **Why** they differ — occupancy, or something else about
+  257 — is NOT established, because nothing in a round measures a slide's
+  occupancy.
+- Round 200's charts 1/2/3 on one slide, +19631 against +2768/+3207, remains a
+  real position effect with the slide held constant.
+
+Both facts stand. The bridge between them does not, and the missing piece is
+**what a slide actually holds when an update starts.**
+
+### That measurement DOES exist — and its coverage is the problem, not its absence
+
+Written above as "a measurement nobody has". Wrong again, in the same hour:
+`countSlideShapesOnce` reads a real per-slide shape count from the host, and the
+orphan check writes it into every round as `before` on `shapes left on the slide
+after an in-place update`. Its values across the archive run 1, 3, 5, 12, 24, 47
+— a genuine reading, not a proxy.
+
+Joining it to the 18-of-24 updates:
+
+    18-of-24 updates: 200 · joined to a host occupancy reading: 53
+      first / 1-2    n=  1   median 37527
+      later / 1-2    n= 52   median 18810
+
+**Every joined reading lands in the 1-2 bucket.** The orphan check runs on slides
+holding a single grouped chart, which is exactly where occupancy is lowest and
+least interesting. The crowded slide is never read at the moment its first chart
+updates, so the loaded arm has no samples at all and the first-position arm has
+one.
+
+So the honest specification, finally precise enough to build:
+
+> An occupancy reading taken on the FIRST CHART'S SLIDE, immediately before its
+> update. One `getCount()` in a sync that already exists. The reader already
+> exists too — it is `countSlideShapesOnce`, and it simply is not called there.
+
+That is a small change to a hot path, which is why it is written down rather than
+made at hour five of a frozen-HEAD block. But it is no longer "we cannot measure
+this" — it is "we measure it in the one place it does not matter".
+
+Note also that groups count as ONE shape to the host, so even this reading
+under-represents what a slide holds. Whether the cost tracks top-level shapes or
+underlying ones is a second open question, and the same instrument would answer
+it.
+
+Fifteenth instance today, and the only one that is purely self-inflicted: the
+flaw was found, the function was renamed to record the flaw, and the flaw was
+then relied on anyway. Renaming a thing is not the same as remembering it.
+
 
 ## Rounds get slower the longer you run them, and no round records when it ran
 
@@ -7172,6 +7270,227 @@ The dormancy report now prints this class automatically, so the next instrument
 built for a dead population should announce itself before anyone waits on it.
 
 
+## Every crash announced itself a minute in advance, in a field already archived
+
+The three crash dumps from the 2026-08-24 block had never been opened. They carry
+400+ steps each, and all three say the same thing.
+
+    crash        chart 1/8    chart 2/8    died at
+    06:12:20      64928ms      18542ms     chart 3/8
+    07:17:15      60572ms      20085ms     chart 2/8
+    08:26:07      65961ms      23239ms     chart 2/8
+    healthy      36189-43837   ~11500      —
+
+**All three died inside `same scale across the deck`, at chart 2 or 3.** Not
+spread across the battery — the same scenario, the same few seconds into it,
+three times.
+
+And every one was already failing when it got there. The first chart of that run
+cost 60-66 seconds against a healthy range of 36-44 across fourteen samples:
+**no overlap.** The crash follows about a minute later, at the second or third
+chart.
+
+### What this joins together
+
+The session drift and the crashes are not two findings. `laterMed` doubling over
+a session is the same curve, and the crash is its end: the host slows, keeps
+slowing, and dies in the heaviest scenario in the battery. The block reported
+them separately because the round files showed the slowdown and only the
+unopened dumps showed the crash.
+
+### The early warning is already in every round
+
+Chart 1/8's `ms` is written to the trace the moment it finishes, roughly a minute
+before the host gives up. A run that sees it above ~45s — clear of every healthy
+sample on record — is a run that is going to lose the rescale.
+
+Not built into the driver here, and not because it is hard: three observations
+is a lead, the threshold is drawn from fourteen healthy samples and three sick
+ones, and a driver that aborts on a number this new would start throwing away
+rounds that would have finished. It is written down so the next crash can be
+checked against it rather than being the fourth one nobody compared.
+
+**What would settle it:** the next crash dump, read the same way. If its chart
+1/8 is also above 45s, that is four for four and the threshold is worth acting
+on. If it crashes from a healthy first chart, the signal is gone and this entry
+is why.
+
+### It was settled within the hour, against me
+
+Round 232, archived about forty minutes after the paragraph above was written:
+**chart 1/8 at 53138ms, and no crash.** No dump, no skipped scenario, the round
+finished normally.
+
+So a first chart above 45s does NOT predict a crash. The threshold was drawn
+from three sick samples at 60-66s and fourteen healthy ones at 36-44s, and the
+gap between those clusters is exactly where the line got put — with nothing in
+it. 232 landed in that gap and survived.
+
+The available move is to redraw the line at 60s, above 232 and below the
+crashes. That is fitting a threshold to four observations by moving it past the
+one that refutes it, and it is not worth having. **What survives is weaker and
+true: all three crashes were preceded by a badly elevated first chart, and an
+elevated first chart on its own means very little.** Necessary, not sufficient,
+on n=4.
+
+Written before the refutation and left standing with it, because the prediction
+being wrong is the useful part — and because a threshold quietly moved to fit is
+how a number becomes doctrine without ever being tested.
+
+
+## The host is unversioned — but the probes are a fingerprint, and it has not moved
+
+`host` reads `PowerPoint · OfficeOnline · 0.0.0.0` in **all 207 rounds**: one
+distinct value, no version. So the standing caveat — *"a host-side change cannot
+be ruled in OR out from this archive"* — has been true of the only field that
+could have settled it.
+
+That is a bigger hole than it looks, because this session found three fault
+populations stopping at specific rounds: `no-queue` at 065, `cfg5010` at 069, and
+every tag fault after 206. If the host changed under us, all three are explained
+without any of our fixes working.
+
+**The probe answers are a behavioural fingerprint, and they can be read for
+exactly this.** Four probes, binned by round:
+
+    picture-then-shape-read          unreadable  90% / 79% / 93% / 88%
+    does-a-failed-group-poison…      no-refusal  94% / 80% / 94% / 87%
+    group-of-existing-shape-readable no-group-id 87% / 82% / 88% / 91%
+                                     (bands: 001-069 · 070-149 · 150-205 · 206-231)
+
+**No step change at any of the boundaries.** The host answers the same questions
+the same way, within ordinary variation, across the whole archive.
+
+One probe DID invert, and it is instructive that it is not the host:
+`binding-names-shape-later` goes `no-scratch-slide` 82% → 12% and `commit-threw`
+14% → 83% at the 070 band. That is the harness learning to hand the probe a
+scratch slide — the question started being ASKED, not answered differently. A
+fingerprint has to be read for what moved it.
+
+### What that buys
+
+The dead populations are far more likely to be **our fixes working** than the
+host moving. `cfg5010` stopping at 069 sits right behind the settled retry
+shipping at 064/065, which is the explanation the archive already offers — and
+this is the first check that the alternative explanation was ruled out rather
+than assumed.
+
+It also means the unversioned-host caveat can be stated more usefully: the
+version string says nothing, but the archive is not blind to host change. It has
+a fingerprint and the fingerprint is flat.
+
+
+## The parts list: written on every chart, consumed on none, in 206 rounds
+
+`CHART_PARTS_TAG` exists so an in-place update can find and delete the rest of an
+ungrouped chart. Pooled over the whole archive:
+
+    parts list outcome, by `where`
+      1748x  gotPartsList=0   no loose chart had siblings   — by design, none needed
+       102x  gotPartsList=2   the id read-back THREW        — wanted, failed
+         3x  gotPartsList=1   read the ids back             — wanted, succeeded
+
+    in-place update readings: 1005 · charts seen: 1005 · WITH a parts list: 0
+
+So of roughly 105 occasions where a parts list was actually WANTED, about three
+produced one — and **zero of 1005 charts have ever reached an update carrying
+one.** Meanwhile `not updating in place` has fired **1601 times across all 206
+rounds**, 1197 of them specifically for want of a parts list, each redrawing a
+whole chart instead of writing only the shapes that changed.
+
+**The read-back failure has a name.** 438 archived occurrences of
+`InvalidParam passed to GetItem(id)` at `reading back an ungrouped chart's shape
+ids` — the 5010 stale shape proxy, office-js#2903, closed as NOT PLANNED.
+
+### Why this is recorded rather than acted on
+
+The repo half-knew: *"the parts list has never once been produced on this host —
+`withParts` is 0 across 872 charts"* sits inside a comment about a different
+problem, as an aside. What was missing is the consumption side and the
+denominator — 105 wanted, 3 produced, 0 consumed — which is what turns an aside
+into a fact about a feature.
+
+It is the same shape as `Retire settleByBinding — 0 rescues in 180 rounds`, two
+commits before this one. It is NOT the same case:
+
+- `settleByBinding` failed for no reason anyone could name. This fails for a
+  named upstream bug that Microsoft has closed as not planned.
+- Retiring it would also remove the only thing that MEASURES the block. A
+  mechanism that is blocked rather than useless still earns its trace.
+- And the cost is one tag write per chart, which is small beside the 1197
+  redraws its absence causes — the expensive half is the fallback, not the
+  attempt.
+
+So: on the list, with the numbers attached, for the owner to call. What would
+change the answer is a way to re-resolve the shapes by id after the 5010 —
+which is the same repair `does-a-failed-group-poison-the-tag` points at from the
+other direction, and both are blocked on the same stale-proxy behaviour.
+
+### AND THAT REPAIR ALREADY EXISTS, ten thousand lines away, at 100%
+
+    a by-id lookup refused the whole resolve — re-reading the slides instead
+      86 refusals across 86 rounds
+      re-read fallback: asked 86 · recovered 86  (100%)
+
+The in-place update path meets the SAME 5010 refusal, falls back to re-reading
+the slide's shapes, and has **recovered every single time in 86 rounds.** Once a
+round, silently, for months.
+
+The parts-list read-back meets the same refusal and does something weaker: it
+SALVAGES ids the drawing batch had already answered (`loadedValue(() => s.id)`)
+and does not re-read. That salvage is right on its own terms — a sync failing
+does not un-populate what was already answered — but it yields a whole list
+almost never: 102 throws, about 2 lists.
+
+I wrote here, an hour before finishing the paragraph, that **"the repair is
+proven in this codebase and two sites do not use it."** That was wrong, and the
+way it was wrong is worth more than the claim was.
+
+### The repair cannot transfer, for exactly the reason it works
+
+`reReadRefusedShapes` recovers by re-reading the slide's shape COLLECTION and
+matching each entry against `e.it.target.shapeId` — **an id the chart already
+holds, off its own tag.** The handle went stale; the identity never did. That
+asymmetry is the whole mechanism: *"a by-id lookup is the one thing PowerPoint on
+the web reliably refuses, and a collection read is the one thing it reliably
+honours."*
+
+The parts-list read-back fails at the opposite thing. It is trying to LEARN the
+sibling ids — that is what the read is for. When it throws there is nothing to
+match a collection read against, because the identities are precisely what was
+lost. A collection read there returns shapes nobody can name.
+
+**Same errno, same host bug, incompatible remedies.** The similarity is at the
+level of the error text and nowhere else.
+
+That is `tagAnchorIndex` again — *"aimed one level too low"* — reached by pattern
+matching `InvalidParam passed to GetItem(id)` in two places and assuming one fix
+covered both. It survived about forty minutes, and only because reading
+`reReadRefusedShapes` was the next thing rather than writing the patch.
+
+### What is actually true
+
+- The re-read fallback is excellent WHERE IT APPLIES: 86 of 86, once a round.
+- The parts-list read-back is blocked by the same host bug and has no comparable
+  remedy available, because it has no id to hold on to.
+- `.group` throwing twice a round is downstream of the same emptiness: the guard
+  is `parts.length`, and with no parts list every chart reaches `.group`.
+
+The repo already framed the one honest direction, on the batch itself: *"the
+parts-list repair may remove this by itself: a chart that arrives carrying parts
+never queues `.group` at all. Left to a round to measure rather than
+restructured on that theory — the batch shape here has three shipped-broken
+fixes on record behind it."*
+
+So the question is not how to recover a failed read-back. It is whether the ids
+can be obtained WITHOUT a by-id read at all — and this file has no evidence
+either way, which is a better place to stop than a fix that cannot work.
+
+What would still prove any of it: the parts list appearing on a chart that
+reaches an update. `withParts` has been 0 across 1005 charts, so ONE is a signal
+and there is no noise floor to argue about. That much stands.
+
+
 ## Thread 1 cannot be tested right now, and building it would prove nothing
 
 The proposal is to isolate `bindings.add` in its own sync, so a refused binding
@@ -7220,7 +7539,396 @@ its job or the fault having left on its own cannot be told apart by removing the
 binding and watching a zero stay zero.
 
 
-## The noise floor still is not measured, and here is the protocol that would
+## The slowdown is entirely the host's — our idle time is 1ms in every round
+
+`idleMs` is `issued - lastAnswered`: the gap between the host answering and our
+code issuing the next call. It is OUR time, and it has never been read by
+anything. Across 32 rounds spanning a 2.6x range of speed:
+
+    laterMed 15328ms (fastest round)   median idleMs 1ms
+    laterMed 40469ms (slowest round)   median idleMs 2ms
+
+    fastest half: 1ms      slowest half: 1ms      max ever seen: 17ms
+
+**Flat.** A round that takes two and a half times as long to update the same
+chart spends the same one millisecond between calls. Every additional second is
+inside a sync, waiting for the host.
+
+That closes a whole class of explanation for the drift, the crashes and the
+first-chart cost alike: it is not our batching, not our scheduling, not our
+sleep, not garbage collection between calls. Combined with what was already
+known — 8.6 GB free at the bottom of the worst block, the browser destroyed and
+rebuilt every round by `--fresh`, four syncs issued either way — there is nothing
+left on this side of the wire.
+
+Worth stating because the opposite was never tested. "The host is slow" has been
+the assumption behind every timing entry in this file, and an assumption held
+that long deserves one measurement. It now has one, from a field that was being
+written 119 times a round and read zero times.
+
+### How it degrades per operation: three claims, all of them noise
+
+This section first said the slowdown "scales with the work" — light calls barely
+moving while heavy shape-writing syncs took the whole hit. **That was an
+arithmetic error**: the light operations were measured as fast-half against
+slow-half medians, and the update was quoted as min-to-max across every round.
++11% and +164% were never comparable numbers.
+
+Everything on one basis — median over the fastest half of rounds against the
+slowest half:
+
+    draw batch                        5474ms →  9516ms   +74%
+    counting the deck's slides          13ms →    18ms   +38%
+    UPDATE, 18 of 24                 16855ms → 22689ms   +35%
+    the visibility CONTROL render      345ms →   454ms   +32%
+    deleting the chart being replaced   41ms →    49ms   +20%
+    writing the chart's origin tag     582ms →   655ms   +13%
+    the rasterise-poisons arm          653ms →   728ms   +11%
+    selecting a shape                  840ms →   835ms    -1%
+
+### …and then the table itself failed, on its own error bars
+
+Printed with sample sizes and interquartile spread, every per-operation row
+collapses:
+
+    operation                        nFast nSlow   fast  slow  change   IQR(fast)
+    counting the deck's slides          48    51     13    16    +23%       11
+    selecting a shape                   16    17    808   835     +3%      182
+    writing the chart's origin tag      16    16    582   655    +13%      105
+    deleting the chart being replaced   24    26     41    49    +20%       50
+    the rasterise-poisons arm           32    34    653   728    +11%      105
+
+**Every difference is smaller than the spread inside its own bucket.** "Selecting
+a shape is untouched" — the sharpest thing in the previous paragraph — is a 27ms
+gap against a 182ms IQR at n=16. It says nothing.
+
+The tell was there before the IQRs: adding round 233 moved the slide count from
++38% to +23%. A figure that swings fifteen points on one round is not measuring
+an operation.
+
+**Retracted.** The per-operation comparison cannot support any conclusion at
+these sample sizes, in either direction. What is left:
+
+- The UPDATE and DRAW measurements have hundreds of samples each and both
+  degrade in slow rounds. That much holds.
+- Whether the degradation is flat, proportional, or selective is **unknown**, and
+  three successive claims about it in this section were all built on noise.
+- The per-sync asymmetry — three write syncs at 2.2x against a tag sync at
+  1.19x — still stands, because it is a within-call comparison over n=26/130 and
+  does not come from this table.
+
+Two corrections in one section, forty minutes apart. The first was mixed
+statistics; the second was reading a difference without ever asking how wide the
+distribution underneath it was. The IQR column took one line to add and would
+have prevented both.
+
+### The same test, turned on the finding this file has been leaning on
+
+The per-sync 2.2x has been quoted here all day. It had never been shown its own
+quartiles either, so:
+
+    sync      first n=27  q1     med     q3      later n=135  q1     med    q3    overlap?
+    write 1        11585  12763  16102               5489   6030   8398      no
+    write 2        11718  12988  14397               5198   5727   7456      no
+    write 3        12446  13858  16491               5471   6106   7508      no
+    tag              702    794    899                588    666    769     YES
+
+**The three write syncs do not overlap at the quartiles.** The slowest quarter of
+later charts is still faster than the fastest quarter of first charts, on all
+three, at n=27 against n=135. That is a real separation and it survives the test
+that just killed the per-operation table.
+
+**The tag sync overlaps.** Its 1.19x is not established — which is what this file
+already said from a smaller sample ("whether it is mildly elevated is
+unsettled"), now with the reason attached rather than the hedge.
+
+So the write/tag asymmetry stands: the writes separate, the tag does not, in the
+same call and the same context. It remains the sharpest structural fact about
+this cost, and it is now the only one in this section with evidence behind it.
+
+Worth doing deliberately: after two claims died on their error bars, the honest
+next move is to point the same test at the claim you would rather keep.
+
+
+## The host's speed is a property of the ROUND, not of the chart
+
+Every chart in a round runs at about the same speed; different rounds run at very
+different speeds. Across 32 rounds carrying four or more timed later charts:
+
+    WITHIN a round   median spread   8%   (range 1-51%)
+    BETWEEN rounds   15328-40469ms = 164%
+    between RESTED rounds only              ~47%
+
+    230   19468 19695 19237 19311 19552    within  2%
+    231   17424 17928 18628 17544 16887    within 10%
+    232   25707 23080 28568 25822 25845    within 24%
+
+Round 230's five charts agree to 2% and round 232's to 24%, while their medians
+differ by 33%. The round has a speed; the charts inside it inherit it.
+
+### Why this matters more than the numbers
+
+**Comparing charts inside one round understates the real variance by roughly six
+times** (against rested rounds) **to twenty-one** (against the archive as a
+whole). Any conclusion drawn from "chart A was faster than chart B in this round"
+carries an error bar six times wider than it looks.
+
+That is not hypothetical — it is how the first-chart cost was read for ten
+rounds. Chart 1 against charts 4-8 IN THE SAME ROUND is exactly this comparison,
+and it survived only because the effect was 2.2x, far outside even the
+between-round spread. A smaller effect read the same way would have been noise
+wearing a finding's clothes, and nothing in the report would have said so.
+
+The same applies to the `alone` arm added earlier today: it is compared against
+later charts in its own round, which is the RIGHT design precisely because
+between-round variance is the larger term. Holding the round constant is what
+makes that comparison work — and it is worth naming, because the reason it is
+correct is the reason the other reading was fragile.
+
+### And it tightens the within-round spread as a signal
+
+Within-round spread grows with the round's slowness: 2% at 19.4s, 10% at 17.5s,
+24% at 25.8s, and 51% at the archive's worst. A round that is slow is also
+INCONSISTENT, which is a second, independent symptom of the same sickness and one
+that needs no baseline to read — it is computed entirely inside the round.
+
+
+## Rested rounds do not drift — they vary, and the floor is wider than hoped
+
+Three samples in, every one taken at `sessionIndex 1` after a 47-minute rest, on
+one build:
+
+    round   chart 1/8   laterMed   length
+     230      42987      19468      691s
+     231      35491      17544      625s
+     232      53138      25822      847s
+
+**232 is degraded, and it should not be.** It had the same rest as the other two
+and sits at position 1 by construction, verified rather than assumed — and it is
+47% slower than 231 on `laterMed` and 50% slower on the first chart.
+
+### What that does to the protocol
+
+The floor protocol assumes a 45-minute rest returns the host to a common
+starting state, so that samples at position 1 differ only by noise. **If they
+drift anyway, the spread I am measuring contains drift as well as noise, which
+is exactly the defect the protocol was written to escape** — the same defect as
+pooling ten back-to-back rounds, one level up.
+
+It also fits the earlier result nobody could explain: a 15-minute rest did not
+restore performance either. Two rest lengths, neither sufficient.
+
+### And that reading was wrong too — checked before it hardened
+
+The obvious explanation was cumulative drift over the DAY rather than the
+session. Laid out against the clock, it does not survive:
+
+    morning, back-to-back   06:17→09:52   35894 → 40328 → 54578 → 56783 → 58301
+    evening, rested         18:48→22:50   46556 → 38782 → 42987 → 35491 → 53138
+
+**The morning block climbs monotonically. The evening rested rounds do not climb
+at all.** 231, at 21:43, is the lowest first chart of the entire evening; 232, an
+hour later, is the highest. If the day were accumulating, 231 could not sit where
+it does.
+
+So the honest statement is narrower than either of my first two:
+
+- Back-to-back rounds DRIFT — a trend, five samples, one direction.
+- Rested rounds VARY — 35491 to 53138 on the first chart, no trend.
+- **232 is not drift. It is the spread.**
+
+Which means the protocol is working and the floor is simply wider than hoped.
+That is a worse headline and a better measurement: a floor of "±50% on the first
+chart" is still the first honest answer this project has had to "how far apart
+can two identical rounds be", and it is dramatically better than the ±5 on one
+counter it has been using.
+
+Three readings in ninety minutes — the rest fails, the day accumulates, the floor
+is wide — and only the third survived contact with the clock. Written down in
+that order deliberately: the first two were reasonable, evidenced, and wrong, and
+the thing that killed both was plotting the samples against time instead of
+against each other.
+
+
+## READ THIS FIRST is fixed: 36 of 36, against a baseline of 1 of 74
+
+`docs/BACKLOG.md` opens its biggest item with **READ THIS FIRST: a chart on a
+FRESHLY ADDED SLIDE cannot be grouped, and that is why it loses its config**,
+measured over the whole archive on 2026-08-15 and called *"a switch rather than a
+tendency"*:
+
+    slide already had shapes   82 chart(s), 81 grouped = 99%
+    freshly added, empty       74 chart(s),  1 grouped =  1%
+
+The current rate, over the last twenty rounds:
+
+    slide already had shapes   36 chart(s), 36 grouped = 100%
+    freshly added, empty       36 chart(s), 36 grouped = 100%
+    per round: [4/4 4/4 4/4 4/4 4/4 4/4 4/4 4/4]
+
+**Eight consecutive rounds, four of four every time, no exceptions.** 1% to 100%,
+on a population of 36 — past the twenty this report requires before it will state
+a rate at all.
+
+The chain that made it a switch is broken at its first link: a chart on a freshly
+added slide no longer gets a short or empty pre-grouping re-read, so it groups, so
+its tag goes through the group handle rather than a `created` one, so it keeps its
+config. Everything the backlog item predicted would follow from fixing that link
+has followed.
+
+### It was fixed some time ago and nobody could see it
+
+This is not new behaviour. It is newly VISIBLE. The metric reads `0/0` for the
+twenty rounds before 228 — not "fixed", not "broken", nothing at all — because
+`poolFreshVsEstablished` keys on a per-chart label that the draw path stopped
+emitting when in-place updates started succeeding. Restoring that label this
+morning is the only reason there is a number here.
+
+So the archive's flagship open problem has been closed for an unknown number of
+rounds, in silence, while the instrument that would have said so read zero over
+zero. **The fix is not the finding. The finding is that nothing noticed.**
+
+`BACKLOG.md`'s READ THIS FIRST needs a line saying so, and the 1% figure needs
+its date carried beside it wherever it is quoted — it is a true measurement of a
+host that no longer behaves that way.
+
+
+## THE NOISE FLOOR, MEASURED — 66%, and it retires the pair as a detector
+
+Five sessions on one build, every sample the FIRST round of its session after a
+47-minute rest, position verified from the round file rather than trusted:
+
+    eba1c4d  5 session(s): 230 231 232 233 234
+      in-place update, 18 of 24: 15538-25822ms, median 17663 — SPREAD 66% of the min
+
+**Two identical rounds, nothing changed between them, differ by 66% on the most
+repeated measurement this harness makes.**
+
+### CORRECTED at eight samples: 21% typical, 73% worst — and 66% was the wrong statistic
+
+The 66% above is the observed RANGE, min to max. A range only ever grows with
+sample size, so it is a lower bound wearing an estimate's clothes — and it proved
+it within three sessions:
+
+    5 sessions   range 66%
+    8 sessions   range 73%     (one faster round arrived; the host did not change)
+
+The interquartile spread does not drift that way:
+
+    in-place update, 18 of 24: 14965-25822ms, median 17544 — RANGE 73% of the min
+    middle half 16045-19468ms — IQR 21% of q1
+
+So the floor is better stated in two numbers:
+
+- **Under ~21%: noise.** The middle half of identical rounds spans that much.
+- **21% to 73%: ambiguous on a pair.** Inside the observed range, outside the
+  typical spread — one round of each proves nothing either way.
+- **Above ~73%: larger than anything two identical rounds have produced.**
+
+That is a tighter and more useful bar than 66% was, and it moves the earlier
+verdict: a pair CAN see a 2x effect comfortably, and cannot see a 30% one. The
+first-chart 2.2x and the lone arm at 130% both clear it with room. The 7%
+same-slide comparison is not merely below the floor, it is below a third of the
+IQR.
+
+Reported both ways from here, because the range says how bad it has ever been and
+the IQR says what to expect — and quoting the first as if it were the second is
+the mistake this correction is made of.
+
+### FINAL, nine sessions
+
+    eba1c4d  9 session(s): 230 231 232 233 234 235 236 237 238
+      in-place update, 18 of 24: 14965-25822ms, median 16792 — RANGE 73% of the min
+      middle half 15538-17663ms — IQR 14% of q1
+      scenarios skipped per round: [0 0 0 0 0 0 0 0 0]   failed: [0 0 0 0 0 0 0 0 0]
+
+The IQR TIGHTENED as the sample grew — 21% at eight sessions, **14% at nine** —
+while the range sat unmoved at 73%. That is the two statistics behaving exactly
+as the correction above predicted: one converging, one pinned by a single outlier
+(round 232, the only sample above 20s).
+
+**The floor, as it should be quoted:**
+
+> On one build, first round of a session, nothing changed: the middle half of
+> rounds fall within **14%** of each other, and the worst pair seen differs by
+> **73%**. Under 14% is noise. Over 73% has never happened by chance.
+
+Nine rounds, nine zeroes for skipped and failed. The completeness result is not a
+tendency either.
+
+The floor this replaces was one line: *"cabb357 scored 1 and 5 for tags-undefined
+with NOTHING changed between them."* Two observations, on a counter, from one
+build run twice. It has carried every "is this a change?" judgement in this
+archive for two hundred rounds.
+
+### What it licenses, and what it does not
+
+It is a statement about **one round against one round**. It is not the error bar
+on a pooled median: forty-five rounds averaged do not carry ±66%, and reading it
+that way would retire half this file for no reason.
+
+Where it bites is the **pair** — and the pair is this project's unit of evidence:
+
+> **A pair cannot detect an effect smaller than about 66% on this metric.**
+> Two rounds differing by 40% are indistinguishable from two rounds differing by
+> nothing.
+
+That is not a small correction to practice. `tagAnchorIndex` was judged across
+five rounds and four builds and found to have "no measured effect" — with a floor
+this wide, that verdict was sound only because the effect was absent, not because
+five rounds could have seen a modest one. Any future change judged on a pair
+needs to clear 66% or be judged another way.
+
+### What still survives it
+
+- The first chart at **2.2x** a later chart — 120% above, clear of the floor.
+- The lone arm at **15235ms against 35033/39570ms** — 130%, clear.
+- The per-sync write/tag split, which is a WITHIN-call comparison and does not
+  pay this floor at all.
+
+### What does not
+
+- *"Later charts on the first chart's own slide cost 18233 against 17033
+  elsewhere"* — a **7%** difference, quoted in this file as evidence that the
+  slide was not the cause. Below the floor by an order of magnitude. It was
+  pooled across rounds, so it is not strictly a pair comparison, but nothing in
+  the report said which it was and nobody could have told.
+
+Five samples is the minimum this report will call a floor and the number will
+move as more arrive. It is a first measurement, not a constant.
+
+## Rest does not buy speed. It buys COMPLETENESS, and that is the better prize
+
+The floor above says rested rounds still vary 66% on timing. So does resting do
+anything at all? Yes, and not where anyone was looking:
+
+    BACK-TO-BACK (216-225)   10 rounds   10 scenarios skipped   [0 0 0 0 1 2 2 2 0 3]
+    RESTED (230-235)          6 rounds    0 scenarios skipped   [0 0 0 0 0 0]
+
+**Zero against ten.** And the shape of the back-to-back row is the whole story:
+the first FOUR rounds of that block skipped nothing either. Skips begin at the
+fifth round and never really stop.
+
+A skip is not a slow scenario. It is `the host stopped answering during this
+scenario, so nothing was checked` — the question was asked and no answer exists.
+A round with three skips is a round that measured eleven things instead of
+fourteen, and the three it lost are not random: they are the heaviest.
+
+So the operating rule, evidenced rather than assumed:
+
+> **Resting does not make a round faster — the 66% floor is there either way.
+> It makes a round COMPLETE.** Run back to back and from about the fifth round
+> you start buying rounds that answer fewer questions than they claim to.
+
+That reframes the earlier failed rest experiments. A 15-minute rest did not
+restore SPEED and neither does a 47-minute one; the entry that recorded that was
+measuring the wrong thing. What the rest protects is whether the battery finishes.
+
+And it explains the crashes without needing the timing at all: all three landed
+in `same scale across the deck`, the heaviest scenario, in rounds deep inside a
+back-to-back block. The skips and the crashes are the same failure at different
+severities — the host declining to finish the heavy work — and rest prevents
+both.
 
 Ten rounds on one build produced within-session drift, not a floor: `laterMed`
 doubles across a session, which is larger than whatever run-to-run noise sits

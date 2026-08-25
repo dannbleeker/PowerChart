@@ -1517,6 +1517,31 @@ export async function updateChartInSlide(
   target: EditTarget,
   opts: InsertOptions = {},
 ): Promise<EditTarget | null> {
+  return traceAbout(drawKey(), () => updateChartInSlideInner(scene, target, opts));
+}
+
+/**
+ * The same label the draw path gets — see `drawKey`.
+ *
+ * An update that cannot map its nodes to shapes REDRAWS, and those redraws issue
+ * batches carrying `onSlide` readings exactly like a fresh draw. Round 228 left
+ * six of them unattributed: `explode a degraded picture` and `edit the chart the
+ * user selected` both reach this path without naming a chart, so their slide
+ * readings could not be joined to anything.
+ *
+ * Here rather than in `updateChartsInSlides`, which shares one set of syncs
+ * across every chart in its batch and has no per-item seam to wrap without
+ * restructuring the batching. Every scenario reaches the update path through
+ * THIS wrapper — the multi-chart form has no caller outside the file — so a
+ * label here covers what the rounds actually exercise. The rescale's own
+ * `traceAbout({ chart: "i/n" })` still wins, because `drawKey` only mints when
+ * nothing has been named.
+ */
+async function updateChartInSlideInner(
+  scene: Scene,
+  target: EditTarget,
+  opts: InsertOptions = {},
+): Promise<EditTarget | null> {
   const [next] = await updateChartsInSlides([{ scene, target, opts }]);
   // SAY SO WHEN NOTHING COMES BACK. `explode a degraded picture` fails by
   // reaching exactly this null — and until 2026-08-16 the round said nothing at

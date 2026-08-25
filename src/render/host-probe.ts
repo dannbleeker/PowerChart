@@ -1933,6 +1933,29 @@ const PROBES: Probe[] = [
     //                        move was aimed one level too low.
     //   yes                  the context survives a refused group, and the tag
     //                        failure needs another explanation.
+    //   tags-gone            THE ONLY ANSWER THIS HOST HAS EVER GIVEN, and it
+    //                        was missing from this table for as long as it has
+    //                        been firing. 39 occurrences across 36 rounds, last
+    //                        in round 221; `yes` and `refused-after-group` have
+    //                        NEVER occurred. So of the times the refusal was
+    //                        actually provoked, the shape lost `.tags`
+    //                        every time — 39 of 39.
+    //
+    //                        That is narrower than "the context is dead". The
+    //                        context is never asked: `.tags` is undefined before
+    //                        a write is attempted, so the PROXY is stripped by
+    //                        the refusal rather than the write being refused
+    //                        through it. The production counterpart is already
+    //                        on record — "the failed group took the tag with it
+    //                        (target.tags undefined, 155 of 155)".
+    //
+    //                        It points at a different fix from the one this
+    //                        probe was written to test. A fresh context does not
+    //                        help a proxy that no longer has the accessor; what
+    //                        would is re-resolving the shape by id after a
+    //                        refused group, before tagging. Untested — and it
+    //                        needs a population, which production has not
+    //                        produced in ~20 rounds.
     //   no-refusal           the host grouped today, so the question was never
     //                        put. Not an answer.
     ask: async (ctx) => {

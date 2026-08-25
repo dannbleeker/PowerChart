@@ -3390,3 +3390,254 @@ describe("a rate the sample cannot support", () => {
     expect(rateOrSilence(0, 0)).toBe("—");
   });
 });
+
+describe("the noise floor, measured where the session drift is held out", () => {
+  const round = (name: string, build: string, sessionIndex: number, ms: number[]) => ({
+    roundName: name,
+    build,
+    driverRun: { sessionIndex },
+    selftest: [{ ok: true }],
+    trace: {
+      entries: ms.map((m, i) => ({
+        ms: m,
+        message: "updated only the shapes that changed",
+        data: { chart: `${i + 2}/8`, changed: 18, of: 24, ms: m },
+      })),
+    },
+  });
+
+  it("takes only the first round of a session", async () => {
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { poolNoiseFloor } = await import("../scripts/triage.mjs");
+    // A sample from minute 116 of a session is measuring the drift, not the
+    // floor: ten back-to-back rounds showed the same measurement roughly double
+    // across two hours. Excluded, not weighted and not caveated.
+    const per = poolNoiseFloor([
+      round("230-aaa.json", "aaa", 1, [15000]),
+      round("231-aaa.json", "aaa", 2, [40000]),
+      round("232-aaa.json", "aaa", 7, [41000]),
+    ]);
+    expect(per.get("aaa").map((r: { round: string }) => r.round)).toEqual(["230"]);
+  });
+
+  it("keeps builds apart", async () => {
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { poolNoiseFloor } = await import("../scripts/triage.mjs");
+    // A floor is a statement about ONE build run repeatedly. Pooling two builds
+    // measures the difference between them, which is the thing a floor exists
+    // to judge.
+    const per = poolNoiseFloor([round("230-aaa.json", "aaa", 1, [15000]), round("231-bbb.json", "bbb", 1, [16000])]);
+    expect([...per.keys()].sort()).toEqual(["aaa", "bbb"]);
+  });
+
+  it("refuses to call a floor from two rounds", async () => {
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { MIN_FLOOR_N } = await import("../scripts/triage.mjs");
+    // The line this replaces IS a spread over two observations: "cabb357 scored
+    // 1 and 5 with NOTHING changed". Reproducing that with better provenance
+    // would be the same defect in a new coat.
+    expect(MIN_FLOOR_N).toBeGreaterThan(2);
+  });
+
+  it("takes the median of a round, so one slow chart is not the round", async () => {
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { poolNoiseFloor } = await import("../scripts/triage.mjs");
+    const per = poolNoiseFloor([round("230-aaa.json", "aaa", 1, [15000, 16000, 17000])]);
+    expect(per.get("aaa")[0].laterMed).toBe(16000);
+  });
+
+  it("ignores the first chart of a run, which is not a later chart", async () => {
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { poolNoiseFloor } = await import("../scripts/triage.mjs");
+    // The first chart of a multi-chart run costs ~2.2x a later one — it sits on
+    // the deck's busiest slide. Letting it into the median would make the floor
+    // a measurement of which slide the harness happened to fill.
+    const log = round("230-aaa.json", "aaa", 1, [15000]);
+    log.trace.entries.push({
+      ms: 36000,
+      message: "updated only the shapes that changed",
+      data: { chart: "1/8", changed: 18, of: 24, ms: 36000 },
+    });
+    const per = poolNoiseFloor([log]);
+    expect(per.get("aaa")[0].laterMed).toBe(15000);
+  });
+});
+
+describe("a recovery line that spends the reader's attention where it counts", () => {
+  it("shouts about a crash and whispers about a routine pane-open", async () => {
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { driverRunLine } = await import("../scripts/triage.mjs");
+    const line = driverRunLine({
+      attempts: 3,
+      recovered: ["not-ready:pane-closed", "crashed"],
+    });
+    expect(line).toContain("RECOVERED FROM: crashed");
+    // The routine half is kept — hiding it would be a different lie — but it is
+    // parenthetical, not the headline.
+    expect(line).toContain("(routine: not-ready:pane-closed)");
+    expect(line.indexOf("RECOVERED FROM"), "the notable half comes first").toBeLessThan(line.indexOf("(routine:"));
+  });
+
+  it("says nothing loud when everything was routine", async () => {
+    // 82% of rounds recover from a closed or stale pane, because a round starts
+    // with one. A line that shouts on four rounds in five teaches the reader to
+    // skim it — and then `crashed` scrolls past inside it, which is exactly what
+    // happened on 2026-08-24.
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { driverRunLine } = await import("../scripts/triage.mjs");
+    const line = driverRunLine({ attempts: 2, recovered: ["not-ready:pane-stale"] });
+    expect(line).not.toContain("RECOVERED FROM");
+    expect(line).toContain("(routine: not-ready:pane-stale)");
+  });
+
+  it("treats anything unrecognised as notable rather than routine", async () => {
+    // The set is a whitelist on purpose. A recovery reason nobody has classified
+    // is one nobody has decided is harmless.
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { driverRunLine, ROUTINE_RECOVERIES } = await import("../scripts/triage.mjs");
+    expect(ROUTINE_RECOVERIES.has("crashed"), "a crash is never routine").toBe(false);
+    expect(ROUTINE_RECOVERIES.has("browser-gone")).toBe(false);
+    expect(ROUTINE_RECOVERIES.has("not-ready:host-silent+pane-stale"), "a silent host is not routine").toBe(false);
+    expect(driverRunLine({ attempts: 2, recovered: ["something-new"] })).toContain("RECOVERED FROM: something-new");
+  });
+});
+
+describe("every way a probe declines, not just the one word", () => {
+  const log = (id: string, answer: string) => ({ hostAnswers: { answers: [{ id, answer }] } });
+
+  it("counts a documented non-answer as a non-answer", async () => {
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { poolStarvedQuestions } = await import("../scripts/triage.mjs");
+    // `no-refusal` carries the probe's own words: "the host grouped today, so
+    // the question was never put. Not an answer." The reader of that value
+    // counted it as one, so a probe that never answered stayed out of the report
+    // whose whole job is to find probes that never answer.
+    const rows = poolStarvedQuestions([log("p", "no-refusal"), log("p", "no-refusal"), log("p", "no-refusal")]);
+    expect(rows.map((r: { id: string }) => r.id)).toContain("p");
+  });
+
+  it("covers the other two prefixes the host declines with", async () => {
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { poolStarvedQuestions } = await import("../scripts/triage.mjs");
+    for (const answer of ["no-creation-id", "no-group-id", "unreadable"]) {
+      const rows = poolStarvedQuestions([log("q", answer), log("q", answer)]);
+      expect(
+        rows.map((r: { id: string }) => r.id),
+        answer,
+      ).toContain("q");
+    }
+  });
+
+  it("still leaves a probe that answers sometimes alone", async () => {
+    // Widening the pattern must not bury a working question. A probe with any
+    // real answer is doing its job, however much silence surrounds it.
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { poolStarvedQuestions } = await import("../scripts/triage.mjs");
+    const rows = poolStarvedQuestions([log("r", "no-refusal"), log("r", "no-refusal"), log("r", "tags-gone")]);
+    expect(rows.map((r: { id: string }) => r.id)).not.toContain("r");
+  });
+
+  it("keeps ours-to-fix separate from a fact about the host", async () => {
+    // The remedies are opposite: a setup the harness cannot build is ours to fix
+    // or retire, and a question the host will not answer is a finding to leave
+    // alone. Collapsing them would send someone to fix the host.
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { poolStarvedQuestions } = await import("../scripts/triage.mjs");
+    const ours = poolStarvedQuestions([log("s", "no-scratch-shape"), log("s", "no-scratch-shape")])[0];
+    const host = poolStarvedQuestions([log("t", "no-creation-id"), log("t", "no-creation-id")])[0];
+    expect(ours.never).toBeGreaterThan(ours.unanswerable);
+    expect(host.unanswerable).toBeGreaterThan(host.never);
+  });
+});
+
+describe("a round states its own error bar", () => {
+  const round = (name: string, ms: number[]) => ({
+    roundName: name,
+    trace: {
+      entries: ms.map((m, i) => ({
+        message: "updated only the shapes that changed",
+        data: { chart: `${i + 2}/8`, changed: 18, of: 24, ms: m },
+      })),
+    },
+  });
+
+  it("measures how much a round agreed with itself", async () => {
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { poolWithinRoundSpread } = await import("../scripts/triage.mjs");
+    // Round 230 for real: five later charts inside 2% of each other.
+    const tight = poolWithinRoundSpread([round("230-a.json", [19468, 19695, 19237, 19311, 19552])]);
+    expect(tight[0].pct).toBe(2);
+    // Round 232 for real: the same five spread over 24%.
+    const loose = poolWithinRoundSpread([round("232-a.json", [25707, 23080, 28568, 25822, 25845])]);
+    expect(loose[0].pct).toBe(24);
+  });
+
+  it("will not compute a spread from fewer than four charts", async () => {
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { poolWithinRoundSpread } = await import("../scripts/triage.mjs");
+    // Two charts give a range with no idea whether either is typical, and a
+    // round that managed one later chart is telling a different story.
+    expect(poolWithinRoundSpread([round("230-a.json", [19000, 25000])])).toEqual([]);
+    expect(poolWithinRoundSpread([round("230-a.json", [19000, 20000, 21000])])).toEqual([]);
+    expect(poolWithinRoundSpread([round("230-a.json", [19000, 20000, 21000, 22000])])).toHaveLength(1);
+  });
+
+  it("ignores the first chart of a run, which is not a later chart", async () => {
+    // The first chart sits on the deck's busiest slide and costs ~2.2x. Letting
+    // it in would report the slide as disagreement.
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { poolWithinRoundSpread } = await import("../scripts/triage.mjs");
+    const r = round("230-a.json", [19468, 19695, 19237, 19311]);
+    r.trace.entries.push({
+      message: "updated only the shapes that changed",
+      data: { chart: "1/8", changed: 18, of: 24, ms: 43000 },
+    });
+    expect(poolWithinRoundSpread([r])[0].pct, "the first chart must not widen it").toBe(2);
+  });
+
+  it("ignores a lone chart in its own run", async () => {
+    // `1/1` is the alone arm — a run of one has no later charts at all.
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { poolWithinRoundSpread } = await import("../scripts/triage.mjs");
+    const r = round("230-a.json", [19468, 19695, 19237, 19311]);
+    r.trace.entries.push({
+      message: "updated only the shapes that changed",
+      data: { chart: "1/1", changed: 18, of: 24, ms: 40000 },
+    });
+    expect(poolWithinRoundSpread([r])[0].pct).toBe(2);
+  });
+});
+
+describe("the floor is reported as a spread that does not grow with n", () => {
+  it("carries quartiles, not only min and max", async () => {
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { poolNoiseFloor } = await import("../scripts/triage.mjs");
+    // RANGE only ever grows with sample size: it went 66% at five sessions to
+    // 73% at eight because one faster round arrived, with nothing about the host
+    // changing. The IQR is what a reader can actually use as a bar.
+    const mk = (name: string, ms: number) => ({
+      roundName: name,
+      build: "aaa",
+      driverRun: { sessionIndex: 1 },
+      selftest: [],
+      trace: {
+        entries: [2, 3, 4, 5].map((i) => ({
+          message: "updated only the shapes that changed",
+          data: { chart: i + "/8", changed: 18, of: 24, ms },
+        })),
+      },
+    });
+    const rows = poolNoiseFloor([
+      mk("230-a.json", 10),
+      mk("231-a.json", 20),
+      mk("232-a.json", 30),
+      mk("233-a.json", 40),
+      mk("234-a.json", 1000),
+    ]).get("aaa");
+    expect(rows).toHaveLength(5);
+    const meds = rows.map((r: { laterMed: number }) => r.laterMed).sort((a: number, b: number) => a - b);
+    // The single outlier owns the range and does not own the middle half.
+    expect(meds[meds.length - 1]).toBe(1000);
+    expect(meds[Math.floor(meds.length * 0.75)], "q3 is unmoved by one wild round").toBeLessThan(1000);
+  });
+});

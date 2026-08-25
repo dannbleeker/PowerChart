@@ -2638,7 +2638,26 @@ function reportBatchSpanVsGroup(logs) {
  */
 export function poolStarvedQuestions(logs) {
   const NEVER = /^no-scratch/;
-  const UNANSWERABLE = /^unreadable/;
+  // EVERY WAY THE HOST DECLINES, not just the one word.
+  //
+  // This was `/^unreadable/`, and everything else counted as an ANSWER — so a
+  // probe that has never once answered stayed out of a report whose entire job
+  // is to find probes that never answer, purely because its silence used a
+  // different prefix. Measured over the last 40 rounds, 0 of 120 asks each:
+  //
+  //   no-creation-id   103x  the shape has no creationId, so the question about
+  //                          creationId surviving anything cannot be put
+  //   no-group-id      514x  "the host would not name the group it just made"
+  //   no-refusal       486x  the probe's OWN comment: "the host grouped today,
+  //                          so the question was never put. Not an answer."
+  //
+  // That last one is the sharpest: the probe documented the value as not an
+  // answer and the reader of that value counted it as one.
+  //
+  // A probe that answers SOMETIMES still stays out of the report — the filter
+  // below needs `answered === 0` — so widening this cannot bury a working
+  // question, only surface a silent one.
+  const UNANSWERABLE = /^(unreadable|no-creation-id|no-group-id|no-refusal)/;
   // WHICH QUESTIONS THE BUILD STILL ASKS. This report tells the reader to fix
   // or retire something, and for eight rounds it named two questions that had
   // ALREADY BEEN RETIRED — `grouped-child-by-id-from-slide` and
@@ -3160,6 +3179,206 @@ function reportDormant(pooled) {
 }
 
 /**
+ * THE NOISE FLOOR — how far apart two rounds can be with NOTHING changed.
+ *
+ * Every "is this a change or is this weather?" judgement in this archive has
+ * rested on one line: `cabb357 scored 1 and 5 for tags-undefined with NOTHING
+ * changed between them`. That is one build run twice — a range of two
+ * observations — and it has been load-bearing for 200 rounds.
+ *
+ * IT CANNOT BE MEASURED BY RUNNING ROUNDS BACK TO BACK. Ten of those on
+ * 2026-08-24 showed the median in-place update roughly DOUBLING across a
+ * session (19321ms at 0 minutes in, 40067ms at 224), with scenarios starting to
+ * skip past ~90 minutes. Pooling them measures the trend, not the floor. The
+ * archive's own note half-saw this — "the second run is usually the worse one,
+ * so a floor measured this way includes an effect as well as noise" — without
+ * finding the cause.
+ *
+ * So the floor needs rounds at a CONSTANT session position: the FIRST round of
+ * each session, which `sessionIndex === 1` now states rather than leaves to be
+ * trusted. Rounds from any other position are excluded — not weighted, not
+ * caveated, excluded, because a sample from minute 116 is measuring something
+ * else entirely.
+ *
+ * Reports the SPREAD and not the mean. The question a floor answers is "how far
+ * apart can two identical rounds be", and a mean cannot answer it.
+ */
+export function poolNoiseFloor(logs) {
+  const per = new Map();
+  for (const log of logs ?? []) {
+    const dr = log?.driverRun;
+    // Position 1 ONLY. Everything else is a different measurement wearing the
+    // same name.
+    if (!dr || dr.sessionIndex !== 1) continue;
+    const build = String(log.build ?? "?").split(" ")[0];
+    const entries = log?.trace?.entries ?? [];
+    const later = [];
+    for (const e of entries) {
+      if (String(e.message ?? "") !== "updated only the shapes that changed") continue;
+      const d = e.data ?? {};
+      if (!d.chart || d.changed !== 18 || d.of !== 24 || typeof d.ms !== "number") continue;
+      const [i, n] = String(d.chart).split("/").map(Number);
+      if (i > 1 && n > 1) later.push(d.ms);
+    }
+    const selftest = Array.isArray(log.selftest) ? log.selftest : [];
+    const row = {
+      round: String(log.roundName ?? "").slice(0, 3),
+      // The most repeated measurement this harness makes, and the one the
+      // session drift moves most.
+      laterMed: later.length ? [...later].sort((a, b) => a - b)[Math.floor(later.length / 2)] : null,
+      skipped: selftest.filter((s) => !s.ok && s.skipped).length,
+      failed: selftest.filter((s) => !s.ok && !s.skipped).length,
+      lengthMs: entries.length ? entries[entries.length - 1].ms : null,
+    };
+    if (!per.has(build)) per.set(build, []);
+    per.get(build).push(row);
+  }
+  return per;
+}
+
+/**
+ * HOW MUCH THIS ROUND AGREED WITH ITSELF — the error bar on its own comparisons.
+ *
+ * The host's speed is a property of the ROUND, not of the chart. Across 32
+ * rounds carrying four or more timed later charts:
+ *
+ *     WITHIN a round   median spread   8%   (range 1-51%)
+ *     BETWEEN rounds                 164%   (between RESTED rounds, ~47%)
+ *
+ * Which means a comparison made INSIDE one round understates the real variance
+ * by roughly six times against rested rounds, and twenty-one against the archive
+ * as a whole. Every "chart A beat chart B this round" conclusion carries an error
+ * bar six times wider than it looks, and nothing in this report has ever said so.
+ *
+ * The first-chart cost was read exactly that way for ten rounds. It survived only
+ * because the effect was 2.2x — far outside even the between-round spread. A
+ * smaller effect read the same way would have been noise in a finding's clothes.
+ *
+ * So the round's own agreement is printed beside the comparisons it licenses. It
+ * is computed entirely inside the round and needs no baseline, which also makes
+ * it a second symptom of a sick round: within-round spread GROWS with slowness —
+ * 2% at 19.4s, 24% at 25.8s, 51% at the archive's worst.
+ */
+export function poolWithinRoundSpread(logs) {
+  const spreads = [];
+  for (const log of logs ?? []) {
+    const later = [];
+    for (const e of log?.trace?.entries ?? []) {
+      if (String(e.message ?? "") !== "updated only the shapes that changed") continue;
+      const d = e.data ?? {};
+      if (!d.chart || d.changed !== 18 || d.of !== 24 || typeof d.ms !== "number") continue;
+      const [i, n] = String(d.chart).split("/").map(Number);
+      if (i > 1 && n > 1) later.push(d.ms);
+    }
+    // FOUR IS THE FLOOR FOR A SPREAD. Two charts give a range with no idea
+    // whether either is typical, and a round that only managed one later chart
+    // is telling a different story entirely.
+    if (later.length < 4) continue;
+    const s = [...later].sort((a, b) => a - b);
+    spreads.push({
+      round: String(log.roundName ?? "").slice(0, 3),
+      pct: Math.round((100 * (s[s.length - 1] - s[0])) / s[0]),
+    });
+  }
+  return spreads;
+}
+
+/**
+ * WHERE AN UPDATE'S TIME WENT, sync by sync.
+ *
+ * `syncMs` is archived on every timed update and **`triage.mjs` has never read
+ * it.** It is the field that settled the first-chart question — and that table
+ * was rebuilt by hand, twice, from ad-hoc scripts, because the tool everyone
+ * reads a round with could not show it.
+ *
+ * What it shows, at 18 of 24 across the archive:
+ *
+ *     sync        first    later    ratio
+ *     write 1     11642     5510     2.11x
+ *     write 2     11566     5176     2.23x
+ *     write 3     12472     5469     2.28x
+ *     tag           841      644     1.31x
+ *
+ * Three write syncs uniformly ~2.2x and a tag sync that does not share it. That
+ * is the shape that excluded a single fixed stall — a timeout would appear in
+ * ONE sync, not spread evenly across three — and it is the shape that survived
+ * when the cause turned out to be slide occupancy rather than run position.
+ *
+ * Bucketed by `changed`/`of` like everything else here, because a sync's cost is
+ * a function of how many shapes it writes.
+ */
+export function poolSyncBreakdown(logs, of = 24, changed = 18) {
+  const first = [];
+  const later = [];
+  for (const log of logs ?? []) {
+    for (const e of log?.trace?.entries ?? []) {
+      if (String(e.message ?? "") !== "updated only the shapes that changed") continue;
+      const d = e.data ?? {};
+      if (!d.chart || d.changed !== changed || d.of !== of || !Array.isArray(d.syncMs)) continue;
+      const [i, n] = String(d.chart).split("/").map(Number);
+      // A run of ONE is neither: it is the arm that separates position from
+      // slide, and pooling it into either side destroys that.
+      if (n === 1) continue;
+      (i === 1 ? first : later).push(d.syncMs);
+    }
+  }
+  return { first, later };
+}
+
+/** The smallest number of sessions this report will call a floor. */
+export const MIN_FLOOR_N = 5;
+
+/**
+ * The floor, or a refusal to state one — same discipline as `rateOrSilence`.
+ *
+ * A spread over two rounds IS the thing this replaces; printing one would
+ * reproduce the defect with better provenance.
+ */
+export function reportNoiseFloor(logs) {
+  const per = poolNoiseFloor(logs);
+  if (!per.size) return;
+  console.log(`\n  NOISE FLOOR — first round of a session only, so the session drift is held out`);
+  for (const [build, rows] of per) {
+    const spread = (key) => {
+      const vals = rows.map((r) => r[key]).filter((v) => typeof v === "number");
+      if (!vals.length) return null;
+      const s = [...vals].sort((a, b) => a - b);
+      return {
+        n: s.length,
+        min: s[0],
+        max: s[s.length - 1],
+        med: s[Math.floor(s.length / 2)],
+        q1: s[Math.floor(s.length * 0.25)],
+        q3: s[Math.floor(s.length * 0.75)],
+      };
+    };
+    const u = spread("laterMed");
+    console.log(`    ${build}  ${rows.length} session(s): ${rows.map((r) => r.round).join(" ")}`);
+    if (rows.length < MIN_FLOOR_N) {
+      console.log(
+        `      too few to call a floor (${rows.length}, needs ${MIN_FLOOR_N}) — a spread over two rounds is what this replaces`,
+      );
+    } else if (u) {
+      const pct = u.min ? Math.round((100 * (u.max - u.min)) / u.min) : 0;
+      console.log(`      in-place update, 18 of 24: ${u.min}-${u.max}ms, median ${u.med} — RANGE ${pct}% of the min`);
+      // RANGE ONLY EVER GROWS WITH n, so it is a lower bound that looks like an
+      // estimate. It went 66% at five sessions to 73% at eight purely because a
+      // faster round arrived; nothing about the host changed. The IQR is what
+      // does not drift with sample size, and it is the honest headline.
+      const q = u.q1 != null && u.q3 != null ? Math.round((100 * (u.q3 - u.q1)) / u.q1) : null;
+      if (q != null)
+        console.log(`      middle half ${u.q1}-${u.q3}ms — IQR ${q}% of q1, and this does NOT grow with n`);
+      console.log(
+        `      a difference smaller than the IQR is not evidence of a change; the range is a floor on the floor`,
+      );
+    }
+    const sk = rows.map((r) => r.skipped);
+    const fa = rows.map((r) => r.failed);
+    console.log(`      scenarios skipped per round: [${sk.join(" ")}]   failed: [${fa.join(" ")}]`);
+  }
+}
+
+/**
  * The smallest sample this report will turn into a percentage.
  *
  * 5 of 5 is not 100%. Its 95% interval runs from roughly 48% to 100%, which is
@@ -3257,6 +3476,20 @@ export function selfTestHeadline(selftest) {
 }
 
 /**
+ * Recoveries that mean nothing — the ones a round needs BY CONSTRUCTION.
+ *
+ * A round starts with the pane closed (the browser was just closed, or never
+ * opened) or a build behind (the merge under test deployed after the pane
+ * loaded). The driver reopens or reloads it and carries on. Measured across
+ * every round carrying `driverRun`: `pane-closed` 50%, `pane-stale` 32%.
+ *
+ * Deliberately NARROW. `host-silent`, `deck-dirty`, `browser-gone` and `crashed`
+ * are all states something went wrong to reach, and none of them belong here
+ * however often they occur — the point is not "common", it is "expected".
+ */
+export const ROUTINE_RECOVERIES = new Set(["not-ready:pane-closed", "not-ready:pane-stale"]);
+
+/**
  * What the driver went through to produce this round, in one line.
  *
  * Every field here was already archived and none of it was ever printed. A round
@@ -3301,7 +3534,19 @@ export function driverRunLine(dr) {
   const rec = Array.isArray(dr.recovered) ? dr.recovered : [];
   // NAMED, not counted. "recovered from 2" invites the reader to skim; "crashed"
   // is the word that stops them.
-  const recovered = rec.length ? `\n  recovered from: ${rec.join(", ")}` : "";
+  //
+  // AND SEPARATED BY WHETHER IT MEANS ANYTHING. Pooled over every round carrying
+  // the field: `pane-closed` on 50% and `pane-stale` on 32% — 82% between them,
+  // because the pane IS closed or a build behind when a round starts. A line
+  // that says the same thing on four rounds in five teaches the reader to skim
+  // it, and then `crashed` scrolls past inside it. That is not hypothetical:
+  // three crashes did exactly that on 2026-08-24, and the correction that
+  // followed misattributed them because the same line had been skimmed twice.
+  const routine = rec.filter((r) => ROUTINE_RECOVERIES.has(String(r)));
+  const notable = rec.filter((r) => !ROUTINE_RECOVERIES.has(String(r)));
+  const recovered =
+    (notable.length ? `\n  RECOVERED FROM: ${notable.join(", ")}` : "") +
+    (routine.length ? `\n  (routine: ${routine.join(", ")})` : "");
   const drift =
     typeof dr.sessionIndex === "number" && dr.sessionIndex >= 5
       ? `\n  DEEP IN A SESSION — the in-place update cost roughly doubles by round 6-8 and scenarios start being skipped; compare against rounds at a similar position, not against round 1`
@@ -3409,6 +3654,39 @@ function reportUpdateCost(logs) {
     if (c.aloneN) console.log("      " + aloneVerdict(c));
     for (const line of occupancySplit(u.rows, c.of, c.changed)) console.log("      " + line);
   }
+  // THE ERROR BAR ON EVERY COMPARISON ABOVE — see `poolWithinRoundSpread`.
+  const sp = poolWithinRoundSpread(logs);
+  if (sp.length) {
+    const v = sp.map((x) => x.pct).sort((a, b) => a - b);
+    const med = v[Math.floor(v.length / 2)];
+    const where = sp.length === 1 ? `this round` : `${sp.length} round(s), median`;
+    console.log(`    ROUND SELF-AGREEMENT: ${where} ${med}% spread across its own later charts`);
+    console.log(`      Comparisons made INSIDE one round carry at least this much noise. Between rounds the`);
+    console.log(`      same measurement varies ~47% rested and 164% across the archive, so a within-round`);
+    console.log(`      difference understates real variance by roughly 6-21x. Only large effects survive it.`);
+  }
+  // WHERE THE TIME WENT — see `poolSyncBreakdown`. Archived on every timed
+  // update since `syncMs` landed, and never once printed until now.
+  const sb = poolSyncBreakdown(logs);
+  if (sb.first.length && sb.later.length) {
+    const med = (rows, k) => {
+      const v = rows
+        .filter((r) => r.length > k)
+        .map((r) => r[k])
+        .sort((a, b) => a - b);
+      return v.length ? v[Math.floor(v.length / 2)] : null;
+    };
+    console.log(`    PER-SYNC, 18 of 24  (first n=${sb.first.length}, later n=${sb.later.length})`);
+    for (let k = 0; k < 4; k++) {
+      const a2 = med(sb.first, k);
+      const b2 = med(sb.later, k);
+      if (a2 == null || b2 == null) continue;
+      const label = k < 3 ? `write ${k + 1}` : `tag`;
+      console.log(
+        `      ${label.padEnd(9)} first ${String(a2).padStart(6)}ms   later ${String(b2).padStart(6)}ms   ${(a2 / b2).toFixed(2)}x`,
+      );
+    }
+  }
   if (u.firstExcessN) {
     const a = Math.round(u.firstExcess);
     const b = Math.round(u.restExcess);
@@ -3429,7 +3707,12 @@ function reportUpdateCost(logs) {
           Math.round(u.sameSlideExcess) +
           "ms (n=" +
           u.sameSlideN +
-          ") — the slide is held constant and the cost still drops, so POSITION is the cause.",
+          ") — this line has claimed POSITION is the cause and then LOAD is the cause." +
+          "\n      Neither is established. There is no reliable occupancy measure in a round:" +
+          "\n      `onSlide` counts what THIS RUN drew, so the same slide reads 10 and 42 in" +
+          "\n      different rounds, and 18 of 50 first charts have no reading at all." +
+          "\n      What IS observed: the lone arm cost 15235ms on slide 262 and 35033/39570ms on" +
+          "\n      slide 257. The slides differ and the cost differs 2.3x. WHY they differ is open.",
       );
     else if (u.sameSlideUnscorable) {
       // The control EXISTS and cannot be scored against a fit. Show it raw,
@@ -4673,6 +4956,7 @@ if (invokedDirectly) {
     const failed = reportSelfTest(selftest);
     reportStability(pooled);
     reportDormant(pooled);
+    reportNoiseFloor(pooled);
     reportPredictions(pooled);
     reportFreshVsEstablished(pooled);
     reportGroupVsTag(pooled);
@@ -4731,6 +5015,7 @@ if (invokedDirectly) {
     reportSelfTest(selftest);
     reportStability(pooled);
     reportDormant(pooled);
+    reportNoiseFloor(pooled);
     reportPredictions(pooled);
     reportFreshVsEstablished(pooled);
     reportGroupVsTag(pooled);

@@ -278,9 +278,28 @@ rounds of history are read through them.
 
 Worth doing, and worth doing with the same care the counterbalancing got.
 
-### READ THIS FIRST: a chart on a FRESHLY ADDED SLIDE cannot be grouped, and that is why it loses its config
+### ~~READ THIS FIRST: a chart on a FRESHLY ADDED SLIDE cannot be grouped~~ — FIXED, measured 2026-08-25
 
-**Measured 2026-08-15 over the whole archive, and it is a switch rather than a
+**36 of 36 charts on freshly added slides now group, eight consecutive rounds at
+four of four.** Against the 1% below. The chain this item describes is broken at
+its first link: the pre-grouping re-read no longer comes back short on a slide the
+run has just added, so the chart groups, so its tag goes through the group handle
+instead of a `created` one, so it keeps its config.
+
+**Keep the 1% figure and keep its date.** It is a true measurement of a host that
+no longer behaves this way, and it is quoted in several places as though it were
+current.
+
+**And read how it was found.** The metric read `0/0` for twenty rounds before
+2026-08-25 — not fixed, not broken, nothing — because `poolFreshVsEstablished`
+keys on a per-chart label the draw path had stopped emitting once in-place
+updates started succeeding. The problem had been closed for an unknown number of
+rounds while the instrument that would have said so reported nothing at all. The
+fix is not the interesting part; the silence is.
+
+---
+
+**Measured 2026-08-15 over the whole archive, and it WAS a switch rather than a
 tendency:**
 
     slide already had shapes   82 chart(s), 81 grouped = 99%

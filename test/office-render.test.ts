@@ -6072,3 +6072,63 @@ describe("every draw carries a chart label, so its slide readings can be attribu
     }
   });
 });
+
+describe("an update that redraws is labelled too", () => {
+  it("mints a key when the caller named none", async () => {
+    // Round 228 left six `onSlide` readings unattributed: an update that cannot
+    // map its nodes to shapes REDRAWS, and those redraws issue batches carrying
+    // slide readings exactly like a fresh draw. `explode a degraded picture` and
+    // `edit the chart the user selected` both reach that path without naming a
+    // chart.
+    //
+    // THE SETUP RUNS WITH TRACING OFF, and that is load-bearing. The first
+    // version cleared the log with `traceLog().entries.length = 0` — but
+    // `traceLog` returns a SLICE, so the clear was a no-op and the setup
+    // insert's own `draw-1` stayed in the log. The test then passed on the
+    // insert's label while claiming to measure the update's. `setTracing(true)`
+    // empties the buffer, so drawing first and recording second is the isolation.
+    installHost([makeSlide("s1")]);
+    const target = await insertSceneIntoSlide(buildChart(config), {
+      tagData: JSON.stringify(config),
+      shapesPerSync: 1,
+    });
+    expect(target, "the fixture needs a chart to update").toBeTruthy();
+    setTracing(true);
+    try {
+      await updateChartInSlide(buildChart(config), target!, { tagData: JSON.stringify(config) });
+      const labelled = traceLog().entries.filter((e) => e.data && e.data.chart !== undefined);
+      expect(labelled.length, "no update line carried a chart label").toBeGreaterThan(0);
+      expect(String(labelled[0].data!.chart)).toMatch(/^draw-\d+$/);
+    } finally {
+      setTracing(false);
+    }
+  });
+
+  it("lets the rescale keep its own readable label", async () => {
+    // The deck-wide rescale wraps each chart in traceAbout({ chart: "i/n" }),
+    // and that is what makes a deck run readable in order.
+    installHost([makeSlide("s1")]);
+    const target = await insertSceneIntoSlide(buildChart(config), {
+      tagData: JSON.stringify(config),
+      shapesPerSync: 1,
+    });
+    setTracing(true);
+    try {
+      await traceAbout({ chart: "5/8" }, () =>
+        updateChartInSlide(buildChart(config), target!, { tagData: JSON.stringify(config) }),
+      );
+      const labels = new Set(
+        traceLog()
+          .entries.filter((e) => e.data && e.data.chart !== undefined)
+          .map((e) => String(e.data!.chart)),
+      );
+      expect(labels.has("5/8"), "the rescale label was clobbered").toBe(true);
+      expect(
+        [...labels].some((l) => l.startsWith("draw-")),
+        "minted one anyway",
+      ).toBe(false);
+    } finally {
+      setTracing(false);
+    }
+  });
+});
