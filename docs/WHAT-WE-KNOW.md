@@ -84,11 +84,18 @@ wrong. Unmarked lines are believed but unchecked, which is a weaker thing.
 - **✓ The `no-queue` trace is dead** (last round 065). `no-queue-trace-is-dead`
   Thread 3 as written is closed; its live successor is a sparse single-chart
   `tagging failed`.
-- **Whether an id survives on a shape the host has NOT just tagged.** Every
-  `yes` so far came from a chart the round drew, tagged and then observed
-  seconds later. That is the case the production sites mostly face, but not the
-  aged one — a chart edited an hour after it was drawn is untested, and the
-  archive cannot answer it because a round only ever asks about its own charts.
+- **Whether a STORED id survives, as opposed to a freshly observed one.**
+  Corrected 2026-08-25: an earlier version of this line said the tested charts
+  were "observed seconds later" and called the aged case untested. That
+  conflated two different ages. The chart's age was measured from the archive
+  and is **9-10 minutes** — drawn by ms 251-275k of the round, asked at ms
+  794-845k (rounds 248 and 251). It is the OBSERVATION that is seconds old,
+  because the re-ask scans the deck immediately before asking.
+  So what remains open is narrower than it looked, and it already has a claim:
+  an id written down and reused later WITHOUT re-enumeration is the parts-list
+  case, and `parts-list-never-consumed` tracks it at 0 of 1061, blocked by the
+  same 5010 stale-proxy bug. A persistent-deck harness was considered for this
+  and is not needed.
 - **Load's independent effect on update cost.** The experiment is named: the lone
   arm on a LOADED slide against the lone arm on a clear one, holding run-length
   at one. Occupancy is now recorded, so both arms are readable.

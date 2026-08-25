@@ -307,7 +307,7 @@ export const CLAIMS = [
     id: "id-through-aged-slide-handle-reads",
     says: "A shape resolved by id through a slide handle a sync old reads back, when the id is one this host named and the shape is still on the slide.",
     measured:
-      "2026-08-25, 3 of 3 across rounds 248-250 — the first rounds ever to ask the question with an id observed rather than remembered",
+      "2026-08-25, 4 of 4 across rounds 248-251 — the first rounds ever to ask with an id OBSERVED rather than remembered. The charts were 9-10 minutes old at the question; it is the observation that is seconds old, not the chart.",
     check(logs) {
       // ONLY THE ROUNDS THAT REALLY ASKED IT, and the detail is what says so.
       //
