@@ -1425,24 +1425,35 @@ const PROBES: Probe[] = [
         } catch {
           holds = "slide would not count its shapes";
         }
-        const lost = (() => {
-          try {
-            return (shape as unknown as { isNullObject?: boolean }).isNullObject === true
-              ? "no such shape on that slide"
-              : "the shape resolved but would not read back";
-          } catch {
-            // `isNullObject` unreadable is itself an answer: the host populated
-            // nothing for this proxy, so the sync it took part in told us nothing.
-            return "the host populated nothing for the proxy";
-          }
-        })();
+        const matched = back === id;
+        // ONLY WHEN THE ID DID NOT COME BACK. Round 244 answered `yes` and
+        // carried "the shape resolved but would not read back" in the same
+        // string, because this was computed whatever the verdict was: the shape
+        // is not a null object on the success path either, so the else-branch
+        // fired and flatly contradicted the answer beside it. A detail that
+        // argues with its own verdict is worse than no detail — it is the kind
+        // of line someone quotes months later against the answer it belongs to.
+        const lost = matched
+          ? ""
+          : (() => {
+              try {
+                return (shape as unknown as { isNullObject?: boolean }).isNullObject === true
+                  ? "no such shape on that slide"
+                  : "the shape resolved but would not read back";
+              } catch {
+                // `isNullObject` unreadable is itself an answer: the host
+                // populated nothing for this proxy, so the sync it took part in
+                // told us nothing.
+                return "the host populated nothing for the proxy";
+              }
+            })();
         return {
-          answer: back === id ? "yes" : "unreadable",
+          answer: matched ? "yes" : "unreadable",
           detail: `read ${String(back)}${
             known
               ? ` (through a tagged chart's id ${id}, on slide ${String(
                   (held as unknown as { id?: string }).id,
-                )}) — ${lost}; ${holds}`
+                )}) — ${lost ? `${lost}; ` : ""}${holds}`
               : ""
           }`,
         };

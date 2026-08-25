@@ -2537,3 +2537,31 @@ describe("resolving a shape through a tagged chart's own slide", () => {
     expect(NOT_ASKED.has("no-named-slide")).toBe(true);
   });
 });
+
+describe("a detail that agrees with its own verdict", () => {
+  afterEach(async () => {
+    const { _resetNamedShapeForTest } = await import("../src/render/powerpoint");
+    _resetNamedShapeForTest();
+  });
+
+  it("says nothing about failing when the id came back", async () => {
+    const { _rememberNamedShapeForTest } = await import("../src/render/powerpoint");
+    const deck = [makeSlide("s1")];
+    installHost(deck);
+    const real = deck[0].shapes.addGeometricShape("Rectangle", { left: 1, top: 1, width: 9, height: 9 });
+    _rememberNamedShapeForTest("s1", real.id);
+    const sheet = await runHostProbes("fake", "test", {
+      only: ["shape-resolve-held-slide-proxy"],
+      passes: 1,
+    });
+    const row = sheet.answers.find((r) => r.id === "shape-resolve-held-slide-proxy")!;
+    expect(row.answer).toBe("yes");
+    // Round 244 shipped `yes` carrying "would not read back" in the same string.
+    // The failure clause is computed from a shape that is not a null object,
+    // which is also true on the success path, so it fired against its own answer.
+    expect(row.detail).not.toContain("would not read back");
+    expect(row.detail).not.toContain("no such shape");
+    // The context that is true either way stays.
+    expect(row.detail).toMatch(/slide holds [1-9]\d* shape\(s\)/);
+  });
+});
