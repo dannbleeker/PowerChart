@@ -2510,7 +2510,7 @@ describe("reading the last round's receipt", () => {
   });
 });
 
-describe("a round deep in a session is labelled, not refused", () => {
+describe("a round deep in a session is refused unless asked for", () => {
   it("says nothing for the first four rounds", () => {
     // Ten back-to-back rounds skipped [0 0 0 0 1 2 2 2 0 3]. The first FOUR
     // skipped nothing, so warning earlier would cry wolf on rounds that are fine.
@@ -2525,10 +2525,8 @@ describe("a round deep in a session is labelled, not refused", () => {
     expect(w[0], "the reader needs the remedy, not just the diagnosis").toContain("Rest 45+ minutes");
   });
 
-  it("does not refuse the round", () => {
-    // A deep round still produces a real sheet; refusing one throws away work
-    // somebody asked for. What it must not do is pass for a complete round.
-    const r = readiness({
+  const deepRound = (extra = {}) =>
+    readiness({
       head: "abc1234",
       deployed: "abc1234",
       stamp: "abc1234",
@@ -2536,9 +2534,59 @@ describe("a round deep in a session is labelled, not refused", () => {
       verbose: true,
       pictures: true,
       sessionIndex: 9,
+      ...extra,
     });
-    expect(r.ok, "a deep round is labelled, never blocked").toBe(true);
+
+  it("refuses the round, having been ignored as a warning", () => {
+    // THIS REVERSES AN EARLIER DECISION, on evidence the earlier decision did
+    // not have. It read: "A deep round still produces a real sheet; refusing one
+    // throws away work somebody asked for. What it must not do is pass for a
+    // complete round."
+    //
+    // The second sentence is the one that failed. Round 244 was the fifth
+    // back-to-back of a block; the warning printed in full, was read, and the
+    // round was run and filed anyway — and its self-test half is worth less than
+    // the three before it for precisely the reason the line predicted. A warning
+    // that is printed and stepped over is not a label, it is decoration.
+    //
+    // The first sentence keeps its force, which is why this is a stop with a
+    // door rather than a ban: `--deep` runs it and records the arm. No work is
+    // thrown away, it just has to be asked for.
+    const r = deepRound();
+    expect(r.ok).toBe(false);
+    expect(r.codes).toContain("deep-session");
+    expect(r.stop[0], "the reader needs the way out, not just the refusal").toContain("--deep");
+  });
+
+  it("runs it when asked, and then labels it", () => {
+    const r = deepRound({ allowDeepSession: true });
+    expect(r.ok).toBe(true);
+    // Still warned. Consenting to a shallower round does not make it a complete
+    // one, and the round file is read by someone who was not there.
     expect(r.warn).toHaveLength(1);
+  });
+
+  it("does not say it twice", () => {
+    // Once it is a stop it is not also a warning: one problem reported in two
+    // registers reads as two problems, and a reader counting them is misled
+    // about how much is wrong with the round.
+    expect(deepRound().warn).toEqual([]);
+  });
+
+  it("cannot be recovered from, because nothing but waiting fixes it", () => {
+    // Every other readiness stop names something the driver can act on — reopen
+    // the pane, reload the tab, clean the deck. This one names the clock. A
+    // retry would burn three more attempts and refuse three more times.
+    expect(RECOVERABLE_STOPS.has("deep-session")).toBe(false);
+    expect(shouldRetry("not-ready", 1, 4, ["deep-session"])).toBe(false);
+  });
+
+  it("reports what else is wrong with a deep round, not just its depth", () => {
+    // Refusing on depth FIRST would hide a stale pane behind "you are tired",
+    // and the owner would rest for an hour and then meet the pane.
+    const r = deepRound({ stamp: "older12" });
+    expect(r.codes).toContain("pane-stale");
+    expect(r.codes).toContain("deep-session");
   });
 
   it("invents no warning from a missing or odd index", () => {

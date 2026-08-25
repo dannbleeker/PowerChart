@@ -169,6 +169,21 @@ export function readiness({
    * cannot invent a warning.
    */
   sessionIndex = 1,
+  /**
+   * Run anyway, however deep in the session this is.
+   *
+   * The depth rule is a STOP rather than a warning as of round 245, and this is
+   * the door out. It was a warning for as long as it existed, printed in full,
+   * and it was read and ignored — round 244 was the fifth back-to-back of a
+   * block and its self-test half is worth less than the three before it for
+   * exactly the reason the line predicted.
+   *
+   * Readiness refuses when "a round now would not prove anything", and a round
+   * that silently skips its heaviest scenarios is the clearest case of that in
+   * this file. It is not a HOST fault, though, which is why it takes a flag and
+   * not a recovery: nothing the driver can do fixes it except waiting.
+   */
+  allowDeepSession = false,
 }) {
   const stop = [];
   /**
@@ -467,7 +482,20 @@ export function readiness({
   if (verbose === false) refuse("verbose-off", "Verbose trace is off — the round's trace will be too thin to mine");
   if (pictures === false)
     refuse("pictures-off", "Picture every slide is off — a slide that reads back empty cannot be confirmed empty");
-  return { ok: stop.length === 0, stop, codes, warn: sessionDepthWarning(sessionIndex) };
+  // LAST, so a deep round still reports everything else wrong with it. Refusing
+  // early would hide a stale pane behind "you are tired", and the owner would
+  // rest for an hour and then meet the pane.
+  const deep = sessionDepthWarning(sessionIndex);
+  if (deep.length && !allowDeepSession)
+    refuse("deep-session", `${deep[0]} Pass \`--deep\` to run anyway and file it knowing what it is.`);
+  return {
+    ok: stop.length === 0,
+    stop,
+    codes,
+    // Not also a warning once it is a stop — saying it twice in one report reads
+    // as two separate problems.
+    warn: allowDeepSession ? deep : [],
+  };
 }
 
 /** The next round number, from the archive. */
@@ -1777,7 +1805,11 @@ export async function attempt(argv, deps, sh, healed = false) {
     ribbonRoom,
     readsFailed,
   };
-  const { ok, stop, codes, warn } = readiness({ ...state, sessionIndex: deps.driverRun?.sessionIndex ?? 1 });
+  const { ok, stop, codes, warn } = readiness({
+    ...state,
+    sessionIndex: deps.driverRun?.sessionIndex ?? 1,
+    allowDeepSession: deps.allowDeepSession ?? false,
+  });
   console.log(
     `  HEAD ${head ?? "?"} · site ${deployed ?? "?"} · pane ${stamp ?? "?"} · deck ${slides ?? "?"} slide(s)` +
       // WHICH DOCUMENT. Every line above described the round without ever
@@ -3115,10 +3147,16 @@ async function main(argv, deps = {}) {
         {
           ...deps,
           head: pinnedHead,
+          // The override, if the caller asked for it. Recorded in `driverRun`
+          // below as well as acted on here, for the reason the `--fresh` note
+          // spells out: a round whose ARM is not in the file cannot be compared
+          // with one that is, and "ran deep in a session" is an arm.
+          allowDeepSession: deps.allowDeepSession ?? argv.includes("--deep"),
           driverRun: {
             attempts: n + 1,
             recovered: [...recovered],
             fresh: argv.includes("--fresh"),
+            deep: argv.includes("--deep"),
             waitedForDeploy: argv.includes("--wait-for-deploy"),
             // WHEN, and WHERE IN THE SESSION. The archive had neither, and
             // without them "this build is slower" and "this round ran later in

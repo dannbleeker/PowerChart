@@ -477,7 +477,29 @@ const DEFAULT_FONT = "Segoe UI";
 let lastNamedShape: { slideId: string; shapeId: string } | null = null;
 
 function rememberNamedShape(slideId: string, shapeId: string): void {
-  if (slideId && shapeId) lastNamedShape = { slideId, shapeId };
+  // NOT "(visible)". `slideKeyFor` returns that when the host would not name the
+  // slide, and it is the one string that looks like a slide key and cannot be
+  // resolved as one — handing it to `slides.getItemOrNullObject` yields a null
+  // object, which the probe would report as a slide that never resolved. A
+  // diagnostic must not be fed a value it will misread.
+  if (!slideId || !shapeId || slideId === VISIBLE_SLIDE_KEY) return;
+  lastNamedShape = { slideId, shapeId };
+}
+
+/**
+ * Forget a shape that has just been deleted.
+ *
+ * The record exists to hand the probe an id THIS HOST HAS AGREED TO NAME, and a
+ * deleted shape's id is no longer one — the host answers "no such shape on that
+ * slide", which is indistinguishable from it refusing a lookup for a shape that
+ * is present. Rounds 242 and 243 read `unreadable` for exactly this reason and
+ * looked, twice, like office-js #2903 confirmed.
+ *
+ * Silent when the id is not the one held: the caller deletes shapes constantly
+ * and only one of them is ever the recorded one.
+ */
+export function forgetNamedShape(ids: readonly string[]): void {
+  if (lastNamedShape && ids.includes(lastNamedShape.shapeId)) lastNamedShape = null;
 }
 
 /** The last shape this host named, or null before any chart has been tagged. */
@@ -744,10 +766,13 @@ export function replacedShapeCount(deleteCalls: number, redrawnShapes: number): 
  * must never be able to take a draw down with it. An empty-string id is
  * rejected for the same reason a null one is: it is not a slide.
  */
+/** What `slideKeyFor` says when the host would not name the slide. */
+export const VISIBLE_SLIDE_KEY = "(visible)";
+
 export function slideKeyFor(opts: InsertOptions, getSlide: SlideThunk): string {
   if (opts.slideId) return opts.slideId;
   const id = loadedValue(() => (getSlide() as unknown as { id?: string }).id);
-  return typeof id === "string" && id ? id : "(visible)";
+  return typeof id === "string" && id ? id : VISIBLE_SLIDE_KEY;
 }
 
 /**
@@ -2199,6 +2224,13 @@ export function wreckageOf(err: unknown): UpdateWreckage | undefined {
  */
 export async function deleteShapesById(slideId: string, ids: string[]): Promise<number> {
   if (!ids.length) return 0;
+  // BEFORE the attempt, not after it. These ids are wreckage from a redraw that
+  // stalled, so they are no longer ids this host will vouch for whether or not
+  // the sweep manages to take them. The asymmetry decides it: forgetting a shape
+  // that turns out to survive costs the probe one deferral, which is honest,
+  // while keeping one that is gone produces a confident `unreadable` that reads
+  // as office-js #2903. Rounds 242 and 243 are what that looks like.
+  forgetNamedShape(ids);
   try {
     return await PowerPoint.run(async (context) => {
       const slide = context.presentation.slides.getItemOrNullObject(slideId);
@@ -2614,6 +2646,10 @@ export async function updateChartsInSlides(
         await boundedSync(context, "deleting the chart being replaced");
         // Committed gone, so the slide's count owes them back.
         forgetShapesDrawnOn(it.target.slideId, replacedShapeCount(removed, estimateOfficeShapes(it.scene)));
+        // The chart this redraw just replaced. THE path that made the probe's id
+        // stale: a round tags a chart, redraws it minutes later, and the probe
+        // then asks the host about a shape that no longer exists.
+        forgetNamedShape([it.target.shapeId]);
         // RECORDED HERE because this is the only place that knows `removed` —
         // the number the host actually confirmed and took, which is the whole
         // point. A chart with no parts list removes exactly one shape however
@@ -2809,13 +2845,29 @@ export async function updateChartsInSlides(
       // search that is the only thing left with a chance.
       shapeId: untargeted.has(i) ? undefined : t.shapeId,
     });
-  if (!untagged.length) return updated;
+  /**
+   * Every chart this batch can still call re-editable — see `namedShape`.
+   *
+   * ONE site, at the return, rather than at each tag write. There are five write
+   * sites in this file and instrumenting them one at a time missed two: the
+   * in-place route and the settle route, which between them are most of what a
+   * round actually does. The bar here is the one the CALLER uses — `lost` unset
+   * means the config tag is on that shape — so a route added later is covered
+   * without anyone remembering to come back.
+   */
+  const recordNamed = (ts: EditTarget[]): EditTarget[] => {
+    for (const t of ts) if (!t.lost) rememberNamedShape(t.slideId, t.shapeId);
+    return ts;
+  };
+  if (!untagged.length) return recordNamed(updated);
   const settledIds = await settleUntaggedCharts(untagged);
   // Per chart, by INDEX: a run where one settle landed and another did not must
   // not report both as re-editable, and the pane reads `lost` per target. Shape
   // id cannot do this job — the charts that most need the settle are exactly
   // the ones with no id to be keyed by.
-  return updated.map((t, i) => afterSettle(t, { settled: settledIds.has(String(i)), untargeted: untargeted.has(i) }));
+  return recordNamed(
+    updated.map((t, i) => afterSettle(t, { settled: settledIds.has(String(i)), untargeted: untargeted.has(i) })),
+  );
 }
 
 /**

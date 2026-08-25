@@ -6198,3 +6198,186 @@ describe("the empty-id guard", () => {
     expect(namedShape()).toEqual({ slideId: "s1", shapeId: "shape-1" });
   });
 });
+
+describe("keeping the named id fresh", () => {
+  it("records a grouped chart, whose tag the deferred pass writes", async () => {
+    const { namedShape, _resetNamedShapeForTest } = await import("../src/render/powerpoint");
+    _resetNamedShapeForTest();
+    installHost([makeSlide("s1")]);
+    // A grouped chart's tag is written by the deferred pass, not inline — but
+    // the inline site records on `tagged.tagged`, which IS that pass's verdict.
+    // So one record site covers both, and the grouped case is the one that
+    // proves it rather than an assumption about which path ran.
+    const target = await insertSceneIntoSlide(buildChart(config), {
+      tagData: JSON.stringify(config),
+      group: true,
+    });
+    expect(target, "the fixture needs a drawn chart").toBeTruthy();
+    const named = namedShape();
+    expect(named, "a tag written by the deferred pass is still a named id").toBeTruthy();
+    expect(named!.shapeId).toBe(target!.shapeId);
+    _resetNamedShapeForTest();
+  });
+
+  it("never records a slide the host would not name", async () => {
+    const { namedShape, _resetNamedShapeForTest, _rememberNamedShapeForTest, VISIBLE_SLIDE_KEY } =
+      await import("../src/render/powerpoint");
+    _resetNamedShapeForTest();
+    // `slideKeyFor` returns this when the host declined to name the slide. It is
+    // the one string that looks like a slide key and cannot be resolved as one:
+    // handed to `getItemOrNullObject` it yields a null object, which the probe
+    // would report as a slide that never resolved — a setup failure of ours
+    // wearing the costume of a finding.
+    _rememberNamedShapeForTest(VISIBLE_SLIDE_KEY, "shape-1");
+    expect(namedShape()).toBe(null);
+  });
+
+  it("forgets a shape a redraw has deleted", async () => {
+    const { namedShape, _resetNamedShapeForTest, _rememberNamedShapeForTest, forgetNamedShape } =
+      await import("../src/render/powerpoint");
+    _resetNamedShapeForTest();
+    _rememberNamedShapeForTest("s1", "shape-1");
+    // A deleted shape's id is no longer one the host will vouch for: it answers
+    // "no such shape on that slide", which is indistinguishable from refusing a
+    // lookup for a shape that IS there. Rounds 242 and 243 read `unreadable` for
+    // this reason and looked, twice, like office-js #2903 confirmed.
+    forgetNamedShape(["shape-1"]);
+    expect(namedShape()).toBe(null);
+  });
+
+  it("keeps a shape someone else's delete did not touch", async () => {
+    const { namedShape, _resetNamedShapeForTest, _rememberNamedShapeForTest, forgetNamedShape } =
+      await import("../src/render/powerpoint");
+    _resetNamedShapeForTest();
+    _rememberNamedShapeForTest("s1", "shape-1");
+    // Deletes are constant during a round and almost none of them are this
+    // shape. Forgetting on every delete would leave the probe permanently
+    // without an id, which is the old broken state wearing a new cause.
+    forgetNamedShape(["shape-2", "shape-3"]);
+    expect(namedShape()).toEqual({ slideId: "s1", shapeId: "shape-1" });
+    _resetNamedShapeForTest();
+  });
+});
+
+describe("the named id across an update", () => {
+  it("is recorded by the tag pass alone, where the inline path never runs", async () => {
+    const { namedShape, _resetNamedShapeForTest } = await import("../src/render/powerpoint");
+    const slide = makeSlide("s1");
+    installHost([slide]);
+    await insertSceneIntoSlide(buildChart(config), { tagData: "x" });
+    const oldGroup = slide.created.find((s) => s.type === "group")!;
+    // CLEARED, so only the update can put something back. `updateChartInSlide`
+    // does not go through the inline recording site at all — the deferred tag
+    // pass is the only place an update's write is confirmed, and for thirty-odd
+    // rounds that pass recorded nothing.
+    _resetNamedShapeForTest();
+    // WITH `tagData`, or the update has no config to write and comes back
+    // `lost: "no-config"` — which is correct behaviour and would make this test
+    // pass for a reason that has nothing to do with what it is checking.
+    await updateChartInSlide(
+      buildChart(config),
+      { slideId: "s1", shapeId: oldGroup.id, left: 33, top: 44 },
+      { tagData: JSON.stringify(config) },
+    );
+    const named = namedShape();
+    expect(named, "the update wrote a tag and nothing recorded it").toBeTruthy();
+    expect(named!.slideId).toBe("s1");
+    // The REDRAWN chart, not the one this update deleted. Recording the old id
+    // here would hand the probe a shape that is provably gone — which is the
+    // whole failure this change exists to end.
+    expect(oldGroup.deleted, "this fixture is the redraw route").toBe(true);
+    expect(named!.shapeId).not.toBe(oldGroup.id);
+    _resetNamedShapeForTest();
+  });
+
+  it("is dropped when the redraw deletes it and the new tag is refused", async () => {
+    const { namedShape, _resetNamedShapeForTest } = await import("../src/render/powerpoint");
+    const slide = makeSlide("s1");
+    installHost([slide]);
+    await insertSceneIntoSlide(buildChart(config), { tagData: "x" });
+    const oldGroup = slide.created.find((s) => s.type === "group")!;
+    expect(namedShape()?.shapeId, "the fixture needs the old chart recorded").toBe(oldGroup.id);
+    // An update with NO config to write: the redraw deletes the recorded chart
+    // and comes back `lost`, so nothing re-records. Without the forget, the id
+    // of a shape that is provably gone would survive — and the probe would ask
+    // the host about it and be told "no such shape on that slide", which is what
+    // rounds 242 and 243 reported and what read, twice, as office-js #2903.
+    const next = await updateChartInSlide(buildChart(config), {
+      slideId: "s1",
+      shapeId: oldGroup.id,
+      left: 33,
+      top: 44,
+    });
+    expect(oldGroup.deleted, "the fixture needs the old chart actually deleted").toBe(true);
+    expect(next?.lost, "the fixture needs the update to end with no config").toBeTruthy();
+    expect(namedShape(), "a deleted shape is not an id this host will vouch for").toBe(null);
+    _resetNamedShapeForTest();
+  });
+});
+
+describe("the named id on the route a round actually takes", () => {
+  it("records an in-place update, where the grouping pass never runs", async () => {
+    const { namedShape, _resetNamedShapeForTest } = await import("../src/render/powerpoint");
+    const cfg: ChartConfig = {
+      kind: "stacked",
+      ...DEFAULT_SIZE,
+      data: { categories: ["A", "B"], series: [{ name: "S", values: [3, 4] }] },
+    };
+    const slide = makeSlide("s1");
+    installHost([slide], [], slide, () => true);
+    await insertSceneIntoSlide(buildChart(cfg), { tagData: JSON.stringify(cfg), left: 60, top: 90 });
+    const t = (await listChartsInDeck()).charts[0].target;
+    _resetNamedShapeForTest();
+    setTracing(true);
+    try {
+      await updateChartsInSlides([{ scene: buildChart(cfg), target: t, opts: { tagData: JSON.stringify(cfg) } }]);
+      // THE IN-PLACE ROUTE, and it is the common one: round 243 took it eleven
+      // times. It writes its tag without going near the grouping pass, so a
+      // record hung on that pass alone leaves the most frequent write in a round
+      // unrecorded — which is how the probe came to be handed stale ids.
+      expect(
+        traceLog().entries.some((e) => e.message === "updated only the shapes that changed"),
+        "this fixture is meant to update in place",
+      ).toBe(true);
+      const named = namedShape();
+      expect(named, "an in-place update wrote a tag and nothing recorded it").toBeTruthy();
+      expect(named!.shapeId).toBe(t.shapeId);
+    } finally {
+      setTracing(false);
+      _resetNamedShapeForTest();
+    }
+  });
+});
+
+describe("the wreckage sweep and the named id", () => {
+  it("forgets a shape it is sweeping away", async () => {
+    const { namedShape, _resetNamedShapeForTest, _rememberNamedShapeForTest } =
+      await import("../src/render/powerpoint");
+    const slide = makeSlide("s1");
+    installHost([slide]);
+    const a = slide.shapes.addGeometricShape("rectangle", { left: 0, top: 0, width: 5, height: 5 });
+    _resetNamedShapeForTest();
+    _rememberNamedShapeForTest("s1", a.id);
+    // These ids are wreckage from a redraw that stalled. Forgetting BEFORE the
+    // attempt is deliberate: a shape this run is trying to delete is no longer
+    // one the host will vouch for whether or not the sweep gets it, and the
+    // asymmetry decides it — a needless forget costs the probe one honest
+    // deferral, while keeping a gone shape costs a confident wrong answer.
+    expect(await deleteShapesById("s1", [a.id])).toBe(1);
+    expect(namedShape()).toBe(null);
+    _resetNamedShapeForTest();
+  });
+
+  it("keeps one the sweep is not touching", async () => {
+    const { namedShape, _resetNamedShapeForTest, _rememberNamedShapeForTest } =
+      await import("../src/render/powerpoint");
+    const slide = makeSlide("s1");
+    installHost([slide]);
+    const a = slide.shapes.addGeometricShape("rectangle", { left: 0, top: 0, width: 5, height: 5 });
+    _resetNamedShapeForTest();
+    _rememberNamedShapeForTest("s1", "kept-shape");
+    await deleteShapesById("s1", [a.id]);
+    expect(namedShape()).toEqual({ slideId: "s1", shapeId: "kept-shape" });
+    _resetNamedShapeForTest();
+  });
+});
