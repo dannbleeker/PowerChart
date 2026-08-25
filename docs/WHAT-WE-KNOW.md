@@ -44,6 +44,17 @@ wrong. Unmarked lines are believed but unchecked, which is a weaker thing.
   PowerPoint.** Each was our own stale id, and round 247 proved it by listing the
   slide: `the id is NOT among the slide's 11 listed shapes`. Do not quote them.
   The claim counts only rounds whose detail says the shape WAS in the listing.
+- **✓ A by-id lookup that refuses is always rescued by re-reading the slide** —
+  105 of 105, and not one re-read threw.
+  `the-re-read-always-rescues-a-refused-lookup`
+  This host refuses `shapes.getItemOrNullObject(<id>)` often enough to matter,
+  and the refusal poisons the whole SYNC — unguarded it took every chart in the
+  batch down and the caller saw a null target, which is a silent no-op on a
+  chart the user is looking at. The report has always counted the refusals
+  (`idRefusals`, 380 in `explode a degraded picture` alone) and never the
+  recoveries, so the rate could not be formed and the recovery's worth was
+  assumed. It is now watched: a STALE here means updates have started dying
+  wholesale again.
 - **Group children are unreachable.** 548 throws, 0 answers. office-js#3014 is
   closed upstream; the fix has not reached this host.
 - **The host is unversioned** (`0.0.0.0`) — but probe answers are a behavioural

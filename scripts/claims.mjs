@@ -63,6 +63,17 @@ const quartiles = (a) => {
  */
 const middleHalvesClear = (hi, lo) => quartiles(hi).q1 > quartiles(lo).q3;
 
+/**
+ * The smallest sample a claim here will turn into a rate.
+ *
+ * Twenty, the same bar `MIN_RATE_N` sets in the report and for the same reason:
+ * 5 of 5 is not 100%, its interval runs from roughly 48% upward, and that is
+ * most of the range the number is meant to discriminate within. Declared here
+ * rather than imported because `triage.mjs` imports THIS file, and the cycle
+ * would be a worse cost than one repeated constant.
+ */
+const MIN_EVENTS = 20;
+
 /** The last N rounds, so a claim about "now" is not answered by 2026-08-12. */
 function recent(logs, n = 20) {
   return (logs ?? []).slice(-n);
@@ -301,6 +312,44 @@ export const CLAIMS = [
       // If this ever climbs, the slowdown stopped being purely the host's and
       // every timing conclusion in the journal needs re-reading.
       return { ok: m <= 5, actual: `median ${m}ms over ${idles.length} batches` };
+    },
+  },
+  {
+    id: "the-re-read-always-rescues-a-refused-lookup",
+    says: "When a by-id lookup refuses the whole resolve, re-reading the slide's shapes always finds them.",
+    measured: "2026-08-25, 105 of 105 shapes across 105 rounds, and not one re-read threw",
+    check(logs) {
+      let asked = 0;
+      let recovered = 0;
+      let threw = 0;
+      for (const log of logs ?? []) {
+        for (const e of log?.trace?.entries ?? []) {
+          const m = String(e.message ?? "");
+          if (/^re-read recovered shapes a by-id lookup had refused/.test(m)) {
+            asked += e.data?.asked ?? 0;
+            recovered += e.data?.recovered ?? 0;
+          }
+          if (/^the re-read of a refused slide would not answer either/.test(m)) threw++;
+        }
+      }
+      // THE DENOMINATOR NOBODY HAD. The report counts `idRefusals` — 380 in
+      // `explode a degraded picture` alone — and `emptyReReads`, and neither
+      // says whether the RECOVERY worked. This is the same shape as the tag
+      // route census: failures counted, successes not, so no rate could be
+      // formed and the recovery's worth was assumed rather than known.
+      //
+      // It is worth knowing. The comment at the refusal site records that an
+      // unguarded sync took the whole update down with it, every chart in the
+      // batch included, and that 46 of 47 recorded `explode a degraded picture`
+      // failures carry `idRefusals > 0` with the chart STILL ON THE SLIDE. This
+      // recovery is what stands between that and a silent no-op on a chart the
+      // user is looking at.
+      if (asked < MIN_EVENTS) return { ok: null, actual: `only ${asked} refused lookup(s) recorded` };
+      const pct = Math.round((100 * recovered) / asked);
+      return {
+        ok: recovered === asked && threw === 0,
+        actual: `${recovered}/${asked} = ${pct}%, ${threw} re-read(s) threw`,
+      };
     },
   },
   {

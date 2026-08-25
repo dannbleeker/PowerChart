@@ -4024,3 +4024,56 @@ describe("the tag sync's non-difference is checked too", () => {
     expect(r.ok).toBe(true);
   });
 });
+
+describe("the by-id refusal recovery is watched, not assumed", () => {
+  const roundWith = (name: string, entries: unknown[]) => ({ roundName: name, trace: { entries } });
+  const rescue = (asked: number, recovered: number) => ({
+    message: "re-read recovered shapes a by-id lookup had refused",
+    data: { asked, recovered },
+  });
+  const claimOf = async () => {
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { CLAIMS } = await import("../scripts/claims.mjs");
+    return CLAIMS.find((c: { id: string }) => c.id === "the-re-read-always-rescues-a-refused-lookup");
+  };
+
+  it("holds while every refused lookup is recovered", async () => {
+    const claim = await claimOf();
+    const logs = Array.from({ length: 25 }, (_, i) => roundWith(`2${i}0-a.json`, [rescue(1, 1)]));
+    expect(claim.check(logs).ok).toBe(true);
+  });
+
+  it("goes stale the moment one is not", async () => {
+    const claim = await claimOf();
+    // The recovery standing between a refused lookup and a silent no-op on a
+    // chart the user is looking at. One miss is the whole point of watching it.
+    const logs = [
+      ...Array.from({ length: 24 }, (_, i) => roundWith(`2${i}0-a.json`, [rescue(1, 1)])),
+      roundWith("299-a.json", [rescue(1, 0)]),
+    ];
+    const r = claim.check(logs);
+    expect(r.ok).toBe(false);
+    expect(r.actual).toContain("24/25");
+  });
+
+  it("counts a re-read that threw as a failure even when the tally is clean", async () => {
+    const claim = await claimOf();
+    // `the re-read of a refused slide would not answer either` returns early
+    // with whatever it had, so a throw can leave asked and recovered matching
+    // while the rescue did not happen. A rate alone would call that 100%.
+    const logs = [
+      ...Array.from({ length: 25 }, (_, i) => roundWith(`2${i}0-a.json`, [rescue(1, 1)])),
+      roundWith("299-a.json", [{ message: "the re-read of a refused slide would not answer either", data: {} }]),
+    ];
+    const r = claim.check(logs);
+    expect(r.ok).toBe(false);
+    expect(r.actual).toContain("1 re-read(s) threw");
+  });
+
+  it("says ? rather than 100% on a handful of events", async () => {
+    const claim = await claimOf();
+    // 5 of 5 is not 100%. The bar is the same twenty the report uses.
+    const logs = [roundWith("230-a.json", [rescue(5, 5)])];
+    expect(claim.check(logs).ok).toBe(null);
+  });
+});
