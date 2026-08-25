@@ -2595,3 +2595,72 @@ describe("a round deep in a session is refused unless asked for", () => {
     expect(sessionDepthWarning("lots")).toEqual([]);
   });
 });
+
+describe("an attempt that ran no round keeps out of the session", () => {
+  const prev = {
+    at: "2026-08-25T18:00:00.000Z",
+    sessionIndex: 4,
+    sessionStartedAt: "2026-08-25T17:00:00.000Z",
+  };
+  const receipt = (over: Record<string, unknown>) =>
+    outcomeReceipt({
+      codes: [],
+      build: null,
+      size: null,
+      at: "2026-08-25T18:24:00.000Z",
+      sessionIndex: 5,
+      sessionStartedAt: "2026-08-25T17:00:00.000Z",
+      prev,
+      ...over,
+    });
+
+  it("holds the previous round's timestamp when readiness refused", () => {
+    // THE LIVELOCK THIS FIXES. `deep-session` refused round 256 as "round 5 of
+    // this session" and stamped `at: <now>, sessionIndex: 5` for a round that
+    // ran no battery. The next attempt would be round 6, refused and stamped
+    // again, climbing — a caller retrying promptly never gets a round out of it,
+    // because every refusal pushes the 45-minute gap forward from itself.
+    const r = receipt({ reason: "not-ready", roundFile: null });
+    expect(r.at).toBe(prev.at);
+    expect(r.sessionIndex).toBe(4);
+    expect(r.heldSessionFrom, "a timestamp older than the writer must say why").toBeTruthy();
+  });
+
+  it("lets a finished round take its own place", () => {
+    const r = receipt({ reason: "finished", roundFile: "256-abc.json" });
+    expect(r.at).toBe("2026-08-25T18:24:00.000Z");
+    expect(r.sessionIndex).toBe(5);
+    expect(r.heldSessionFrom).toBeUndefined();
+  });
+
+  it("lets a CRASHED round take its own place too", () => {
+    // A crash ran the battery until the host died. It worked the host, so it
+    // owns its place — the session is about load, not about success.
+    const r = receipt({ reason: "crashed", roundFile: null });
+    expect(r.at).toBe("2026-08-25T18:24:00.000Z");
+    expect(r.sessionIndex).toBe(5);
+  });
+
+  it("stamps normally when there is no previous receipt to hold", () => {
+    // First round on a fresh machine. Holding nothing would write nulls and
+    // make the next round think the session had never started.
+    const r = outcomeReceipt({
+      reason: "not-ready",
+      codes: [],
+      roundFile: null,
+      at: "2026-08-25T18:24:00.000Z",
+      sessionIndex: 1,
+      sessionStartedAt: "2026-08-25T18:24:00.000Z",
+    });
+    expect(r.at).toBe("2026-08-25T18:24:00.000Z");
+    expect(r.sessionIndex).toBe(1);
+  });
+
+  it("does not let a held receipt look like a session that never ends", () => {
+    // Held forward, the gap is measured from the last REAL round — so waiting
+    // out the rest clears it, which is the behaviour the stop is asking for.
+    const held = receipt({ reason: "not-ready", roundFile: null });
+    const after = sessionPosition(held, Date.parse(prev.at) + 46 * 60 * 1000);
+    expect(after.index, "waiting past the gap must start a fresh session").toBe(1);
+  });
+});

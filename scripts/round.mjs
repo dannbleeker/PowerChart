@@ -2990,7 +2990,52 @@ export function sessionPosition(prev, nowMs, gapMs = SESSION_GAP_MS) {
  * Pure, and separate from the writing, so the shape can be tested without a
  * filesystem.
  */
-export function outcomeReceipt({ reason, codes, roundFile, build, size, threw, at, sessionIndex, sessionStartedAt }) {
+export function outcomeReceipt({
+  reason,
+  codes,
+  roundFile,
+  build,
+  size,
+  threw,
+  at,
+  sessionIndex,
+  sessionStartedAt,
+  prev,
+}) {
+  // A ROUND THAT NEVER RAN DOES NOT EXTEND THE SESSION.
+  //
+  // The session exists to say how long the host has been under load, and it is
+  // chained through this file because each round is its own process. A readiness
+  // refusal runs no battery: it checks the pane, finds something wrong, and
+  // stops. Stamping a fresh `at` for that moves the 45-minute gap forward from a
+  // round that did nothing, and recording an index counts a round that never
+  // happened into the drift table.
+  //
+  // It bit within hours of the `deep-session` stop landing. Round 256 refused as
+  // "round 5 of this session", wrote `at: <now>, sessionIndex: 5`, and the next
+  // attempt would have been round 6 — refused again, stamped again, climbing.
+  // A caller that retried promptly would never have got a round out of it, and
+  // the fix for the livelock is the same as the fix for the arithmetic: carry
+  // the previous receipt's position forward instead of inventing a new one.
+  //
+  // ONLY when nothing ran. A round that finished, crashed, or wedged has worked
+  // the host and owns its place in the session.
+  // `not-ready` ALONE decides it. A readiness refusal never carries a round
+  // file, so pairing the two reads as caution and is in fact unkillable — no
+  // input can tell the two forms apart. `crashed` has no round file either and
+  // must NOT hold, which is why the reason is the condition and the file is not.
+  const ranNothing = reason === "not-ready";
+  if (ranNothing && prev) {
+    return {
+      ...outcomeReceipt({ reason, codes, roundFile, build, size, threw, at, sessionIndex, sessionStartedAt }),
+      at: prev.at ?? at ?? new Date().toISOString(),
+      sessionIndex: prev.sessionIndex ?? null,
+      sessionStartedAt: prev.sessionStartedAt ?? null,
+      // Said in the file, because a receipt whose timestamp is older than the
+      // process that wrote it is otherwise indistinguishable from a stale file.
+      heldSessionFrom: "the previous round — this attempt ran none",
+    };
+  }
   return {
     reason: reason ?? null,
     // Always an array. A reader doing `codes.includes(...)` on a `finished`
@@ -3093,7 +3138,8 @@ async function main(argv, deps = {}) {
   // any attempt, so a round that needed three recoveries still reports the time
   // the work actually started rather than the time it finally succeeded.
   const startedAtMs = (deps.now ?? Date.now)();
-  const session = sessionPosition((deps.readReceipt ?? readReceipt)(), startedAtMs);
+  const prevReceipt = (deps.readReceipt ?? readReceipt)();
+  const session = sessionPosition(prevReceipt, startedAtMs);
   // A fresh browser before the first attempt, when asked for. See `startFresh`.
   if (argv.includes("--fresh")) {
     console.log("  closing the browser — this round starts from a fresh session");
@@ -3196,6 +3242,9 @@ async function main(argv, deps = {}) {
               threw,
               sessionIndex: session.index,
               sessionStartedAt: session.startedAt,
+              // See `outcomeReceipt`: an attempt that ran no round keeps the
+              // previous round's place in the session rather than taking one.
+              prev: prevReceipt,
             }),
             null,
             2,
