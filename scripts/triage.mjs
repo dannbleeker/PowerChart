@@ -3385,7 +3385,29 @@ export function reportNoiseFloor(logs) {
   const per = poolNoiseFloor(logs);
   if (!per.size) return;
   console.log(`\n  NOISE FLOOR — first round of a session only, so the session drift is held out`);
-  for (const [build, rows] of per) {
+  // THE ANSWER FIRST, before the builds that cannot give one.
+  //
+  // This prints a block per build, and most builds have exactly one qualifying
+  // round — so the section opens with several "too few to call a floor" lines
+  // and buries the one build that HAS a floor somewhere in the middle. On
+  // 2026-08-25 that cost an afternoon: the section was read as "the floor is
+  // unmeasurable" and a four-hour plan to re-measure it was proposed against a
+  // floor that had been sitting in the archive at n=9 the whole time.
+  //
+  // A report whose first line reads "too few" when an answer exists is not
+  // merely unhelpful, it is wrong in the way a reader will act on.
+  const withFloor = [...per.entries()].filter(([, r]) => r.length >= MIN_FLOOR_N);
+  const ordered = [...per.entries()].sort((x, y) => y[1].length - x[1].length);
+  if (withFloor.length) {
+    const [build, rows] = ordered[0];
+    console.log(`    BEST AVAILABLE: ${build} over ${rows.length} sessions — detailed first, thinner builds after.`);
+  } else {
+    const most = ordered.length ? ordered[0][1].length : 0;
+    console.log(
+      `    NO BUILD HAS ${MIN_FLOOR_N} FIRST-OF-SESSION ROUNDS — the best has ${most}. Nothing here is a floor.`,
+    );
+  }
+  for (const [build, rows] of ordered) {
     const spread = (key) => {
       const vals = rows.map((r) => r[key]).filter((v) => typeof v === "number");
       if (!vals.length) return null;

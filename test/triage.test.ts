@@ -3894,3 +3894,62 @@ describe("why a trace line went quiet", () => {
     expect(kept).toContain("still here");
   });
 });
+
+describe("the noise floor section leads with the answer", () => {
+  const round = (build: string, n: number, ms: number) => ({
+    roundName: `${n}-${build}.json`,
+    build,
+    driverRun: { sessionIndex: 1 },
+    selftest: [],
+    trace: {
+      entries: [{ message: "updated only the shapes that changed", data: { chart: "2/8", changed: 18, of: 24, ms } }],
+    },
+  });
+
+  const say = async (logs: unknown[]) => {
+    // @ts-expect-error - plain .mjs tool, no types.
+    const m = await import("../scripts/triage.mjs");
+    const said: string[] = [];
+    const real = console.log;
+    // Swapped AFTER the await, and restored synchronously around the call only.
+    // Wrapping the import as well put the restore in a `finally` that ran before
+    // the promise resolved, so nothing was captured at all.
+    console.log = (...a: unknown[]) => void said.push(a.join(" "));
+    try {
+      m.reportNoiseFloor(logs);
+    } finally {
+      console.log = real;
+    }
+    return said;
+  };
+
+  it("names the build that HAS a floor before the ones that do not", async () => {
+    // A build with one round prints "too few to call a floor". With several such
+    // builds ahead of the answer, the section reads as "the floor is
+    // unmeasurable" — which on 2026-08-25 produced a four-hour plan to
+    // re-measure a floor the archive already held at n=9.
+    const logs = [
+      round("thin1", 226, 20000),
+      round("thin2", 228, 20000),
+      ...[230, 231, 232, 233, 234].map((n, i) => round("deep", n, 15000 + i * 100)),
+    ];
+    const said = await say(logs);
+    const first = said.findIndex((l) => /BEST AVAILABLE/.test(l));
+    const tooFew = said.findIndex((l) => /too few to call a floor/.test(l));
+    expect(first, "the answer must be announced").toBeGreaterThanOrEqual(0);
+    expect(said[first]).toContain("deep");
+    expect(first, "the answer must come before the refusals").toBeLessThan(tooFew);
+    // …and so must its DETAIL. Announcing the answer and then printing two
+    // "too few" blocks above the numbers still makes a reader scroll past
+    // refusals to reach the floor, which is the whole failure.
+    const detail = said.findIndex((l) => /in-place update, 18 of 24/.test(l));
+    expect(detail, "the floor's own numbers must be printed").toBeGreaterThanOrEqual(0);
+    expect(detail, "the floor's numbers must come before any refusal").toBeLessThan(tooFew);
+  });
+
+  it("says plainly when NO build has a floor, rather than listing refusals", async () => {
+    const said = await say([round("thin1", 226, 20000), round("thin2", 228, 20000)]);
+    expect(said.some((l) => /NO BUILD HAS/.test(l))).toBe(true);
+    expect(said.some((l) => /BEST AVAILABLE/.test(l))).toBe(false);
+  });
+});

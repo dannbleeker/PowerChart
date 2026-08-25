@@ -111,6 +111,17 @@ wrong. Unmarked lines are believed but unchecked, which is a weaker thing.
   things that would explain the answer WITHOUT the host being at fault — did the
   slide resolve, does it hold shapes, is the id in its listing — each of which
   was added only after an answer had already been misread once.
+- **The noise floor is RANGE 73%, IQR 14%** — build `eba1c4d`, nine
+  first-of-session rounds (230-238), in-place update 18-of-24. The IQR is the
+  honest headline: the range only ever grows with n, so it is a lower bound that
+  looks like an estimate. **A difference smaller than 14% is not evidence of a
+  change.**
+- **A report that opens with "too few to call it" when an answer exists is
+  wrong, not merely unhelpful.** The floor section prints a block per build and
+  most builds have one qualifying round, so it opened with five refusals and
+  buried the n=9 answer in the middle. It was read as "the floor is
+  unmeasurable" and a four-hour plan to re-measure it was proposed against a
+  figure the archive already held. It now leads with the best available floor.
 - **A renamed trace message is indistinguishable from a fixed fault.** Both read
   as a zero. `a slide's shape count would not settle — not counting it` sat in
   the quiet-instruments list for 140 rounds while the instrument fired every
