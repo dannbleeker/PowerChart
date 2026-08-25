@@ -2432,3 +2432,43 @@ describe("deciding whether the round can ask yet", () => {
     expect(reaskPlan(answered, { slideId: "s1", shapeId: "sh1" })).toEqual({ ask: [], skipped: [] });
   });
 });
+
+/**
+ * Which of two very different facts an `unreadable` was.
+ *
+ * A null SLIDE handle produces a null shape whose id reads undefined by exactly
+ * the same path as the host losing a shape proxy across a slide switch. One is
+ * a setup failure of ours; the other is office-js #2903, the thing this probe is
+ * named for. Round 241 asked the question for the first time in 217 rounds and
+ * these two were still indistinguishable in its answer.
+ */
+describe("resolving a shape through a tagged chart's own slide", () => {
+  afterEach(async () => {
+    // A planted id changes what EVERY probe run in this file does, so it must
+    // not outlive the test that planted it.
+    const { _resetNamedShapeForTest } = await import("../src/render/powerpoint");
+    _resetNamedShapeForTest();
+  });
+
+  it("says the slide never resolved rather than blaming the host", async () => {
+    const { _rememberNamedShapeForTest } = await import("../src/render/powerpoint");
+    installHost([makeSlide("s1")]);
+    _rememberNamedShapeForTest("no-such-slide", "no-such-shape");
+    const sheet = await runHostProbes("fake", "test", {
+      only: ["shape-resolve-held-slide-proxy"],
+      passes: 1,
+    });
+    const row = sheet.answers.find((r) => r.id === "shape-resolve-held-slide-proxy")!;
+    // NOT `unreadable`. Reporting a lost proxy here would put a host bug in the
+    // sheet on the strength of our own bad slide id.
+    expect(row.answer).toBe("no-named-slide");
+    expect(row.detail).toContain("no-such-slide");
+  });
+
+  it("counts a slide that never resolved as a question never put", async () => {
+    // Same standing as `no-scratch-shape`: setup failed, so the question was not
+    // asked. If it counted as an answer the diff would compare it against the
+    // fake and report a divergence nobody observed.
+    expect(NOT_ASKED.has("no-named-slide")).toBe(true);
+  });
+});

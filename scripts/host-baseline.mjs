@@ -604,7 +604,7 @@ export function answersOf(file) {
  * badly enough to matter. `test/host-probe.test.ts` now asserts the two sets are
  * equal, so the next word cannot be added to one side alone.
  */
-export const NEVER_ASKED = new Set(["no-scratch-slide", "no-scratch-shape", "not-asked"]);
+export const NEVER_ASKED = new Set(["no-scratch-slide", "no-scratch-shape", "no-named-slide", "not-asked"]);
 
 /**
  * Compare two answer sheets.

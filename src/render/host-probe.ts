@@ -466,7 +466,7 @@ type Probe = {
  * reported as a real-host divergence. `test/host-probe.test.ts` asserts the two
  * sets are equal now.
  */
-export const NOT_ASKED = new Set(["no-scratch-slide", "no-scratch-shape", "not-asked"]);
+export const NOT_ASKED = new Set(["no-scratch-slide", "no-scratch-shape", "no-named-slide", "not-asked"]);
 
 /**
  * Answers that mean "the question was put and produced nothing to name".
@@ -1347,7 +1347,39 @@ const PROBES: Probe[] = [
       // shape lives; the scratch slide otherwise.
       const held = known ? ctx.slides.getItemOrNullObject(known.slideId) : ctx.scratch();
       held.load("id"); // a REAL property: this is the sync that resolves it
+      // `isNullObject` is NOT in that load list, deliberately. It is populated by
+      // the sync the proxy took part in rather than by being asked for, so
+      // loading one real property is what makes it readable — which is why the
+      // documented Office.js pattern loads a property and then reads the flag.
+      // Asking for both was a distinction with no difference: the mutant that
+      // removed it could not be killed, on the fake or on a real host.
       await ctx.sync();
+      // WHETHER THE SLIDE CAME BACK AT ALL, asked before the shape.
+      //
+      // Round 241 asked this question for the first time in 217 rounds and
+      // answered `unreadable`, which would have been read as the host losing a
+      // shape proxy across a slide switch — office-js #2903, the thing the probe
+      // is named for. It cannot mean that yet, because a null SLIDE handle
+      // produces a null shape whose id reads undefined by exactly the same path.
+      // Two very different facts arriving as one string is what this file calls
+      // "two diagnoses wearing one string", and it has cost rounds before.
+      //
+      // The id spaces on this host do not obviously agree — the scratch ids read
+      // `4123571115#123571113` while the deck listed `256#109857222` — so a
+      // slide id minted by the draw path failing to resolve here is not a remote
+      // possibility. If that is what happened, it is a SETUP failure of ours and
+      // not a finding about the host.
+      //
+      // Safe to trust: this same sheet answers `load-isnullobject-populates:
+      // yes` on this host, so the flag is real rather than left undefined.
+      if (known) {
+        const slide = held as unknown as { isNullObject?: boolean; id?: string };
+        if (slide.isNullObject === true)
+          return {
+            answer: "no-named-slide",
+            detail: `slide ${known.slideId} came back a null object`,
+          };
+      }
       try {
         const shape = held.shapes.getItemOrNullObject(id);
         shape.load("id");
@@ -1355,7 +1387,9 @@ const PROBES: Probe[] = [
         const back = (shape as unknown as { id: string }).id;
         return {
           answer: back === id ? "yes" : "unreadable",
-          detail: `read ${String(back)}${known ? " (through a tagged chart's id)" : ""}`,
+          detail: `read ${String(back)}${
+            known ? ` (through a tagged chart's id, on slide ${String((held as unknown as { id?: string }).id)})` : ""
+          }`,
         };
       } catch (err) {
         return threw(err);
