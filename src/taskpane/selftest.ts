@@ -2516,13 +2516,23 @@ const selectionSurvivesInsert: Scenario = async (prefix) => {
     //     all 17 rounds        held 10 ok / 7 stalled   control 14 ok / 3 not ok
     //     since `957aca0` (8)  held  2 ok / 6 stalled   control  8 ok / 0
     //
-    // Over the whole history they do not separate, and in the earliest rounds
-    // the pattern ran the OTHER way. Restricted to the last eight they separate
-    // sharply. So something changed around `957aca0`, and two readings fit: the
-    // host is different, or the slide-spreading landed in that build and moved
-    // which slide this scenario works on. It takes `found[0]` rather than
-    // `leastLoadedChart`, so it did not change directly — but what the other
-    // scenarios leave on which slide did.
+    // THOSE ROUND COUNTS ARE HISTORY. Re-measured 2026-08-25 across all 235
+    // rounds on file, counting DRAWS rather than rounds — `batch issued` in
+    // draw scope, the only per-draw line that fires on success:
+    //
+    //     held selection      10 stalled / 457 drawn   2.19%
+    //     dropped (control)    0 stalled / 516 drawn   0%
+    //
+    // They separate, and the sentence this note used to carry — "over the whole
+    // history they do not separate" — was true of seventeen rounds and is not
+    // true of two hundred. ZERO in 516 draws is the number that matters: with
+    // the selection dropped this draw has never once stalled.
+    //
+    // So `dropShapeSelection` is not a precaution, it is the fix, and the
+    // archive now says so. That also settles the older speculation below about
+    // something changing at `957aca0`: the effect is visible across the whole
+    // archive once draws are counted instead of rounds, so there is no era to
+    // explain.
     //
     // Every one of those rounds reported the stall the same anonymous way — so the battery has been carrying a repeating, specific
     // observation and saying nothing about it.
@@ -2536,12 +2546,18 @@ const selectionSurvivesInsert: Scenario = async (prefix) => {
     // the battery — it is the only one made with a selection still standing,
     // which is #2775's repro and what `dropShapeSelection` exists to avoid.
     //
-    // A control arm was built to settle it and then removed: matching this draw
-    // needs a same-size chart on the same slide, every slot is allocated, and
-    // widening the band broke both the no-overlap invariant and the degradation
-    // grid's fit. The product does not turn on the answer either — the add-in
-    // already drops the selection — so this stays an observation, stated, not
-    // an experiment worth deforming the battery for.
+    // A DEDICATED control arm was built to settle it and then removed: matching
+    // this draw needs a same-size chart on the same slide, every slot is
+    // allocated, and widening the band broke both the no-overlap invariant and
+    // the degradation grid's fit. That decision still stands, and it turns out
+    // not to have cost anything: `edit the chart the user selected` selects a
+    // shape, DROPS the selection and then draws, which is the comparison that
+    // was wanted, and 235 rounds of it now answer the question without
+    // deforming the battery at all.
+    //
+    // The product still does not turn on it — the add-in already drops the
+    // selection — so this remains an observation. It is now an observation with
+    // 973 draws behind it rather than seventeen rounds.
     if (!isTimeout(err)) throw err;
     return {
       ok: false,

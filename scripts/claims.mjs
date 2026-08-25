@@ -315,6 +315,57 @@ export const CLAIMS = [
     },
   },
   {
+    id: "dropping-the-selection-stops-the-stall",
+    says: "A draw made with a shape still selected stalls; the same draw with the selection dropped does not.",
+    measured: "2026-08-25, 10 stalls in 457 held-selection draws against 0 in 516 dropped ones, over 235 rounds",
+    check(logs) {
+      const arm = { held: { d: 0, s: 0 }, dropped: { d: 0, s: 0 } };
+      const which = {
+        "a selected shape survives an insert": "held",
+        "edit the chart the user selected": "dropped",
+      };
+      for (const log of logs ?? []) {
+        let cur = null;
+        for (const e of log?.trace?.entries ?? []) {
+          if (/^scenario starting/.test(String(e.message ?? ""))) cur = which[String(e.data?.name ?? "")] ?? null;
+          if (!cur) continue;
+          if (e.scope === "draw" && e.message === "batch issued") arm[cur].d++;
+          if (
+            e.scope === "host" &&
+            e.message === "gave up waiting" &&
+            /drawing shapes/.test(String(e.data?.what ?? ""))
+          )
+            arm[cur].s++;
+        }
+      }
+      // THE CONTROL WAS ALREADY IN THE BATTERY. A dedicated same-slide arm was
+      // built for this and removed — every slot was allocated and widening the
+      // band broke the no-overlap invariant — and the removal turns out to have
+      // cost nothing: "edit the chart the user selected" selects a shape, DROPS
+      // the selection, then draws. That is the comparison, and it has been
+      // running all along.
+      //
+      // The scenario's own note concluded "over the whole history they do not
+      // separate" from seventeen ROUNDS. Counting DRAWS over 235 rounds they
+      // separate cleanly, and the zero is the load-bearing half.
+      if (arm.held.d < MIN_EVENTS || arm.dropped.d < MIN_EVENTS)
+        return { ok: null, actual: `n=${arm.held.d}/${arm.dropped.d} draws` };
+      const heldPct = (100 * arm.held.s) / arm.held.d;
+      const dropPct = (100 * arm.dropped.s) / arm.dropped.d;
+      // STALE HERE IS GOOD NEWS twice over: either the held draw stopped
+      // stalling, or the host stopped caring about a standing selection.
+      return {
+        // `dropPct < heldPct` ALONE. Requiring `held.s > 0` beside it reads as
+        // care and is implied — a percentage cannot fall below zero, so the
+        // comparison already fails when the held arm stops stalling. No input
+        // separates the two forms.
+        ok: dropPct < heldPct,
+        actual: `held ${arm.held.s}/${arm.held.d} = ${heldPct.toFixed(2)}% · dropped ${arm.dropped.s}/${arm.dropped.d} = ${dropPct.toFixed(2)}%`,
+        staleIsGood: true,
+      };
+    },
+  },
+  {
     id: "buying-a-replacement-slide-rescues-the-question",
     says: "When the probe buys a replacement scratch slide, the question usually answers on it.",
     measured:

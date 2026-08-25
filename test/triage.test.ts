@@ -4474,3 +4474,67 @@ describe("which scenarios lose draws to a stall", () => {
     expect(rows[0].stalls).toBe(0);
   });
 });
+
+describe("holding a selection through a draw", () => {
+  const claimOf = async () => {
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { CLAIMS } = await import("../scripts/claims.mjs");
+    return CLAIMS.find((c: { id: string }) => c.id === "dropping-the-selection-stops-the-stall");
+  };
+  const draw = () => ({ scope: "draw", message: "batch issued", data: {}, ms: 1 });
+  const stall = () => ({ scope: "host", message: "gave up waiting", data: { what: "drawing shapes 1-10" }, ms: 2 });
+  const starts = (name: string) => ({ scope: "selftest", message: "scenario starting", data: { name }, ms: 0 });
+  const round = (heldDraws: number, heldStalls: number, dropDraws: number) => ({
+    roundName: "230-a.json",
+    trace: {
+      entries: [
+        starts("a selected shape survives an insert"),
+        ...Array(heldDraws).fill(0).map(draw),
+        ...Array(heldStalls).fill(0).map(stall),
+        starts("edit the chart the user selected"),
+        ...Array(dropDraws).fill(0).map(draw),
+      ],
+    },
+  });
+
+  it("holds while the held arm stalls and the dropped arm does not", async () => {
+    const claim = await claimOf();
+    expect(claim.check([round(25, 2, 25)]).ok).toBe(true);
+  });
+
+  it("goes stale — as GOOD news — when the held draw stops stalling", async () => {
+    const claim = await claimOf();
+    // Either the host stopped caring about a standing selection, or something
+    // upstream fixed the draw. Both are worth being told about.
+    const r = claim.check([round(25, 0, 25)]);
+    expect(r.ok).toBe(false);
+    expect(r.staleIsGood).toBe(true);
+  });
+
+  it("goes stale when the dropped arm starts stalling as much", async () => {
+    const claim = await claimOf();
+    // The zero is the load-bearing half. If dropping the selection stops helping,
+    // `dropShapeSelection` is no longer the fix and the note that says it is
+    // needs re-reading.
+    const withBoth = {
+      roundName: "230-a.json",
+      trace: {
+        entries: [
+          starts("a selected shape survives an insert"),
+          ...Array(25).fill(0).map(draw),
+          stall(),
+          starts("edit the chart the user selected"),
+          ...Array(25).fill(0).map(draw),
+          stall(),
+          stall(),
+        ],
+      },
+    };
+    expect(claim.check([withBoth]).ok).toBe(false);
+  });
+
+  it("says ? until both arms have drawn enough", async () => {
+    const claim = await claimOf();
+    expect(claim.check([round(5, 1, 5)]).ok).toBe(null);
+  });
+});

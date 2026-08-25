@@ -44,6 +44,13 @@ wrong. Unmarked lines are believed but unchecked, which is a weaker thing.
   PowerPoint.** Each was our own stale id, and round 247 proved it by listing the
   slide: `the id is NOT among the slide's 11 listed shapes`. Do not quote them.
   The claim counts only rounds whose detail says the shape WAS in the listing.
+- **✓ Dropping the selection is what stops the stall** — 10 stalls in 457 draws
+  made with a shape still selected, **0 in 516** with it dropped.
+  `dropping-the-selection-stops-the-stall`
+  So `dropShapeSelection` is not a precaution, it is the fix, and there is now a
+  number behind it. The scenario's own note concluded "over the whole history
+  they do not separate" from seventeen ROUNDS; counting DRAWS over 235 rounds
+  they separate cleanly, and the zero is the load-bearing half.
 - **✓ When the probe DOES buy a replacement slide, the question usually answers
   on it** — 15 of 18. `buying-a-replacement-slide-rescues-the-question`
   Including 9 of 12 where a SHAPE refusal prompted the buy, which the code's own
@@ -97,19 +104,21 @@ wrong. Unmarked lines are believed but unchecked, which is a weaker thing.
 
 ## Open
 
-- **Why an INSERT loses draws and an UPDATE does not.** Pooled over the archive:
+- **Why an insert onto an occupied slide loses draws.** (Narrowed 2026-08-25 —
+  the selection half of this is now answered, see the claim above.) Pooled over the archive:
   `a selected shape survives an insert` stalls 10 of 455 draws (2.2%),
   `insert onto a slide that already has content` 8 of 920, while
   `edit a chart on the visible slide` and `explode a degraded picture` stall on
   none of 366 and 171. A stall costs the scenario its verdict — it SKIPS and
   checks nothing — so this is the largest source of unchecked rounds in the
   battery, and it reads as "14 of 14" every time.
-  Selection is the obvious story and it is one of at least three: insert-versus-
-  update and how full the target slide is sit on top of it, and this archive has
-  confounded position with load four times already. **The experiment that would
-  settle it does not exist yet**: an insert onto a busy slide with nothing
-  selected, against the same insert with a shape selected. `npm run rounds`
-  now carries the rates.
+  What REMAINS open is insert-versus-update and how full the target slide is.
+  I wrote here that "the experiment that would settle it does not exist yet" and
+  that was wrong twice over: a dedicated arm was built and deliberately removed
+  (every slot allocated, widening the band broke the no-overlap invariant), and
+  the comparison it was for has been running all along as
+  `edit the chart the user selected`. Read the scenario's own note before
+  proposing it again. `npm run rounds` carries the rates.
 
 - **✓ The first chart always lands on the deck's busiest slide**, by construction.
   `first-chart-is-on-the-busiest-slide`
