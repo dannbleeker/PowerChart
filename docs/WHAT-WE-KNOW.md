@@ -97,6 +97,20 @@ wrong. Unmarked lines are believed but unchecked, which is a weaker thing.
 
 ## Open
 
+- **Why an INSERT loses draws and an UPDATE does not.** Pooled over the archive:
+  `a selected shape survives an insert` stalls 10 of 455 draws (2.2%),
+  `insert onto a slide that already has content` 8 of 920, while
+  `edit a chart on the visible slide` and `explode a degraded picture` stall on
+  none of 366 and 171. A stall costs the scenario its verdict — it SKIPS and
+  checks nothing — so this is the largest source of unchecked rounds in the
+  battery, and it reads as "14 of 14" every time.
+  Selection is the obvious story and it is one of at least three: insert-versus-
+  update and how full the target slide is sit on top of it, and this archive has
+  confounded position with load four times already. **The experiment that would
+  settle it does not exist yet**: an insert onto a busy slide with nothing
+  selected, against the same insert with a shape selected. `npm run rounds`
+  now carries the rates.
+
 - **✓ The first chart always lands on the deck's busiest slide**, by construction.
   `first-chart-is-on-the-busiest-slide`
   This is the CONFOUND behind four corrections. A STALE reading here would be

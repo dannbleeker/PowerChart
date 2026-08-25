@@ -4414,3 +4414,63 @@ describe("what a round is made of", () => {
     expect(roundAnatomy(mixed).n).toBe(6);
   });
 });
+
+describe("which scenarios lose draws to a stall", () => {
+  const draw = () => ({ scope: "draw", message: "batch issued", data: {}, ms: 1 });
+  const stall = () => ({
+    scope: "host",
+    message: "gave up waiting",
+    data: { what: "drawing shapes 1-10 of 16" },
+    ms: 2,
+  });
+  const starts = (name: string) => ({ scope: "selftest", message: "scenario starting", data: { name }, ms: 0 });
+  const round = (entries: unknown[]) => ({ roundName: "230-a.json", trace: { entries } });
+
+  it("counts draws by the line that fires on SUCCESS", async () => {
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { stallsByScenario } = await import("../scripts/triage.mjs");
+    // `drawing the chart's shapes` LOOKS like a draw counter and is a
+    // `boundedSync` label — it appears only when the sync fails. Counting it
+    // gives every scenario a 100% stall rate, which is what my first attempt
+    // reported.
+    const rows = stallsByScenario([round([starts("inserts"), ...Array(25).fill(0).map(draw), stall()])]);
+    expect(rows[0].draws).toBe(25);
+    expect(rows[0].stalls).toBe(1);
+    expect(rows[0].pct).toBeCloseTo(4, 5);
+  });
+
+  it("attributes a stall to the scenario that was running", async () => {
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { stallsByScenario } = await import("../scripts/triage.mjs");
+    const rows = stallsByScenario([
+      round([
+        starts("quiet"),
+        ...Array(30).fill(0).map(draw),
+        starts("loses draws"),
+        ...Array(30).fill(0).map(draw),
+        stall(),
+      ]),
+    ]);
+    expect(rows[0].name).toBe("loses draws");
+    expect(rows.find((r: { name: string }) => r.name === "quiet").stalls).toBe(0);
+  });
+
+  it("says nothing about a scenario with too few draws to rate", async () => {
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { stallsByScenario } = await import("../scripts/triage.mjs");
+    // One stall out of three draws is 33% and means nothing. The same bar the
+    // rest of this report uses against 5-of-5 style numbers.
+    expect(stallsByScenario([round([starts("rare"), draw(), draw(), draw(), stall()])])).toEqual([]);
+  });
+
+  it("does not count a wedge that was not a draw", async () => {
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { stallsByScenario } = await import("../scripts/triage.mjs");
+    // The host gives up waiting on plenty of things. Only a draw stall costs the
+    // scenario its verdict, and pooling the others would inflate every rate with
+    // events that cost nothing.
+    const other = { scope: "host", message: "gave up waiting", data: { what: "listing the deck's slides" }, ms: 2 };
+    const rows = stallsByScenario([round([starts("one"), ...Array(25).fill(0).map(draw), other])]);
+    expect(rows[0].stalls).toBe(0);
+  });
+});

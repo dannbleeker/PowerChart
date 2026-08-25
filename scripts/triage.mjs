@@ -3204,6 +3204,76 @@ function reportClaims(pooled) {
 
 /** Print the dormant instruments, loudest first, or say nothing when there are none. */
 /**
+ * Which scenarios lose draws to a stall, and how often.
+ *
+ * The battery reports 14 of 14 nearly every round, so it reads as quiet. It is
+ * not: across the last 60 rounds two scenarios skipped 7 times each, and a SKIP
+ * means nothing was checked. The reason is in their skip text — "the host did
+ * not finish a draw made while a shape was SELECTED", "the host stopped
+ * answering during this scenario" — and the rate behind it was never pooled.
+ *
+ * Measured 2026-08-25 over 60 rounds:
+ *
+ *     a selected shape survives an insert     7 / 112   6.25%
+ *     insert onto a slide that already has…   7 / 227   3.08%
+ *     does a rasterise poison the next draw   1 / 240   0.42%
+ *     explode a degraded picture              0 / 171   0%
+ *     edit the chart the user selected        0 / 150   0%
+ *
+ * THE PATTERN IS NOT THE HEADLINE, AND THIS IS WHY. The two that stall INSERT
+ * onto a slide that already holds something; the two that never stall UPDATE a
+ * chart that is already there. Selection is the obvious story and it is one of
+ * at least three — insert-versus-update, and how full the target slide is, sit
+ * on top of it, and this archive has confounded position with load four times
+ * already. So this reports rates and names the confound rather than a cause.
+ *
+ * What would settle it is an insert onto a busy slide with NOTHING selected,
+ * against the same insert with a shape selected. Nothing in the battery does
+ * that today.
+ *
+ * The denominator is `batch issued` in draw scope, which is the only per-draw
+ * line that fires on SUCCESS. `drawing the chart's shapes` looks like a draw
+ * counter and is a `boundedSync` label — it appears only when the sync fails, so
+ * counting it gives every scenario a 100% stall rate. I did exactly that on the
+ * first attempt.
+ */
+export function stallsByScenario(logs, minDraws = 20) {
+  const per = new Map();
+  for (const log of logs ?? []) {
+    let current = "(outside any scenario)";
+    for (const e of log?.trace?.entries ?? []) {
+      if (/^scenario starting/.test(String(e.message ?? ""))) current = String(e.data?.name ?? "?");
+      const isDraw = e.scope === "draw" && e.message === "batch issued";
+      const isStall =
+        e.scope === "host" && e.message === "gave up waiting" && /drawing shapes/.test(String(e.data?.what ?? ""));
+      if (!isDraw && !isStall) continue;
+      if (!per.has(current)) per.set(current, { draws: 0, stalls: 0 });
+      const row = per.get(current);
+      if (isDraw) row.draws++;
+      else row.stalls++;
+    }
+  }
+  return [...per.entries()]
+    .filter(([, v]) => v.draws >= minDraws)
+    .map(([name, v]) => ({ name, ...v, pct: (100 * v.stalls) / v.draws }))
+    .sort((a, b) => b.pct - a.pct);
+}
+
+/** Print the stall rates, with the confound attached to them. */
+function reportStalls(pooled) {
+  const rows = stallsByScenario(pooled);
+  if (!rows.length || !rows.some((r) => r.stalls)) return;
+  console.log(`\n  WHICH SCENARIOS LOSE DRAWS — a stall means the scenario SKIPPED and checked nothing`);
+  for (const r of rows.slice(0, 6))
+    console.log(
+      `    ${r.pct.toFixed(2).padStart(5)}%  ${String(r.stalls).padStart(3)}/${String(r.draws).padEnd(5)} ${r.name.slice(0, 44)}`,
+    );
+  console.log("    The two that stall INSERT onto an occupied slide; the two that never stall UPDATE a chart");
+  console.log("    already there. Selection is the obvious story and it is one of at least three — this");
+  console.log("    archive has confounded position with load four times. Rates here, not a cause.");
+}
+
+/**
  * A round's shape: how much of it is probe, how much battery, how much neither.
  *
  * Reconstructed by hand three times on 2026-08-25 to answer "why does a round
@@ -5416,6 +5486,7 @@ if (invokedDirectly) {
     reportBatchCost(log);
     const failed = reportSelfTest(selftest);
     reportStability(pooled);
+    reportStalls(pooled);
     reportRoundAnatomy(pooled);
     reportScenarioCost(pooled);
     reportScratchChurn(pooled);
@@ -5480,6 +5551,7 @@ if (invokedDirectly) {
     reportBatchCost(log);
     reportSelfTest(selftest);
     reportStability(pooled);
+    reportStalls(pooled);
     reportRoundAnatomy(pooled);
     reportScenarioCost(pooled);
     reportScratchChurn(pooled);
