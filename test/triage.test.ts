@@ -4227,3 +4227,67 @@ describe("the scratch re-acquire stays watched", () => {
     expect(claim.check([round("254-a.json", [true, true, true])]).ok).toBe(null);
   });
 });
+
+describe("where the battery's time goes", () => {
+  const round = (name: string, rows: { name: string; ms: number; ok?: boolean; skipped?: boolean }[]) => ({
+    roundName: name,
+    selftest: rows.map((r) => ({ ok: r.ok ?? true, skipped: r.skipped ?? false, name: r.name, ms: r.ms })),
+  });
+  const many = (n: number, rows: { name: string; ms: number; ok?: boolean; skipped?: boolean }[]) =>
+    Array.from({ length: n }, (_, i) => round(`2${i}0-a.json`, rows));
+
+  it("prices each scenario by its median, loudest first", async () => {
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { scenarioCost } = await import("../scripts/triage.mjs");
+    const rows = scenarioCost(
+      many(6, [
+        { name: "slow", ms: 160000 },
+        { name: "quick", ms: 20000 },
+      ]),
+    );
+    expect(rows[0].name).toBe("slow");
+    expect(rows[0].median).toBe(160000);
+    expect(rows[0].share).toBe(89);
+  });
+
+  it("holds skips out of the median", async () => {
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { scenarioCost } = await import("../scripts/triage.mjs");
+    // A skipped scenario records the time it took to GIVE UP. Pooling that with
+    // real runs produces a number describing neither — the same mistake
+    // `selfTestHeadline` exists to prevent one level up.
+    const rows = scenarioCost([
+      ...many(5, [{ name: "one", ms: 100000 }]),
+      ...many(5, [{ name: "one", ms: 1, ok: false, skipped: true }]),
+    ]);
+    expect(rows[0].n).toBe(5);
+    expect(rows[0].median).toBe(100000);
+  });
+
+  it("keeps a FAILED scenario, which did run", async () => {
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { scenarioCost } = await import("../scripts/triage.mjs");
+    // A failure ran to a verdict and cost what it cost. Only a skip checked
+    // nothing.
+    const rows = scenarioCost(many(6, [{ name: "one", ms: 50000, ok: false, skipped: false }]));
+    expect(rows[0].n).toBe(6);
+  });
+
+  it("says nothing about a scenario it has barely seen", async () => {
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { scenarioCost } = await import("../scripts/triage.mjs");
+    expect(scenarioCost(many(2, [{ name: "rare", ms: 9000 }]))).toEqual([]);
+  });
+
+  it("carries the spread, so a drift can be told from a slow day", async () => {
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { scenarioCost } = await import("../scripts/triage.mjs");
+    // The measured noise floor between rounds of one build is IQR 14%. A median
+    // with no spread beside it cannot be read against that.
+    const rows = scenarioCost(
+      Array.from({ length: 8 }, (_, i) => round(`2${i}0-a.json`, [{ name: "one", ms: 10000 + i * 1000 }])),
+    );
+    expect(rows[0].q1).toBeLessThan(rows[0].median);
+    expect(rows[0].q3).toBeGreaterThan(rows[0].median);
+  });
+});

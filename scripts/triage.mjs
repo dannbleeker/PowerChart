@@ -3204,6 +3204,70 @@ function reportClaims(pooled) {
 
 /** Print the dormant instruments, loudest first, or say nothing when there are none. */
 /**
+ * What each scenario costs, pooled — the half of a round nothing had priced.
+ *
+ * The probe half has been measured all day and is now 60 seconds cheaper. The
+ * BATTERY is the larger half and nothing has ever aggregated it: round 255 spent
+ * 418s across 14 scenarios, and `same scale across the deck` alone took 133s of
+ * that — a third of the battery in one scenario.
+ *
+ * A median per scenario is the useful shape rather than a total. Totals move
+ * with how many scenarios ran; a median says what THIS scenario costs when it
+ * runs, which is the number that tells you where a round's time goes and the one
+ * that moves if a scenario starts drifting.
+ *
+ * Skips are excluded. A skipped scenario records the time it took to give up,
+ * and pooling that with real runs drags the median toward a number describing
+ * neither — the same mistake `selfTestHeadline` exists to prevent one level up.
+ */
+export function scenarioCost(logs, minN = 5) {
+  const per = new Map();
+  for (const log of logs ?? []) {
+    for (const s of Array.isArray(log?.selftest) ? log.selftest : []) {
+      if (!s?.name || typeof s.ms !== "number") continue;
+      // Only scenarios that RAN to a verdict. `skipped` means nothing was
+      // checked, and its duration is the cost of the giving up.
+      if (!s.ok && s.skipped) continue;
+      if (!per.has(s.name)) per.set(s.name, []);
+      per.get(s.name).push(s.ms);
+    }
+  }
+  const rows = [];
+  for (const [name, all] of per) {
+    if (all.length < minN) continue;
+    const s = [...all].sort((a, b) => a - b);
+    rows.push({
+      name,
+      n: s.length,
+      median: s[Math.floor(s.length / 2)],
+      q1: s[Math.floor(s.length * 0.25)],
+      q3: s[Math.floor(s.length * 0.75)],
+    });
+  }
+  const total = rows.reduce((a, r) => a + r.median, 0);
+  return rows
+    .map((r) => ({ ...r, share: total ? Math.round((100 * r.median) / total) : 0 }))
+    .sort((a, b) => b.median - a.median);
+}
+
+/** Print where the battery's time goes, loudest first. */
+function reportScenarioCost(pooled) {
+  const rows = scenarioCost(pooled);
+  if (!rows.length) return;
+  const total = rows.reduce((a, r) => a + r.median, 0);
+  console.log(
+    `\n  WHERE THE BATTERY'S TIME GOES — median of ${Math.round(total / 1000)}s across ${rows.length} scenario(s)`,
+  );
+  for (const r of rows.slice(0, 6))
+    console.log(
+      `    ${String(Math.round(r.median / 1000)).padStart(4)}s  ${String(r.share).padStart(2)}%  ` +
+        `${r.name.slice(0, 40).padEnd(42)}IQR ${Math.round(r.q1 / 1000)}-${Math.round(r.q3 / 1000)}s  n=${r.n}`,
+    );
+  console.log("    Medians, not totals: a total moves with how many scenarios ran, a median says what THIS");
+  console.log("    one costs when it runs. Skips are held out — their duration is the cost of giving up.");
+}
+
+/**
  * What the probe run spends on slides it could not keep.
  *
  * `replaced the scratch slide` fires about 78 times a round and nothing has ever
@@ -5291,6 +5355,7 @@ if (invokedDirectly) {
     reportBatchCost(log);
     const failed = reportSelfTest(selftest);
     reportStability(pooled);
+    reportScenarioCost(pooled);
     reportScratchChurn(pooled);
     reportPassBias(pooled);
     reportDormant(pooled);
@@ -5353,6 +5418,7 @@ if (invokedDirectly) {
     reportBatchCost(log);
     reportSelfTest(selftest);
     reportStability(pooled);
+    reportScenarioCost(pooled);
     reportScratchChurn(pooled);
     reportPassBias(pooled);
     reportDormant(pooled);
