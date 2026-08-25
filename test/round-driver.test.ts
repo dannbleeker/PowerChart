@@ -16,6 +16,7 @@ const {
   cliEntry,
   sessionDir,
   sessionPosition,
+  sessionDepthWarning,
   readReceipt,
   ensureSessionDir,
   spawnFailureRemedy,
@@ -2506,5 +2507,43 @@ describe("reading the last round's receipt", () => {
     ).toBe(null);
     expect(readReceipt("x", () => "{not json")).toBe(null);
     expect(readReceipt("x", () => JSON.stringify({ sessionIndex: 3 }))).toEqual({ sessionIndex: 3 });
+  });
+});
+
+describe("a round deep in a session is labelled, not refused", () => {
+  it("says nothing for the first four rounds", () => {
+    // Ten back-to-back rounds skipped [0 0 0 0 1 2 2 2 0 3]. The first FOUR
+    // skipped nothing, so warning earlier would cry wolf on rounds that are fine.
+    expect(sessionDepthWarning(1)).toEqual([]);
+    expect(sessionDepthWarning(4)).toEqual([]);
+  });
+
+  it("warns from the fifth, where the skips actually start", () => {
+    const w = sessionDepthWarning(5);
+    expect(w).toHaveLength(1);
+    expect(w[0]).toContain("SKIPPED");
+    expect(w[0], "the reader needs the remedy, not just the diagnosis").toContain("Rest 45+ minutes");
+  });
+
+  it("does not refuse the round", () => {
+    // A deep round still produces a real sheet; refusing one throws away work
+    // somebody asked for. What it must not do is pass for a complete round.
+    const r = readiness({
+      head: "abc1234",
+      deployed: "abc1234",
+      stamp: "abc1234",
+      slides: 1,
+      verbose: true,
+      pictures: true,
+      sessionIndex: 9,
+    });
+    expect(r.ok, "a deep round is labelled, never blocked").toBe(true);
+    expect(r.warn).toHaveLength(1);
+  });
+
+  it("invents no warning from a missing or odd index", () => {
+    expect(sessionDepthWarning(undefined)).toEqual([]);
+    expect(sessionDepthWarning(null)).toEqual([]);
+    expect(sessionDepthWarning("lots")).toEqual([]);
   });
 });

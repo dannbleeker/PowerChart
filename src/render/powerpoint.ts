@@ -1698,6 +1698,34 @@ function traceColdReRead(kind: "empty" | "zero-match" | "short", data: Record<st
   trace("group", "the cold re-read fell short — asking again after the settle", { kind, ...data });
 }
 
+/**
+ * The host's own count of what each slide holds — exported for the SCENARIO that
+ * needs it, not for the renderer.
+ *
+ * The position-vs-load question survived four corrections on 2026-08-25 for one
+ * reason: nothing recorded what a slide held when an update began. The only
+ * proxy available, `priorDrawsOnSlide`, counts what a run's batches happened to
+ * record and reports the same slide as 10 and as 42.
+ *
+ * This is the real reading, and it already existed — used by the orphan check,
+ * on slides holding a single grouped chart, which is exactly where occupancy is
+ * least interesting. Exporting it lets `same scale across the deck` take the
+ * reading where it matters: the first chart's slide, before the run.
+ *
+ * TAKEN IN THE SCENARIO, NOT THE RENDERER, and that placement is the whole care
+ * here. A `getCount()` inside `updateChartsInSlides` would add a sync to the path
+ * being timed — the "adding counting sites moves the baseline" hazard this
+ * archive has been bitten by — and the number it produced would partly be a
+ * measurement of the instrument. From the scenario it costs one call before the
+ * run and nothing inside it.
+ *
+ * Groups count as ONE shape to the host, so this under-represents what a slide
+ * holds. It is still a host reading rather than a guess.
+ */
+export async function slideOccupancy(slideIds: string[]): Promise<Map<string, number>> {
+  return (await slideShapeCounts(slideIds)).counts;
+}
+
 async function slideShapeCounts(
   slideIds: string[],
   settle = false,

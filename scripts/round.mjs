@@ -160,6 +160,15 @@ export function readiness({
    * because an absent argument must not manufacture a narrow window.
    */
   ribbonRoom = MIN_RIBBON_WIDTH,
+  /**
+   * Which round of this session this is — see `sessionPosition`.
+   *
+   * Not a refusal. A deep round still produces a real sheet; it just answers
+   * fewer questions than it claims to, and the reader deserves to be told which
+   * kind of round they are about to read. Defaults to 1 so an absent argument
+   * cannot invent a warning.
+   */
+  sessionIndex = 1,
 }) {
   const stop = [];
   /**
@@ -458,7 +467,7 @@ export function readiness({
   if (verbose === false) refuse("verbose-off", "Verbose trace is off — the round's trace will be too thin to mine");
   if (pictures === false)
     refuse("pictures-off", "Picture every slide is off — a slide that reads back empty cannot be confirmed empty");
-  return { ok: stop.length === 0, stop, codes };
+  return { ok: stop.length === 0, stop, codes, warn: sessionDepthWarning(sessionIndex) };
 }
 
 /** The next round number, from the archive. */
@@ -1768,7 +1777,7 @@ export async function attempt(argv, deps, sh, healed = false) {
     ribbonRoom,
     readsFailed,
   };
-  const { ok, stop, codes } = readiness(state);
+  const { ok, stop, codes, warn } = readiness({ ...state, sessionIndex: deps.driverRun?.sessionIndex ?? 1 });
   console.log(
     `  HEAD ${head ?? "?"} · site ${deployed ?? "?"} · pane ${stamp ?? "?"} · deck ${slides ?? "?"} slide(s)` +
       // WHICH DOCUMENT. Every line above described the round without ever
@@ -1809,6 +1818,9 @@ export async function attempt(argv, deps, sh, healed = false) {
     await sleep(8000);
     return attempt(argv, deps, sh, true);
   }
+  // BEFORE the verdict, so it is read whether or not the round goes ahead. A
+  // deep round is not refused — it is labelled.
+  for (const w of warn ?? []) console.log(`\n  DEEP IN A SESSION — ${w}`);
   if (!ok) {
     console.error("\n  NOT READY — a round now would not prove anything:");
     for (const s of stop) console.error(`    - ${s}`);
@@ -2814,6 +2826,44 @@ export function readReceipt(path = RECEIPT_PATH, read = readFileSync) {
 
 /** Where the driver leaves its account of how the round ended. */
 export const RECEIPT_PATH = ".round-outcome.json";
+
+/**
+ * The round of a session at which scenarios start being skipped.
+ *
+ * Measured 2026-08-25, ten back-to-back rounds against nine rested ones:
+ *
+ *     BACK-TO-BACK (216-225)  10 rounds  10 skipped  [0 0 0 0 1 2 2 2 0 3]
+ *     RESTED       (230-238)   9 rounds   0 skipped  [0 0 0 0 0 0 0 0 0]
+ *
+ * The first FOUR rounds of the back-to-back block skipped nothing. From the
+ * fifth it never really stops. Nine rested rounds — each the first of its
+ * session — skipped nothing at all.
+ */
+export const SESSION_DEPTH_WARN_AT = 5;
+
+/**
+ * A warning, never a refusal, for a round deep in a session.
+ *
+ * A skip is not a slow scenario: it is `the host stopped answering during this
+ * scenario, so nothing was checked`. A round with three of them measured eleven
+ * things instead of fourteen, and the three it lost are the heaviest — which is
+ * also where all three archived crashes happened.
+ *
+ * NOT a refusal, deliberately. A deep round still produces a real sheet and
+ * refusing one would throw away work someone asked for; what it cannot do is
+ * quietly pass for a complete round. So this says which kind of round is about
+ * to be read, and leaves the choice where it belongs.
+ */
+export function sessionDepthWarning(sessionIndex) {
+  const n = Number(sessionIndex);
+  if (!Number.isFinite(n) || n < SESSION_DEPTH_WARN_AT) return [];
+  return [
+    `round ${n} of this session — from about the fifth, scenarios start being SKIPPED ` +
+      `(10 skips across rounds 5-10 of a back-to-back block; 0 across 9 rested rounds). ` +
+      `A skip means nothing was checked, and the scenarios lost are the heaviest. ` +
+      `Rest 45+ minutes for a complete round.`,
+  ];
+}
 
 /**
  * How long a gap ends a SESSION of rounds.

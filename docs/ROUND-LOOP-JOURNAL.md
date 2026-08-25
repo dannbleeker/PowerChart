@@ -7856,6 +7856,39 @@ as the correction above predicted: one converging, one pinned by a single outlie
 Nine rounds, nine zeroes for skipped and failed. The completeness result is not a
 tendency either.
 
+### The audit the floor demands, started here
+
+A floor is only worth having if the claims already in this file are held to it.
+Under 14% is noise; between 14% and 73% a pair cannot tell.
+
+**Failed, and it was quoted as causal evidence:**
+
+- *"Later charts on the first chart's own slide cost 18233 against 17033
+  elsewhere"* — **7%**. Half the IQR. It was used to argue the slide was not the
+  cause, and it cannot support that or its opposite. Already retracted above on
+  other grounds; it fails on this one too.
+
+**Failed, and it was mine, written today:**
+
+- Five statements in this very entry still said "the 66% floor" after the
+  correction that replaced 66% with 14%/73% had been written directly beneath
+  them. A correction that does not sweep its own section is half a correction.
+  Reconciled.
+
+**Clears the bar comfortably:**
+
+- The first chart at **2.2x** and the lone arm at **130%** — both far above 73%.
+- Fresh-slide grouping, **1 of 74 against 36 of 36** — a proportion, not a
+  timing, and not subject to this floor at all.
+- The per-sync write/tag split — a WITHIN-call comparison whose quartiles do not
+  overlap; it does not pay the between-round floor.
+
+**Not swept:** `docs/BACKLOG.md`, `docs/ROUNDS.md` and the source comments carry
+their own timing claims and have not been checked one by one. The rule to apply
+is simple and mechanical — any timing difference under 14% quoted as evidence is
+noise, and between 14% and 73% needs more than a pair — and the sweep is worth a
+session of its own.
+
 The floor this replaces was one line: *"cabb357 scored 1 and 5 for tags-undefined
 with NOTHING changed between them."* Two observations, on a counter, from one
 build run twice. It has carried every "is this a change?" judgement in this
@@ -7864,20 +7897,21 @@ archive for two hundred rounds.
 ### What it licenses, and what it does not
 
 It is a statement about **one round against one round**. It is not the error bar
-on a pooled median: forty-five rounds averaged do not carry ±66%, and reading it
+on a pooled median: forty-five rounds averaged do not carry that spread, and reading it
 that way would retire half this file for no reason.
 
 Where it bites is the **pair** — and the pair is this project's unit of evidence:
 
-> **A pair cannot detect an effect smaller than about 66% on this metric.**
-> Two rounds differing by 40% are indistinguishable from two rounds differing by
-> nothing.
+> **A pair cannot detect an effect smaller than the round-to-round spread.**
+> See the correction below for the numbers that replaced the first estimate here:
+> under 14% is noise, and anything up to 73% has been produced by two identical
+> rounds.
 
 That is not a small correction to practice. `tagAnchorIndex` was judged across
 five rounds and four builds and found to have "no measured effect" — with a floor
 this wide, that verdict was sound only because the effect was absent, not because
 five rounds could have seen a modest one. Any future change judged on a pair
-needs to clear 66% or be judged another way.
+needs to clear that spread or be judged another way.
 
 ### What still survives it
 
@@ -7899,7 +7933,7 @@ move as more arrive. It is a first measurement, not a constant.
 
 ## Rest does not buy speed. It buys COMPLETENESS, and that is the better prize
 
-The floor above says rested rounds still vary 66% on timing. So does resting do
+The floor above says rested rounds still vary on timing. So does resting do
 anything at all? Yes, and not where anyone was looking:
 
     BACK-TO-BACK (216-225)   10 rounds   10 scenarios skipped   [0 0 0 0 1 2 2 2 0 3]
@@ -7916,7 +7950,7 @@ fourteen, and the three it lost are not random: they are the heaviest.
 
 So the operating rule, evidenced rather than assumed:
 
-> **Resting does not make a round faster — the 66% floor is there either way.
+> **Resting does not make a round faster — the floor is there either way.
 > It makes a round COMPLETE.** Run back to back and from about the fifth round
 > you start buying rounds that answer fewer questions than they claim to.
 

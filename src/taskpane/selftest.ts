@@ -68,6 +68,7 @@ import {
   slideImageBase64,
   canInsertSlidesFromBase64,
   insertSceneIntoSlide,
+  slideOccupancy,
   insertSlidesFromPptx,
   listChartsInDeck,
   scanIsComplete,
@@ -695,6 +696,25 @@ const sameScaleAcrossDeck: Scenario = async (prefix) => {
   // comes back short or empty on a slide this run just added, so the chart is
   // not grouped, so its tag falls back to a handle this host refuses. The deltas
   // below put that on the verdict line itself.
+  // WHAT EACH SLIDE HOLDS, before a single chart is touched.
+  //
+  // The position-vs-load question survived four corrections on 2026-08-25
+  // because nothing recorded this. The first chart of this run is always the
+  // chart on the deck's busiest slide — by construction, since earlier scenarios
+  // draw onto the visible one — so run-position and slide-load have been
+  // confounded across every sample in the archive. The only available proxy
+  // reports the same slide as 10 and as 42.
+  //
+  // One host call, HERE, before the loop: it costs nothing inside the timed
+  // per-chart path, which is the whole reason it is taken in the scenario rather
+  // than in `updateChartsInSlides`.
+  const occupancy = await slideOccupancy(charts.map((c) => c.target.slideId));
+  trace("selftest", "what each slide held before the rescale", {
+    charts: charts.length,
+    // Ordered as the charts are, so `slides[0]` is the first chart's slide — the
+    // one the whole question is about.
+    slides: charts.map((c) => ({ slide: c.target.slideId, shapes: occupancy.get(c.target.slideId) ?? null })),
+  });
   const frictionBeforeRescale = hostFrictionCounts();
   // THE SCAN/FIRST-CHART CONFOUND — see `scanSettleMs`. Between the deck scan
   // above and the first update below, which is the only gap where a pause can
