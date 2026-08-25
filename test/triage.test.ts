@@ -3816,3 +3816,81 @@ describe("where an update's time went, sync by sync", () => {
     expect(poolSyncBreakdown([noSyncs])).toEqual({ first: [], later: [] });
   });
 });
+
+describe("why a trace line went quiet", () => {
+  const src = `
+    /**
+     * A note quoting a retired line: \`the binding could not name the chart\`
+     * fired 16 times, all in rounds 077-078.
+     */
+    // and a line comment mentioning "a slide's shape count would not settle"
+    // retired on 2026-08-01: "the settle's re-read came back empty" fired 102 times
+    trace("update", "a slide's shape count would not settle — taking the second read", {});
+    trace("group", "tagging failed — charts are not re-editable until repaired", {});
+    await boundedSync(context, \`settling the config tag on a shape found by \${byId ? "id" : "name"}\`);
+  `;
+
+  it("reads a message still in the source as a fault that stopped", async () => {
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { dormancyCause, stringLiteralsIn } = await import("../scripts/triage.mjs");
+    expect(dormancyCause("tagging failed — charts are not re-editable until repaired", stringLiteralsIn(src))).toBe(
+      "stopped",
+    );
+  });
+
+  it("reads a rewritten message as renamed, not as a fixed fault", async () => {
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { dormancyCause, stringLiteralsIn } = await import("../scripts/triage.mjs");
+    // The instrument fires every round under its new tail. Reported as a fault
+    // that stopped 140 rounds ago, it would be read as evidence the host
+    // improved — the exact shape of the Thread 3 mistake.
+    expect(dormancyCause("a slide's shape count would not settle — not counting it", stringLiteralsIn(src))).toBe(
+      "renamed",
+    );
+  });
+
+  it("reads an interpolated message as renamed too", async () => {
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { dormancyCause, stringLiteralsIn } = await import("../scripts/triage.mjs");
+    // No rendered form can ever match the source once the message is built by
+    // interpolation, so every archived variant looks retired forever.
+    expect(dormancyCause("settling the config tag on a shape found by id", stringLiteralsIn(src))).toBe("renamed");
+  });
+
+  it("does not let a comment vouch for a line that is gone", async () => {
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { dormancyCause, stringLiteralsIn } = await import("../scripts/triage.mjs");
+    // THE DANGEROUS DIRECTION. This file's house style names retired trace lines
+    // in prose, in BACKTICKS — so a regex sweep for template literals matches
+    // inside the very comments that say the line is dead, and every retired
+    // message reads as live.
+    expect(dormancyCause("the binding could not name the chart", stringLiteralsIn(src))).toBe("removed");
+  });
+
+  it("does not let a LINE comment vouch for a line that is gone either", async () => {
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { dormancyCause, stringLiteralsIn } = await import("../scripts/triage.mjs");
+    // The block-comment case has a twin: a `//` note quoting the full retired
+    // message in double quotes reads as an emitter unless line comments are
+    // skipped too, and this file's notes are written both ways.
+    expect(dormancyCause("the settle's re-read came back empty", stringLiteralsIn(src))).toBe("removed");
+  });
+
+  it("says `unknown` rather than guessing when there is no source to read", async () => {
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { dormancyCause } = await import("../scripts/triage.mjs");
+    // An unreadable tree is no evidence, and "removed" on no evidence would
+    // retire a live instrument on the strength of a missing directory.
+    expect(dormancyCause("anything at all", null)).toBe("unknown");
+  });
+
+  it("keeps a string that contains a comment marker", async () => {
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { stringLiteralsIn } = await import("../scripts/triage.mjs");
+    // Stripping `//` line-wise would cut this in half and retire the message
+    // after it.
+    const kept = stringLiteralsIn('const a = "see https://example.com for why"; trace("x", "still here", {});');
+    expect(kept).toContain("see https://example.com for why");
+    expect(kept).toContain("still here");
+  });
+});

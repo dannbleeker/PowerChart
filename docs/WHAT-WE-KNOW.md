@@ -111,6 +111,13 @@ wrong. Unmarked lines are believed but unchecked, which is a weaker thing.
   things that would explain the answer WITHOUT the host being at fault — did the
   slide resolve, does it hold shapes, is the id in its listing — each of which
   was added only after an answer had already been misread once.
+- **A renamed trace message is indistinguishable from a fixed fault.** Both read
+  as a zero. `a slide's shape count would not settle — not counting it` sat in
+  the quiet-instruments list for 140 rounds while the instrument fired every
+  round under a rewritten tail. `npm run rounds` now classifies each quiet line
+  as STOPPED, RENAMED or REMOVED by searching the source's string literals —
+  comments excluded, because this codebase names retired lines in prose and a
+  comment saying "this is dead" otherwise vouches for it being alive.
 - **When a record keeps going stale, stop recording and start observing.** The
   named id was fixed twice for freshness and was still wrong; a deck scan taken
   seconds before the question is right by construction rather than by

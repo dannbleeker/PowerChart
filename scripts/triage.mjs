@@ -3205,8 +3205,23 @@ function reportDormant(pooled) {
       `    ${String(r.events).padStart(5)}x  last round ${String(r.lastRound).padStart(3)} (${r.gap} ago)  ${r.message.slice(0, 58)}`,
     );
   if (rows.length > 8) console.log(`    … and ${rows.length - 8} more`);
-  console.log("    A zero here is EITHER a fault that stopped OR a line nothing can emit any more,");
-  console.log("    and this cannot tell them apart — check the source before reading one as clean.");
+  // THE CAUSES FIRST, because they mean opposite things and the loudest rows are
+  // not the interesting ones. A renamed line reads as a fixed fault and is a
+  // live instrument; a removed one reads as a fixed fault and is nothing at all.
+  const odd = rows.filter((r) => r.cause === "renamed" || r.cause === "removed");
+  for (const r of odd) {
+    console.log(
+      `    ${String(r.events).padStart(5)}x  ${r.cause.toUpperCase()} — ${
+        r.cause === "renamed"
+          ? "the message was rewritten or is now interpolated; the instrument is ALIVE under another name"
+          : "nothing in the source can emit this, so its zero says nothing about the host"
+      }`,
+    );
+    console.log(`             ${r.message.slice(0, 70)}`);
+  }
+  console.log(
+    `    ${rows.length - odd.length} more are still in the source verbatim — for those a zero means the fault stopped.`,
+  );
   console.log("    Thread 3 waited on a counter that had been silent for 160 rounds and nothing said so.");
 }
 
@@ -3460,7 +3475,125 @@ export function rateOrSilence(count, total, minN = MIN_RATE_N) {
  * Counted in ROUNDS, not in events: a line that fired 155 times and then stopped
  * is the interesting shape, and an event count alone hides when it stopped.
  */
-export function dormantInstruments(logs, minGap = 40) {
+/**
+ * Only what the source can actually SAY — the contents of its string literals.
+ *
+ * Comments are excluded, and that is the whole point rather than tidiness. This
+ * codebase quotes retired trace messages in comments constantly, to record what
+ * used to happen and when it stopped — `the binding could not name the chart`
+ * survives only in a note reading "16, all in rounds 077-078". Searching raw
+ * file text finds that note and reports the line as still emittable, which is
+ * the DANGEROUS direction: it reads as "a fault that stopped" when the truth is
+ * "nothing can emit this any more".
+ *
+ * Template literals keep their literal parts, so an interpolated message still
+ * matches on its head and lands in `renamed` rather than `removed`.
+ */
+export function stringLiteralsIn(text) {
+  const src = String(text ?? "");
+  const out = [];
+  let i = 0;
+  // A SCANNER, not a regex sweep. Regexes cannot do this: comments here quote
+  // retired messages in BACKTICKS — the house style for naming a trace line in
+  // prose — so a template-literal pattern matches inside the very comments this
+  // function exists to exclude, and every retired message reads as live.
+  while (i < src.length) {
+    const c = src[i];
+    const next = src[i + 1];
+    if (c === "/" && next === "/") {
+      while (i < src.length && src[i] !== "\n") i++;
+      continue;
+    }
+    if (c === "/" && next === "*") {
+      i += 2;
+      while (i < src.length && !(src[i] === "*" && src[i + 1] === "/")) i++;
+      i += 2;
+      continue;
+    }
+    if (c === '"' || c === "'" || c === "`") {
+      const quote = c;
+      i++;
+      let body = "";
+      while (i < src.length && src[i] !== quote) {
+        // Skip the escaped character whole, so a `\"` does not end the literal.
+        if (src[i] === "\\") {
+          body += src[i + 1] ?? "";
+          i += 2;
+          continue;
+        }
+        body += src[i];
+        i++;
+      }
+      i++;
+      out.push(body);
+      continue;
+    }
+    i++;
+  }
+  return out.join("\n");
+}
+
+/**
+ * Every trace message the source can still produce, as one blob to search.
+ *
+ * Read from the tree rather than passed in, because the question — "can anything
+ * still emit this?" — is about the code as it is now, and a caller that had to
+ * supply it would be free to supply the wrong thing.
+ */
+export function traceSource(read = readFileSync, dir = "src") {
+  const out = [];
+  const walk = (d) => {
+    for (const name of readdirSync(d, { withFileTypes: true })) {
+      const full = join(d, name.name);
+      if (name.isDirectory()) walk(full);
+      else if (/\.ts$/.test(name.name)) out.push(stringLiteralsIn(read(full, "utf8")));
+    }
+  };
+  try {
+    walk(dir);
+  } catch {
+    // No tree to read — the caller gets an empty haystack and every line is
+    // classified `unknown` rather than wrongly declared dead.
+    return null;
+  }
+  return out.join("\n");
+}
+
+/**
+ * WHY a line went quiet — which the count alone cannot say.
+ *
+ * Three causes, and they mean opposite things:
+ *
+ * - `stopped`  the message is still in the source verbatim, so something could
+ *               emit it and nothing has. The fault stopped. GOOD NEWS.
+ * - `renamed`  no verbatim match, but a line starting the same way exists. The
+ *               instrument is ALIVE under another name, or the message is now
+ *               built by interpolation and no rendered form can ever match the
+ *               archive's. The zero is an artifact of the rename.
+ * - `removed`  nothing resembling it in the source. Nothing can emit it, so the
+ *               zero says nothing at all about the host.
+ *
+ * The audit that produced this found all three among the top nine, which is why
+ * the report can no longer leave the question to the reader:
+ * `a slide's shape count would not settle — not counting it` reads as a fault
+ * that stopped 140 rounds ago and is in fact firing every round under
+ * `— taking the second read`.
+ *
+ * The prefix is 30 characters because that is long enough to be specific and
+ * short enough to survive a rewritten tail, which is where these messages get
+ * edited — they are written as sentences, and the clause after the dash is the
+ * part that changes.
+ */
+export const RENAME_PREFIX = 30;
+
+export function dormancyCause(message, source) {
+  if (source == null) return "unknown";
+  if (source.includes(message)) return "stopped";
+  const head = message.slice(0, RENAME_PREFIX);
+  return head.length >= RENAME_PREFIX && source.includes(head) ? "renamed" : "removed";
+}
+
+export function dormantInstruments(logs, minGap = 40, source = undefined) {
   const last = new Map();
   const total = new Map();
   let newest = 0;
@@ -3478,7 +3611,14 @@ export function dormantInstruments(logs, minGap = 40) {
   const rows = [];
   for (const [m, n] of last) {
     const gap = newest - n;
-    if (gap > minGap) rows.push({ message: m, lastRound: n, gap, events: total.get(m) ?? 0 });
+    if (gap > minGap)
+      rows.push({
+        message: m,
+        lastRound: n,
+        gap,
+        events: total.get(m) ?? 0,
+        cause: dormancyCause(m, source === undefined ? traceSource() : source),
+      });
   }
   // Loudest first: a line that fired 155 times before going quiet is worth more
   // of a reader's attention than one that fired twice.
