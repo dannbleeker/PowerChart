@@ -2508,6 +2508,28 @@ describe("resolving a shape through a tagged chart's own slide", () => {
     }
   });
 
+  it("says whether the slide still holds anything, to tell a stale id from a refusal", async () => {
+    const { _rememberNamedShapeForTest } = await import("../src/render/powerpoint");
+    const deck = [makeSlide("s1")];
+    installHost(deck);
+    deck[0].shapes.addGeometricShape("Rectangle", { left: 1, top: 1, width: 9, height: 9 });
+    // An id that is NOT on the slide, while the slide plainly holds a shape.
+    // Without the count, this reading and "the chart was redrawn away before we
+    // asked" produce the identical `no such shape on that slide` — one is a
+    // finding about the host, the other is our own id gone stale.
+    _rememberNamedShapeForTest("s1", "no-such-shape");
+    const sheet = await runHostProbes("fake", "test", {
+      only: ["shape-resolve-held-slide-proxy"],
+      passes: 1,
+    });
+    const row = sheet.answers.find((r) => r.id === "shape-resolve-held-slide-proxy")!;
+    expect(row.detail).toContain("no such shape on that slide");
+    expect(row.detail).toMatch(/slide holds [1-9]\d* shape\(s\)/);
+    // …and the id it actually tried, so the pairing can be checked against the
+    // draw trace rather than assumed.
+    expect(row.detail).toContain("no-such-shape");
+  });
+
   it("counts a slide that never resolved as a question never put", async () => {
     // Same standing as `no-scratch-shape`: setup failed, so the question was not
     // asked. If it counted as an answer the diff would compare it against the

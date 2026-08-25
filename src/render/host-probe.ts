@@ -1399,6 +1399,32 @@ const PROBES: Probe[] = [
         // does not work, which is what the three production sites need to know —
         // and splitting the ANSWER would break every comparison with the 217
         // rounds behind it.
+        // WHETHER THE SLIDE STILL HOLDS ANYTHING, which is what separates the two
+        // readings of "no such shape".
+        //
+        // Round 243 answered `no such shape on that slide` and that is two
+        // stories again. Either the host refuses a by-id lookup for a shape
+        // sitting right there — the finding, and the same wall the draw path hit
+        // twice in that round's own trace ("a by-id lookup refused the whole
+        // resolve") — or the chart we recorded was redrawn away before the
+        // re-ask, in which case the id is stale and the fault is ours.
+        //
+        // A COUNT, not a lookup, so the question itself is untouched: the verdict
+        // still comes from `getItemOrNullObject(<id>)` exactly as the three
+        // production sites use it. `getItemAt` was once tried AS the question and
+        // reverted for making it answerable and worthless; using a count as
+        // CONTEXT is the opposite move.
+        //
+        // Best-effort: a host that will not count must not cost the answer we
+        // already have.
+        let holds = "count unread";
+        try {
+          const n = held.shapes.getCount();
+          await ctx.sync();
+          holds = `slide holds ${String((n as unknown as { value?: number }).value)} shape(s)`;
+        } catch {
+          holds = "slide would not count its shapes";
+        }
         const lost = (() => {
           try {
             return (shape as unknown as { isNullObject?: boolean }).isNullObject === true
@@ -1414,7 +1440,9 @@ const PROBES: Probe[] = [
           answer: back === id ? "yes" : "unreadable",
           detail: `read ${String(back)}${
             known
-              ? ` (through a tagged chart's id, on slide ${String((held as unknown as { id?: string }).id)}) — ${lost}`
+              ? ` (through a tagged chart's id ${id}, on slide ${String(
+                  (held as unknown as { id?: string }).id,
+                )}) — ${lost}; ${holds}`
               : ""
           }`,
         };
