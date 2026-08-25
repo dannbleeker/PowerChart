@@ -7821,6 +7821,51 @@ Worth noting what the instrument cost: one `getCount()` in the scenario, taken
 before the loop, adding nothing to the timed path. The question had been open
 across four corrections and roughly two hundred rounds.
 
+### THE OTHER ARM, round 240: load is the factor, and "position is real" was overstated
+
+    arm                     ms      slide  shapes   vs that round's later charts
+    alone, CLEAR slide    15699      262      1           0.93x   (round 239)
+    alone, LOADED slide   41851      257      3           1.66x   (round 240)
+
+**Run-length held at one. Size held at 18 of 24. Occupancy measured on both
+sides. 2.7x raw, 1.8x once each arm is normalised against its own round** — and
+that normalisation matters, because round 240 ran about 30% slower throughout,
+which is exactly what the 14% IQR and 73% range say to expect.
+
+**Load has a large independent effect.** That is the half that was open, and it
+is now closed with a measurement on both arms rather than an inference from a
+slide number.
+
+### And it takes "position is real" down with it
+
+The entry above says position was demonstrated in round 239 with load held
+constant: chart 1 at **+21800** above the fit against charts 2 and 3 at **+3700**,
+all three on the same slide. That comparison is between an **18-of-24** chart and
+two **9-of-16** charts, reconciled through the per-size fit — and this file
+already records that the 16-node fit is built from a single change-count and is
+unreliable for exactly this purpose.
+
+**So position's independent effect is NOT established.** What round 240 adds is
+the opposite: on the loaded slide, a lone chart (41851) and the first of eight
+(47214) cost about the same — both position 1, 12% apart, inside the floor. The
+run length does not matter; the slide does.
+
+Corrected ninety minutes after being written, by the round designed to test the
+other half. The lesson is the same one this thread has taught four times: a
+control that holds one factor constant while comparing across a DIFFERENT
+uncontrolled one — here chart size, through a fit the archive distrusts — is not
+a control.
+
+**Where the thread actually stands:**
+
+- **Load: measured, large, both arms.** A chart on a slide holding three shapes
+  costs ~1.8x one on a slide holding one, at the same size and run length.
+- **Position: unestablished.** Every comparison supporting it crosses chart
+  sizes, and the size-matched evidence (lone versus first-of-eight, both loaded)
+  shows no difference at all.
+- **What would test position properly:** two charts of the SAME size on the same
+  slide, one first and one later. The harness does not currently produce that.
+
 
 ## READ THIS FIRST is fixed: 36 of 36, against a baseline of 1 of 74
 
