@@ -3114,3 +3114,38 @@ describe("which chart the lone-run arm picks", () => {
     expect(pickLoneChart(["257", "258", "259", "262"])).toBe(3);
   });
 });
+
+describe("the lone chart's other arm", () => {
+  it("picks the busy slide when asked, size-matched", async () => {
+    const { pickLoneChart } = await import("../src/taskpane/selftest");
+    // Index 0 deliberately: it is the 18-of-24 chart, so it matches the
+    // clear-slide arm. Its slide-mates are 9-of-16 and would compare nothing.
+    expect(pickLoneChart(["257", "257", "257", "258", "262"], true)).toBe(0);
+  });
+
+  it("refuses the loaded arm when no chart shares that slide", async () => {
+    const { pickLoneChart } = await import("../src/taskpane/selftest");
+    // A deck that cannot pose the question must say so, the same rule the
+    // default arm follows.
+    expect(pickLoneChart(["257", "258", "259"], true)).toBe(null);
+  });
+
+  it("leaves the default arm exactly as it was", async () => {
+    const { pickLoneChart } = await import("../src/taskpane/selftest");
+    expect(pickLoneChart(["257", "257", "258", "262"])).toBe(3);
+    expect(pickLoneChart(["257", "257"])).toBe(null);
+  });
+
+  it("stays on the clear arm unless the flag says otherwise", async () => {
+    const { wantsLoadedLoneChart } = await import("../src/taskpane/selftest");
+    expect(wantsLoadedLoneChart(() => null)).toBe(false);
+    expect(wantsLoadedLoneChart(() => "0")).toBe(false);
+    expect(wantsLoadedLoneChart(() => "yes")).toBe(false);
+    expect(wantsLoadedLoneChart(() => "1")).toBe(true);
+    expect(
+      wantsLoadedLoneChart(() => {
+        throw new Error("SecurityError");
+      }),
+    ).toBe(false);
+  });
+});

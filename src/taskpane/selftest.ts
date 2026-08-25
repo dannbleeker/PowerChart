@@ -527,10 +527,50 @@ const editOnVisibleSlide: Scenario = async (prefix) => {
  * variables must SKIP and say why, not quietly measure the thing it was built
  * to rule out.
  */
-export function pickLoneChart(slideIds: readonly string[]): number | null {
+export function pickLoneChart(slideIds: readonly string[], wantLoaded = false): number | null {
   if (!slideIds.length) return null;
+  // THE OTHER ARM. Position is now demonstrated with load held constant (round
+  // 239: charts 1, 2 and 3 on one slide holding three shapes, chart 1 +21800
+  // above the fit and the others +3700). Load's INDEPENDENT effect needs the
+  // mirror image — run-length held at one, the slide varied — and that means a
+  // lone chart ON the busy slide, which is exactly what the default refuses.
+  //
+  // Index 0 deliberately: it is the 18-of-24 chart, so it is size-matched with
+  // the clear-slide arm. Its slide-mates are 9-of-16 and would compare nothing.
+  //
+  // Null rather than a fallback when nothing shares that slide — a deck that
+  // cannot pose the question must say so, the same rule the default arm follows.
+  if (wantLoaded) return slideIds.some((s, i) => i > 0 && s === slideIds[0]) ? 0 : null;
   for (let i = slideIds.length - 1; i > 0; i--) if (slideIds[i] !== slideIds[0]) return i;
   return null;
+}
+
+/**
+ * Which arm the lone-chart scenario runs — clear slide by default.
+ *
+ *     localStorage.setItem("powerchart-lone-chart-loaded", "1")
+ *
+ * Off unless asked, read per run, and traced either way so a round always says
+ * which arm produced its number. Same discipline as `scanSettleMs`: an untraced
+ * default is how an experiment contaminates its own control.
+ */
+export const LONE_LOADED_KEY = "powerchart-lone-chart-loaded";
+
+export function wantsLoadedLoneChart(read: (key: string) => string | null = readLoneLoaded): boolean {
+  try {
+    return read(LONE_LOADED_KEY) === "1";
+  } catch {
+    // A pane whose storage throws is not a pane that asked for the other arm.
+    return false;
+  }
+}
+
+function readLoneLoaded(key: string): string | null {
+  try {
+    return typeof localStorage === "undefined" ? null : localStorage.getItem(key);
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -591,12 +631,21 @@ const oneChartAlone: Scenario = async (prefix) => {
   // Skipped rather than guessed when the deck will not provide the contrast:
   // a lone chart that shares the first chart's slide measures nothing this
   // scenario claims to measure.
-  const pick = pickLoneChart(charts.map((x) => x.target.slideId));
+  const loaded = wantsLoadedLoneChart();
+  const pick = pickLoneChart(
+    charts.map((x) => x.target.slideId),
+    loaded,
+  );
+  // TRACED EITHER WAY, including the default, so a round always says which arm
+  // produced its number rather than leaving it to be inferred from the slide id.
+  trace("selftest", "the lone chart's arm", { arm: loaded ? "loaded slide" : "clear slide", pick });
   if (pick === null)
     return {
       ok: false,
       skipped: true,
-      detail: "every probe chart shares the first chart's slide — the slide/position confound is not broken here",
+      detail: loaded
+        ? "no probe chart shares the first chart's slide — the loaded arm has nothing to measure"
+        : "every probe chart shares the first chart's slide — the slide/position confound is not broken here",
     };
   const c = charts[pick];
   await showSlide(c.target.slideId);
