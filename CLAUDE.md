@@ -629,6 +629,10 @@ deck` already says how many charts in a deck are re-editable, which is the
   were actually ours were 0, 0, 0 and 1.
 
   **"Part-way through" is measured now, and it is not about position — it is
+  **SUPERSEDED 2026-08-25: that 1% is now 36 of 36.** Kept because it is why the
+  code exists, not because it describes the host today — see
+  `docs/WHAT-WE-KNOW.md`, checked every round by `scripts/claims.mjs`.
+
   about the SLIDE.** Pooled over 36 rounds (`npm run rounds`, _WHICH SLIDE THE
   CHART LANDED ON_):
 

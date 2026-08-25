@@ -7337,6 +7337,29 @@ Written before the refutation and left standing with it, because the prediction
 being wrong is the useful part — and because a threshold quietly moved to fit is
 how a number becomes doctrine without ever being tested.
 
+### The fourth crash: pattern broken, threshold untestable
+
+Round 239, 2026-08-25. It crashed in **`insert onto a slide that already has
+content`** — not the rescale — with exactly one update recorded, and never
+reached a chart 1/8 at all.
+
+Two things follow, and neither is comfortable:
+
+- **"All three died inside `same scale across the deck`" is now 3 of 4.** That
+  sentence is three paragraphs above this one and was written as a pattern. One
+  more observation and it is a majority, not a rule.
+- **The threshold could not be tested.** Its settle condition was "read the next
+  crash dump's chart 1/8" and there was no chart 1/8 — the host died before the
+  measurement the warning depends on exists.
+
+That is a limitation of the signal, not a neutral outcome: **an early warning
+that lives in the rescale can only warn about crashes that happen after the
+rescale starts.** A quarter of the crashes on record now happen before it.
+
+Standing at three supporting cases, one false positive (round 232) and one
+inapplicable. Not a rule, and the honest next step is still to read the crash
+after this one rather than to adjust the number.
+
 
 ## The host is unversioned — but the probes are a fingerprint, and it has not moved
 
@@ -7748,6 +7771,55 @@ is wide — and only the third survived contact with the clock. Written down in
 that order deliberately: the first two were reasonable, evidenced, and wrong, and
 the thing that killed both was plotting the samples against time instead of
 against each other.
+
+
+## The occupancy reading, first round: POSITION is real, with load held constant
+
+Round 239, the first round to carry a host reading of what each slide held before
+the rescale:
+
+    chart      size    ms      slide  shapes   vs fit
+    draw-1     1/24    2431    257      3      on fit
+    1/8        18/24   37130   257      3      +21800
+    2/8        9/16    12157   257      3      +3700
+    3/8        9/16    11767   257      3      +3700
+    4/8-8/8    18/24   ~17000  258-262  1      on fit
+    1/1 alone  18/24   15699   262      1      on fit
+
+**Charts 1, 2 and 3 are on the same slide, holding the same three shapes** —
+measured by `getCount()`, not inferred from what a run's batches happened to
+record. Chart 1 is +21800 above the fit; charts 2 and 3 are +3700. Load is
+constant and the cost is not.
+
+And the slide is not the whole story on its own: a 1-of-24 update on that SAME
+loaded slide, moments earlier, cost 2431ms — dead on the fit. Slide 257 is not
+inherently slow.
+
+**So position is real.** That is the half of the question that four corrections
+could not nail down, and it took one honest measurement rather than another
+argument.
+
+### What is still open, stated precisely so the next round can close it
+
+Load's INDEPENDENT effect is not settled by this round. The comparison that would
+settle it is the lone arm on a LOADED slide against the lone arm on a clear one,
+which holds run-length constant at one and varies only the slide:
+
+    alone, clear slide (measured)     15235ms (round 215) · 15699ms (round 239)
+    alone, loaded slide (inferred)    35033ms (round 213) · 39570ms (round 214)
+
+The second row is INFERRED, not measured — rounds 213 and 214 predate the
+occupancy reading, so "slide 257 held three shapes then" is an assumption from
+the slide number. Plausible, and not evidence.
+
+**The experiment:** make the lone arm pick a chart on the FIRST chart's slide —
+the exact opposite of what `pickLoneChart` does today, which was written to avoid
+that confound. One round in each arm, with occupancy recorded in both, and the
+question is finished.
+
+Worth noting what the instrument cost: one `getCount()` in the scenario, taken
+before the loop, adding nothing to the timed path. The question had been open
+across four corrections and roughly two hundred rounds.
 
 
 ## READ THIS FIRST is fixed: 36 of 36, against a baseline of 1 of 74

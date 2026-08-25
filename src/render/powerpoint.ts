@@ -5615,6 +5615,10 @@ export function rasterGap(): Promise<void> {
  * as "upstream has nothing, `sleep(2000)` only". That was a fair reading while
  * the failure looked like a TAG problem. It is the wrong reading now: the
  * failure has been isolated to exactly the state the workaround addresses.
+ * **SUPERSEDED 2026-08-25: that 1% is now 36 of 36.** The measurement below is
+ * kept because it is why the code exists, not because it describes the host
+ * today — see `docs/WHAT-WE-KNOW.md`, checked every round by `scripts/claims.mjs`.
+ *
  * Measured over the whole round archive on 2026-08-15:
  *
  *     slide already had shapes   82 chart(s), 81 grouped = 99%
@@ -8869,7 +8873,10 @@ function targetRef(shape: PowerPoint.Shape | undefined): TargetRef | undefined {
  * re-editable", and the archive refutes the second half: an ungrouped chart
  * keeps its config about one time in three, not as a rule (97 charts on an
  * established slide, 96 grouped; 84 on a freshly added one, 1 grouped —
- * `npm run rounds`). Grouping nothing is still the better of the two, because a
+ * `npm run rounds`). **The freshly-added half of that is SUPERSEDED as of
+ * 2026-08-25: it is 36 of 36.** The comparison it supports still holds, because
+ * it is about grouped versus ungrouped, not about which slide.
+ * Grouping nothing is still the better of the two, because a
  * throw costs every chart in the batch rather than one, but it is a choice
  * between two losses and not a safe fallback. The way out is upstream: the
  * members cannot be named because the slide was added by this run, and that is
@@ -9036,8 +9043,17 @@ async function groupAndTagAll(
       // ASKED TWICE, and the second time after a pause. See `REREAD_RETRY_MS`:
       // this host does not populate a freshly materialised slide's shape
       // collection straight away, and a chart drawn onto a slide this run just
-      // added is grouped 1% of the time against 99% on a slide that already had
-      // shapes. `pending` carries the charts whose answer was short or empty;
+      // added WAS grouped 1% of the time against 99% on a slide that already had
+      // shapes.
+      //
+      // **THAT 1% IS HISTORY — it is 36 of 36 as of 2026-08-25**, and this retry
+      // is why. The figure is kept because it is the reason the code exists, not
+      // because it describes the host today; `docs/WHAT-WE-KNOW.md` carries the
+      // current rate and `scripts/claims.mjs` checks it every round. The same
+      // stale figure was still being quoted as current in `BACKLOG.md` twenty
+      // rounds after it stopped being true, because nothing could tell.
+      //
+      // `pending` carries the charts whose answer was short or empty;
       // anything that matched is out of the loop after the first pass and pays
       // nothing.
       //

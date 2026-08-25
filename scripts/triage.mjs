@@ -1394,6 +1394,10 @@ export function poolGroupVsTag(logs) {
 /**
  * Did the chart land on a slide that already had shapes, or on a fresh one?
  *
+ * **SUPERSEDED 2026-08-25: that 1% is now 36 of 36.** The measurement below is
+ * kept because it is why the code exists, not because it describes the host
+ * today — see `docs/WHAT-WE-KNOW.md`, checked every round by `scripts/claims.mjs`.
+ *
  * THE ROOT, found 2026-08-15, and the cleanest separation this project has:
  *
  *     slide already had shapes  82 chart(s), 81 grouped = 99%
