@@ -703,6 +703,8 @@ export const faults = {
    * no probe can produce as an answer to its own question.
    */
   refuseShapeAdds: false,
+  /** See the counted branch beside `refuseShapeAdds`: refuse N adds, then allow. */
+  refuseShapeAddsTimes: 0,
   /**
    * After this many syncs, EVERY sync stops settling — neither resolving nor
    * rejecting, forever.
@@ -1574,7 +1576,18 @@ export function makeSlide(id: string) {
         // shape is still handed back, because a queued-command failure is what
         // a real host answers with: the caller holds a proxy for something
         // that never lands.
-        if (faults.refuseShapeAdds) {
+        // The COUNTED form, for the case the flag cannot express: a refusal
+        // that lifts. Buying a replacement slide only earns its cost when the
+        // question can succeed on the new one, and with the flag on it never
+        // can — so the flag alone can only ever show the replacement failing.
+        // `swallowAdds` is the same idea one layer up.
+        if (faults.refuseShapeAddsTimes > 0) faults.refuseShapeAddsTimes--;
+        else if (!faults.refuseShapeAdds) {
+          created.push(s);
+          pending.push(s);
+          return s;
+        }
+        {
           pendingHostError = new Error(
             'GeneralException | code=GeneralException | debugInfo={"code":"GeneralException","message":"GeneralException","errorLocation":"ShapeCollection.addGeometricShape"}',
           );

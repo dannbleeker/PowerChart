@@ -2742,3 +2742,48 @@ describe("what the re-acquire must NOT do", () => {
     expect((replaced[0].data as { after?: string }).after).toBe("no-scratch-slide");
   });
 });
+
+describe("whether buying a slide actually helped", () => {
+  afterEach(() => {
+    faults.refuseShapeAdds = false;
+    faults.newSlideIdSettlesAfter = null;
+    setTracing(false);
+  });
+
+  it("records that the replacement rescued the question", async () => {
+    installHost([makeSlide("s1")]);
+    // One refused add, then the fault lifts — so the replacement slide is the
+    // one that answers, which is the case the buying exists for.
+    faults.refuseShapeAddsTimes = 1;
+    setTracing(true);
+    await runHostProbes("fake", "test", { only: ["tags-on-fresh-shape"], passes: 1 });
+    const said = traceLog().entries.filter((e) => /^the replacement slide answered/.test(e.message));
+    expect(said.length, "buying a slide must say whether it helped").toBeGreaterThan(0);
+    expect(said.some((e) => (e.data as { rescued?: boolean }).rescued)).toBe(true);
+  });
+
+  it("records that it did not, when the shape is refused throughout", async () => {
+    installHost([makeSlide("s1")]);
+    faults.refuseShapeAdds = true;
+    setTracing(true);
+    await runHostProbes("fake", "test", { only: ["tags-on-fresh-shape"], passes: 1 });
+    const said = traceLog().entries.filter((e) => /^the replacement slide answered/.test(e.message));
+    expect(said.length).toBeGreaterThan(0);
+    // A slide bought against a shape refusal that a new slide cannot fix. Until
+    // this line existed the cost was paid and the outcome never written down.
+    expect(said.every((e) => (e.data as { rescued?: boolean }).rescued === false)).toBe(true);
+  });
+
+  it("calls a shape refusal by its name, not `unrecorded`", async () => {
+    installHost([makeSlide("s1")]);
+    faults.refuseShapeAdds = true;
+    setTracing(true);
+    await runHostProbes("fake", "test", { only: ["tags-on-fresh-shape"], passes: 1 });
+    const replaced = traceLog().entries.filter((e) => /^replaced the scratch slide$/.test(e.message));
+    expect(replaced.length).toBeGreaterThan(0);
+    // `unrecorded` is reserved for the 16548 events archived before the cause
+    // was carried out of the catch. Putting a known cause in that bucket makes
+    // the pre-instrument rounds unreadable.
+    expect((replaced[0].data as { why?: string }).why).toBe("shape-refused");
+  });
+});

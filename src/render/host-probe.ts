@@ -3373,9 +3373,30 @@ export async function runHostProbes(
                 // is a slide being deleted or a proxy going unanswered. Only the
                 // second is the case the update path already knows how to
                 // recover from without adding a slide at all.
-                why: result.why ?? "unrecorded",
+                // `unrecorded` must mean UNKNOWN, not "known and unsaid".
+                // A `no-scratch-shape` has no `why` because it never reached
+                // `ScratchSlideUnavailable` — the slide was fine and the shape
+                // was refused — and calling that unrecorded put 12 events a
+                // round into the bucket reserved for rounds that predate the
+                // instrument.
+                why: result.why ?? (result.answer === "no-scratch-shape" ? "shape-refused" : "unrecorded"),
               });
               const retry = await ask(probe, replacement, durableSlideId);
+              // DID BUYING THE SLIDE HELP? Counted, because the decision to buy
+              // one rests on it and nothing has ever measured it.
+              //
+              // Round 255 bought 18 slides and every one of them followed a
+              // SHAPE refusal, not a slide one — the code buys on either, on the
+              // theory that a slide which will not take a shape may itself be
+              // bad. That theory may be right; it has simply never been checked,
+              // and it is the same shape as the re-read whose successes went
+              // uncounted for 227 rounds while its failures were tallied.
+              trace("probe", "the replacement slide answered", {
+                id: probe.id,
+                after: result.answer,
+                answer: retry.answer,
+                rescued: !NOT_ASKED.has(retry.answer),
+              });
               // Only adopt a retry that actually got somewhere. A second failure
               // on a brand-new slide is a stronger statement than the first, and
               // overwriting it with a never-asked would hide that.
