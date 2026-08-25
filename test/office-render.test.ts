@@ -6132,3 +6132,69 @@ describe("an update that redraws is labelled too", () => {
     }
   });
 });
+
+describe("an id this host has agreed to name", () => {
+  it("has nothing to offer before a chart exists", async () => {
+    const { namedShape, _resetNamedShapeForTest } = await import("../src/render/powerpoint");
+    _resetNamedShapeForTest();
+    // The first probe pass of a round runs before the battery draws anything.
+    // That is a real state and the probe must report it, not invent an id.
+    expect(namedShape()).toBe(null);
+  });
+
+  it("remembers a chart whose tag actually wrote", async () => {
+    const { namedShape, _resetNamedShapeForTest } = await import("../src/render/powerpoint");
+    _resetNamedShapeForTest();
+    installHost([makeSlide("s1")]);
+    const target = await insertSceneIntoSlide(buildChart(config), {
+      tagData: JSON.stringify(config),
+      shapesPerSync: 1,
+    });
+    expect(target, "the fixture needs a drawn chart").toBeTruthy();
+    const named = namedShape();
+    expect(named, "a tagged chart is an id the host named").toBeTruthy();
+    // It must be the SHAPE the tag went on, and its own slide — the probe
+    // resolves the shape through that slide's handle.
+    expect(named!.shapeId).toBe(target!.shapeId);
+    expect(named!.slideId).toBe(target!.slideId);
+  });
+
+  it("refuses to remember a chart that lost its config", async () => {
+    const { namedShape, _resetNamedShapeForTest } = await import("../src/render/powerpoint");
+    _resetNamedShapeForTest();
+    installHost([makeSlide("s1")]);
+    faults.refuseTagWritesOnResolvedProxy = true;
+    try {
+      const target = await insertSceneIntoSlide(buildChart(config), {
+        tagData: JSON.stringify(config),
+        group: false,
+        shapesPerSync: 1,
+      });
+      // THE WRITE IS THE EVIDENCE. A chart whose tag was refused proves nothing
+      // about whether this host honours its id — which is the entire property
+      // the probe needs — so recording it would hand the probe a guess.
+      expect(target?.lost ?? "no-config", "the fixture must actually lose the tag").toBeTruthy();
+      expect(namedShape(), "an untagged chart is not evidence of a named id").toBe(null);
+    } finally {
+      faults.refuseTagWritesOnResolvedProxy = false;
+    }
+  });
+});
+
+describe("the empty-id guard", () => {
+  it("refuses an id the host declined to give", async () => {
+    const { namedShape, _resetNamedShapeForTest, _rememberNamedShapeForTest } =
+      await import("../src/render/powerpoint");
+    _resetNamedShapeForTest();
+    // An empty id is WORSE than none: getItemOrNullObject("") throws or answers
+    // nothing, so the probe reports `threw` or `unreadable` — a real-looking
+    // answer about a bogus input, which is the one thing a diagnostic must not
+    // produce. This host has been seen to decline to name a shape.
+    _rememberNamedShapeForTest("s1", "");
+    expect(namedShape()).toBe(null);
+    _rememberNamedShapeForTest("", "shape-1");
+    expect(namedShape()).toBe(null);
+    _rememberNamedShapeForTest("s1", "shape-1");
+    expect(namedShape()).toEqual({ slideId: "s1", shapeId: "shape-1" });
+  });
+});

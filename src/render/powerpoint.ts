@@ -447,6 +447,62 @@ async function step<T>(label: string, fn: () => Promise<T>): Promise<T> {
 const DEFAULT_FONT = "Segoe UI";
 
 /** Where an existing PowerChart lives on the deck, for in-place update. */
+/**
+ * A shape this host has demonstrably consented to name, for the one probe that
+ * cannot manufacture one.
+ *
+ * `shape-resolve-held-slide-proxy` asks whether a SHAPE can be resolved by id
+ * through a slide handle a sync old. It has answered `no-scratch-shape` in **216
+ * of 216 rounds** and never once reached its question, because it needs an id
+ * for a shape it just created and this host will not give one: it refuses to
+ * name a shape in the batch that made it, and `shape-proxy-survives-one-sync`
+ * answers `unreadable` for reading the proxy back a sync later. Both doors shut.
+ *
+ * The probe's own comment named the way out and it has sat there unbuilt:
+ *
+ * > It becomes askable the moment anything on this host consents to name a
+ * > shape: an id from a chart the self-test has already drawn and tagged would
+ * > do, since those shapes demonstrably carry ids the host honours.
+ *
+ * This is that. One id, from the last chart whose config tag actually WROTE —
+ * the write is the proof the host honours the id, which is why a chart that lost
+ * its config is not recorded.
+ *
+ * NOT A CACHE and never read as one. It is a single sample handed to a
+ * diagnostic; nothing in the drawing or update paths reads it. It is deliberately
+ * NOT cleared between rounds either: a stale id makes the probe answer
+ * `unreadable` or throw, which is a real answer about an aged handle, where
+ * having nothing makes it answer nothing at all.
+ */
+let lastNamedShape: { slideId: string; shapeId: string } | null = null;
+
+function rememberNamedShape(slideId: string, shapeId: string): void {
+  if (slideId && shapeId) lastNamedShape = { slideId, shapeId };
+}
+
+/** The last shape this host named, or null before any chart has been tagged. */
+export function namedShape(): { slideId: string; shapeId: string } | null {
+  return lastNamedShape;
+}
+
+/** Test seam — a suite must not inherit an id from the test before it. */
+export function _resetNamedShapeForTest(): void {
+  lastNamedShape = null;
+}
+
+/**
+ * Test seam for the empty-id guard, which the fake cannot reach.
+ *
+ * This host has been seen to decline to name a shape, and an empty id handed to
+ * the probe is worse than none: `getItemOrNullObject("")` throws or answers
+ * nothing, so the probe reports `threw` or `unreadable` — a real-looking answer
+ * about a bogus input. The fake always supplies proper ids, so the guard is
+ * unreachable through `insertSceneIntoSlide` and needs its own door.
+ */
+export function _rememberNamedShapeForTest(slideId: string, shapeId: string): void {
+  rememberNamedShape(slideId, shapeId);
+}
+
 export interface EditTarget {
   slideId: string;
   shapeId: string;
@@ -1486,6 +1542,12 @@ async function insertSceneIntoSlideInner(
       return null;
     }
     if (!tagged?.tagged && opts.tagData) untagged.push({ key: t.id, slideId, tagData: opts.tagData, shapeId: t.id });
+    // AN ID THIS HOST HAS AGREED TO NAME — see `namedShape`.
+    //
+    // Recorded only when the tag WROTE, because that is the evidence: the tag
+    // went onto this shape through this id and the host accepted it. A chart
+    // that lost its config proves nothing about whether its id is honoured.
+    if (tagged?.tagged) rememberNamedShape(slideId, t.id);
     return {
       slideId,
       shapeId: t.id,
@@ -5171,6 +5233,13 @@ export interface ProbeContext {
    * stop clicking.
    */
   durableSlideId?: string;
+  /**
+   * A shape this host has already agreed to name, from a chart the self-test
+   * drew and tagged — see `namedShape`. Undefined before any chart exists,
+   * which is a real state: the first probe pass of a round runs before the
+   * battery has drawn anything.
+   */
+  namedShape?: { slideId: string; shapeId: string };
   sync: () => Promise<void>;
 }
 
@@ -5252,6 +5321,9 @@ export async function withProbeContext<T>(
         scratch: () => (handle ??= context.presentation.slides.getItemOrNullObject(scratchId)),
         scratchId,
         durableSlideId,
+        // Read at context-build time, so a probe pass later in the round sees a
+        // chart the earlier scenarios drew.
+        namedShape: namedShape() ?? undefined,
         sync: async () => {
           await context.sync();
           handle = null;

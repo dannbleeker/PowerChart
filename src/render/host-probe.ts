@@ -1323,8 +1323,29 @@ const PROBES: Probe[] = [
       // would do, since those shapes demonstrably carry ids the host honours.
       // That needs the probe run to see the self-test's output, which it
       // currently cannot.
-      const [id] = idsOf(await scratchShapes(ctx, [{ left: 10, top: 140, width: 20, height: 20 }], "id"));
-      const held = ctx.scratch();
+      // BUILT 2026-08-25, from the paragraph directly above this one.
+      //
+      // `ctx.namedShape` is a chart the self-test has drawn AND tagged — the tag
+      // writing is the proof this host honours that id. It closes the hole the
+      // comment described: the question needs an id, the host will not name a
+      // fresh scratch shape, and a tagged chart's id is one it already named.
+      //
+      // The QUESTION IS UNCHANGED. It still resolves a shape by
+      // `getItemOrNullObject(<id>)` through a slide handle that is a sync old,
+      // which is what `deleteShapesById` does. Reaching by `getItemAt(0)` was
+      // tried and reverted for making the question answerable and worthless;
+      // this does the opposite, keeping the production shape and supplying the
+      // one input the harness could not manufacture.
+      //
+      // The scratch route stays as the fallback, so a first pass — before any
+      // chart exists — still reports `no-scratch-shape` rather than pretending.
+      const known = ctx.namedShape;
+      const id = known
+        ? known.shapeId
+        : idsOf(await scratchShapes(ctx, [{ left: 10, top: 140, width: 20, height: 20 }], "id"))[0];
+      // The chart's OWN slide when using a chart, because that is where its
+      // shape lives; the scratch slide otherwise.
+      const held = known ? ctx.slides.getItemOrNullObject(known.slideId) : ctx.scratch();
       held.load("id"); // a REAL property: this is the sync that resolves it
       await ctx.sync();
       try {
@@ -1332,7 +1353,10 @@ const PROBES: Probe[] = [
         shape.load("id");
         await ctx.sync();
         const back = (shape as unknown as { id: string }).id;
-        return { answer: back === id ? "yes" : "unreadable", detail: `read ${String(back)}` };
+        return {
+          answer: back === id ? "yes" : "unreadable",
+          detail: `read ${String(back)}${known ? " (through a tagged chart's id)" : ""}`,
+        };
       } catch (err) {
         return threw(err);
       }
