@@ -2604,3 +2604,37 @@ describe("a detail that agrees with its own verdict", () => {
     expect(row.detail).toMatch(/slide holds [1-9]\d* shape\(s\)/);
   });
 });
+
+/**
+ * Which of two facts `value=undefined` was.
+ *
+ * `tags-add-same-key-twice` has answered `other` — the word this file classes as
+ * UNINFORMATIVE — in 15 of the last 15 rounds, always as `value=undefined`. That
+ * covers a tag key that is NOT ON THE SLIDE, meaning the write did not land, and
+ * a tag the host took and will not read back. `powerpoint.ts` puts
+ * `DEMO_SLOT_TAG` on slides and reads it back, so the difference has an owner.
+ */
+describe("writing the same tag key twice", () => {
+  const askIt = async () => {
+    const sheet = await runHostProbes("fake", "test", { only: ["tags-add-same-key-twice"], passes: 1 });
+    return sheet.answers.find((r) => r.id === "tags-add-same-key-twice")!;
+  };
+
+  it("says the tag is there when the host honours the write", async () => {
+    installHost([makeSlide("s1")]);
+    const row = await askIt();
+    expect(row.answer).toBe("overwrites");
+    expect(row.detail).toContain("the tag IS on the slide");
+  });
+
+  it("says the slide was named, and never claims the id changed", async () => {
+    installHost([makeSlide("s1")]);
+    const row = await askIt();
+    // All three handles come from ONE captured `scratchId`, so the ids are equal
+    // by construction. A report of "CHANGED under the probe" would be impossible
+    // rather than alarming, and for seven rounds the same instrument reported
+    // `stable` off three unread ids.
+    expect(row.detail).toContain("slide named");
+    expect(row.detail).not.toContain("should be impossible");
+  });
+});

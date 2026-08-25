@@ -1773,6 +1773,31 @@ const PROBES: Probe[] = [
       await ctx.sync();
       try {
         const v = (tag as unknown as { value: string }).value;
+        // IS THE TAG THERE AT ALL? `value=undefined` has been the whole answer
+        // for 15 rounds running — `other`, which this file classes as
+        // UNINFORMATIVE — and it covers two unrelated facts.
+        //
+        // A null-object tag means the key is NOT ON THE SLIDE: the write did not
+        // land, which is a real finding, because `powerpoint.ts` puts
+        // `DEMO_SLOT_TAG` on slides and reads it back. A tag that is NOT null
+        // with an unreadable value means the host took the write and will not
+        // give it back, which is a different bug with a different owner.
+        //
+        // Read defensively: an unloaded `isNullObject` throws `PropertyNotLoaded`
+        // and that is itself informative — the host answered nothing for this
+        // proxy — so it must not take the answer down with it.
+        const present = (() => {
+          try {
+            const n = (tag as unknown as { isNullObject?: boolean }).isNullObject;
+            return n === true
+              ? "no such tag on the slide"
+              : n === false
+                ? "the tag IS on the slide"
+                : "presence unread";
+          } catch {
+            return "the host populated nothing for the tag proxy";
+          }
+        })();
         const ids = [wrote, again, readFrom].map((s) => readShapeId(s as unknown as { id?: string }));
         // THREE UNKNOWNS COMPARE EQUAL, and for seven rounds this said so out
         // loud: `slide stable (?)`, on a host that had refused every one of the
@@ -1789,12 +1814,24 @@ const PROBES: Probe[] = [
         return {
           answer: v === "second" ? "overwrites" : v === "first" ? "keeps-first" : "other",
           detail:
-            `value=${v}; slide ` +
+            `value=${v}; ${present}; slide ` +
+            // THIS CANNOT DETECT A REPLACED SLIDE, and it was built to. All three
+            // handles resolve `getItemOrNullObject(scratchId)` from ONE captured
+            // string — `scratchId` is fixed for the whole question and only
+            // `handle` is re-made per batch — so the three ids are equal by
+            // construction and the CHANGED branch is unreachable from here. A run
+            // does replace scratch slides, 65 times in a round, but between
+            // questions rather than inside one.
+            //
+            // Kept, narrowed to what it can actually say: whether this host will
+            // NAME the slide it is working on. That is a real fact and a familiar
+            // one — the same refusal that left `shape-resolve-held-slide-proxy`
+            // unasked for 216 rounds.
             (!readable
-              ? `unreadable — this host would not name it, so whether it changed is UNKNOWN (${ids.map((id) => id ?? "?").join(", ")})`
+              ? `unnameable (${ids.map((id) => id ?? "?").join(", ")}) — the host would not name it`
               : sameSlide
-                ? `stable (${ids[0]})`
-                : `CHANGED under the probe: ${ids.join(" -> ")}`),
+                ? `named (${ids[0]})`
+                : `ids differ, which should be impossible: ${ids.join(" -> ")}`),
         };
       } catch (err) {
         return unreadable(err);
