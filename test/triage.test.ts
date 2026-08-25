@@ -3734,3 +3734,85 @@ describe("the current-beliefs index cannot drift from the claims", () => {
     expect(ticks, "every checked claim should carry a tick").toBeGreaterThanOrEqual(CLAIMS.length);
   });
 });
+
+describe("where an update's time went, sync by sync", () => {
+  const log = (rows: { chart: string; syncMs: number[] }[]) => ({
+    trace: {
+      entries: rows.map((r) => ({
+        message: "updated only the shapes that changed",
+        data: { chart: r.chart, changed: 18, of: 24, ms: r.syncMs.reduce((a, b) => a + b, 0), syncMs: r.syncMs },
+      })),
+    },
+  });
+
+  it("separates the first chart of a run from the rest", async () => {
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { poolSyncBreakdown } = await import("../scripts/triage.mjs");
+    const r = poolSyncBreakdown([
+      log([
+        { chart: "1/8", syncMs: [11000, 11000, 12000, 800] },
+        { chart: "2/8", syncMs: [5000, 5000, 5000, 600] },
+        { chart: "3/8", syncMs: [5100, 5100, 5100, 610] },
+      ]),
+    ]);
+    expect(r.first).toHaveLength(1);
+    expect(r.later).toHaveLength(2);
+  });
+
+  it("keeps a run of ONE out of both arms", async () => {
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { poolSyncBreakdown } = await import("../scripts/triage.mjs");
+    // The lone arm is the control that separates position from slide. Pooling it
+    // into either side destroys the thing it exists to measure.
+    const r = poolSyncBreakdown([
+      log([
+        { chart: "1/1", syncMs: [5000, 5000, 5000, 600] },
+        { chart: "1/8", syncMs: [11000, 11000, 12000, 800] },
+        { chart: "2/8", syncMs: [5000, 5000, 5000, 600] },
+      ]),
+    ]);
+    expect(r.first).toHaveLength(1);
+    expect(r.later).toHaveLength(1);
+    expect(r.first[0][0], "the lone chart must not be read as the first of a run").toBe(11000);
+  });
+
+  it("takes only the size it was asked for", async () => {
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { poolSyncBreakdown } = await import("../scripts/triage.mjs");
+    // A sync's cost is a function of how many shapes it writes, so mixing sizes
+    // produces a per-sync figure describing neither.
+    const mixed = {
+      trace: {
+        entries: [
+          {
+            message: "updated only the shapes that changed",
+            data: { chart: "1/8", changed: 9, of: 16, ms: 1, syncMs: [1, 2, 3, 4] },
+          },
+          {
+            message: "updated only the shapes that changed",
+            data: { chart: "2/8", changed: 18, of: 24, ms: 1, syncMs: [5, 6, 7, 8] },
+          },
+        ],
+      },
+    };
+    const r = poolSyncBreakdown([mixed]);
+    expect(r.first, "the 9-of-16 chart is a different measurement").toHaveLength(0);
+    expect(r.later).toHaveLength(1);
+  });
+
+  it("ignores rows carrying no per-sync timings", async () => {
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { poolSyncBreakdown } = await import("../scripts/triage.mjs");
+    const noSyncs = {
+      trace: {
+        entries: [
+          {
+            message: "updated only the shapes that changed",
+            data: { chart: "1/8", changed: 18, of: 24, ms: 37000 },
+          },
+        ],
+      },
+    };
+    expect(poolSyncBreakdown([noSyncs])).toEqual({ first: [], later: [] });
+  });
+});
