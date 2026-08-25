@@ -32,6 +32,18 @@ wrong. Unmarked lines are believed but unchecked, which is a weaker thing.
 - **✓ The slowdown is entirely host-side** — our idle between calls is 1ms in the
   fastest round and the slowest alike. `our-idle-is-negligible`
   If this ever climbs, every timing conclusion in the journal needs re-reading.
+- **✓ An id this host named still resolves through a slide handle a sync old.**
+  `id-through-aged-slide-handle-reads`
+  `shapes.getItemOrNullObject(<id>)` on a slide handle acquired a sync earlier
+  reads the shape back — which is what `deleteShapesById`,
+  `setShapeSelection` and the selection path all depend on, and what nothing had
+  ever measured. The question answered `no-scratch-shape` in 216 of 216 rounds
+  because it minted a scratch shape and this host will not name one; it becomes
+  askable with an id from a chart the self-test has drawn and tagged.
+  **The five `unreadable` answers in rounds 241-247 say nothing about
+  PowerPoint.** Each was our own stale id, and round 247 proved it by listing the
+  slide: `the id is NOT among the slide's 11 listed shapes`. Do not quote them.
+  The claim counts only rounds whose detail says the shape WAS in the listing.
 - **Group children are unreachable.** 548 throws, 0 answers. office-js#3014 is
   closed upstream; the fix has not reached this host.
 - **The host is unversioned** (`0.0.0.0`) — but probe answers are a behavioural
@@ -72,6 +84,11 @@ wrong. Unmarked lines are believed but unchecked, which is a weaker thing.
 - **✓ The `no-queue` trace is dead** (last round 065). `no-queue-trace-is-dead`
   Thread 3 as written is closed; its live successor is a sparse single-chart
   `tagging failed`.
+- **Whether an id survives on a shape the host has NOT just tagged.** Every
+  `yes` so far came from a chart the round drew, tagged and then observed
+  seconds later. That is the case the production sites mostly face, but not the
+  aged one — a chart edited an hour after it was drawn is untested, and the
+  archive cannot answer it because a round only ever asks about its own charts.
 - **Load's independent effect on update cost.** The experiment is named: the lone
   arm on a LOADED slide against the lone arm on a clear one, holding run-length
   at one. Occupancy is now recorded, so both arms are readable.
@@ -88,6 +105,16 @@ wrong. Unmarked lines are believed but unchecked, which is a weaker thing.
   for being a bad proxy was then used as one, twice in a day.
 - **Mutate every new test.** Five tests passed against the code they were written
   to catch, in one day, and no gate caught any of them.
+- **Before believing a host finding, prove the input was good.** The probe read
+  `unreadable` five times and it looked like office-js#2903 confirmed. It was a
+  stale id every time. What settled it was making the instrument report the
+  things that would explain the answer WITHOUT the host being at fault — did the
+  slide resolve, does it hold shapes, is the id in its listing — each of which
+  was added only after an answer had already been misread once.
+- **When a record keeps going stale, stop recording and start observing.** The
+  named id was fixed twice for freshness and was still wrong; a deck scan taken
+  seconds before the question is right by construction rather than by
+  maintenance.
 - **A correction sweeps its own section.** Five stale statements survived four
   hours directly above the correction that replaced them.
 - **State findings over the population, not the window you measured.**

@@ -250,6 +250,40 @@ export const CLAIMS = [
       return { ok: m <= 5, actual: `median ${m}ms over ${idles.length} batches` };
     },
   },
+  {
+    id: "id-through-aged-slide-handle-reads",
+    says: "A shape resolved by id through a slide handle a sync old reads back, when the id is one this host named and the shape is still on the slide.",
+    measured:
+      "2026-08-25, 3 of 3 across rounds 248-250 — the first rounds ever to ask the question with an id observed rather than remembered",
+    check(logs) {
+      // ONLY THE ROUNDS THAT REALLY ASKED IT, and the detail is what says so.
+      //
+      // `shape-resolve-held-slide-proxy` answered `no-scratch-shape` in 216 of
+      // 216 rounds and then `unreadable` in five more — and every one of those
+      // five was OUR stale id, not the host. Round 247 proved it by listing the
+      // slide: `the id is NOT among the slide's 11 listed shapes`. A claim that
+      // pooled those rounds would be measuring the harness.
+      //
+      // So the corroboration is the filter. A round counts only if the shape it
+      // asked about was present in the slide's own listing at the moment it
+      // asked, which is the one condition under which the answer is about
+      // PowerPoint at all.
+      const asked = [];
+      for (const log of recent(logs)) {
+        const row = (log?.hostAnswers?.answers ?? []).find((r) => r.id === "shape-resolve-held-slide-proxy");
+        const detail = String(row?.detail ?? "");
+        if (!row || !/IS among the slide's/.test(detail)) continue;
+        asked.push(row.answer);
+      }
+      // Under three it cannot say either way. Each round contributes ONE real
+      // sample here — the re-ask is a single pass — so this is a slower-filling
+      // claim than the rate ones above, and saying so is better than asserting
+      // from two.
+      if (asked.length < 3) return { ok: null, actual: `only ${asked.length} corroborated round(s)` };
+      const yes = asked.filter((a) => a === "yes").length;
+      return { ok: yes === asked.length, actual: `${yes}/${asked.length} yes` };
+    },
+  },
 ];
 
 /** Run every claim and report what the archive says about it. */
