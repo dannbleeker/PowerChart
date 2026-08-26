@@ -50,7 +50,15 @@ import { RECEIPT_PATH } from "./round.mjs";
 // layer down (`recover` hard-coded `Presentation63` after the deck became
 // `Presentation64`). A deck name is not a constant; it is a fact about the
 // browser, and it goes stale every time a document is remade.
-export function cyclePlan({ wide = "Presentation64", tall = "Presentation67" } = {}) {
+// `Presentation70` SINCE 2026-08-26, and this is the second time this default
+// has gone stale — the comment above records the first. `Presentation67` was
+// still open and still named correctly, so nothing looked broken; what had
+// changed is that its slide size had been reset to 16:9, and a 4:3 leg against
+// it stops the whole cycle with `wrong-size`, which recovery is forbidden to fix.
+//
+// A deck name is not the only fact that goes stale here. Its SIZE does too, and
+// the name alone cannot tell you. `Presentation70` was created at 4:3 for this.
+export function cyclePlan({ wide = "Presentation64", tall = "Presentation70" } = {}) {
   return [
     { leg: 1, deck: wide, size: "16:9", why: "the measurement" },
     { leg: 2, deck: wide, size: "16:9", why: "the pair — one round is never evidence" },

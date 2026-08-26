@@ -38,7 +38,11 @@ describe("a night's cycle", () => {
     // a change DELIBERATE. The live check is `node scripts/round.mjs --check`,
     // which now prints the fronted document and its measured slide size.
     expect(plan[0].deck).toBe("Presentation64");
-    expect(plan[2].deck).toBe("Presentation67");
+    // `Presentation70` since 2026-08-26. `Presentation67` was still open and
+    // still correctly named — what had gone stale was its SLIDE SIZE, reset to
+    // 16:9, which stops the 4:3 leg with `wrong-size` and is the one thing
+    // recovery is forbidden to fix. The name alone could not have told anyone.
+    expect(plan[2].deck).toBe("Presentation70");
   });
 
   it("carries on after a round whose scenarios failed", () => {

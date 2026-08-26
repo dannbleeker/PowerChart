@@ -188,14 +188,27 @@ other three were each used to justify something: the tag answer read as
 `groupReadRefused` latch, which was costing every in-place update after the first
 refusal in a round.
 
-**Three more are contradicted by production without anyone re-asking:**
+**Two more were re-asked on a real slide the same evening, and both reversed:**
 
-    addgroup-returns-usable      unreadable    charts group 110 of 112
-    tags-on-fresh-shape          threw         config tags land every round
-    shape-proxy-survives-one-sync unreadable   id-through-aged-slide-handle-reads: yes, 13/13
+| the sheet says | on a real slide, measured |
+| --- | --- |
+| `addgroup-returns-usable: unreadable` | `yes` — the group named itself AND took a tag (1469ms) |
+| `tags-on-fresh-shape: threw` | `yes` — a freshly drawn shape kept its tag (1122ms) |
 
-Seven of the fourteen weak answers in a typical sheet, then, are either proven
-wrong or flatly contradicted by what the product does all day.
+Both took under two seconds. `addgroup-returns-usable` is the one that matters:
+the product depends on the shape `addGroup` hands back being nameable and
+taggable, and the sheet has called that `unreadable` while charts grouped 110 of
+112 times in the same rounds. The experiment asks for BOTH halves — a group that
+names itself but will not take a tag is not usable for re-editability — and the
+host gave both.
+
+**One remains, and it does not need an experiment:**
+
+    shape-proxy-survives-one-sync unreadable   id-through-aged-slide-handle-reads: yes, 18/18
+
+Six of the sheet's weak answers have now been measured on a real slide and six
+came back different. The one above is contradicted by a green claim rather than
+by a re-ask, which is weaker evidence but points the same way.
 
 ### What this does NOT mean
 

@@ -2139,9 +2139,23 @@ Every push prints "GitHub found 3 vulnerabilities on the default branch (2 high,
     qs  6.11.1-6.15.1    MODERATE  qs.stringify crashes on null entries in
                                    comma-format arrays (GHSA-q8mj-m7cp-5q26)
 
-**`qs` is dev-only.** `@stryker-mutator/core` -> `typed-rest-client` -> `qs`. It
-is never shipped and never runs outside mutation testing. `npm audit fix` clears
-it without a major bump; it is queued behind anything that matters.
+**`qs` is dev-only, and is now FIXED** — `@stryker-mutator/core` ->
+`typed-rest-client` -> `qs`, never shipped, never runs outside mutation testing.
+
+Two things I wrote here first were wrong, and both were measured rather than
+assumed the second time:
+
+`npm audit fix` does NOT clear it. npm reports `fixAvailable: true` and then
+changes nothing — zero lockfile delta, four vulnerabilities before and after —
+because it cannot move a transitive that `typed-rest-client` pins. A fix that is
+"available" and inert is worse than one that is absent, because the report reads
+as actionable.
+
+What does clear it is an `overrides` pin to `qs@^6.15.3`. The advisory range is
+`6.11.1 - 6.15.1` and 6.15.3 is outside it, so this is a PATCH bump on the same
+minor rather than a version gamble. `npm audit` goes from 4 vulnerabilities (2
+moderate, 2 high) to 2 high. The `_overrides_why` key in package.json says when
+to remove it.
 
 **`image-size` is NOT REACHABLE.** It arrives under `pptxgenjs`, which IS a
 runtime dependency — `src/render/pptx-deck.ts:74` imports it dynamically — so the
@@ -2151,8 +2165,16 @@ tree alone makes it look shipped and live. It is not: pptxgenjs calls
 URI anywhere in it. The deck is shapes and text. Both parsers named in the
 advisories need an image to parse and are handed none.
 
-The fix would be `npm audit fix --force`, which is a MAJOR pptxgenjs bump — real
-breakage against an unreachable path. Not taken.
+**There is also nothing to upgrade TO.** Both advisories give their vulnerable
+range as `<=2.0.2`, and 2.0.2 is the latest published `image-size`. Every version
+that exists is flagged, so an `overrides` pin — which is what fixed `qs` above —
+has no target here.
+
+And npm's proposed remedy is not a bump but a THREE-MAJOR DOWNGRADE: `fixAvailable`
+names `pptxgenjs@1.1.5` against the 4.0.1 in use. `npm audit fix --force` would
+gut the deck writer to patch a code path this product never executes. Not taken,
+and the direction is worth stating — I first recorded this as "a major bump",
+which sounds like progress. It is the opposite.
 
 **What would change this.** Any feature that puts a bitmap into a generated deck:
 a logo, a screenshot, a rasterised chart fallback, an image placeholder. If
