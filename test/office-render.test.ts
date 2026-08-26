@@ -6413,3 +6413,39 @@ describe("taking the named id from a chart the deck has now", () => {
     _resetNamedShapeForTest();
   });
 });
+
+describe("the group-read refusal does not outlive its batch", () => {
+  it("forgets a refusal from an earlier batch", async () => {
+    const { groupReadHasBeenRefused, _setGroupReadRefusedForTest } = await import("../src/render/powerpoint");
+    const slide = makeSlide("s1");
+    installHost([slide]);
+    await insertSceneIntoSlide(buildChart(config), { tagData: JSON.stringify(config) });
+    const group = slide.created.find((s) => s.type === "group")!;
+    // LATCHED FIRST, as a refusal in some earlier batch would leave it. Without
+    // this the assertion below passes on a flag that was never set.
+    _setGroupReadRefusedForTest();
+    expect(groupReadHasBeenRefused()).toBe(true);
+    await updateChartsInSlides([
+      {
+        scene: buildChart(config),
+        target: { slideId: "s1", shapeId: group.id, left: 0, top: 0 },
+        opts: { tagData: "x" },
+      },
+    ]);
+    // THE POINT: a refusal from a previous batch must not decide this one. Across
+    // the last 25 rounds every redraw blaming "no readable group members" fell
+    // AFTER the latch fired and none before, and no in-place update happened
+    // after it at all.
+    expect(groupReadHasBeenRefused(), "the batch must start by forgetting").toBe(false);
+  });
+
+  it("keeps a refusal WITHIN the batch that saw it", async () => {
+    const { isGroupReadRefusal } = await import("../src/render/powerpoint");
+    // The refusal arrives at the SYNC, not at the property access, so it poisons
+    // the batch it lands in. Re-asking for every chart in that same batch spends
+    // the same exception again with nothing new to learn — which is the half of
+    // the original latch that was right.
+    expect(isGroupReadRefusal('{"errorLocation":"Shape.group"}')).toBe(true);
+    expect(isGroupReadRefusal('{"errorLocation":"ShapeCollection.getItem"}')).toBe(false);
+  });
+});

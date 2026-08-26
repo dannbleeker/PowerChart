@@ -2327,6 +2327,11 @@ export async function updateChartsInSlides(
   onFailed?: (item: { scene: Scene; target: EditTarget; opts?: InsertOptions }, err: unknown) => void,
 ): Promise<EditTarget[]> {
   if (!items.length) return [];
+  // A REFUSAL IN AN EARLIER BATCH SAYS NOTHING ABOUT THIS ONE — see
+  // `forgetGroupReadRefusal`. Latched for the session, one refusal turned every
+  // later update in the round into a redraw: 46 of them across the last 25
+  // rounds, against 0 before the latch fired.
+  forgetGroupReadRefusal();
   // Same contract as the insert path: charts whose config tag the drawing
   // context could not write, settled and tagged from a fresh one afterwards.
   // This is the path `same scale across the deck` drives, and the one that
@@ -10541,6 +10546,45 @@ function strokeColor(lf: PowerPoint.ShapeLineFormat, color: string): void {
 let groupReadRefused = false;
 
 /**
+ * Forget the refusal at the start of each update BATCH.
+ *
+ * THE LATCH WAS COSTING EVERY IN-PLACE UPDATE AFTER THE FIRST REFUSAL, and the
+ * archive is unambiguous. Across the last 25 rounds, 23 latched, and of the
+ * redraws blaming "no readable group members":
+ *
+ *     BEFORE the latch fired:  0
+ *     AFTER  the latch fired: 46
+ *     in-place updates after the latch: 0
+ *
+ * Not one redraw of that kind happens before the latch, and not one in-place
+ * update happens after it. Since the parts list is never consumed
+ * (`parts-list-never-consumed`, 0 of 1091), `queueGroupMembers` is the ONLY
+ * route an in-place update has — so the group read demonstrably works, until one
+ * refusal turns it off for the rest of the session and every remaining chart in
+ * the round redraws.
+ *
+ * The latch's stated premise was "the feature has never once worked here",
+ * citing `group-of-existing-shape-readable = no-group-id` and
+ * `group-reports-its-children = threw`. Both are SCRATCH-SLIDE answers, and
+ * 2026-08-26 put the same question to a real slide directly:
+ *
+ *     group-members-real-slide  — yes: listed 4 child(ren), 4 named
+ *     group-members-aged-proxy  — yes: listed 3 child(ren), 3 named
+ *
+ * It works on a real slide, fresh or re-resolved by id. The premise was measured
+ * on the one slide this host treats differently.
+ *
+ * KEPT WITHIN A BATCH, and that part was right. The refusal arrives at the SYNC
+ * rather than at the property access, so it poisons the batch it lands in;
+ * re-asking for every chart in the same batch would spend the same exception
+ * again with nothing new to learn. Forgetting it between batches costs at most
+ * one exception per batch and buys back every update after the first refusal.
+ */
+function forgetGroupReadRefusal(): void {
+  groupReadRefused = false;
+}
+
+/**
  * Is this error the host refusing to read `Shape.group`?
  *
  * Matched on the PARSED error location, not on the flattened text. The
@@ -10553,6 +10597,17 @@ let groupReadRefused = false;
  */
 export function isGroupReadRefusal(text: string): boolean {
   return /"errorLocation":"Shape\.group"/.test(String(text ?? ""));
+}
+
+/**
+ * Test seam: LATCH the refusal, so a case can prove it is forgotten.
+ *
+ * Without this the test that matters can only assert the flag is false, which
+ * it already is at rest — it passes whether or not the batch forgets anything.
+ * The first version of that test did exactly that.
+ */
+export function _setGroupReadRefusedForTest(): void {
+  groupReadRefused = true;
 }
 
 /** Test seam: forget the refusal, so a case can exercise both sides. */
