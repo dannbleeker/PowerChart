@@ -2224,10 +2224,23 @@ export function poolPartsListOutcome(logs) {
  * is the reading that separates them.
  */
 export function poolPositionalGuess(logs) {
-  const out = { events: 0, rounds: 0, mine: 0, other: 0, partial: 0, unreadable: 0 };
+  const out = { events: 0, rounds: 0, mine: 0, other: 0, partial: 0, unreadable: 0, refused: 0 };
   for (const log of logs ?? []) {
     let any = false;
     for (const e of log?.trace?.entries ?? []) {
+      // THE GUARD'S OWN LINE, counted alongside the guesses it judged. Without
+      // it this section reports "3 picked ANOTHER chart's shapes entirely" over
+      // a paragraph describing silent corruption, and every reader has to go to
+      // the archive to find out whether anything was actually grouped. Two of
+      // those three were REFUSED; the third is round 179, which predates the
+      // guard and is the round whose write-up the guard was built from.
+      if (/^not grouping: the positional guess named no shape of ours/.test(String(e.message ?? ""))) {
+        out.refused++;
+        any = true;
+        // NO `continue` — it was here and it was dead. The refusal message does
+        // not match the `picked the tail` test below either, so it is skipped
+        // with or without it; the mutant that removed it could not be killed.
+      }
       if (!/^the positional guess picked the tail/.test(String(e.message ?? ""))) continue;
       any = true;
       out.events++;
@@ -2804,6 +2817,77 @@ function reportPartsListOutcome(logs) {
 }
 
 /** Whether the positional guess grouped this chart's shapes or another's. */
+/**
+ * The REAL occupancy reading against what an update cost.
+ *
+ * `WHAT AN IN-PLACE UPDATE COSTS` says, in the archive's own words, that "there
+ * is no reliable occupancy measure in a round" and falls back to `onSlide`,
+ * which counts what THIS RUN drew and reports the same slide as 10 and as 42.
+ *
+ * There has been a real one since round 239. `same scale across the deck` calls
+ * `slideOccupancy` before it touches a chart and traces `what each slide held
+ * before the rescale`, ordered as the charts are — the host's own count, one
+ * call, outside the timed path. Nothing read it. The renderer recorded the
+ * answer for 29 rounds while the reader went on saying none existed.
+ *
+ * BUCKETED BY `of/changed`, and this section is the reason to insist on it. Read
+ * unbucketed, the archive says charts 2 and 3 are the CHEAPEST in the run at
+ * ~12.7s against ~18.4s for charts 4-8 — which reads as "a busier slide is
+ * faster" and is nothing of the kind. Charts 2 and 3 are 16-node charts and the
+ * rest are 24-node. The confound the surrounding section warns about swallowed
+ * the result whole on the first pass.
+ */
+export function poolOccupancyCost(logs) {
+  const cells = new Map();
+  let rounds = 0;
+  for (const log of logs ?? []) {
+    let occ = null;
+    const ups = [];
+    for (const e of log?.trace?.entries ?? []) {
+      if (e.message === "what each slide held before the rescale" && Array.isArray(e.data?.slides)) occ = e.data.slides;
+      const d = e.data;
+      if (!d || typeof d.ms !== "number" || !/^\d+\/\d+$/.test(String(d.chart ?? ""))) continue;
+      if (!/in.place|updated/i.test(String(e.message ?? ""))) continue;
+      ups.push({ n: Number(String(d.chart).split("/")[0]), ms: d.ms, of: d.of, changed: d.changed });
+    }
+    if (!occ || !ups.length) continue;
+    rounds++;
+    for (const u of ups) {
+      const slide = occ[u.n - 1];
+      if (!slide || typeof slide.shapes !== "number") continue;
+      const key = `${u.of}/${u.changed}|${slide.shapes}|${u.n === 1 ? "first" : "later"}`;
+      if (!cells.has(key)) cells.set(key, []);
+      cells.get(key).push(u.ms);
+    }
+  }
+  return { rounds, cells };
+}
+
+/** Report it, with every cell's n, because the interesting cells are thin. */
+function reportOccupancyCost(logs) {
+  const { rounds, cells } = poolOccupancyCost(logs);
+  if (!rounds) return;
+  const med = (a) => [...a].sort((x, y) => x - y)[Math.floor(a.length / 2)];
+  console.log(`
+  WHAT THE SLIDE ACTUALLY HELD, against what the update cost — ${rounds} round(s)`);
+  const keys = [...cells.keys()].sort();
+  for (const k of keys) {
+    const [bucket, shapes, where] = k.split("|");
+    const v = cells.get(k);
+    console.log(
+      `    ${bucket.padEnd(8)} slide held ${String(shapes).padStart(3)}  ${where.padEnd(5)}` +
+        `  n=${String(v.length).padStart(3)}  ${med(v)}ms`,
+    );
+  }
+  console.log("    The host's own count, taken by the scenario before the run — NOT `onSlide`, which");
+  console.log("    counts what this run drew and reads the same slide as 10 and as 42.");
+  console.log("    READ THE n. Position is well sampled and survives bucketing: at 24/18 the first");
+  console.log("    chart is ~36.3s (n=50) against ~20.0s (n=146) for a later one on the SAME size and");
+  console.log("    the same changed count. Occupancy is NOT established — the only well-sampled");
+  console.log("    occupancy cell is the one the deck happens to build, and the others are n=4 and");
+  console.log("    do not move monotonically. A 2.3x position effect is real; a load effect is not");
+  console.log("    yet measured, and the cells that would measure it need a deck built to vary it.");
+}
 function reportPositionalGuess(logs) {
   const g = poolPositionalGuess(logs);
   if (!g.events) return;
@@ -2813,6 +2897,9 @@ function reportPositionalGuess(logs) {
   console.log(`    ${String(g.other).padStart(4)}  picked ANOTHER chart's shapes entirely`);
   console.log(`    ${String(g.partial).padStart(4)}  picked a mixture`);
   console.log(`    ${String(g.unreadable).padStart(4)}  the host would not name what it listed`);
+  console.log(
+    `    ${String(g.refused).padStart(4)}  REFUSED by the guard — named no shape of ours, so nothing was grouped`,
+  );
   if (g.other || g.partial)
     console.log(
       `    A guess that picks another chart's shapes GROUPS THEM under this chart's name and
@@ -2822,6 +2909,18 @@ function reportPositionalGuess(logs) {
         `    which is why this line exists — the 29 archived addGroup throws are the same guess
 ` +
         `    on shapes that had already been absorbed into a group.`,
+    );
+  // WHAT ACTUALLY HAPPENED, not just what was risked. The paragraph above
+  // describes the danger; on its own it reads as though the danger was realised.
+  if ((g.other || g.partial) && g.refused >= g.other + g.partial)
+    console.log(
+      `    EVERY foreign pick above was refused — none was grouped. positionalGuessNamesOurs
+` + `    is doing its job, and this section is the record of it working, not of it failing.`,
+    );
+  else if (g.other || g.partial)
+    console.log(
+      `    ${g.other + g.partial - g.refused} foreign pick(s) were NOT refused. Check whether they predate the guard
+` + `    (round 179 does) before reading them as live corruption.`,
     );
 }
 
@@ -5603,6 +5702,7 @@ if (invokedDirectly) {
     reportPartsListOutcome(pooled);
     reportPositionalGuess(pooled);
     reportSettleAsks(pooled);
+    reportOccupancyCost(pooled);
     reportUpdateCost(pooled);
     reportFlatFields(pooled);
     reportDrawCostCurve(pooled);

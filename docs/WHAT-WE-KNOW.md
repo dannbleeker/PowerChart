@@ -109,6 +109,22 @@ Numbers that ARE history — "it was 1 of 74 on 2026-08-15" — stay, and say so
   refusal turned every remaining chart into a redraw. In-place updates after the
   first refusal: **0 across rounds 254-261, 1 in each of 262-264**. Redraw rate
   **21.4% to 14.3%**, seven identical rounds against three.
+- **A group refused inside a batch cannot be re-asked inside that batch.**
+  Settled 2026-08-26 over rounds 265-267, after a retry that never once produced
+  an in-place update. Both routes into the group are shut, for different reasons:
+  the recovered proxy's `.group.shapes` ANSWERS and then its sync throws (round
+  267, `viaCollection: 1` with `got: 0`); a fresh by-id proxy fails because the
+  by-id LOOKUP is what poisons these syncs, and a by-id refusal is what sent the
+  chart down this path to begin with. There is no third route.
+  So the redraw at the end of that sequence is CORRECT, not wasteful — the shape
+  really did come back, its group did not, and nothing in that context can fetch
+  it. What rescues the group is the NEXT batch, via the per-batch reset above.
+  The retry was deleted rather than iterated a fourth time.
+  **The reason it survived three rounds is worth more than the finding**: `got`
+  counted queued proxies with `filter(Boolean)`, and a proxy is truthy the
+  instant it is queued. The trace read "got", the test asserted `got > 0` under
+  the message "the retry asked nothing", and both were satisfied by the act of
+  asking. A count taken before the sync cannot report what the sync returned.
 - **"Group children are unreachable" — 548 throws, 0 answers — is measured on the
   SCRATCH slide.** office-js#3014 is closed upstream. Do not read it as a
   statement about real slides: see the line above.

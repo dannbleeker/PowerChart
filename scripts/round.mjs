@@ -2325,7 +2325,20 @@ async function collectRound(sh, stamp, sleep, driverSize = null, driverRun = nul
   let filed = null;
   try {
     const dl = refFor(sh, "Download run log", /button "Download run log"/);
-    if (!dl) return null;
+    if (!dl) {
+      // SAY SO. This was a bare `return null`, and it is the only failure on
+      // this path that printed nothing — three lines below, the catch calls that
+      // out as the rule: "Named, never swallowed."
+      //
+      // It cost a cycle on 2026-08-26. The round finished, the receipt recorded
+      // `roundFile: null`, `cycle.mjs` correctly refused to run the next leg
+      // rather than overwrite the log — and the reason it stopped appeared
+      // nowhere, so the two remaining legs of the night were lost to a
+      // diagnosis that had to be read out of the source.
+      console.error("  the pane offered no `Download run log` button — the round ran but cannot be filed");
+      console.error("  archive it by hand: node scripts/round.mjs --archive .playwright-cli/powerchart-run-log.json");
+      return null;
+    }
     clickRef(sh, dl);
     await sleep(12000);
     const logPath = `${sh.dir ?? "."}/.playwright-cli/powerchart-run-log.json`;

@@ -8226,3 +8226,91 @@ The sheet is not wrong and its questions are not wasted. What it measures is
 real: the scratch slide behaves this way, and both the probe and the self-test
 use one. What it is not is a statement about the slides the product runs on, and
 it has been read as one — by this project's documentation, and by its code.
+
+---
+
+## 2026-08-26 — three rounds spent measuring dead code
+
+A retry stood in `updateChartsInSlides` for three rounds and never once produced
+an in-place update. Deleting it took less evidence than keeping it had.
+
+### What it was for
+
+When a by-id lookup refuses the resolve, the batch's `groupMembers` proxies die
+with the sync they were queued in. The shape itself is rescued a moment later by
+`reReadRefusedShapes` — the archive shows `recovered: 1 of 1` in every round on
+file — and then the update redraws a chart it is holding a live handle to. The
+retry was meant to re-queue that group read and save the redraw.
+
+### Why it never worked, three answers deep
+
+    round 265   got: 0   the in-batch latch made `queueGroupMembers` return
+                         undefined — the retry was inert from the day it was
+                         written
+    round 266   got: 0   latch cleared, still nothing. Diagnosed as "the
+                         recovered proxy does not expose `.group`"
+    round 267   got: 0   with `viaCollection: 1` — which DISPROVES round 266's
+                         diagnosis. The property answered fine; the SYNC threw
+
+Each round bought one bit because `got` could not say why it was zero. That is
+the whole cost, and it was avoidable from the first one.
+
+### The instrument was the bug
+
+`got` was `[...requeued.values()].filter(Boolean).length`, and
+`queueGroupMembers` returns a PROXY — truthy the instant it is queued, whether or
+not the host will honour it. The number reported *asked* and read as *got*.
+
+The test agreed with it:
+
+    expect(again!.data.got, "the retry asked nothing").toBeGreaterThan(0)
+
+Trace, test and code all agreed, and all three were satisfied by the act of
+asking. Nothing in the loop could see the feature doing nothing, because every
+instrument measured the attempt rather than the result.
+
+**A count taken before the sync cannot report what the sync returned.**
+
+### Round 267 could not test what it was built to test
+
+The by-id route was guarded by `if (!fromRecovered)`. `fromRecovered` is a proxy,
+so it was never falsy, so the branch was unreachable. The third round in a row
+measured dead code — and the guard was written in the same commit that added the
+counters meant to tell the two routes apart.
+
+### The finding, which is smaller than the effort
+
+Both routes into a refused group are shut, for different reasons:
+
+    the recovered proxy   `.group.shapes` answers, then the sync throws
+    a fresh by-id proxy   the LOOKUP is what poisons the sync it joins — and a
+                          by-id refusal is what sent the chart here
+
+There is no third route, so the redraw is CORRECT. What rescues the group is the
+next batch, via the per-batch reset — still measured at 21.4% -> 14.3%.
+
+### Two beliefs corrected on the way
+
+**"The fake cannot model a sync-time refusal."** It can, and does:
+`faults.refuseShapeById` sets `refuseThisSync` at `office-host.ts:1722`, and
+`pendingHostError` throws ONCE and clears rather than poisoning everything after
+it. Two of the three rounds were spent believing the suite could not be asked —
+and the suite answers in two seconds.
+
+**"The recovered proxy does not give up its group."** Round 266's guess, written
+into a comment as though established. Round 267 disproved it with one number.
+
+### The rule that follows
+
+**Instrument the result, not the attempt.** A counter incremented where a call is
+made says only that the call was made. Where the answer arrives at a later sync,
+the count belongs after that sync, over values the sync resolved — and a field
+that cannot distinguish its own failure modes buys one round of information and
+then costs one per question after it.
+
+The same day, the same shape turned up twice more in the triage reader: a
+NEVER-VARY section that printed a field's name and sample count but not the value
+it never varied from, and a POSITIONAL GUESS section that counted foreign picks
+without counting the guard that refused them. Both cost a trip through the
+archive to answer a question the tool was already holding the answer to. Both now
+print it.

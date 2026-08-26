@@ -113,12 +113,24 @@ batch (`55630e7`) gives:
 
 `a-group-refusal-no-longer-ends-the-round` watches it at 3/3.
 
-**What is still open.** The latch is deliberately kept WITHIN a batch, because
-the refusal arrives at the sync rather than at the property access and poisons
-the batch it lands in. So charts after the refusal in the SAME batch still
-redraw, which is why the gain is one chart rather than three. Whether that can
-be relaxed depends on whether the poisoning is real — the fake cannot model a
-sync-time refusal, so only a round or an experiment can say.
+**ANSWERED 2026-08-26, and the answer is no.** The latch is deliberately kept
+WITHIN a batch, because the refusal arrives at the sync rather than at the
+property access and poisons the batch it lands in. So charts after the refusal in
+the SAME batch still redraw, which is why the gain is one chart rather than
+three.
+
+That is not a limitation to be relaxed. Rounds 265-267 spent three attempts
+re-asking inside the batch and produced no in-place update at any of them. Both
+routes are shut: the recovered proxy's `.group.shapes` answers and then its sync
+throws (round 267 in production), and a fresh by-id proxy fails because the by-id
+LOOKUP is what poisons these syncs — the same refusal that sent the chart down
+this path. The retry has been deleted.
+
+One premise of the paragraph this replaces was also wrong: **the fake CAN model a
+sync-time refusal**, and does — `faults.refuseShapeById` sets `refuseThisSync` at
+`test/helpers/office-host.ts:1722`, and `pendingHostError` throws once and clears
+rather than poisoning everything after it. Two of the three rounds were spent
+believing the suite could not be asked.
 
 
 **How it was answered matters as much as the answer.** Not by a round — by
@@ -2115,3 +2127,34 @@ answers whether a lower bound saves anything at all.
 Found by the archive sweep of 2026-08-23. The sweep reported it as "every round
 eats a 4-second timeout — 38 of 38, never zero", which is the recent era and not
 the archive: it is 44 of 147 overall, and universal only since round 117.
+
+### The four dependabot advisories, and why three of them are not ours — 2026-08-26
+
+Every push prints "GitHub found 3 vulnerabilities on the default branch (2 high,
+1 moderate)". Checked once so it does not have to be re-checked every push.
+
+    image-size  *        HIGH x2   ICNS and JXL/HEIF parsers loop forever on a
+                                   malformed image (GHSA-w3rx-r6r6-pgpr,
+                                   GHSA-5p2g-fcmc-qvqq)
+    qs  6.11.1-6.15.1    MODERATE  qs.stringify crashes on null entries in
+                                   comma-format arrays (GHSA-q8mj-m7cp-5q26)
+
+**`qs` is dev-only.** `@stryker-mutator/core` -> `typed-rest-client` -> `qs`. It
+is never shipped and never runs outside mutation testing. `npm audit fix` clears
+it without a major bump; it is queued behind anything that matters.
+
+**`image-size` is NOT REACHABLE.** It arrives under `pptxgenjs`, which IS a
+runtime dependency — `src/render/pptx-deck.ts:74` imports it dynamically — so the
+tree alone makes it look shipped and live. It is not: pptxgenjs calls
+`image-size` to size images handed to `addImage`, and **PowerChart never calls
+`addImage`**. There is no image path in `pptx-deck.ts`, no PNG or JPEG or data
+URI anywhere in it. The deck is shapes and text. Both parsers named in the
+advisories need an image to parse and are handed none.
+
+The fix would be `npm audit fix --force`, which is a MAJOR pptxgenjs bump — real
+breakage against an unreachable path. Not taken.
+
+**What would change this.** Any feature that puts a bitmap into a generated deck:
+a logo, a screenshot, a rasterised chart fallback, an image placeholder. If
+`addImage` ever appears in this repo, `image-size` becomes live and this entry is
+wrong — upgrade pptxgenjs before shipping that feature, not after.

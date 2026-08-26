@@ -2211,8 +2211,72 @@ describe("grouping, which no scenario verdict reports", () => {
     const mixed = poolPositionalGuess([{ trace: { entries: [ev(["1", "2"], ["1", "9"])] } }]);
     expect(mixed.mine, "a partial pick was counted as this chart's own").toBe(0);
     expect(mixed.partial).toBe(1);
+
+    // THE GUARD'S REFUSALS, counted next to the guesses they judged. Without
+    // this the section reports foreign picks under a paragraph describing silent
+    // corruption and says nothing about whether anything was grouped — which
+    // cost a trip through the archive to answer, and the answer was "the guard
+    // refused them".
+    const guarded = poolPositionalGuess([
+      {
+        trace: {
+          entries: [
+            ev(["43", "44"], ["35", "36"]),
+            { message: "not grouping: the positional guess named no shape of ours", data: { index: 0 } },
+          ],
+        },
+      },
+    ]);
+    expect(guarded.other, "the foreign pick should still be counted as foreign").toBe(1);
+    expect(guarded.refused, "the guard's refusal was not counted").toBe(1);
+    // NO ASSERTION THAT `events` STAYED 1. There was one, and it could not fail:
+    // a refusal does not match the `picked the tail` test, so no reachable
+    // mutation makes it count as a guess. It was removed rather than kept as a
+    // line that only ever agrees with the code.
   });
 
+  it("pairs the real occupancy reading with the update it explains, bucketed by chart size", async () => {
+    // THE READING EXISTED FOR 29 ROUNDS AND NOTHING READ IT. `same scale across
+    // the deck` calls `slideOccupancy` before the run and traces the host's own
+    // per-slide count, ordered as the charts are — while this reader went on
+    // printing "there is no reliable occupancy measure in a round".
+    // @ts-expect-error — plain .mjs tool, no types.
+    const { poolOccupancyCost } = await import("../scripts/triage.mjs");
+    const held = (shapes: number[]) => ({
+      message: "what each slide held before the rescale",
+      data: { charts: shapes.length, slides: shapes.map((n, i) => ({ slide: `s${i}`, shapes: n })) },
+    });
+    const upd = (chart: string, ms: number, of: number, changed: number) => ({
+      message: "updated in place",
+      data: { chart, ms, of, changed },
+    });
+    const { rounds, cells } = poolOccupancyCost([
+      {
+        trace: {
+          entries: [
+            held([3, 3, 1]),
+            upd("1/3", 40000, 24, 18), // first, on a 3-shape slide
+            upd("2/3", 20000, 24, 18), // later, same size, same slide load
+            upd("3/3", 13000, 16, 9), // later, a SMALLER chart
+          ],
+        },
+      },
+    ]);
+    expect(rounds).toBe(1);
+    // BUCKETED BY of/changed, and this is the assertion that matters. Read
+    // unbucketed the archive says charts 2 and 3 are the cheapest in the run,
+    // which reads as "a busier slide is faster"; they are simply 16-node charts
+    // against 24-node ones. Pooling them would reproduce the confound the
+    // surrounding section exists to warn about.
+    expect(cells.get("24/18|3|first")).toEqual([40000]);
+    expect(cells.get("24/18|3|later")).toEqual([20000]);
+    expect(cells.get("16/9|1|later"), "the smaller chart was pooled with the big ones").toEqual([13000]);
+
+    // A ROUND WITH NO READING CONTRIBUTES NOTHING rather than contributing a
+    // guess — 214 of the archive's rounds predate the trace.
+    const none = poolOccupancyCost([{ trace: { entries: [upd("1/3", 40000, 24, 18)] } }]);
+    expect(none.rounds, "a round with no occupancy reading was counted anyway").toBe(0);
+  });
   it("counts a group that THREW, which fell out of both the numerator and the denominator", () => {
     // GROUPING HAS THREE OUTCOMES AND THIS COUNTED TWO. It succeeds
     // (`grouped the chart's shapes`), declines by rule (`not grouping: …`), or
