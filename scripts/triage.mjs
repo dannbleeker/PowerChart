@@ -2848,14 +2848,23 @@ export function poolOccupancyCost(logs) {
       const d = e.data;
       if (!d || typeof d.ms !== "number" || !/^\d+\/\d+$/.test(String(d.chart ?? ""))) continue;
       if (!/in.place|updated/i.test(String(e.message ?? ""))) continue;
-      ups.push({ n: Number(String(d.chart).split("/")[0]), ms: d.ms, of: d.of, changed: d.changed });
+      // BOTH HALVES OF `chart`, because "1/8" and "1/1" are not the same thing
+      // and the first version of this read only the numerator. `one chart alone
+      // on a warm deck` is a chart 1/1 — its own scenario, and the archive
+      // already reports it as "alone in its own run: 18689ms, nearer a LATER
+      // chart". Labelling it `first` pools the arm that ISOLATES the effect with
+      // the arm that exhibits it, which is the confound this section exists to
+      // keep apart.
+      const [pos, total] = String(d.chart).split("/").map(Number);
+      ups.push({ n: pos, total, ms: d.ms, of: d.of, changed: d.changed });
     }
     if (!occ || !ups.length) continue;
     rounds++;
     for (const u of ups) {
       const slide = occ[u.n - 1];
       if (!slide || typeof slide.shapes !== "number") continue;
-      const key = `${u.of}/${u.changed}|${slide.shapes}|${u.n === 1 ? "first" : "later"}`;
+      const where = u.total === 1 ? "alone" : u.n === 1 ? "first" : "later";
+      const key = `${u.of}/${u.changed}|${slide.shapes}|${where}`;
       if (!cells.has(key)) cells.set(key, []);
       cells.get(key).push(u.ms);
     }
@@ -2881,12 +2890,19 @@ function reportOccupancyCost(logs) {
   }
   console.log("    The host's own count, taken by the scenario before the run — NOT `onSlide`, which");
   console.log("    counts what this run drew and reads the same slide as 10 and as 42.");
-  console.log("    READ THE n. Position is well sampled and survives bucketing: at 24/18 the first");
-  console.log("    chart is ~36.3s (n=50) against ~20.0s (n=146) for a later one on the SAME size and");
-  console.log("    the same changed count. Occupancy is NOT established — the only well-sampled");
-  console.log("    occupancy cell is the one the deck happens to build, and the others are n=4 and");
-  console.log("    do not move monotonically. A 2.3x position effect is real; a load effect is not");
-  console.log("    yet measured, and the cells that would measure it need a deck built to vary it.");
+  console.log("    THE CLEAN COMPARISON is `slide held 3`, where first and alone are equally sampled:");
+  console.log("    the first chart of an 8-chart run costs ~44.1s and THE SAME CHART ALONE in its own");
+  console.log("    run costs ~17.6s, n=26 each, at one chart size, one changed count, and the SAME");
+  console.log("    occupancy. Later charts sit at ~20.2s. What this DOES settle is that occupancy");
+  console.log("    is not the difference — it is identical across the two rows.");
+  console.log("    It does NOT establish that position is the cause: `alone` is a different");
+  console.log("    SCENARIO, later in the round on a warmer deck, so it differs from `first` in");
+  console.log("    more than run length. It narrows the candidates; it does not pick one.");
+  console.log("    OCCUPANCY IS STILL NOT ESTABLISHED as a cause: the 1-shape and 17-shape cells are");
+  console.log("    n=2 and do not move monotonically. Settling that needs a deck built to vary");
+  console.log("    occupancy, which this one is not — every round builds the same slides.");
+  console.log("    `alone` is `one chart alone on a warm deck`, chart 1/1. It is NOT a first chart:");
+  console.log("    pooling it with one would hide the very effect these two rows measure.");
 }
 function reportPositionalGuess(logs) {
   const g = poolPositionalGuess(logs);

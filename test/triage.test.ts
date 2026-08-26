@@ -2272,6 +2272,15 @@ describe("grouping, which no scenario verdict reports", () => {
     expect(cells.get("24/18|3|later")).toEqual([20000]);
     expect(cells.get("16/9|1|later"), "the smaller chart was pooled with the big ones").toEqual([13000]);
 
+    // `1/1` IS NOT A FIRST CHART. `one chart alone on a warm deck` is its own
+    // scenario and its own arm — the archive reports it as "nearer a LATER
+    // chart" — so labelling it `first` pools the arm that ISOLATES the effect
+    // with the arm that exhibits it. The first version of this read only the
+    // numerator of `chart` and did exactly that.
+    const alone = poolOccupancyCost([{ trace: { entries: [held([3]), upd("1/1", 17000, 24, 18)] } }]);
+    expect(alone.cells.get("24/18|3|alone"), "a 1/1 chart was not labelled alone").toEqual([17000]);
+    expect(alone.cells.get("24/18|3|first"), "a 1/1 chart was pooled in as a first chart").toBeUndefined();
+
     // A ROUND WITH NO READING CONTRIBUTES NOTHING rather than contributing a
     // guess — 214 of the archive's rounds predate the trace.
     const none = poolOccupancyCost([{ trace: { entries: [upd("1/3", 40000, 24, 18)] } }]);

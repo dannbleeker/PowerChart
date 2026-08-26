@@ -117,7 +117,7 @@ export const CLAIMS = [
     id: "first-chart-costs-more",
     says: "The first chart of a multi-chart update costs about twice a later chart of the same size.",
     measured:
-      "2026-08-25, n=20 first against n=100 later — middle halves clear, q1 37137ms against q3 27456ms. The spread is now CHECKED, not just asserted here.",
+      "2026-08-25, n=20 first against n=100 later — middle halves clear, q1 37137ms against q3 27456ms. The spread is now CHECKED, not just asserted here. THE CAUSE IS NOT CLAIMED and cannot be read off this: the deck puts every 24-node first chart on the busy slide and every 24-node later chart on a 1-shape slide, so position and occupancy move together in every round. 2026-08-26 added the host's own occupancy reading (see WHAT THE SLIDE ACTUALLY HELD in triage) and it does not separate them — there is no `24/18 later on a 3-shape slide` cell in the archive at all. What IS ruled out is the slide itself: charts 2 and 3 share chart 1's slide and cost a third as much.",
     check(logs) {
       const rows = updateRows(logs).filter((r) => r.changed === 18 && r.of === 24 && r.n > 1);
       const first = rows.filter((r) => r.i === 1).map((r) => r.ms);

@@ -2158,3 +2158,91 @@ breakage against an unreachable path. Not taken.
 a logo, a screenshot, a rasterised chart fallback, an image placeholder. If
 `addImage` ever appears in this repo, `image-size` becomes live and this entry is
 wrong — upgrade pptxgenjs before shipping that feature, not after.
+
+### The arm that would settle the first-chart penalty has been run ONCE — 2026-08-26
+
+The largest single cost in a round is the first chart of the deck-wide rescale:
+~44.1s against ~17.6s for the same chart size, same changed count, and the same
+slide occupancy (n=26 each — see `WHAT THE SLIDE ACTUALLY HELD` in triage). Every
+one of the three WRITE syncs carries the penalty at 2.1-2.35x while the tag sync
+carries only 1.16x, and `our-idle-is-negligible` puts our own waiting at 1ms
+median. So the time is going to the host, during writes, on the first chart.
+
+The leading explanation is contention with the DECK SCAN that runs immediately
+before the rescale. `scanSettleMs` exists precisely to test it — a pause inserted
+between the scan and the first update, "the only gap where a pause can tell the
+two apart", traced at zero as well so every archived round records its arm.
+
+**It has one nonzero sample in the whole archive.**
+
+    settleMs = 0        58 round(s)
+    settleMs = 10000     2 round(s)   -- one with a usable first-chart timing
+    absent              60 round(s)   -- predates the trace
+
+n=1 against a first-chart distribution spanning 13.3s to 58.3s says nothing at
+all, and the single sample (38552ms) sits in the middle of it.
+
+**Why it is never run: it cannot be set from the driver.** `scanSettleMs()` reads
+the pane's `localStorage`, so arming it means typing
+
+    localStorage.setItem("powerchart-scan-settle-ms", "3000")
+
+into the pane console by hand, before a round, every time. `scripts/round.mjs`
+has no way to do it — it drives entirely through playwright-cli refs and never
+evaluates JavaScript. So the arm is available in principle and unreachable in
+practice, which is exactly the shape of a control that quietly never runs.
+
+**What would fix it.** `playwright-cli` DOES have `eval <func> [target]`. The
+pane is a cross-origin iframe, so a page-level eval cannot touch its
+`localStorage` — but Playwright evaluates in the frame that OWNS the target
+element, so passing a ref from inside the pane should reach it:
+
+    eval "() => localStorage.setItem('powerchart-scan-settle-ms','3000')" <pane-ref>
+
+That is untested. It needs a `--scan-settle <ms>` flag on the driver, defaulting
+to off so no existing round changes what it measures, and then enough rounds in
+each arm to clear a noise floor the archive puts at IQR 14%.
+
+**THE DECK CANNOT SEPARATE POSITION FROM OCCUPANCY, and this is the concrete
+blocker.** The rescale's charts 1, 2 and 3 all sit on the same busy slide, but 1
+is a 24-node chart and 2 and 3 are 16-node. Charts 4-8 are 24-node and sit on
+1-shape slides. So the archive offers `24/18 on a 3-shape slide, FIRST` and
+`24/18 on a 1-shape slide, LATER` — and no `24/18 on a 3-shape slide, LATER` cell
+at all. Position and occupancy move together by construction, in every round.
+
+One round makes the point without any pooling. From the crashed run of
+2026-08-26 (`crashes/2026-08-26T19-56-29-crashed-run.json`), one run, one deck:
+
+    chart 1/8   24 nodes, 18 changed   38174ms   syncMs [12635,11803,13078,...]
+    chart 4/8   24 nodes, 18 changed   17999ms   syncMs [ 5975, 5692, 5736,...]
+
+Same size, same changed count, same run — 2.1x, and EVERY write sync carries it
+rather than one slow step. Charts 2 and 3, on the SAME slide as chart 1, cost
+13.6s and 13.3s, so the slide is not what makes chart 1 expensive. What the deck
+cannot tell us is whether a 24-node chart LATER in the run on that same busy
+slide would also be cheap. Building one such slide would answer it in one round.
+
+**THE SCAN'S OWN DURATION DOES NOT PREDICT THE PENALTY — checked 2026-08-26.**
+`scanned the deck for charts` carries an `ms` that no tool reads. Split 69 rounds
+at the median scan time and compare each round's first chart against ITS OWN
+later charts, so a generally slow host cannot manufacture the result:
+
+    short scans   n=34   median scan 1139ms   median first/later ratio 2.22
+    long  scans   n=35   median scan 1383ms   median first/later ratio 2.15
+
+No effect, and what there is runs the wrong way.
+
+**This does NOT clear contention**, and the limit is worth stating rather than
+overreading a null. The natural range is narrow — 1.1s against 1.4s, 21% apart —
+and a weak contrast cannot detect a real effect. A scan may also leave the host
+busy for a period unrelated to how long the scan itself took. What it does rule
+out is a simple dose-response, where a longer scan costs a slower first chart.
+
+That is an argument FOR running the settle arm rather than against it: a 3-10s
+pause is a far stronger manipulation than the 250ms of natural variation above,
+and it is the only one that separates the two.
+
+**What NOT to do.** Do not make the pane counterbalance this on its own. Half of
+every future round would then carry a pause, which changes what a round measures
+for every claim already resting on the archive. The flag is opt-in for that
+reason.

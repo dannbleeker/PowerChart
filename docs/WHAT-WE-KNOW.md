@@ -109,6 +109,17 @@ Numbers that ARE history — "it was 1 of 74 on 2026-08-15" — stay, and say so
   refusal turned every remaining chart into a redraw. In-place updates after the
   first refusal: **0 across rounds 254-261, 1 in each of 262-264**. Redraw rate
   **21.4% to 14.3%**, seven identical rounds against three.
+- **✓ NO RUNTIME CODE READS A PROBE ANSWER — checked 2026-08-26.** The obvious
+  question after "the sheet measures a slide the product never uses" is what else
+  was built on it. The answer is: no shipped decision. `src/render/powerpoint.ts`
+  does not import from `host-probe.ts` at all, and the only files referencing
+  `hostAnswers` are the probe itself and `app.ts`/`crashlog.ts`, which serialise
+  the sheet into the run log and never branch on it.
+  So the contamination reached this project through PROSE and through human
+  reasoning — including the hand-written premise of the `groupReadRefused` latch,
+  which quoted two scratch-slide answers and is now fixed. It did not reach it
+  through code consulting the sheet at runtime. That is the blast radius, and it
+  is smaller than it looked.
 - **A group refused inside a batch cannot be re-asked inside that batch.**
   Settled 2026-08-26 over rounds 265-267, after a retry that never once produced
   an in-place update. Both routes into the group are shut, for different reasons:
