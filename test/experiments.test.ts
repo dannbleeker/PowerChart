@@ -17,7 +17,20 @@ describe("running one experiment", () => {
     const r = await runExperiment("grouped-child-by-id");
     // The fake groups and keeps its children addressable, so the mechanism is
     // exercised end to end here even though only a real host can ANSWER it.
-    expect(["yes", "reads-but-refuses-writes", "no-such-shape", "unreadable", "no-child-ids"]).toContain(r.answer);
+    // `refused-by-id` is in the list because the FAKE models this host's 5010 —
+    // `InvalidParam passed to GetItem(id)`, errorLocation
+    // `ShapeCollection.getItem` — on exactly this lookup. That is a legitimate
+    // answer to the question rather than a broken experiment, and the first
+    // version of this list left it out and went red.
+    expect([
+      "yes",
+      "reads-but-refuses-writes",
+      "refused-by-id",
+      "no-such-shape",
+      "unreadable",
+      "no-child-ids",
+      "no-group",
+    ]).toContain(r.answer);
     expect(r.asks).toMatch(/inside a group/);
     expect(r.ms).toBeGreaterThanOrEqual(0);
   });

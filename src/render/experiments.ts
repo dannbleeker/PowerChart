@@ -123,23 +123,54 @@ const groupedChildById: Experiment = {
       const collection = ctx.scratch().shapes;
       collection.load("items/id");
       await ctx.sync();
-      const ids = (read(() => collection.items) ?? [])
+      const members = read(() => collection.items) ?? [];
+      const ids = members
         .map((s) => read(() => (s as unknown as { id?: string }).id))
         .filter((id): id is string => typeof id === "string" && id.length > 0);
       if (ids.length < made.length) {
         return { answer: "no-child-ids", detail: `named ${ids.length} of ${made.length} before grouping` };
       }
-      const group = (ctx.scratch().shapes as unknown as { addGroup(shapes: unknown[]): PowerPoint.Shape }).addGroup(
-        made,
-      );
-      group.load("id");
-      await ctx.sync();
+      // GROUPED FROM THE COLLECTION READ, not from the creation proxies.
+      //
+      // The renderer does the same — `freshMembers` — and the reason is the one
+      // this file keeps meeting: a creation proxy whose path Office.js has
+      // rewritten to `shapes.getItem(id)` is refused by this host, and the fake
+      // models it, answering `InvalidParam passed to GetItem(id)`, code 5010,
+      // errorLocation `ShapeCollection.getItem`. Handing those proxies to
+      // `addGroup` throws before the question is ever put.
+      let group;
+      try {
+        group = (ctx.scratch().shapes as unknown as { addGroup(shapes: unknown[]): PowerPoint.Shape }).addGroup(
+          members,
+        );
+        group.load("id");
+        await ctx.sync();
+      } catch (err) {
+        return {
+          answer: "no-group",
+          detail: `grouping ${ids.length} shapes threw: ${String((err as { message?: string })?.message ?? err).slice(0, 140)}`,
+        };
+      }
       const groupId = read(() => (group as unknown as { id?: string }).id);
       // THE QUESTION. A fresh proxy off the slide, by the id the child had
       // before the group swallowed it.
-      const child = ctx.scratch().shapes.getItemOrNullObject(ids[0]);
-      child.load("id");
-      await ctx.sync();
+      //
+      // CAUGHT, because a refusal here IS the answer. This host answers
+      // `InvalidParam passed to GetItem(id)`, code 5010, errorLocation
+      // `ShapeCollection.getItem` — the same 5010 that blocks the parts list —
+      // and letting that escape as `threw` would file the answer under "the
+      // experiment broke" instead of under "the host said no".
+      let child;
+      try {
+        child = ctx.scratch().shapes.getItemOrNullObject(ids[0]);
+        child.load("id");
+        await ctx.sync();
+      } catch (err) {
+        return {
+          answer: "refused-by-id",
+          detail: `resolving child ${ids[0]} of group ${String(read(() => (group as unknown as { id?: string }).id))} threw: ${String((err as { message?: string })?.message ?? err).slice(0, 140)}`,
+        };
+      }
       const gone = read(() => (child as unknown as { isNullObject?: boolean }).isNullObject) === true;
       const back = read(() => (child as unknown as { id?: string }).id);
       if (gone || back !== ids[0]) {
