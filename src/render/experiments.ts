@@ -284,7 +284,95 @@ const slideTagRoundTrip: Experiment = {
   },
 };
 
-export const EXPERIMENTS: Experiment[] = [groupedChildById, slideTagRoundTrip];
+/**
+ * Can a group ENUMERATE its children on a real slide?
+ *
+ * THE LINCHPIN OF TODAY'S CONCLUSION, and it had not been checked where it
+ * matters. `grouped-child-by-id` proved a group's child is not addressable BY ID
+ * on a real slide, and production reports "no readable group members" on 56 of
+ * 86 redraws — but the probe's own version of this question,
+ * `group-children-via-getcount`, is measured on the SCRATCH slide, which today
+ * has been shown three separate times to answer differently from a real one.
+ *
+ * If `shape.group.shapes` DOES enumerate on a real slide, then a grouped chart's
+ * update can map its nodes after all, the 56 redraws per 30 rounds are
+ * avoidable, and "the redraw is the only correct behaviour available" — now
+ * written into the backlog and `WHAT-WE-KNOW.md` — is wrong.
+ *
+ * Two seconds to check, against a conclusion resting on a slide known to
+ * misreport.
+ */
+const groupMembersOnRealSlide: Experiment = {
+  id: "group-members-real-slide",
+  asks: "Can a group enumerate its own children on a real slide?",
+  async run(slideId) {
+    return withProbeContext(
+      slideId,
+      EXPERIMENT_BUDGET_MS,
+      async (ctx) => {
+        const target = () => ctx.slides.getItemAt(0);
+        const named = target();
+        named.load("id");
+        await ctx.sync();
+        const targetSlideId = read(() => (named as unknown as { id?: string }).id);
+        for (const n of [0, 1, 2]) {
+          target().shapes.addGeometricShape(PowerPoint.GeometricShapeType.rectangle, {
+            left: 20 + n * 40,
+            top: 90,
+            width: 30,
+            height: 30,
+          });
+        }
+        await ctx.sync();
+        const collection = target().shapes;
+        collection.load("items/id");
+        await ctx.sync();
+        const members = read(() => collection.items) ?? [];
+        if (members.length < 3) return { answer: "no-child-ids", detail: `slide listed ${members.length} shapes` };
+        let group;
+        try {
+          group = (target().shapes as unknown as { addGroup(shapes: unknown[]): PowerPoint.Shape }).addGroup(members);
+          group.load("id");
+          await ctx.sync();
+        } catch (err) {
+          return { answer: "no-group", detail: String((err as { message?: string })?.message ?? err).slice(0, 140) };
+        }
+        const groupId = read(() => (group as unknown as { id?: string }).id);
+        // THE QUESTION, asked exactly as production asks it: `shape.group.shapes`
+        // loaded for `items/id`, which is what `queueGroupMembers` does.
+        // Declared without a placeholder value: every path below assigns both,
+        // and a default here would be a value nothing can ever read — which is
+        // also what the linter says.
+        let answer: string;
+        let detail: string;
+        try {
+          const inner = (group as unknown as { group: { shapes: { load(p: string): void; items?: unknown[] } } }).group
+            .shapes;
+          inner.load("items/id");
+          await ctx.sync();
+          const kids = read(() => inner.items) ?? [];
+          const withIds = kids
+            .map((k) => read(() => (k as { id?: string }).id))
+            .filter((id): id is string => typeof id === "string" && id.length > 0);
+          // THREE OUTCOMES, not two. A group that lists children without naming
+          // them is not the same as one that lists none: the first is a host that
+          // half-answers, the second is the flat refusal production sees.
+          answer = withIds.length ? "yes" : kids.length ? "listed-but-unnamed" : "empty";
+          detail = `group ${String(groupId)} listed ${kids.length} child(ren), ${withIds.length} named`;
+        } catch (err) {
+          answer = "threw";
+          detail = String((err as { message?: string })?.message ?? err).slice(0, 140);
+        }
+        if (groupId && targetSlideId) await deleteShapesById(targetSlideId, [groupId]).catch(() => 0);
+        return { answer, detail };
+      },
+      undefined,
+      true,
+    );
+  },
+};
+
+export const EXPERIMENTS: Experiment[] = [groupedChildById, slideTagRoundTrip, groupMembersOnRealSlide];
 
 /**
  * Run one experiment, on a slide of its own, and give the slide back.
