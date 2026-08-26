@@ -138,10 +138,16 @@ wrong. Unmarked lines are believed but unchecked, which is a weaker thing.
   `first-chart-is-on-the-busiest-slide`
   This is the CONFOUND behind four corrections. A STALE reading here would be
   good news: it would mean the harness stopped confounding position with load.
-- **✓ No chart has ever reached an update carrying a parts list** — 0 of 1032.
+- **✓ No chart has ever reached an update carrying a parts list** — 0 of 1091.
   `parts-list-never-consumed`
-  Blocked by the 5010 stale-proxy bug, office-js#2903, closed as not-planned. It
-  causes 1197 redraws. If this goes stale, that is GOOD NEWS.
+  **Corrected 2026-08-26: this is not a fix that is late, it is impossible by the
+  route everyone assumed.** A grouped chart's children are not addressable by id
+  off the slide, so a parts tag written for one would name ids that resolve to
+  nothing — and essentially every chart groups now. The redraw it causes is the
+  only correct behaviour available, and the price of the grouping that keeps the
+  config tag. What would move this line is a host that enumerates group children,
+  or charts starting to FAIL to group — the second would be a warning, not a
+  victory.
 - **✓ Tag faults are zero** across the last 20 rounds. `tag-faults-are-zero`
   Thread 1 therefore cannot be tested — both arms of any experiment score zero.
   It needs a trigger that reproduces tag loss on demand.
@@ -157,9 +163,11 @@ wrong. Unmarked lines are believed but unchecked, which is a weaker thing.
   because the re-ask scans the deck immediately before asking.
   So what remains open is narrower than it looked, and it already has a claim:
   an id written down and reused later WITHOUT re-enumeration is the parts-list
-  case, and `parts-list-never-consumed` tracks it at 0 of 1061, blocked by the
-  same 5010 stale-proxy bug. A persistent-deck harness was considered for this
-  and is not needed.
+  case, tracked by `parts-list-never-consumed`. **Closed 2026-08-26 for the case
+  that matters**: a grouped chart's children are not addressable by id at all, so
+  a stored id would name nothing. It is not blocked by 5010 waiting for a fix —
+  there is no route. A persistent-deck harness was considered for this and is not
+  needed.
 - **Load's independent effect on update cost.** The experiment is named: the lone
   arm on a LOADED slide against the lone arm on a clear one, holding run-length
   at one. Occupancy is now recorded, so both arms are readable.

@@ -143,7 +143,8 @@ export const CLAIMS = [
   {
     id: "parts-list-never-consumed",
     says: "No chart has ever reached an in-place update carrying a parts list.",
-    measured: "2026-08-25, 0 of 1005 charts",
+    measured:
+      "2026-08-25, 0 of 1005 charts. Corrected 2026-08-26: this cannot change for a GROUPED chart — its children are not addressable by id — so it is not a fix that is late.",
     check(logs) {
       let charts = 0;
       let withParts = 0;
@@ -155,8 +156,32 @@ export const CLAIMS = [
           withParts += d.withParts ?? 0;
         }
       }
-      // STALE HERE MEANS GOOD NEWS. If this ever fails, the parts list started
-      // working and the 1197 redraws it causes are on their way out.
+      // STALE HERE MEANS GOOD NEWS — but NOT the good news this used to promise,
+      // and the difference is worth being exact about.
+      //
+      // It read: "if this ever fails, the parts list started working and the
+      // 1197 redraws it causes are on their way out". That reads as a fix that
+      // is merely late. It is not late, it is IMPOSSIBLE by the route everyone
+      // assumed, and 2026-08-26 measured why: a grouped chart's children are not
+      // addressable by id off the slide at all —
+      //
+      //     grouped-child-by-id — no-such-shape: child 2 of group 5 read back as undefined
+      //
+      // Grouping takes the shapes OUT of the slide's collection. A parts tag
+      // written for a grouped chart would name ids that resolve to nothing, so
+      // there is no version of "collect parts for grouped charts" that works.
+      // And essentially every chart groups now (`fresh-slides-group`, 110/112).
+      //
+      // So the redraw is not a missed optimisation. It is the only correct
+      // behaviour available for a grouped chart here, and it is the price of the
+      // grouping that keeps the config tag — which is re-editability itself.
+      //
+      // WHAT WOULD ACTUALLY MAKE THIS GO STALE is a host that enumerates group
+      // children (office-js#3014, closed completed, not reached this host), or a
+      // chart that does NOT group and therefore still collects parts. The second
+      // is why the claim is kept rather than frozen: if grouping starts failing
+      // again, parts lists reappear and this line moves — which would be a
+      // warning, not a victory.
       return { ok: withParts === 0, actual: `${withParts} of ${charts} charts`, staleIsGood: true };
     },
   },
