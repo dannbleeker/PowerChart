@@ -2988,7 +2988,9 @@ function reportFlatFields(logs) {
     if (!rows.length) return;
     console.log("    " + what);
     for (const r of rows.slice(0, 12))
-      console.log("      " + (r.message.slice(0, 44) + " :: " + r.field).padEnd(64) + String(r.n).padStart(5) + "x");
+      console.log(
+        "      " + (r.message.slice(0, 44) + " :: " + r.field).padEnd(64) + String(r.n).padStart(5) + "x  = " + r.only,
+      );
     if (rows.length > 12) console.log("      … and " + (rows.length - 12) + " more");
   };
   show(f.zeros, "always 0:");
@@ -2996,6 +2998,13 @@ function reportFlatFields(logs) {
   console.log("    A broken gauge and a thing that never happens look IDENTICAL here, and this");
   console.log("    cannot tell them apart. Check any field whose zero would be surprising — a");
   console.log("    sync count of 0 on a 37-second update is what made this reader exist.");
+  // THE VALUE IS PRINTED because without it every reader re-derives the same
+  // thing. Working out that `charts` is constant because A BATCH HOLDS ONE CHART
+  // — not because the counter is stuck — took six queries against the archive on
+  // 2026-08-26, and the answer was one number this line already had in hand.
+  console.log("    Most constants here are structural: a batch holds ONE chart, so `charts = 1`");
+  console.log("    and a per-item `index = 0` are expected. `applying delete :: index` varies,");
+  console.log("    which is what a field indexing something genuinely plural looks like.");
 }
 /**
  * What the IN-PLACE UPDATE path costs — the product's largest latency number,
