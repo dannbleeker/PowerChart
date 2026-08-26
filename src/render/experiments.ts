@@ -217,7 +217,74 @@ const groupedChildById: Experiment = {
   },
 };
 
-export const EXPERIMENTS: Experiment[] = [groupedChildById];
+/**
+ * Does a tag written on a SLIDE read back — and does writing it twice overwrite?
+ *
+ * PRODUCTION DEPENDS ON THIS. `DEMO_SLOT_TAG` is written onto slides and read
+ * back to find which slot a demo slide belongs to; if a slide tag does not land,
+ * that path is silently broken.
+ *
+ * The probe sheet has asked a version of this 224 times and answered `other`
+ * every time — the word this project classes as UNINFORMATIVE — with
+ * `value=undefined`. Since 2026-08-26 it also says "no such tag on the slide",
+ * which reads as "the write did not land".
+ *
+ * IT IS ASKED ON THE SCRATCH SLIDE, and that is now a known-bad environment for
+ * questions like this: the same slide answers `unreadable` for its shape
+ * collection in 92% of rounds, and the grouped-child question could not be
+ * asked there at all. So the probe's answer may be about the slide rather than
+ * about tags, and production writes its slot tags to REAL slides.
+ *
+ * Same question, real slide. The tag is removed afterwards.
+ */
+const slideTagRoundTrip: Experiment = {
+  id: "slide-tag-round-trip",
+  asks: "Does a tag written on a real slide read back, and does a second write overwrite it?",
+  async run(slideId) {
+    // SLIDELESS. This question works on the deck's first slide, so charging it
+    // the scratch slide's liveness check would fail it for a reason that has
+    // nothing to do with tags — the same mistake that made
+    // `shape-resolve-held-slide-proxy` answer `no-scratch-slide` for years.
+    return withProbeContext(
+      slideId,
+      EXPERIMENT_BUDGET_MS,
+      async (ctx) => {
+        const KEY = "POWERCHART_EXPERIMENT";
+        const target = () => ctx.slides.getItemAt(0);
+        const tags = () => (target() as unknown as { tags: { add(k: string, v: string): void } }).tags;
+        tags().add(KEY, "first");
+        await ctx.sync();
+        tags().add(KEY, "second");
+        await ctx.sync();
+        const back = (
+          target() as unknown as {
+            tags: { getItemOrNullObject(k: string): { load(p: string): void; value?: string; isNullObject?: boolean } };
+          }
+        ).tags.getItemOrNullObject(KEY);
+        back.load("value");
+        await ctx.sync();
+        const absent = read(() => back.isNullObject) === true;
+        const value = read(() => back.value);
+        // Best-effort tidy: a tag left on the user's first slide is litter, and
+        // never allowed to change what this reports.
+        try {
+          (target() as unknown as { tags: { delete(k: string): void } }).tags.delete(KEY);
+          await ctx.sync();
+        } catch {
+          /* the next round's sweep does not touch tags; this is a nuisance only */
+        }
+        if (absent) return { answer: "no-such-tag", detail: "the write did not land on a real slide either" };
+        if (value === "second") return { answer: "overwrites", detail: "second write replaced the first" };
+        if (value === "first") return { answer: "keeps-first", detail: "the second write did not take" };
+        return { answer: "unreadable", detail: `tag present, value read back as ${String(value)}` };
+      },
+      undefined,
+      true,
+    );
+  },
+};
+
+export const EXPERIMENTS: Experiment[] = [groupedChildById, slideTagRoundTrip];
 
 /**
  * Run one experiment, on a slide of its own, and give the slide back.
