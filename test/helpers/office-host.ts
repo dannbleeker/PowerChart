@@ -352,6 +352,10 @@ export const faults = {
    * gate models a HOST read, not the bookkeeping a test does afterwards.
    */
   strictShapeReads: false,
+  /** The host refusing `Shape.group` — see the accessor. One-shot via `refuseGroupReadTimes`. */
+  refuseGroupRead: false,
+  /** Refuse the group read N times, then allow it — the case where a retry can pay. */
+  refuseGroupReadTimes: 0,
   /** See `settleAddedSlideId`. Null is off; N settles the id after N lookups. */
   newSlideIdSettlesAfter: null as number | null,
   /**
@@ -1110,6 +1114,26 @@ export function makeShape(
     // a throw otherwise, because that is what a repair pass has to survive: on
     // a host without 1.8 the property access poisons the sync it was queued in.
     get group() {
+      // See `faults.refuseGroupRead`. THE ERROR SHAPE MATTERS AS MUCH AS THE
+      // THROW: production latches on `errorLocation: "Shape.group"` and nothing
+      // else, so a generic error here exercises none of that path — which is why
+      // a mutant that skipped clearing the latch survived until this existed.
+      // AT THE SYNC, NOT AT THE ACCESS. Production says so in as many words:
+      // "the access only QUEUES a proxy read, and the GeneralException arrives
+      // later at the sync — under a different label, outside that try, in a batch
+      // it can poison". A fault that throws synchronously here is a DIFFERENT
+      // bug: it takes down the caller's try block instead of the sync, and it
+      // poisoned the re-read before the retry under test was ever reached.
+      //
+      // Counted, so a test can arm "refuse once, then answer" — the only shape
+      // in which a retry can be shown to PAY rather than merely to run.
+      const refuseGroup = faults.refuseGroupReadTimes > 0 || faults.refuseGroupRead;
+      if (faults.refuseGroupReadTimes > 0) faults.refuseGroupReadTimes--;
+      if (refuseGroup) {
+        pendingHostError = new Error(
+          'GeneralException | code=GeneralException | debugInfo={"code":"GeneralException","message":"GeneralException","errorLocation":"Shape.group"}',
+        );
+      }
       if (!shape.grouped) throw new Error("shape is not a group");
       const live = (): { name?: string; deleted: boolean }[] =>
         (shape.grouped as { name?: string; deleted: boolean }[]).filter((c) => !c.deleted);

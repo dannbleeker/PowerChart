@@ -6473,7 +6473,13 @@ describe("a recovered chart is asked for its group again", () => {
         said.some((e) => /^re-read recovered shapes a by-id lookup had refused/.test(e.message)),
         "the fixture needs the re-read to actually rescue the shape",
       ).toBe(true);
-      expect(said.some((e) => /^asked a recovered chart for its group again/.test(e.message))).toBe(true);
+      const again = said.find((e) => /^asked a recovered chart for its group again/.test(e.message));
+      expect(again).toBeTruthy();
+      // AND IT ACTUALLY ASKED. `queueGroupMembers` answers undefined while the
+      // refusal is latched, and the refusal that sent us here set it moments
+      // before — so without clearing it first this line reported `got: 0` and
+      // the retry was inert. Round 265 is what said so.
+      expect((again!.data as { got?: number }).got, "the retry asked nothing").toBeGreaterThan(0);
     } finally {
       faults.refuseShapeById = false;
       setTracing(false);
@@ -6499,6 +6505,44 @@ describe("a recovered chart is asked for its group again", () => {
         false,
       );
     } finally {
+      setTracing(false);
+    }
+  });
+});
+
+describe("the retry only helps if it is allowed to ask", () => {
+  it("clears the latch the refusal set, then asks again", async () => {
+    const { _setGroupReadRefusedForTest } = await import("../src/render/powerpoint");
+    const slide = makeSlide("s1");
+    installHost([slide]);
+    await insertSceneIntoSlide(buildChart(config), { tagData: JSON.stringify(config) });
+    const group = slide.created.find((s) => s.type === "group")!;
+    setTracing(true);
+    // Round 265 reported `got: 0` from a retry that fired and asked NOTHING,
+    // because `queueGroupMembers` answers undefined while the refusal is latched
+    // and the refusal that sent it there had just set it.
+    //
+    // THE LATCH SET DIRECTLY, and `refuseShapeById` to trigger the recovery.
+    // Arming the fake's group refusal as well does not work: it poisons the
+    // re-read too, so the retry path is never reached and the test can only
+    // report that. What is under test here is one line — whether the retry
+    // clears a latch that is ALREADY set — so setting it is the honest fixture.
+    _setGroupReadRefusedForTest();
+    faults.refuseShapeById = true;
+    try {
+      await updateChartInSlide(
+        buildChart(config),
+        { slideId: "s1", shapeId: group.id, left: 0, top: 0 },
+        { tagData: JSON.stringify(config) },
+      );
+      const again = traceLog().entries.find((e) => /^asked a recovered chart for its group again/.test(e.message));
+      // NOT GUARDED BY `if`. The first version of this assertion was, which made
+      // it pass whenever the retry never fired at all — a test that could only
+      // ever agree with the code.
+      expect(again, "the retry never fired").toBeTruthy();
+      expect((again!.data as { got?: number }).got, "the retry asked nothing").toBeGreaterThan(0);
+    } finally {
+      faults.refuseShapeById = false;
       setTracing(false);
     }
   });

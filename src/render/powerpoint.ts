@@ -2563,6 +2563,33 @@ export async function updateChartsInSlides(
     // that neighbourhood.
     const needGroupAgain = withOldSettled.filter((e) => e.reacquired && !e.parts.length);
     if (needGroupAgain.length) {
+      // FORGET THE REFUSAL FIRST, or this asks nothing at all.
+      //
+      // `queueGroupMembers` returns undefined while `groupReadRefused` is set,
+      // and the refusal that sent us down this path set it moments ago — so the
+      // retry was INERT from the day it was written. Round 265 said so in one
+      // field: `asked a recovered chart for its group again {charts:1, got:0}`.
+      // Without `got` it would have read as working.
+      //
+      // NOT UNIT-TESTED, and the reason is worth writing down rather than
+      // leaving as a gap someone finds later. To exercise this line a fixture
+      // needs the latch SET at this moment, which means a real group refusal
+      // inside this batch — and the fake's refusal sets `pendingHostError`,
+      // which poisons the NEXT sync, which is the re-read. So the fake can
+      // produce "refusal" or "working re-read" but not both in sequence, and a
+      // latch set from outside is cleared by the batch reset above before this
+      // runs.
+      //
+      // The ROUND is the test, and it is instrumented for exactly this: `got` in
+      // the trace below counts what the retry actually obtained. Round 265 read
+      // `got: 0` and that is what found this bug.
+      //
+      // Safe, and not a hole in the latch. The latch means "do not ask again in
+      // the sync this refusal poisoned"; that sync is over, the re-read has
+      // already succeeded in a later one, and `group-members-aged-proxy` says a
+      // group re-resolved by id enumerates fine. If the second ask is refused
+      // too it sets the latch again and the batch behaves exactly as before.
+      forgetGroupReadRefusal();
       const requeued = new Map<string, PowerPoint.ShapeScopedCollection | undefined>();
       for (const e of needGroupAgain) requeued.set(e.it.target.shapeId, queueGroupMembers(e.old));
       try {
