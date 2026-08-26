@@ -2591,7 +2591,35 @@ export async function updateChartsInSlides(
       // too it sets the latch again and the batch behaves exactly as before.
       forgetGroupReadRefusal();
       const requeued = new Map<string, PowerPoint.ShapeScopedCollection | undefined>();
-      for (const e of needGroupAgain) requeued.set(e.it.target.shapeId, queueGroupMembers(e.old));
+      // A FRESH BY-ID PROXY, not the recovered one. Round 266 cleared the latch
+      // and still read `got: 0`, so the latch was not the only thing stopping
+      // it: the recovered shape came out of a COLLECTION read, and this file
+      // already notes such a proxy "is not a null-object proxy at all". It does
+      // not give up its group either.
+      //
+      // The experiment that DID work took the other route —
+      // `group-members-aged-proxy` resolved the group by id off the slide and
+      // enumerated it, `yes`, 3 of 3 named. So ask the way the thing that works
+      // asks. Both routes are tried and counted separately, so one round says
+      // which of them this host actually honours rather than leaving another
+      // `got: 0` to be interpreted.
+      let viaCollection = 0;
+      let viaId = 0;
+      for (const e of needGroupAgain) {
+        const fromRecovered = queueGroupMembers(e.old);
+        if (fromRecovered) viaCollection++;
+        let fromId: PowerPoint.ShapeScopedCollection | undefined;
+        if (!fromRecovered) {
+          try {
+            const slide = context.presentation.slides.getItemOrNullObject(e.it.target.slideId);
+            fromId = queueGroupMembers(slide.shapes.getItemOrNullObject(e.it.target.shapeId));
+            if (fromId) viaId++;
+          } catch {
+            /* the redraw below is what happens anyway */
+          }
+        }
+        requeued.set(e.it.target.shapeId, fromRecovered ?? fromId);
+      }
       try {
         await boundedSync(context, "re-reading a recovered chart's group members");
       } catch (err) {
@@ -2612,6 +2640,10 @@ export async function updateChartsInSlides(
       trace("update", "asked a recovered chart for its group again", {
         charts: needGroupAgain.length,
         got: [...requeued.values()].filter(Boolean).length,
+        // WHICH ROUTE ANSWERED, because "got 1" would not say, and the whole
+        // reason this took three rounds is that the counts did not separate.
+        viaCollection,
+        viaId,
       });
     }
 
