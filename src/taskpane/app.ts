@@ -103,6 +103,7 @@ import { contiguousStacks, dataToSheet, mountDatasheet, sheetToData, type SheetM
 import { BUILTIN_TEMPLATES } from "./templates";
 import { harveyScene, checkScene, flowScene, kpiScene, wireElementPreviews } from "./elements-ui";
 import { agendaChapters, wireAgendaPreview } from "./agenda-ui";
+import { EXPERIMENTS, runExperiment } from "../render/experiments";
 import {
   runHostProbes,
   describeHostSheet,
@@ -3785,6 +3786,45 @@ function wireInsert() {
      * against the thing it stands for. One click, no deck changes — it works on
      * a scratch slide and takes it back.
      */
+    /**
+     * ONE QUESTION, ANSWERED IN SECONDS.
+     *
+     * The round is the wrong instrument for settling a single "does this host do
+     * X?" that a decision is waiting on — fourteen minutes, and the question has
+     * to earn a slot in a fixed sheet. `grouped-child-by-id-from-slide` waited
+     * 125 rounds for a slot and never got one.
+     *
+     * The alternative was worse: putting a speculative host call in the drawing
+     * batch to find out, which is where loading an id on a creation handle
+     * poisons it and costs the tag that makes a chart re-editable.
+     */
+    {
+      const pick = $("experiment-pick") as HTMLSelectElement;
+      for (const e of EXPERIMENTS) {
+        const option = document.createElement("option");
+        option.value = e.id;
+        // The QUESTION in the list, not the id. The id is for the archive; a
+        // person choosing one wants to read what it asks.
+        option.textContent = e.asks;
+        pick.append(option);
+      }
+      $("experiment-run").addEventListener(
+        "click",
+        guard(async () => {
+          revealSteps();
+          const chosen = pick.value || EXPERIMENTS[0]?.id;
+          note(`Asking: ${EXPERIMENTS.find((e) => e.id === chosen)?.asks ?? chosen}`, "busy");
+          const r = await runExperiment(chosen);
+          // The DETAIL beside the word, always. The vocabulary will be wrong for
+          // something eventually and the detail is what survives that.
+          note(
+            `${r.id} — ${r.answer}${r.detail ? `: ${r.detail}` : ""} (${r.ms}ms)`,
+            r.answer === "yes" ? "ok" : "err",
+          );
+        }),
+      );
+    }
+
     $("demo-probe").addEventListener(
       "click",
       guard(async () => {
