@@ -62,21 +62,42 @@ one to a grouped chart and a single group delete becomes fourteen shape deletes,
 which is the "chart grows by a whole chart on every edit" bug the tag exists to
 prevent. `loose` gated it for a reason that is not written down anywhere.
 
-**What a real fix would need**, in order:
+### ANSWERED 2026-08-26, and the fix is dead
 
-1. An answer to whether a grouped chart's child resolves by id off the slide.
-   The ids exist only inside the drawing batch — a group cannot be enumerated
-   here, so nothing downstream can name a child to try — which means the
-   experiment has to be asked there.
-2. A SEPARATE mapping tag that the delete path ignores, so the delete stays one
-   group delete. Not the parts tag.
+`grouped-child-by-id-from-slide` finally has an answer. It starved for 125
+rounds, was retired as moot, and was re-opened above because the route that made
+it moot is the route that fails. Asked directly, three times, in under two
+seconds each:
 
-**Why neither was done unattended.** The drawing batch is the most trap-laden
-path in the file: loading an id on a creation handle poisons it into
-`shapes.getItem(id)`, which this host refuses — the mechanism behind 235 tagging
-failures, the largest bucket in the archive. The downside of a wrong move there
-is the config tag, which is re-editability itself. The upside is real and it is
-not urgent enough to risk that without a person looking.
+    grouped-child-by-id — no-such-shape: child 2 of group 5 read back as undefined
+    grouped-child-by-id — no-such-shape: child 5 of group 9 read back as undefined
+    grouped-child-by-id — no-such-shape: child 9 of group 13 read back as undefined
+
+**A grouped child is not addressable by id off the slide on this host.** Not
+"unreadable", not refused — the slide's shape collection does not contain it at
+all. Grouping takes the children out of the slide's collection and the only way
+back to them is `shape.group.shapes`, which this host will not enumerate.
+
+So the mapping-tag idea is DEAD, and so is anything else built on reaching a
+grouped chart's shapes. Capturing child ids at draw time would have produced a
+tag full of ids that resolve to nothing.
+
+**The redraw is not a missed optimisation. It is the only correct behaviour
+available for a grouped chart on this host.** The 56 redraws per 30 rounds are
+the host's price for grouping, and grouping is what keeps the config tag — which
+is re-editability, the thing the product exists to provide. That is a trade
+already made in the right direction.
+
+What would change it is a host that enumerates group children (office-js#3014,
+closed completed, not reached this host) or an update path that does not need to
+map nodes to shapes at all. Neither is work this repo can do.
+
+**How it was answered matters as much as the answer.** Not by a round — by
+`scripts/experiment.mjs`, in under two seconds, four iterations apart. The first
+three attempts were wrong in ways this archive has documented for months: asking
+a creation proxy for its id, reading it without a load, and asking on a SCRATCH
+slide whose shape collection this host answers `unreadable` for in 92% of
+rounds. Each mistake cost a minute instead of a round.
 
 ### Adding a chart to an existing slide costs ~24s; making a new one costs ~0.75s — MEASURED 2026-08-23, not fixed
 

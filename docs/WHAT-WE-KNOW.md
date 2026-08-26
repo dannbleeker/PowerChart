@@ -78,6 +78,14 @@ wrong. Unmarked lines are believed but unchecked, which is a weaker thing.
   recoveries, so the rate could not be formed and the recovery's worth was
   assumed. It is now watched: a STALE here means updates have started dying
   wholesale again.
+- **A grouped chart's children are not addressable by id off the slide** —
+  measured directly 2026-08-26, three runs: `no-such-shape`, the child read back
+  as `undefined`. Grouping takes the shapes OUT of the slide's collection, and
+  the only route back is `shape.group.shapes`, which this host will not
+  enumerate. So a grouped chart's update has no way to map nodes to shapes and
+  MUST redraw — that is not a missed optimisation, it is the only correct
+  behaviour available, and it is the price of the grouping that keeps the config
+  tag. See `docs/BACKLOG.md`.
 - **Group children are unreachable.** 548 throws, 0 answers. office-js#3014 is
   closed upstream; the fix has not reached this host.
 - **The host is unversioned** (`0.0.0.0`) — but probe answers are a behavioural
