@@ -86,14 +86,24 @@ wrong. Unmarked lines are believed but unchecked, which is a weaker thing.
   in 92% of rounds. **Do not quote that probe answer as a fact about tags.**
 - **A grouped chart's children are not addressable by id off the slide** —
   measured directly 2026-08-26, three runs: `no-such-shape`, the child read back
-  as `undefined`. Grouping takes the shapes OUT of the slide's collection, and
-  the only route back is `shape.group.shapes`, which this host will not
-  enumerate. So a grouped chart's update has no way to map nodes to shapes and
-  MUST redraw — that is not a missed optimisation, it is the only correct
-  behaviour available, and it is the price of the grouping that keeps the config
-  tag. See `docs/BACKLOG.md`.
-- **Group children are unreachable.** 548 throws, 0 answers. office-js#3014 is
-  closed upstream; the fix has not reached this host.
+  as `undefined`. Grouping takes the shapes OUT of the slide's collection, so a
+  parts tag of child ids cannot work.
+  **But the OTHER route does work.** `shape.group.shapes`, loaded for
+  `items/id`, enumerates and names children on a real slide — `yes` both fresh
+  and re-resolved by id. The probe's `group-children-via-getcount` says
+  `unreadable` in 34 of 40 rounds because it asks on the SCRATCH slide.
+  I wrote here that a grouped chart therefore MUST redraw. That was wrong, and
+  it cost the fix below a morning. See `docs/BACKLOG.md`.
+- **✓ One group refusal no longer ends the round.**
+  `a-group-refusal-no-longer-ends-the-round`
+  `groupReadRefused` latched for the SESSION, and since the parts list is never
+  consumed, `queueGroupMembers` is the only route an in-place update has — so one
+  refusal turned every remaining chart into a redraw. In-place updates after the
+  first refusal: **0 across rounds 254-261, 1 in each of 262-264**. Redraw rate
+  **21.4% to 14.3%**, seven identical rounds against three.
+- **"Group children are unreachable" — 548 throws, 0 answers — is measured on the
+  SCRATCH slide.** office-js#3014 is closed upstream. Do not read it as a
+  statement about real slides: see the line above.
 - **The host is unversioned** (`0.0.0.0`) — but probe answers are a behavioural
   fingerprint, and it has been flat across the whole archive.
 
@@ -143,11 +153,12 @@ wrong. Unmarked lines are believed but unchecked, which is a weaker thing.
   **Corrected 2026-08-26: this is not a fix that is late, it is impossible by the
   route everyone assumed.** A grouped chart's children are not addressable by id
   off the slide, so a parts tag written for one would name ids that resolve to
-  nothing — and essentially every chart groups now. The redraw it causes is the
-  only correct behaviour available, and the price of the grouping that keeps the
-  config tag. What would move this line is a host that enumerates group children,
-  or charts starting to FAIL to group — the second would be a warning, not a
+  nothing — and essentially every chart groups now. What would move this line is
+  charts starting to FAIL to group, which would be a warning rather than a
   victory.
+  **This does NOT mean the redraw is unavoidable.** A parts tag of ids cannot
+  work, but `shape.group.shapes` enumerates fine on a real slide — see the next
+  line. The two were conflated here for most of 2026-08-26.
 - **✓ Tag faults are zero** across the last 20 rounds. `tag-faults-are-zero`
   Thread 1 therefore cannot be tested — both arms of any experiment score zero.
   It needs a trigger that reproduces tag loss on demand.

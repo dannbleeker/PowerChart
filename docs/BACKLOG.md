@@ -79,18 +79,44 @@ all. Grouping takes the children out of the slide's collection and the only way
 back to them is `shape.group.shapes`, which this host will not enumerate.
 
 So the mapping-tag idea is DEAD, and so is anything else built on reaching a
-grouped chart's shapes. Capturing child ids at draw time would have produced a
-tag full of ids that resolve to nothing.
+grouped chart's shapes BY ID. Capturing child ids at draw time would have
+produced a tag full of ids that resolve to nothing.
 
-**The redraw is not a missed optimisation. It is the only correct behaviour
-available for a grouped chart on this host.** The 56 redraws per 30 rounds are
-the host's price for grouping, and grouping is what keeps the config tag — which
-is re-editability, the thing the product exists to provide. That is a trade
-already made in the right direction.
+### CORRECTED THE SAME DAY — the redraw was NOT unavoidable
 
-What would change it is a host that enumerates group children (office-js#3014,
-closed completed, not reached this host) or an update path that does not need to
-map nodes to shapes at all. Neither is work this repo can do.
+The paragraph that stood here said "the redraw is not a missed optimisation, it
+is the only correct behaviour available for a grouped chart on this host". That
+was wrong, and it was wrong for the reason everything else on this page was
+wrong: it rested on a probe answer measured on the scratch slide.
+
+Two routes to a grouped chart's shapes exist and they are not the same question:
+
+    by id            `slide.shapes.getItemOrNullObject(childId)`   — DOES NOT WORK
+    by enumeration   `shape.group.shapes` loaded for `items/id`    — WORKS
+
+The first is settled above, three runs, `no-such-shape`. The second was asked on
+a real slide the same afternoon and answered `yes` both fresh and re-resolved by
+id — where the probe's scratch-slide version, `group-children-via-getcount`,
+answers `unreadable` in 34 of 40 rounds.
+
+So the update path had a working route all along. What was taking it away was a
+LATCH: `groupReadRefused` held for the whole SESSION, and one refusal ended
+in-place updates for the rest of the round. Across rounds 254-261, in-place
+updates after the first refusal: zero, eight rounds running. Resetting it per
+batch (`55630e7`) gives:
+
+    baseline 255-261   11 in-place / 3 redrawn = 21.4%   seven identical rounds
+    with fix 262-264   12 in-place / 2 redrawn = 14.3%   three identical rounds
+
+`a-group-refusal-no-longer-ends-the-round` watches it at 3/3.
+
+**What is still open.** The latch is deliberately kept WITHIN a batch, because
+the refusal arrives at the sync rather than at the property access and poisons
+the batch it lands in. So charts after the refusal in the SAME batch still
+redraw, which is why the gain is one chart rather than three. Whether that can
+be relaxed depends on whether the poisoning is real — the fake cannot model a
+sync-time refusal, so only a round or an experiment can say.
+
 
 **How it was answered matters as much as the answer.** Not by a round — by
 `scripts/experiment.mjs`, in under two seconds, four iterations apart. The first

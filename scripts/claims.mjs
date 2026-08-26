@@ -340,6 +340,52 @@ export const CLAIMS = [
     },
   },
   {
+    id: "a-group-refusal-no-longer-ends-the-round",
+    says: "After the host refuses one group read, later charts can still be updated in place.",
+    measured: "2026-08-26, 0 in-place updates after the refusal across rounds 254-261, then 1 in each of 262 and 263",
+    check(logs) {
+      let rounds = 0;
+      let survived = 0;
+      // A SHORT WINDOW, three rounds. This claim is about what the code does
+      // NOW, and a ten-round window spends most of its length on rounds that
+      // predate the change — which reads STALE for a week and teaches the reader
+      // to ignore the one line in this report that is supposed to mean something.
+      for (const log of recent(logs, 3)) {
+        const entries = log?.trace?.entries ?? [];
+        let refusedAt = null;
+        for (const e of entries) {
+          if (refusedAt !== null) break;
+          // Against the error TEXT, not against `JSON.stringify(data)`. The
+          // error is itself a JSON string, so stringifying the wrapper escapes
+          // its quotes and the obvious pattern matches nothing — which is what
+          // the first version of this did, reporting 0 refusing rounds in an
+          // archive where 23 of the last 25 refused.
+          if (/"errorLocation":"Shape\.group"/.test(String(e.data?.error ?? ""))) refusedAt = e.ms;
+        }
+        // A round where the host never refused says nothing either way — it is
+        // not evidence that the latch was forgotten, only that it never latched.
+        if (refusedAt === null) continue;
+        rounds++;
+        const after = entries.filter(
+          (e) => /^updated only the shapes that changed/.test(String(e.message ?? "")) && (e.ms ?? 0) >= refusedAt,
+        ).length;
+        if (after > 0) survived++;
+      }
+      // THE LATCH WAS THE COST, and this is the narrowest number that shows it.
+      // `groupReadRefused` held for the whole SESSION, and since the parts list
+      // is never consumed, `queueGroupMembers` is the only route an in-place
+      // update has — so one refusal ended them for the round. Eight rounds
+      // running recorded exactly zero after it; the two rounds since the batch
+      // reset landed record one each.
+      //
+      // A rate, not a count: how many charts follow the refusal depends on where
+      // in the battery it lands, and that moves round to round. What must not
+      // move is whether ANY survive it.
+      if (rounds < 3) return { ok: null, actual: `only ${rounds} round(s) where the host refused` };
+      return { ok: survived === rounds, actual: `${survived}/${rounds} refusing rounds kept updating in place` };
+    },
+  },
+  {
     id: "dropping-the-selection-stops-the-stall",
     says: "A draw made with a shape still selected stalls; the same draw with the selection dropped does not.",
     measured: "2026-08-25, 10 stalls in 457 held-selection draws against 0 in 516 dropped ones, over 235 rounds",
