@@ -18,6 +18,66 @@ patterns.
 
 ## 1. Open
 
+### Two of every three redraws are a grouped chart the update cannot map — 2026-08-26
+
+**The largest product cost still on the table, and the obvious fix is wrong.**
+
+An update either writes only the shapes that changed, or redraws the chart
+whole. A redraw is far more expensive: it is why `same scale across the deck`
+costs 167s, 38% of the battery. Measured over the last 30 rounds:
+
+    in-place 325 · redrawn 86 = 20.9% redrawn
+
+    56  the chart has no parts list AND no readable group members
+    30  this update draws a picture, which is not in the scene the differ compares
+
+The picture case is legitimate — a picture cannot be diffed against a scene. The
+other 56 are the whole of the addressable cost, and they are all the same shape:
+a chart that GROUPED, whose group the host will not enumerate.
+
+**How it got here is worth stating, because each step was right.** Grouping used
+to fail, so charts were loose, so they carried a parts list and the update mapped
+nodes to shapes through it. Grouping now succeeds — `fresh-slides-group` reads
+96/98 — and a grouped chart is not "loose", so it collects no parts list. The
+update was given a different route for those: `shape.group.shapes` (#643),
+written through in #646. That route is what fails:
+`group-children-via-getcount` answers `unreadable` in 34 of 40 rounds.
+
+So a grouped chart has neither route, and redraws.
+
+**`grouped-child-by-id-from-slide` is no longer moot.** It was retired
+2026-08-21 with the reasoning that the by-id route "is not used and does not need
+an answer". The route that made it moot is the route that is failing. A question
+is only moot while the thing that made it moot works.
+
+**The naive fix was tried on 2026-08-26 and REVERTED.** Collecting a parts list
+for grouped charts as well as loose ones looks free — the ids are already
+populated by the drawing batch, so it reads a property rather than making a call
+— and the suite killed it in one run:
+
+    reports no growth for a GROUPED chart — "a group goes in one delete": expected 14 to be 1
+
+The parts tag is not only the in-place MAPPING, it is also the DELETE list. Hand
+one to a grouped chart and a single group delete becomes fourteen shape deletes,
+which is the "chart grows by a whole chart on every edit" bug the tag exists to
+prevent. `loose` gated it for a reason that is not written down anywhere.
+
+**What a real fix would need**, in order:
+
+1. An answer to whether a grouped chart's child resolves by id off the slide.
+   The ids exist only inside the drawing batch — a group cannot be enumerated
+   here, so nothing downstream can name a child to try — which means the
+   experiment has to be asked there.
+2. A SEPARATE mapping tag that the delete path ignores, so the delete stays one
+   group delete. Not the parts tag.
+
+**Why neither was done unattended.** The drawing batch is the most trap-laden
+path in the file: loading an id on a creation handle poisons it into
+`shapes.getItem(id)`, which this host refuses — the mechanism behind 235 tagging
+failures, the largest bucket in the archive. The downside of a wrong move there
+is the config tag, which is re-editability itself. The upside is real and it is
+not urgent enough to risk that without a person looking.
+
 ### Adding a chart to an existing slide costs ~24s; making a new one costs ~0.75s — MEASURED 2026-08-23, not fixed
 
 Pooled over 2,917 timed batches in 169 rounds. Every batch in the archive is
