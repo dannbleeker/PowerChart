@@ -6450,8 +6450,17 @@ describe("the group-read refusal does not outlive its batch", () => {
   });
 });
 
-describe("a recovered chart is asked for its group again", () => {
-  it("re-queues the group read the poisoned sync lost", async () => {
+describe("a group refused in the batch redraws, and says so", () => {
+  it("rescues the shape, cannot rescue its group, and redraws", async () => {
+    // THE SEQUENCE THE ARCHIVE SHOWS IN EVERY ROUND ON FILE, asserted as the
+    // CORRECT outcome rather than as a bug to be retried away.
+    //
+    // A retry stood here for three rounds and never once produced an in-place
+    // update, because both routes into the group are shut inside this batch:
+    // the recovered proxy's `.group.shapes` answers and then its sync throws
+    // (round 267, in production), and a fresh by-id lookup is the very thing
+    // poisoning these syncs. What rescues the group is the NEXT batch, via the
+    // reset asserted in the describe above.
     const slide = makeSlide("s1");
     installHost([slide]);
     await insertSceneIntoSlide(buildChart(config), { tagData: JSON.stringify(config) });
@@ -6465,69 +6474,41 @@ describe("a recovered chart is asked for its group again", () => {
         { tagData: JSON.stringify(config) },
       );
       const said = traceLog().entries;
-      // THE SEQUENCE THE ARCHIVE SHOWS IN EVERY ROUND: the resolve is refused,
-      // the re-read rescues the shape — and then the update redraws a chart it
-      // is holding a live handle to, because `groupMembers` was queued in the
-      // sync that threw and nothing asked again.
+      // NON-VACUITY FIRST. Without this the redraw assertion below would pass on
+      // a run where the shape was never recovered at all — a different failure
+      // wearing the same trace.
       expect(
         said.some((e) => /^re-read recovered shapes a by-id lookup had refused/.test(e.message)),
         "the fixture needs the re-read to actually rescue the shape",
       ).toBe(true);
-      const again = said.find((e) => /^asked a recovered chart for its group again/.test(e.message));
-      expect(again).toBeTruthy();
-      // AND IT ACTUALLY ASKED. `queueGroupMembers` answers undefined while the
-      // refusal is latched, and the refusal that sent us here set it moments
-      // before — so without clearing it first this line reported `got: 0` and
-      // the retry was inert. Round 265 is what said so.
-      expect((again!.data as { got?: number }).got, "the retry asked nothing").toBeGreaterThan(0);
+      const redraw = said.find((e) => /^not updating in place — redrawing instead/.test(e.message));
+      expect(redraw, "the chart should have redrawn").toBeTruthy();
+      // THE REASON IS NOT PINNED, deliberately. In production this redraw reads
+      // "no readable group members"; under this fixture it reads "no stored
+      // config to diff against", because `refuseShapeById` refuses the stored
+      // config read too and the chart never reaches the group check.
+      //
+      // Asserting the production wording here would be asserting an artifact of
+      // the fake. What this test is for is the BEHAVIOUR both paths share: a
+      // chart whose shape was rescued but whose group was not still redraws,
+      // rather than silently doing nothing to a chart the user is looking at.
+      expect(String((redraw!.data as { why?: string }).why ?? ""), "the redraw gave no reason").not.toBe("");
     } finally {
       faults.refuseShapeById = false;
       setTracing(false);
     }
   });
 
-  it("does not ask again for a chart that was never refused", async () => {
+  it("does not claim it re-asked for the group", async () => {
+    // The retry's trace is gone, and this is what keeps it gone. Re-adding one
+    // without re-reading the note in `powerpoint.ts` costs another three rounds:
+    // its `got` counted queued PROXIES, which are truthy before the sync has
+    // said anything, so the number read as "obtained" while meaning "asked".
     const slide = makeSlide("s1");
     installHost([slide]);
     await insertSceneIntoSlide(buildChart(config), { tagData: JSON.stringify(config) });
     const group = slide.created.find((s) => s.type === "group")!;
     setTracing(true);
-    try {
-      await updateChartInSlide(
-        buildChart(config),
-        { slideId: "s1", shapeId: group.id, left: 0, top: 0 },
-        { tagData: JSON.stringify(config) },
-      );
-      // A healthy update already has whatever it queued. Spending a sync per
-      // update to re-ask would pay the recovery's cost on every chart in the
-      // deck for the benefit of the one in a round that needs it.
-      expect(traceLog().entries.some((e) => /^asked a recovered chart for its group again/.test(e.message))).toBe(
-        false,
-      );
-    } finally {
-      setTracing(false);
-    }
-  });
-});
-
-describe("the retry only helps if it is allowed to ask", () => {
-  it("clears the latch the refusal set, then asks again", async () => {
-    const { _setGroupReadRefusedForTest } = await import("../src/render/powerpoint");
-    const slide = makeSlide("s1");
-    installHost([slide]);
-    await insertSceneIntoSlide(buildChart(config), { tagData: JSON.stringify(config) });
-    const group = slide.created.find((s) => s.type === "group")!;
-    setTracing(true);
-    // Round 265 reported `got: 0` from a retry that fired and asked NOTHING,
-    // because `queueGroupMembers` answers undefined while the refusal is latched
-    // and the refusal that sent it there had just set it.
-    //
-    // THE LATCH SET DIRECTLY, and `refuseShapeById` to trigger the recovery.
-    // Arming the fake's group refusal as well does not work: it poisons the
-    // re-read too, so the retry path is never reached and the test can only
-    // report that. What is under test here is one line — whether the retry
-    // clears a latch that is ALREADY set — so setting it is the honest fixture.
-    _setGroupReadRefusedForTest();
     faults.refuseShapeById = true;
     try {
       await updateChartInSlide(
@@ -6535,12 +6516,9 @@ describe("the retry only helps if it is allowed to ask", () => {
         { slideId: "s1", shapeId: group.id, left: 0, top: 0 },
         { tagData: JSON.stringify(config) },
       );
-      const again = traceLog().entries.find((e) => /^asked a recovered chart for its group again/.test(e.message));
-      // NOT GUARDED BY `if`. The first version of this assertion was, which made
-      // it pass whenever the retry never fired at all — a test that could only
-      // ever agree with the code.
-      expect(again, "the retry never fired").toBeTruthy();
-      expect((again!.data as { got?: number }).got, "the retry asked nothing").toBeGreaterThan(0);
+      const said = traceLog().entries;
+      expect(said.length, "nothing was traced, so this asserts nothing").toBeGreaterThan(0);
+      expect(said.some((e) => /asked a recovered chart for its group again/.test(e.message))).toBe(false);
     } finally {
       faults.refuseShapeById = false;
       setTracing(false);

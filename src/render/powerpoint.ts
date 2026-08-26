@@ -2541,111 +2541,41 @@ export async function updateChartsInSlides(
       return again ? { ...e, old: again, reacquired: true } : { ...e, reacquired: false };
     });
 
-    // ASK THE RECOVERED SHAPE FOR ITS GROUP AGAIN.
+    // A GROUP REFUSED IN THIS BATCH CANNOT BE RE-ASKED IN THIS BATCH. It is
+    // recovered by the NEXT one, and the reset at the top of this function is
+    // what does it.
     //
-    // `groupMembers` was queued against the OLD proxy, in the sync that then
-    // threw — so it is dead even though the shape itself has just been rescued.
-    // Nothing re-queued it, and the update went on to redraw a chart it was
-    // holding a live handle to.
+    // Three rounds went into a retry here and it never once produced an in-place
+    // update. Both routes into the group are closed, for different reasons, and
+    // between them there is no third:
     //
-    // The archive shows this as one identical sequence in every round on file:
+    //     the recovered proxy   the `.group.shapes` property answers, and then
+    //                           the SYNC throws — round 267, `viaCollection: 1`
+    //                           with `got: 0`, in production
+    //     a fresh by-id proxy   the LOOKUP is what poisons the sync it joins, so
+    //                           asking this way spends the same exception that
+    //                           sent us here. The refusal above was a by-id
+    //                           refusal; `faults.refuseShapeById` models exactly
+    //                           this and the retry read `got: 0` under it too
+    //
+    // So the archive's sequence stands, and the fourth line is CORRECT rather
+    // than wasteful:
     //
     //     resolving the charts' shapes            GeneralException
     //     a by-id lookup refused the whole resolve — re-reading the slides
     //     re-read recovered shapes                asked 1, recovered 1
     //     not updating in place — redrawing       "no readable group members"
     //
-    // The third line says the shape came back. The fourth throws that away.
+    // The shape really did come back; its GROUP did not, and nothing available
+    // inside this context can fetch it. The redraw is the right answer.
     //
-    // Only for the reacquired ones, and only when there is no parts list to use
-    // instead — everyone else already has whatever they queued. Costs one sync,
-    // on a path that has just had an exception, so it is the cheapest thing in
-    // that neighbourhood.
-    const needGroupAgain = withOldSettled.filter((e) => e.reacquired && !e.parts.length);
-    if (needGroupAgain.length) {
-      // FORGET THE REFUSAL FIRST, or this asks nothing at all.
-      //
-      // `queueGroupMembers` returns undefined while `groupReadRefused` is set,
-      // and the refusal that sent us down this path set it moments ago — so the
-      // retry was INERT from the day it was written. Round 265 said so in one
-      // field: `asked a recovered chart for its group again {charts:1, got:0}`.
-      // Without `got` it would have read as working.
-      //
-      // NOT UNIT-TESTED, and the reason is worth writing down rather than
-      // leaving as a gap someone finds later. To exercise this line a fixture
-      // needs the latch SET at this moment, which means a real group refusal
-      // inside this batch — and the fake's refusal sets `pendingHostError`,
-      // which poisons the NEXT sync, which is the re-read. So the fake can
-      // produce "refusal" or "working re-read" but not both in sequence, and a
-      // latch set from outside is cleared by the batch reset above before this
-      // runs.
-      //
-      // The ROUND is the test, and it is instrumented for exactly this: `got` in
-      // the trace below counts what the retry actually obtained. Round 265 read
-      // `got: 0` and that is what found this bug.
-      //
-      // Safe, and not a hole in the latch. The latch means "do not ask again in
-      // the sync this refusal poisoned"; that sync is over, the re-read has
-      // already succeeded in a later one, and `group-members-aged-proxy` says a
-      // group re-resolved by id enumerates fine. If the second ask is refused
-      // too it sets the latch again and the batch behaves exactly as before.
-      forgetGroupReadRefusal();
-      const requeued = new Map<string, PowerPoint.ShapeScopedCollection | undefined>();
-      // A FRESH BY-ID PROXY, not the recovered one. Round 266 cleared the latch
-      // and still read `got: 0`, so the latch was not the only thing stopping
-      // it: the recovered shape came out of a COLLECTION read, and this file
-      // already notes such a proxy "is not a null-object proxy at all". It does
-      // not give up its group either.
-      //
-      // The experiment that DID work took the other route —
-      // `group-members-aged-proxy` resolved the group by id off the slide and
-      // enumerated it, `yes`, 3 of 3 named. So ask the way the thing that works
-      // asks. Both routes are tried and counted separately, so one round says
-      // which of them this host actually honours rather than leaving another
-      // `got: 0` to be interpreted.
-      let viaCollection = 0;
-      let viaId = 0;
-      for (const e of needGroupAgain) {
-        const fromRecovered = queueGroupMembers(e.old);
-        if (fromRecovered) viaCollection++;
-        let fromId: PowerPoint.ShapeScopedCollection | undefined;
-        if (!fromRecovered) {
-          try {
-            const slide = context.presentation.slides.getItemOrNullObject(e.it.target.slideId);
-            fromId = queueGroupMembers(slide.shapes.getItemOrNullObject(e.it.target.shapeId));
-            if (fromId) viaId++;
-          } catch {
-            /* the redraw below is what happens anyway */
-          }
-        }
-        requeued.set(e.it.target.shapeId, fromRecovered ?? fromId);
-      }
-      try {
-        await boundedSync(context, "re-reading a recovered chart's group members");
-      } catch (err) {
-        // Best-effort by construction: the caller's next step is the redraw it
-        // would have done anyway, so a second refusal costs nothing but the
-        // sync. Recorded, because a silent retry is how a fix stops being
-        // measurable.
-        trace("update", "the recovered chart would not give up its group either", {
-          charts: needGroupAgain.length,
-          error: errorText(err),
-        });
-        requeued.clear();
-      }
-      for (const e of withOldSettled) {
-        if (!requeued.has(e.it.target.shapeId)) continue;
-        e.groupMembers = requeued.get(e.it.target.shapeId);
-      }
-      trace("update", "asked a recovered chart for its group again", {
-        charts: needGroupAgain.length,
-        got: [...requeued.values()].filter(Boolean).length,
-        // WHICH ROUTE ANSWERED, because "got 1" would not say, and the whole
-        // reason this took three rounds is that the counts did not separate.
-        viaCollection,
-        viaId,
-      });
-    }
+    // WHAT MADE THE RETRY LOOK ALIVE FOR THREE ROUNDS, because the mistake is
+    // easier to repeat than to spot: `got` counted the queued proxies with
+    // `filter(Boolean)`, and `queueGroupMembers` returns a PROXY — truthy the
+    // instant it is queued, whether or not the host will honour it. The trace
+    // read "got", the test asserted `got > 0` under the message "the retry asked
+    // nothing", and both were satisfied by the act of asking. A count taken
+    // before the sync cannot report what the sync returned.
 
     // A target whose SHAPE is gone gets the same treatment as one whose slide
     // is gone: nothing to do. Re-rendering it would resurrect a chart the user
