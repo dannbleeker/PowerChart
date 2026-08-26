@@ -372,7 +372,119 @@ const groupMembersOnRealSlide: Experiment = {
   },
 };
 
-export const EXPERIMENTS: Experiment[] = [groupedChildById, slideTagRoundTrip, groupMembersOnRealSlide];
+/**
+ * Can a group enumerate its children through an AGED proxy?
+ *
+ * `group-members-real-slide` answered `yes` — a group created moments ago lists
+ * and names its children on a real slide. That reversed one conclusion and must
+ * not be allowed to install a wrong one in its place, because production DOES
+ * fail: "the chart has no parts list and no readable group members", 56 times in
+ * 30 rounds, on real slides.
+ *
+ * The difference between the two is not the slide. It is the PROXY. My
+ * experiment enumerated a group it had just made; production enumerates one it
+ * resolved from a config tag at update time, minutes later, through a slide
+ * handle of its own. This repo's whole history says that difference is decisive
+ * — a creation handle is refused once Office.js rewrites its path, a shape proxy
+ * is `unreadable` a sync later, a slide id stops resolving while the slide sits
+ * in the deck.
+ *
+ * So: the same enumeration, on a group re-resolved by id off the slide rather
+ * than held from its creation. If THIS answers yes, the update's failure is not
+ * the host refusing groups and there is a fix to find. If it answers no, the
+ * aged proxy is the wall, and that is a far more precise statement than "group
+ * children are unreachable".
+ */
+const groupMembersAgedProxy: Experiment = {
+  id: "group-members-aged-proxy",
+  asks: "Can a group enumerate its children through a proxy resolved later, not the one that made it?",
+  async run(slideId) {
+    return withProbeContext(
+      slideId,
+      EXPERIMENT_BUDGET_MS,
+      async (ctx) => {
+        const target = () => ctx.slides.getItemAt(0);
+        const named = target();
+        named.load("id");
+        await ctx.sync();
+        const targetSlideId = read(() => (named as unknown as { id?: string }).id);
+        const before = target().shapes;
+        before.load("items/id");
+        await ctx.sync();
+        const had = new Set(
+          (read(() => before.items) ?? [])
+            .map((s) => read(() => (s as { id?: string }).id))
+            .filter((id): id is string => typeof id === "string" && id.length > 0),
+        );
+        for (const n of [0, 1, 2]) {
+          target().shapes.addGeometricShape(PowerPoint.GeometricShapeType.rectangle, {
+            left: 20 + n * 40,
+            top: 150,
+            width: 30,
+            height: 30,
+          });
+        }
+        await ctx.sync();
+        const collection = target().shapes;
+        collection.load("items/id");
+        await ctx.sync();
+        const items = read(() => collection.items) ?? [];
+        // ONLY THE THREE THIS EXPERIMENT ADDED. Grouping whatever the slide
+        // already held would swallow the user's own shapes and delete them in
+        // the tidy-up below.
+        const mine = items.filter((s) => {
+          const id = read(() => (s as { id?: string }).id);
+          return typeof id === "string" && id.length > 0 && !had.has(id);
+        });
+        if (mine.length < 3) return { answer: "no-child-ids", detail: `named ${mine.length} of 3 new shapes` };
+        let groupId: string | undefined;
+        try {
+          const group = (target().shapes as unknown as { addGroup(shapes: unknown[]): PowerPoint.Shape }).addGroup(
+            mine,
+          );
+          group.load("id");
+          await ctx.sync();
+          groupId = read(() => (group as unknown as { id?: string }).id);
+        } catch (err) {
+          return { answer: "no-group", detail: String((err as { message?: string })?.message ?? err).slice(0, 140) };
+        }
+        if (!groupId) return { answer: "no-group-id", detail: "the group would not name itself" };
+        // AGE IT. A sync of its own, then a FRESH resolve by id off the slide —
+        // which is how the update reaches a chart it did not just draw.
+        await ctx.sync();
+        let answer: string;
+        let detail: string;
+        try {
+          const aged = target().shapes.getItemOrNullObject(groupId);
+          const inner = (aged as unknown as { group: { shapes: { load(p: string): void; items?: unknown[] } } }).group
+            .shapes;
+          inner.load("items/id");
+          await ctx.sync();
+          const kids = read(() => inner.items) ?? [];
+          const withIds = kids
+            .map((k) => read(() => (k as { id?: string }).id))
+            .filter((id): id is string => typeof id === "string" && id.length > 0);
+          answer = withIds.length ? "yes" : kids.length ? "listed-but-unnamed" : "empty";
+          detail = `aged group ${groupId} listed ${kids.length} child(ren), ${withIds.length} named`;
+        } catch (err) {
+          answer = "threw";
+          detail = String((err as { message?: string })?.message ?? err).slice(0, 140);
+        }
+        if (targetSlideId) await deleteShapesById(targetSlideId, [groupId]).catch(() => 0);
+        return { answer, detail };
+      },
+      undefined,
+      true,
+    );
+  },
+};
+
+export const EXPERIMENTS: Experiment[] = [
+  groupedChildById,
+  slideTagRoundTrip,
+  groupMembersOnRealSlide,
+  groupMembersAgedProxy,
+];
 
 /**
  * Run one experiment, on a slide of its own, and give the slide back.
