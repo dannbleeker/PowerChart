@@ -6449,3 +6449,57 @@ describe("the group-read refusal does not outlive its batch", () => {
     expect(isGroupReadRefusal('{"errorLocation":"ShapeCollection.getItem"}')).toBe(false);
   });
 });
+
+describe("a recovered chart is asked for its group again", () => {
+  it("re-queues the group read the poisoned sync lost", async () => {
+    const slide = makeSlide("s1");
+    installHost([slide]);
+    await insertSceneIntoSlide(buildChart(config), { tagData: JSON.stringify(config) });
+    const group = slide.created.find((s) => s.type === "group")!;
+    setTracing(true);
+    faults.refuseShapeById = true;
+    try {
+      await updateChartInSlide(
+        buildChart(config),
+        { slideId: "s1", shapeId: group.id, left: 0, top: 0 },
+        { tagData: JSON.stringify(config) },
+      );
+      const said = traceLog().entries;
+      // THE SEQUENCE THE ARCHIVE SHOWS IN EVERY ROUND: the resolve is refused,
+      // the re-read rescues the shape — and then the update redraws a chart it
+      // is holding a live handle to, because `groupMembers` was queued in the
+      // sync that threw and nothing asked again.
+      expect(
+        said.some((e) => /^re-read recovered shapes a by-id lookup had refused/.test(e.message)),
+        "the fixture needs the re-read to actually rescue the shape",
+      ).toBe(true);
+      expect(said.some((e) => /^asked a recovered chart for its group again/.test(e.message))).toBe(true);
+    } finally {
+      faults.refuseShapeById = false;
+      setTracing(false);
+    }
+  });
+
+  it("does not ask again for a chart that was never refused", async () => {
+    const slide = makeSlide("s1");
+    installHost([slide]);
+    await insertSceneIntoSlide(buildChart(config), { tagData: JSON.stringify(config) });
+    const group = slide.created.find((s) => s.type === "group")!;
+    setTracing(true);
+    try {
+      await updateChartInSlide(
+        buildChart(config),
+        { slideId: "s1", shapeId: group.id, left: 0, top: 0 },
+        { tagData: JSON.stringify(config) },
+      );
+      // A healthy update already has whatever it queued. Spending a sync per
+      // update to re-ask would pay the recovery's cost on every chart in the
+      // deck for the benefit of the one in a round that needs it.
+      expect(traceLog().entries.some((e) => /^asked a recovered chart for its group again/.test(e.message))).toBe(
+        false,
+      );
+    } finally {
+      setTracing(false);
+    }
+  });
+});

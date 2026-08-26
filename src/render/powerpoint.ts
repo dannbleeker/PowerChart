@@ -2533,6 +2533,53 @@ export async function updateChartsInSlides(
       return again ? { ...e, old: again, reacquired: true } : { ...e, reacquired: false };
     });
 
+    // ASK THE RECOVERED SHAPE FOR ITS GROUP AGAIN.
+    //
+    // `groupMembers` was queued against the OLD proxy, in the sync that then
+    // threw — so it is dead even though the shape itself has just been rescued.
+    // Nothing re-queued it, and the update went on to redraw a chart it was
+    // holding a live handle to.
+    //
+    // The archive shows this as one identical sequence in every round on file:
+    //
+    //     resolving the charts' shapes            GeneralException
+    //     a by-id lookup refused the whole resolve — re-reading the slides
+    //     re-read recovered shapes                asked 1, recovered 1
+    //     not updating in place — redrawing       "no readable group members"
+    //
+    // The third line says the shape came back. The fourth throws that away.
+    //
+    // Only for the reacquired ones, and only when there is no parts list to use
+    // instead — everyone else already has whatever they queued. Costs one sync,
+    // on a path that has just had an exception, so it is the cheapest thing in
+    // that neighbourhood.
+    const needGroupAgain = withOldSettled.filter((e) => e.reacquired && !e.parts.length);
+    if (needGroupAgain.length) {
+      const requeued = new Map<string, PowerPoint.ShapeScopedCollection | undefined>();
+      for (const e of needGroupAgain) requeued.set(e.it.target.shapeId, queueGroupMembers(e.old));
+      try {
+        await boundedSync(context, "re-reading a recovered chart's group members");
+      } catch (err) {
+        // Best-effort by construction: the caller's next step is the redraw it
+        // would have done anyway, so a second refusal costs nothing but the
+        // sync. Recorded, because a silent retry is how a fix stops being
+        // measurable.
+        trace("update", "the recovered chart would not give up its group either", {
+          charts: needGroupAgain.length,
+          error: errorText(err),
+        });
+        requeued.clear();
+      }
+      for (const e of withOldSettled) {
+        if (!requeued.has(e.it.target.shapeId)) continue;
+        e.groupMembers = requeued.get(e.it.target.shapeId);
+      }
+      trace("update", "asked a recovered chart for its group again", {
+        charts: needGroupAgain.length,
+        got: [...requeued.values()].filter(Boolean).length,
+      });
+    }
+
     // A target whose SHAPE is gone gets the same treatment as one whose slide
     // is gone: nothing to do. Re-rendering it would resurrect a chart the user
     // deleted — an in-place update that inserts is not an update.
