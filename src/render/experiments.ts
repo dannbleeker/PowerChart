@@ -95,11 +95,18 @@ const groupedChildById: Experiment = {
           height: 30,
         }),
       );
-      // A SECOND SYNC before the ids are read. This host will not name a shape
-      // in the batch that created it — the reason `scratchShapes` takes one
-      // too — so asking here rather than after is asking for `undefined`.
-      await ctx.sync();
-      for (const s of made) s.load("id");
+      // ONE SYNC, AND NO `load("id")`. Measured live on 2026-08-26: create three
+      // shapes, sync, call `load("id")`, sync again — this host names ZERO of
+      // three. That is not the experiment failing, it is the wall
+      // `shape-resolve-held-slide-proxy` hit for 216 rounds; `scratchShapes`
+      // takes exactly that route and starved every time.
+      //
+      // The renderer knows the way round it and says so in as many words:
+      // "`loadedValue(() => sh.id)` already answers on `it.created` — the
+      // drawing batch's own sync populated them, and reading a populated
+      // property issues no host call at all". Asking with `load()` is what
+      // rewrites a creation proxy into `shapes.getItem(id)`, which this host
+      // refuses — the mechanism behind 235 tagging failures.
       await ctx.sync();
       const ids = made
         .map((s) => read(() => (s as unknown as { id?: string }).id))
