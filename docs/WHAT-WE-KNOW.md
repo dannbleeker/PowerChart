@@ -78,6 +78,12 @@ wrong. Unmarked lines are believed but unchecked, which is a weaker thing.
   recoveries, so the rate could not be formed and the recovery's worth was
   assumed. It is now watched: a STALE here means updates have started dying
   wholesale again.
+- **A slide tag lands, and a second write overwrites** — measured directly on a
+  REAL slide 2026-08-26, three runs, `overwrites` every time. `DEMO_SLOT_TAG` is
+  sound. The probe's `tags-add-same-key-twice` has answered the uninformative
+  `other` in 224 rounds because it asks on the SCRATCH slide, which this host
+  treats differently — the same slide whose shape collection reads `unreadable`
+  in 92% of rounds. **Do not quote that probe answer as a fact about tags.**
 - **A grouped chart's children are not addressable by id off the slide** —
   measured directly 2026-08-26, three runs: `no-such-shape`, the child read back
   as `undefined`. Grouping takes the shapes OUT of the slide's collection, and

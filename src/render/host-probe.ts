@@ -1743,6 +1743,27 @@ const PROBES: Probe[] = [
       // closer to production than the old form: `Slide.tags` is a real
       // dependency here, carrying `DEMO_SLOT_TAG` in `powerpoint.ts`.
       //
+      // "ANSWERS THE SAME QUESTION" IS FALSE, MEASURED 2026-08-26. It does not.
+      //
+      // This question has answered `other` — UNINFORMATIVE — in 224 rounds, and
+      // the detail added this morning says why: `no such tag on the slide`. Put
+      // to a REAL slide by `scripts/experiment.mjs`, three times in under three
+      // seconds each, the same question answers:
+      //
+      //     slide-tag-round-trip — overwrites: second write replaced the first
+      //
+      // So a slide tag lands and a second write overwrites. `DEMO_SLOT_TAG` is
+      // fine, and 224 rounds of `other` were measuring the scratch slide rather
+      // than tag semantics — the same trap that stopped the grouped-child
+      // question being answerable there, and that `shapes-items-count-honest`
+      // (`unreadable` in 92% of rounds) has been reporting from the same slide
+      // all along.
+      //
+      // KEPT, NOT MOVED. Moving it to slide 0 would write a probe tag onto the
+      // user's deck on every round, and the answer is already in hand from a
+      // tool that cleans up after itself. What this question is still good for
+      // is watching whether the SCRATCH slide's behaviour changes.
+      //
       // `ctx.scratch()` per batch, never a held handle: same rule as everywhere.
       // SAY WHICH SLIDE WAS WRITTEN AND WHICH WAS READ.
       //
