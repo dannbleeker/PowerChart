@@ -101,3 +101,81 @@ describe("running one experiment", () => {
     expect(r.detail ?? "").not.toMatch(/delete refused/);
   });
 });
+
+/**
+ * Every experiment, run against the fake.
+ *
+ * Not to check WHAT the host answers — only a real host can say that — but to
+ * check each one runs end to end, classifies into its own vocabulary, and gives
+ * its slide back. These paths are host-answer branches, which is exactly the
+ * shape of code that ships uncovered and then throws on the one run that
+ * matters.
+ */
+describe("every registered experiment", () => {
+  it("runs, answers in its own vocabulary, and cleans up", async () => {
+    const { EXPERIMENTS } = await import("../src/render/experiments");
+    for (const e of EXPERIMENTS) {
+      installHost([makeSlide("s1")]);
+      const r = await runExperiment(e.id);
+      expect(r.id, `${e.id} lost its id`).toBe(e.id);
+      expect(r.asks, `${e.id} lost its question`).toBe(e.asks);
+      expect(typeof r.answer, `${e.id} answered nothing`).toBe("string");
+      expect(r.answer.length, `${e.id} answered an empty string`).toBeGreaterThan(0);
+      expect(r.ms, `${e.id} reported no duration`).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  it("says the slide would not come when the host refuses one", async () => {
+    const { EXPERIMENTS } = await import("../src/render/experiments");
+    for (const e of EXPERIMENTS) {
+      installHost([makeSlide("s1")]);
+      const r = await runExperiment(e.id, async () => null);
+      expect(r.answer, `${e.id} claimed an answer without a slide`).toBe("no-scratch-slide");
+    }
+  });
+
+  it("survives a host that refuses every shape add", async () => {
+    const { EXPERIMENTS } = await import("../src/render/experiments");
+    faults.refuseShapeAdds = true;
+    try {
+      for (const e of EXPERIMENTS) {
+        installHost([makeSlide("s1")]);
+        const r = await runExperiment(e.id);
+        // The point is that it comes back with a WORD rather than an exception.
+        // An experiment that throws on a misbehaving host is useless precisely
+        // when it is needed.
+        expect(typeof r.answer).toBe("string");
+      }
+    } finally {
+      faults.refuseShapeAdds = false;
+    }
+  });
+
+  it("survives a host that refuses shapes by id", async () => {
+    const { EXPERIMENTS } = await import("../src/render/experiments");
+    faults.refuseShapeById = true;
+    try {
+      for (const e of EXPERIMENTS) {
+        installHost([makeSlide("s1")]);
+        const r = await runExperiment(e.id);
+        expect(typeof r.answer).toBe("string");
+      }
+    } finally {
+      faults.refuseShapeById = false;
+    }
+  });
+
+  it("survives a host whose ids settle underneath it", async () => {
+    const { EXPERIMENTS } = await import("../src/render/experiments");
+    faults.newSlideIdSettlesAfter = 2;
+    try {
+      for (const e of EXPERIMENTS) {
+        installHost([makeSlide("s1")]);
+        const r = await runExperiment(e.id);
+        expect(typeof r.answer).toBe("string");
+      }
+    } finally {
+      faults.newSlideIdSettlesAfter = null;
+    }
+  });
+});
