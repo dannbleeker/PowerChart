@@ -14,11 +14,19 @@ re-checked against the archive on every `npm run rounds` — see
 `scripts/claims.mjs`. If one prints STALE, the world moved and this file is
 wrong. Unmarked lines are believed but unchecked, which is a weaker thing.
 
+**A ✓ line does not carry its own count, deliberately.** Five of them did until
+2026-08-26 and every one had drifted — `36 of 36` was 112 of 114, `105 of 105`
+was 118 of 118, `15 of 18` was 128 of 152. A frozen number in the file whose job
+is to be current is the decay described two paragraphs up, reproduced inside the
+cure. The claim id prints the live figure; a number written here only ages.
+
+Numbers that ARE history — "it was 1 of 74 on 2026-08-15" — stay, and say so.
+
 ---
 
 ## The host
 
-- **✓ A chart on a freshly added slide groups and keeps its config** — 36 of 36.
+- **✓ A chart on a freshly added slide groups and keeps its config.**
   `fresh-slides-group`
   It was 1 of 74 on 2026-08-15. That figure is history and must not be quoted as
   current; it still appears, marked, in six places.
@@ -44,15 +52,15 @@ wrong. Unmarked lines are believed but unchecked, which is a weaker thing.
   PowerPoint.** Each was our own stale id, and round 247 proved it by listing the
   slide: `the id is NOT among the slide's 11 listed shapes`. Do not quote them.
   The claim counts only rounds whose detail says the shape WAS in the listing.
-- **✓ Dropping the selection is what stops the stall** — 10 stalls in 457 draws
-  made with a shape still selected, **0 in 516** with it dropped.
+- **✓ Dropping the selection is what stops the stall** — draws made with a shape
+  still selected stall; the same draw with it dropped has **never once** stalled.
   `dropping-the-selection-stops-the-stall`
   So `dropShapeSelection` is not a precaution, it is the fix, and there is now a
   number behind it. The scenario's own note concluded "over the whole history
   they do not separate" from seventeen ROUNDS; counting DRAWS over 235 rounds
   they separate cleanly, and the zero is the load-bearing half.
 - **✓ When the probe DOES buy a replacement slide, the question usually answers
-  on it** — 15 of 18. `buying-a-replacement-slide-rescues-the-question`
+  on it.** `buying-a-replacement-slide-rescues-the-question`
   Including 9 of 12 where a SHAPE refusal prompted the buy, which the code's own
   comment called "a weaker reason to suspect the slide". It is a weaker reason
   and it pays. Recorded because 18 slide adds a round looks like pure waste from
@@ -67,8 +75,8 @@ wrong. Unmarked lines are believed but unchecked, which is a weaker thing.
   before it returned 0**. A STALE here means the run is silently buying a slide
   per question again — silent because the replacement path still works, which is
   how the cost hid for 250 rounds.
-- **✓ A by-id lookup that refuses is always rescued by re-reading the slide** —
-  105 of 105, and not one re-read threw.
+- **✓ A by-id lookup that refuses is always rescued by re-reading the slide**, and
+  not one re-read has ever thrown.
   `the-re-read-always-rescues-a-refused-lookup`
   This host refuses `shapes.getItemOrNullObject(<id>)` often enough to matter,
   and the refusal poisons the whole SYNC — unguarded it took every chart in the
@@ -126,6 +134,61 @@ wrong. Unmarked lines are believed but unchecked, which is a weaker thing.
 - **Never run the gate while a round is starting** — spawn starvation killed
   round 197.
 
+## The probe sheet measures a slide the product never uses
+
+**Added 2026-08-26, after four separate conclusions built on it turned out to be
+wrong in one day.**
+
+Thirty-three of the sheet's thirty-nine questions run on a SCRATCH slide the
+probe adds and takes back. Six declare `noSlideNeeded`. That slide is not a
+neutral place to ask a question: this host treats it differently from the slides
+the product actually runs on, and the sheet has been the project's main source of
+"what this host does".
+
+**Four conclusions were reversed in one day** by re-asking on a real slide with
+`scripts/experiment.mjs`:
+
+| the sheet says | on a real slide |
+| --- | --- |
+| `tags-add-same-key-twice: other` (224 rounds) | `overwrites` — a slide tag lands and a second write replaces it |
+| `group-children-via-getcount: unreadable` (34/40) | `yes` — a group lists and names its children |
+| `grouped-child-by-id`: never once answered in 125 rounds | `no-such-shape` — decisive, and it killed a week of planned work |
+| `shapes-items-count-honest: unreadable` (92%) | production reads collections constantly — 2,135 charts grouped by id-match |
+
+The third is the only one where the scratch slide and the real slide agree. The
+other three were each used to justify something: the tag answer read as
+"`DEMO_SLOT_TAG` is broken", and the group answer was the stated premise of the
+`groupReadRefused` latch, which was costing every in-place update after the first
+refusal in a round.
+
+**Three more are contradicted by production without anyone re-asking:**
+
+    addgroup-returns-usable      unreadable    charts group 110 of 112
+    tags-on-fresh-shape          threw         config tags land every round
+    shape-proxy-survives-one-sync unreadable   id-through-aged-slide-handle-reads: yes, 13/13
+
+Seven of the fourteen weak answers in a typical sheet, then, are either proven
+wrong or flatly contradicted by what the product does all day.
+
+### What this does NOT mean
+
+The sheet is not useless and its questions are not wrong. What it measures is
+real: **the scratch slide behaves this way**, and that matters, because the probe
+and the self-test both use one. `shapes-items-count-honest` reading `unreadable`
+on a slide the run just added is a genuine fact about freshly added slides.
+
+What it is not is a statement about the slides a user's charts live on. It has
+been read as one, by this project's own documentation and by production code.
+
+### The rule
+
+**Do not quote a scratch-slide answer as a fact about the host without checking
+it on a real slide.** `scripts/experiment.mjs` puts one question to a real slide
+in seconds and cleans up after itself; that is what it is for.
+
+Where an answer is load-bearing — a latch, a fallback, a decision not to build
+something — it needs the real-slide version before it is relied on.
+
 ## Open
 
 - **Why an insert onto an occupied slide loses draws.** (Narrowed 2026-08-25 —
@@ -148,7 +211,7 @@ wrong. Unmarked lines are believed but unchecked, which is a weaker thing.
   `first-chart-is-on-the-busiest-slide`
   This is the CONFOUND behind four corrections. A STALE reading here would be
   good news: it would mean the harness stopped confounding position with load.
-- **✓ No chart has ever reached an update carrying a parts list** — 0 of 1091.
+- **✓ No chart has ever reached an update carrying a parts list.**
   `parts-list-never-consumed`
   **Corrected 2026-08-26: this is not a fix that is late, it is impossible by the
   route everyone assumed.** A grouped chart's children are not addressable by id

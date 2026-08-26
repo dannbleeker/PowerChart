@@ -59,7 +59,11 @@ async function waitFor(name, sha, deadline) {
 
 const argv = process.argv.slice(2);
 const at = argv.indexOf("--timeout-min");
-const minutes = at === -1 ? 20 : Number(argv[at + 1]) || 20;
+// THIRTY, not twenty. CI itself runs in three to four minutes, but GitHub can
+// leave a run uncreated for far longer — seventeen minutes on 2026-08-26 — and a
+// timeout tuned to the job rather than to the queue reports trouble that is not
+// there.
+const minutes = at === -1 ? 30 : Number(argv[at + 1]) || 30;
 const sha = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
 const short = sha.slice(0, 7);
 const deadline = Date.now() + minutes * 60_000;
@@ -68,11 +72,19 @@ console.log(`  waiting for ${short} to go live`);
 const ci = await waitFor("CI", sha, deadline);
 console.log(`  CI: ${ci}`.padEnd(60));
 if (ci !== "success") {
-  // NAMED, because the round that follows would otherwise refuse with
-  // `site-behind` and send the reader looking at the deploy instead.
+  // A TIMEOUT IS NOT A FAILURE, and saying so was this tool's own version of the
+  // conflation it exists to prevent. The exit codes already told them apart (3
+  // against 1) while the message called both "did not pass CI" — and the first
+  // time it fired, CI was still running: GitHub had taken seventeen minutes to
+  // even create the run, against a three-to-four minute norm.
+  if (ci.startsWith("timed out")) {
+    console.error(`  ${short}: CI has not finished yet — ${ci}.`);
+    console.error("  Nothing is wrong with the build; give it longer with --timeout-min.");
+    process.exit(3);
+  }
   console.error(`  ${short} did not pass CI. It may well be LIVE — deploys do not wait for CI — but a round`);
   console.error("  against a build the suite rejects produces numbers people will quote and tests nobody has passed.");
-  process.exit(ci.startsWith("timed out") ? 3 : 1);
+  process.exit(1);
 }
 const pages = await waitFor("Deploy Pages", sha, deadline);
 console.log(`  Deploy Pages: ${pages}`.padEnd(60));

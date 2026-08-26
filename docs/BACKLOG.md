@@ -33,7 +33,9 @@ costs 167s, 38% of the battery. Measured over the last 30 rounds:
 
 The picture case is legitimate — a picture cannot be diffed against a scene. The
 other 56 are the whole of the addressable cost, and they are all the same shape:
-a chart that GROUPED, whose group the host will not enumerate.
+a chart that GROUPED, whose group the update could not read — not because the
+host refuses, as this said until 2026-08-26, but because a session-wide latch had
+turned the read off after one refusal.
 
 **How it got here is worth stating, because each step was right.** Grouping used
 to fail, so charts were loose, so they carried a parts list and the update mapped
@@ -75,8 +77,9 @@ seconds each:
 
 **A grouped child is not addressable by id off the slide on this host.** Not
 "unreadable", not refused — the slide's shape collection does not contain it at
-all. Grouping takes the children out of the slide's collection and the only way
-back to them is `shape.group.shapes`, which this host will not enumerate.
+all. Grouping takes the children out of the slide's collection, and the way back
+is `shape.group.shapes` — which DOES enumerate on a real slide, `yes` both fresh
+and re-resolved. Only the by-id route is closed.
 
 So the mapping-tag idea is DEAD, and so is anything else built on reaching a
 grouped chart's shapes BY ID. Capturing child ids at draw time would have

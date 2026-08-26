@@ -433,10 +433,18 @@ async function step<T>(label: string, fn: () => Promise<T>): Promise<T> {
       // `group-of-existing-shape-readable = no-group-id` and
       // `group-reports-its-children = threw`.
       //
-      // So the feature has never once worked here and has cost an exception and
-      // a failed resolve every round for 62 rounds. Latching on the first
-      // refusal makes that once per session instead, and costs nothing on a
-      // host where the read works — there it simply never fires.
+      // THAT CONCLUSION WAS WRONG, corrected 2026-08-26. "The feature has never
+      // once worked here" rested on the two probe answers quoted above, and both
+      // are measured on the SCRATCH slide. Asked on a real slide the same day:
+      //
+      //     group-members-real-slide  — yes: listed 4 child(ren), 4 named
+      //     group-members-aged-proxy  — yes: listed 3 child(ren), 3 named
+      //
+      // It works, fresh or re-resolved by id. The one exception a round costs is
+      // real and worth latching WITHIN its batch — the throw arrives at the sync
+      // and poisons it — but the session-wide latch was turning off a working
+      // feature: in-place updates after the first refusal ran 0 across rounds
+      // 254-261. See `forgetGroupReadRefusal`.
       if (isGroupReadRefusal(text)) groupReadRefused = true;
       trace("error", label, { error: text });
     }
@@ -10620,6 +10628,14 @@ let groupReadRefused = false;
  *
  * It works on a real slide, fresh or re-resolved by id. The premise was measured
  * on the one slide this host treats differently.
+ *
+ * THE SELF-TEST ALREADY KNEW THIS. `selectionWedged` latches the same way when
+ * the selection ladder finds a host that hangs, and it is reset PER RUN, with a
+ * comment that could have been written for this bug: "a stale \"this host
+ * wedges\" from the last round would make the next one skip a scenario on
+ * evidence it no longer has — which is exactly the sort of quiet, sticky wrong
+ * answer this file is about". The renderer latched for the session instead, and
+ * for the same kind of evidence.
  *
  * KEPT WITHIN A BATCH, and that part was right. The refusal arrives at the SYNC
  * rather than at the property access, so it poisons the batch it lands in;
