@@ -8150,3 +8150,79 @@ them is a working day of mostly waiting. It is written down here so it can be
 run rather than re-derived, and so nobody pools ten back-to-back rounds again and
 calls the spread a floor.
 
+
+---
+
+## 2026-08-26 — the sheet was measuring a slide the product never uses
+
+Four conclusions were reversed in one day, and they had one cause between them.
+
+The probe sheet asks 33 of its 39 questions on a SCRATCH slide it adds and takes
+back. That slide does not behave like the slides a user's charts live on, and the
+sheet is this project's main source of "what this host does". So a whole class of
+belief here was measured somewhere the product never runs.
+
+It took a new tool to see it. A round costs fourteen minutes and answers thirty
+questions at once, which is the right shape for watching the product and the
+wrong shape for settling one fact. `scripts/experiment.mjs` puts a single
+question to a real slide in about two seconds and cleans up after itself. That
+changed what was worth doing: being wrong stopped costing a round.
+
+**What it overturned:**
+
+| the sheet said | the real slide said |
+| --- | --- |
+| `tags-add-same-key-twice: other`, 224 rounds | `overwrites` — a slide tag lands, a second write replaces it |
+| `group-children-via-getcount: unreadable`, 34/40 | `yes` — a group lists and names its children, fresh or aged |
+| `grouped-child-by-id`: unanswered in 125 rounds | `no-such-shape` — decisive, and it killed a week of planned work |
+| `shapes-items-count-honest: unreadable`, 92% | production reads collections all day — 2,135 charts grouped by id-match |
+
+The third is the only one where the two agree.
+
+### What it cost, concretely
+
+`groupReadRefused` latched for the SESSION on the first `Shape.group` refusal.
+Its stated premise was "the feature has never once worked here", citing two of
+the scratch-slide answers above. Since the parts list is never consumed,
+`queueGroupMembers` is the ONLY route an in-place update has — so one refusal
+turned every remaining chart in the round into a full redraw:
+
+    in-place updates after the first refusal: 0, across rounds 254-261
+    redraw rate: 21.4%, seven identical rounds
+
+Resetting it per batch: 14.3%, three identical rounds, and 1 in-place update
+after the refusal in each. `a-group-refusal-no-longer-ends-the-round` watches it.
+
+### The reasoning error, stated plainly
+
+I concluded that morning that a grouped chart MUST redraw and wrote it into the
+backlog and twice into `WHAT-WE-KNOW.md`. The evidence was real and the inference
+was not: I had proven that a grouped child is not addressable BY ID, and treated
+that as proving the group could not be read AT ALL. Those are different questions
+and only the first had been asked.
+
+    by id            slide.shapes.getItemOrNullObject(childId)   does not work
+    by enumeration   shape.group.shapes loaded for items/id      works
+
+The same shape of error appeared four times in the day, each time as "one
+observation, one mechanism, no check". It is cheap to make and, with the
+experiment tool, cheap to catch.
+
+### What the self-test already knew
+
+`selectionWedged` latches the same way when the selection ladder finds a host
+that hangs — and it is reset PER RUN, with a comment that reads as though written
+for this bug: *"a stale 'this host wedges' from the last round would make the
+next one skip a scenario on evidence it no longer has."* The renderer latched for
+the session, on the same kind of evidence, three files away.
+
+### The rule that follows
+
+**Do not quote a scratch-slide answer as a fact about the host without checking
+it on a real slide** — and never where it is load-bearing for a latch, a
+fallback, or a decision not to build something. It costs two seconds now.
+
+The sheet is not wrong and its questions are not wasted. What it measures is
+real: the scratch slide behaves this way, and both the probe and the self-test
+use one. What it is not is a statement about the slides the product runs on, and
+it has been read as one — by this project's documentation, and by its code.

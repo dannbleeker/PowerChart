@@ -479,11 +479,161 @@ const groupMembersAgedProxy: Experiment = {
   },
 };
 
+/**
+ * Three questions the sheet answers one way and production answers the other.
+ *
+ * Each of these is a WEAK answer taken on the scratch slide that the product
+ * contradicts every round without anyone re-asking:
+ *
+ *     addgroup-returns-usable       unreadable   charts group 110 of 112
+ *     tags-on-fresh-shape           threw        config tags land every round
+ *     shape-proxy-survives-one-sync unreadable   id-through-aged... : yes, 15/15
+ *
+ * Four such contradictions were checked on 2026-08-26 and every one came back
+ * different on a real slide — two of them reversing a conclusion this repo had
+ * built code on. These are the remaining three, asked the same way.
+ *
+ * They are deliberately NOT written as "the probe is wrong". The probe measures
+ * the scratch slide faithfully; what has been wrong is reading its answers as
+ * facts about the slides a user's charts live on.
+ */
+const addGroupReturnsUsableOnRealSlide: Experiment = {
+  id: "addgroup-usable-real-slide",
+  asks: "Is the shape addGroup hands back usable — can it be named and tagged?",
+  async run(slideId) {
+    return withProbeContext(
+      slideId,
+      EXPERIMENT_BUDGET_MS,
+      async (ctx) => {
+        const target = () => ctx.slides.getItemAt(0);
+        const named = target();
+        named.load("id");
+        await ctx.sync();
+        const targetSlideId = read(() => (named as unknown as { id?: string }).id);
+        const before = target().shapes;
+        before.load("items/id");
+        await ctx.sync();
+        const had = new Set(
+          (read(() => before.items) ?? [])
+            .map((s) => read(() => (s as { id?: string }).id))
+            .filter((id): id is string => typeof id === "string" && id.length > 0),
+        );
+        for (const n of [0, 1]) {
+          target().shapes.addGeometricShape(PowerPoint.GeometricShapeType.rectangle, {
+            left: 300 + n * 40,
+            top: 20,
+            width: 30,
+            height: 30,
+          });
+        }
+        await ctx.sync();
+        const coll = target().shapes;
+        coll.load("items/id");
+        await ctx.sync();
+        const mine = (read(() => coll.items) ?? []).filter((s) => {
+          const id = read(() => (s as { id?: string }).id);
+          return typeof id === "string" && id.length > 0 && !had.has(id);
+        });
+        if (mine.length < 2) return { answer: "no-child-ids", detail: `named ${mine.length} of 2` };
+        let groupId: string | undefined;
+        try {
+          const group = (target().shapes as unknown as { addGroup(s: unknown[]): PowerPoint.Shape }).addGroup(mine);
+          group.load("id");
+          await ctx.sync();
+          groupId = read(() => (group as unknown as { id?: string }).id);
+          if (!groupId) return { answer: "unreadable", detail: "addGroup returned a shape that would not name itself" };
+          // NAMING IT IS HALF THE QUESTION. The other half is whether it takes a
+          // TAG, because that is what the product does with the group it gets
+          // back and what re-editability depends on.
+          (group as unknown as { tags: { add(k: string, v: string): void } }).tags.add("POWERCHART_EXPERIMENT", "x");
+          await ctx.sync();
+        } catch (err) {
+          if (groupId && targetSlideId) await deleteShapesById(targetSlideId, [groupId]).catch(() => 0);
+          return { answer: "threw", detail: String((err as { message?: string })?.message ?? err).slice(0, 140) };
+        }
+        if (targetSlideId) await deleteShapesById(targetSlideId, [groupId]).catch(() => 0);
+        return { answer: "yes", detail: `group ${groupId} named itself and took a tag` };
+      },
+      undefined,
+      true,
+    );
+  },
+};
+
+const tagOnFreshShapeRealSlide: Experiment = {
+  id: "tag-on-fresh-shape-real-slide",
+  asks: "Does a tag written on a freshly drawn shape read back, on a real slide?",
+  async run(slideId) {
+    return withProbeContext(
+      slideId,
+      EXPERIMENT_BUDGET_MS,
+      async (ctx) => {
+        const target = () => ctx.slides.getItemAt(0);
+        const named = target();
+        named.load("id");
+        await ctx.sync();
+        const targetSlideId = read(() => (named as unknown as { id?: string }).id);
+        const before = target().shapes;
+        before.load("items/id");
+        await ctx.sync();
+        const had = new Set(
+          (read(() => before.items) ?? [])
+            .map((s) => read(() => (s as { id?: string }).id))
+            .filter((id): id is string => typeof id === "string" && id.length > 0),
+        );
+        target().shapes.addGeometricShape(PowerPoint.GeometricShapeType.rectangle, {
+          left: 300,
+          top: 90,
+          width: 30,
+          height: 30,
+        });
+        await ctx.sync();
+        const coll = target().shapes;
+        coll.load("items/id");
+        await ctx.sync();
+        const mine = (read(() => coll.items) ?? []).find((s) => {
+          const id = read(() => (s as { id?: string }).id);
+          return typeof id === "string" && id.length > 0 && !had.has(id);
+        });
+        const shapeId = read(() => (mine as unknown as { id?: string } | undefined)?.id);
+        if (!mine || !shapeId) return { answer: "no-child-ids", detail: "the new shape was not named" };
+        try {
+          (mine as unknown as { tags: { add(k: string, v: string): void } }).tags.add("POWERCHART_EXPERIMENT", "v1");
+          await ctx.sync();
+          const back = (
+            target().shapes.getItemOrNullObject(shapeId) as unknown as {
+              tags: {
+                getItemOrNullObject(k: string): { load(p: string): void; value?: string; isNullObject?: boolean };
+              };
+            }
+          ).tags.getItemOrNullObject("POWERCHART_EXPERIMENT");
+          back.load("value");
+          await ctx.sync();
+          const absent = read(() => back.isNullObject) === true;
+          const value = read(() => back.value);
+          if (targetSlideId) await deleteShapesById(targetSlideId, [shapeId]).catch(() => 0);
+          if (absent) return { answer: "no-such-tag", detail: `shape ${shapeId} carried no tag back` };
+          return value === "v1"
+            ? { answer: "yes", detail: `shape ${shapeId} kept its tag` }
+            : { answer: "unreadable", detail: `tag present, value read back as ${String(value)}` };
+        } catch (err) {
+          if (targetSlideId) await deleteShapesById(targetSlideId, [shapeId]).catch(() => 0);
+          return { answer: "threw", detail: String((err as { message?: string })?.message ?? err).slice(0, 140) };
+        }
+      },
+      undefined,
+      true,
+    );
+  },
+};
+
 export const EXPERIMENTS: Experiment[] = [
   groupedChildById,
   slideTagRoundTrip,
   groupMembersOnRealSlide,
   groupMembersAgedProxy,
+  addGroupReturnsUsableOnRealSlide,
+  tagOnFreshShapeRealSlide,
 ];
 
 /**
