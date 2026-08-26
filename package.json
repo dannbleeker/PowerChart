@@ -35,7 +35,8 @@
     "rounds:gate": "node scripts/rounds-gate.mjs",
     "issue-status": "node scripts/issue-status.mjs",
     "round": "node scripts/round.mjs",
-    "cycle": "node scripts/cycle.mjs"
+    "cycle": "node scripts/cycle.mjs",
+    "await-deploy": "node scripts/await-deploy.mjs"
   },
   "dependencies": {
     "jszip": "^3.10.1",
