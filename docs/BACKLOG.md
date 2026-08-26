@@ -20,6 +20,33 @@ patterns.
 
 ### Two of every three redraws are a grouped chart the update cannot map — 2026-08-26
 
+**CLOSED 2026-08-27. The redraw rate is at its design floor — both remaining
+redraws are correct, and neither is a missed optimisation.**
+
+Rounds 275 and 276 each redraw exactly twice, and the two reasons are these:
+
+    this update draws a picture, which is not in the scene the differ compares
+    the chart has no parts list and no readable group members
+
+The FIRST is a deliberate refusal and removing it would reintroduce a silent
+wrong answer. `render: "image"` does not produce a picture — the renderer takes
+that path only when handed `pictureBase64` — so collapsing a chart to a picture
+builds the SAME scene it already has. The differ compared 24 nodes to 24
+identical nodes, said "nothing changed", wrote nothing and reported success,
+while the slide kept its 24 native shapes. Worse, the auto-picture fallback is
+what the add-in reaches for when the host has ALREADY failed to draw shapes, so
+the one path that rescues a struggling host was the one being skipped. Teaching
+the fast path to handle it is a real feature — it writes a closed set of `rect`
+and `text` properties and a picture fill is neither — not a small fix.
+
+The SECOND is settled: see "ANSWERED 2026-08-27" below. Both routes into a
+refused group are shut inside the batch, the redraw is the right answer, and what
+rescues the group is the next batch.
+
+So the remaining work here is not "stop redrawing". It is either the picture
+feature above, or nothing. Leaving the original analysis below because the
+reasoning that got here is worth more than the conclusion.
+
 **The largest product cost still on the table, and the obvious fix is wrong.**
 
 An update either writes only the shapes that changed, or redraws the chart
