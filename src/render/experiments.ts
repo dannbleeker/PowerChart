@@ -108,7 +108,22 @@ const groupedChildById: Experiment = {
       // rewrites a creation proxy into `shapes.getItem(id)`, which this host
       // refuses — the mechanism behind 235 tagging failures.
       await ctx.sync();
-      const ids = made
+      // A COLLECTION READ, which is the one route this host honours.
+      //
+      // Measured live, twice, in under a minute each: `load("id")` on the
+      // creation proxies names 0 of 3, and reading `.id` off them without a load
+      // names 0 of 3 as well. So the renderer's `withOwnId: 7 of 7` does not come
+      // from either — it comes from the pre-grouping re-read, which asks the
+      // SLIDE for its shapes rather than asking each shape for itself.
+      //
+      // The asymmetry is written down all over this repo: "a by-id lookup is the
+      // one thing PowerPoint on the web reliably refuses, and a collection read
+      // is the one thing it reliably honours". The scratch slide is empty until
+      // this experiment fills it, so what comes back IS the three shapes.
+      const collection = ctx.scratch().shapes;
+      collection.load("items/id");
+      await ctx.sync();
+      const ids = (read(() => collection.items) ?? [])
         .map((s) => read(() => (s as unknown as { id?: string }).id))
         .filter((id): id is string => typeof id === "string" && id.length > 0);
       if (ids.length < made.length) {

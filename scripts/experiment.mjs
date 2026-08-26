@@ -17,7 +17,8 @@
  * Usage:  node scripts/experiment.mjs [experiment-id]
  */
 import { spawnSync } from "child_process";
-import { cli, refFor, recover } from "./round.mjs";
+import { execFileSync } from "child_process";
+import { cli, refFor, recover, buildOf, refreshPane } from "./round.mjs";
 
 /** How long to wait for the pane to finish answering before giving up on it. */
 const ANSWER_BUDGET_MS = 90_000;
@@ -83,6 +84,38 @@ async function main(argv) {
     console.error(
       "  could not open the add-in pane. If a sign-in prompt is showing, that one is yours —\n" +
         "  sign in and run this again.",
+    );
+    return 2;
+  }
+  // THE PANE'S BUILD, BEFORE ANYTHING IS ASKED OF IT.
+  //
+  // The pane HTML caches for ten minutes, so a deploy that has landed on the
+  // site is not necessarily the code in front of you. `readiness` refuses a
+  // ROUND for exactly this — `pane-stale` — and this tool skipped the check and
+  // paid for it within the hour: a fix was pushed, deployed, and the experiment
+  // re-run reported an unchanged answer that came from the OLD bundle. An
+  // experiment exists to settle a decision, so one measuring code that is not
+  // the code under discussion is worse than no experiment at all.
+  //
+  // Reloaded rather than refused. A round refuses because it must be comparable
+  // with the rounds around it; an experiment has no archive to be consistent
+  // with, so the useful thing is to get current and ask.
+  const head = String(execFileSync("git", ["rev-parse", "--short", "HEAD"], { encoding: "utf8" })).trim();
+  let stamp = buildOf(sh("find", "--regex", "/[0-9a-f]{7} ·/"));
+  if (head && stamp && !head.startsWith(stamp) && !stamp.startsWith(head)) {
+    console.error(`  the pane is on ${stamp}, HEAD is ${head} — reloading it first`);
+    await refreshPane(sh, sleep);
+    // RE-FOUND, never carried across. Every ref in this CLI is an index into the
+    // page that produced it, so a ref held over a reload names whatever now sits
+    // in that slot — which is how the first version of this check reloaded
+    // correctly and then evaluated against nothing.
+    pane = refFor(sh, "Chart", /tab "Chart"/) ?? pane;
+    stamp = buildOf(sh("find", "--regex", "/[0-9a-f]{7} ·/"));
+  }
+  if (head && stamp && !head.startsWith(stamp) && !stamp.startsWith(head)) {
+    console.error(
+      `  the pane is STILL on ${stamp} while HEAD is ${head}. Whatever it answers is about the
+` + "  old bundle, so nothing is asked. Wait for the deploy, or reload the PowerPoint tab.",
     );
     return 2;
   }
