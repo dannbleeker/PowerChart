@@ -12,10 +12,16 @@
  * That is worse than not checking at all. A missing check leaves you unsure; a
  * check keyed to the wrong row manufactures evidence.
  *
- * CI FIRST, and not merely for tidiness. Pages does not deploy when CI fails, so
- * a red CI shows up here as a deploy that never appears — a timeout rather than
- * an explanation. CI had been red for four commits and the only symptom anyone
- * saw was a round refusing on a stale site.
+ * CI FIRST, though NOT for the reason I first wrote here. I claimed Pages does
+ * not deploy a failed build; the archive says otherwise — `acb5a9e` deployed
+ * successfully with CI red. Deploys and CI are independent.
+ *
+ * The ordering is still right, for a different reason: a build that is live but
+ * failing CI is a worse thing to measure than one that has not landed. A round
+ * against it produces numbers everyone will trust and a suite nobody has
+ * satisfied. So CI is a gate on USING the build, not a precondition of its
+ * existence — and when it is red this says so instead of leaving the reader to
+ * wonder about the deploy.
  *
  * Usage:  node scripts/await-deploy.mjs [--timeout-min 20]
  * Exit:   0 live · 1 CI failed · 2 deploy failed · 3 timed out
@@ -64,7 +70,8 @@ console.log(`  CI: ${ci}`.padEnd(60));
 if (ci !== "success") {
   // NAMED, because the round that follows would otherwise refuse with
   // `site-behind` and send the reader looking at the deploy instead.
-  console.error(`  ${short} did not pass CI — Pages will not deploy it. Nothing downstream will be about this build.`);
+  console.error(`  ${short} did not pass CI. It may well be LIVE — deploys do not wait for CI — but a round`);
+  console.error("  against a build the suite rejects produces numbers people will quote and tests nobody has passed.");
   process.exit(ci.startsWith("timed out") ? 3 : 1);
 }
 const pages = await waitFor("Deploy Pages", sha, deadline);
