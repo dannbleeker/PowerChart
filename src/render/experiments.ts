@@ -27,7 +27,7 @@
  *   - Say what was actually observed in `detail`, because the vocabulary will be
  *     wrong for something eventually and the detail is what survives that.
  */
-import { addScratchSlide, deleteSlideById, withProbeContext } from "./powerpoint";
+import { addScratchSlide, deleteSlideById, deleteShapesById, withProbeContext } from "./powerpoint";
 import { trace } from "../core/trace";
 
 export interface ExperimentResult {
@@ -87,8 +87,29 @@ const groupedChildById: Experiment = {
   asks: "Can a shape inside a group still be resolved, and written to, by id off the slide?",
   async run(slideId) {
     return withProbeContext(slideId, EXPERIMENT_BUDGET_MS, async (ctx) => {
+      // THE DECK'S OWN FIRST SLIDE, not the scratch slide, and the scratch slide
+      // is still held so the runner's bookkeeping is unchanged.
+      //
+      // Measured live on 2026-08-26, three times: on a scratch slide this host
+      // names ZERO of three shapes — by `load("id")`, by reading `.id`, and by a
+      // collection read alike. That is not news, it is
+      // `shapes-items-count-honest` answering `unreadable` in 92% of rounds, and
+      // the probe file says why in as many words: that question "is measured on
+      // the SCRATCH SLIDE and is strictly worse than a real one".
+      //
+      // Production reads collections off real slides constantly and they answer —
+      // 2,135 charts grouped by id-match. So the scratch slide cannot host this
+      // question at all, and asking it there measures the slide rather than the
+      // group.
+      const target = () => ctx.slides.getItemAt(0);
+      // Its id, captured ONCE, because the clean-up needs to name the slide and
+      // a handle cannot be held across the syncs between here and there.
+      const named = target();
+      named.load("id");
+      await ctx.sync();
+      const targetSlideId = read(() => (named as unknown as { id?: string }).id);
       const made = [0, 1, 2].map((n) =>
-        ctx.scratch().shapes.addGeometricShape(PowerPoint.GeometricShapeType.rectangle, {
+        target().shapes.addGeometricShape(PowerPoint.GeometricShapeType.rectangle, {
           left: 20 + n * 40,
           top: 20,
           width: 30,
@@ -120,7 +141,7 @@ const groupedChildById: Experiment = {
       // one thing PowerPoint on the web reliably refuses, and a collection read
       // is the one thing it reliably honours". The scratch slide is empty until
       // this experiment fills it, so what comes back IS the three shapes.
-      const collection = ctx.scratch().shapes;
+      const collection = target().shapes;
       collection.load("items/id");
       await ctx.sync();
       const members = read(() => collection.items) ?? [];
@@ -140,9 +161,7 @@ const groupedChildById: Experiment = {
       // `addGroup` throws before the question is ever put.
       let group;
       try {
-        group = (ctx.scratch().shapes as unknown as { addGroup(shapes: unknown[]): PowerPoint.Shape }).addGroup(
-          members,
-        );
+        group = (target().shapes as unknown as { addGroup(shapes: unknown[]): PowerPoint.Shape }).addGroup(members);
         group.load("id");
         await ctx.sync();
       } catch (err) {
@@ -162,7 +181,7 @@ const groupedChildById: Experiment = {
       // experiment broke" instead of under "the host said no".
       let child;
       try {
-        child = ctx.scratch().shapes.getItemOrNullObject(ids[0]);
+        child = target().shapes.getItemOrNullObject(ids[0]);
         child.load("id");
         await ctx.sync();
       } catch (err) {
@@ -184,6 +203,9 @@ const groupedChildById: Experiment = {
       try {
         (child as unknown as { fill: { setSolidColor(c: string): void } }).fill.setSolidColor("FF0000");
         await ctx.sync();
+        // TAKE IT BACK OFF THE USER'S SLIDE. The scratch slide is returned by the
+        // runner; shapes put on a real slide are this experiment's to remove.
+        if (groupId && targetSlideId) await deleteShapesById(targetSlideId, [groupId]).catch(() => 0);
         return { answer: "yes", detail: `child ${ids[0]} resolved and took a fill inside group ${String(groupId)}` };
       } catch (err) {
         return {
