@@ -3204,6 +3204,93 @@ function reportClaims(pooled) {
 
 /** Print the dormant instruments, loudest first, or say nothing when there are none. */
 /**
+ * Do draws stall more on a slide that already holds things?
+ *
+ * The question the scenario table raises and cannot answer, asked with the
+ * per-draw covariate instead of the scenario as a proxy: `batch issued` carries
+ * `onSlide`, the occupancy of the target when the batch went out.
+ *
+ * UNRESOLVED ROWS ARE EXCLUDED, and that is not tidying — it reverses the
+ * answer. A chart's FIRST batch is issued before the slide has been named, and
+ * carries `onSlide: 0, onSlideKey: "(visible)"`. Counted as an empty slide, 8 of
+ * the 9 apparent empty-slide stalls in this archive are those rows, and the
+ * table reads "empty slides stall MOST" — the exact opposite of what the
+ * resolved rows say. This project renamed `priorDrawsOnSlide` for being a bad
+ * occupancy proxy and then used it as one twice; this is the same proxy again.
+ *
+ * WHAT IT SAYS TODAY, whole archive, resolved rows only:
+ *
+ *     0 (empty)   1/1320  0.08%
+ *     1-10        4/1338  0.30%
+ *     11-25       4/1567  0.26%
+ *     26-50       3/1613  0.19%
+ *     51+         3/368   0.82%
+ *
+ * Fifteen stalls across six thousand draws. The trend is upward at both ends and
+ * the buckets cannot be told apart — 1/1320 and 3/368 have thoroughly
+ * overlapping intervals — so this prints counts and REFUSES the trend. It is
+ * here to accumulate: the denominators grow every round, and the day the
+ * separation is real the table will say so without anyone re-deriving it.
+ */
+export function stallsByOccupancy(logs, minPerBucket = 30) {
+  const bucketOf = (n) => (n === 0 ? "0 (empty)" : n <= 10 ? "1-10" : n <= 25 ? "11-25" : n <= 50 ? "26-50" : "51+");
+  const per = new Map();
+  let unresolved = 0;
+  for (const log of logs ?? []) {
+    const es = log?.trace?.entries ?? [];
+    const at = [];
+    es.forEach((e, i) => {
+      if (e.scope === "draw" && e.message === "batch issued") at.push(i);
+    });
+    at.forEach((i, k) => {
+      const d = es[i].data ?? {};
+      if (typeof d.onSlide !== "number") return;
+      // See above: no slide key means the batch went out before the slide was
+      // named, so its `onSlide` is a placeholder rather than a count.
+      if (!d.onSlideKey || d.onSlideKey === "(visible)") {
+        unresolved++;
+        return;
+      }
+      const end = k + 1 < at.length ? at[k + 1] : es.length;
+      let stalled = false;
+      for (let z = i + 1; z < end; z++) {
+        const e = es[z];
+        if (e.scope === "host" && e.message === "gave up waiting" && /drawing shapes/.test(String(e.data?.what ?? "")))
+          stalled = true;
+      }
+      const b = bucketOf(d.onSlide);
+      if (!per.has(b)) per.set(b, { draws: 0, stalls: 0 });
+      const row = per.get(b);
+      row.draws++;
+      if (stalled) row.stalls++;
+    });
+  }
+  const order = ["0 (empty)", "1-10", "11-25", "26-50", "51+"];
+  const rows = order
+    .filter((b) => per.has(b) && per.get(b).draws >= minPerBucket)
+    .map((b) => ({ bucket: b, ...per.get(b), pct: (100 * per.get(b).stalls) / per.get(b).draws }));
+  // The bar for saying the buckets differ: every bucket needs enough STALLS to
+  // be worth a rate, not merely enough draws. Ten is generous and still not met.
+  const separable = rows.length > 1 && rows.every((r) => r.stalls >= 10);
+  return { rows, unresolved, separable };
+}
+
+/** Print the occupancy table, and say plainly that it cannot yet answer. */
+function reportOccupancyStalls(pooled) {
+  const { rows, unresolved, separable } = stallsByOccupancy(pooled);
+  if (rows.length < 2) return;
+  console.log(`\n  DOES A BUSY SLIDE STALL A DRAW? — ${unresolved} unresolved row(s) held out, see below`);
+  for (const r of rows)
+    console.log(
+      `    ${r.bucket.padEnd(11)}${String(r.stalls).padStart(3)}/${String(r.draws).padEnd(5)} ${r.pct.toFixed(2).padStart(5)}%`,
+    );
+  if (!separable) console.log("    NOT SEPARABLE at these counts — printed to accumulate, not to be read as a trend.");
+  console.log("    A chart's FIRST batch goes out before its slide is named and carries `onSlide: 0`.");
+  console.log("    Counting those as empty slides reverses the answer — 8 of 9 apparent empty-slide stalls");
+  console.log("    are unresolved rows. Same bad proxy this project renamed once and then reused twice.");
+}
+
+/**
  * Which scenarios lose draws to a stall, and how often.
  *
  * The battery reports 14 of 14 nearly every round, so it reads as quiet. It is
@@ -5487,6 +5574,7 @@ if (invokedDirectly) {
     const failed = reportSelfTest(selftest);
     reportStability(pooled);
     reportStalls(pooled);
+    reportOccupancyStalls(pooled);
     reportRoundAnatomy(pooled);
     reportScenarioCost(pooled);
     reportScratchChurn(pooled);
@@ -5552,6 +5640,7 @@ if (invokedDirectly) {
     reportSelfTest(selftest);
     reportStability(pooled);
     reportStalls(pooled);
+    reportOccupancyStalls(pooled);
     reportRoundAnatomy(pooled);
     reportScenarioCost(pooled);
     reportScratchChurn(pooled);

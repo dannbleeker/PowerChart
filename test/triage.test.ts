@@ -4538,3 +4538,84 @@ describe("holding a selection through a draw", () => {
     expect(claim.check([round(5, 1, 5)]).ok).toBe(null);
   });
 });
+
+describe("does a busy slide stall a draw", () => {
+  const batch = (onSlide: number, key?: string) => ({
+    scope: "draw",
+    message: "batch issued",
+    data: { onSlide, ...(key === undefined ? {} : { onSlideKey: key }) },
+    ms: 1,
+  });
+  const stall = () => ({ scope: "host", message: "gave up waiting", data: { what: "drawing shapes 1-10" }, ms: 2 });
+  const round = (entries: unknown[]) => ({ roundName: "230-a.json", trace: { entries } });
+
+  it("holds out a batch issued before its slide was named", async () => {
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { stallsByOccupancy } = await import("../scripts/triage.mjs");
+    // THIS REVERSES THE ANSWER, which is why it is not tidying. A chart's first
+    // batch carries `onSlide: 0, onSlideKey: "(visible)"` — a placeholder, not a
+    // count. Counted as an empty slide, 8 of the 9 apparent empty-slide stalls
+    // in the real archive are these rows and the table says empty slides stall
+    // MOST.
+    const r = stallsByOccupancy(
+      [
+        round([
+          ...Array(40)
+            .fill(0)
+            .map(() => batch(0, "(visible)")),
+          stall(),
+        ]),
+      ],
+      1,
+    );
+    expect(r.unresolved).toBe(40);
+    expect(r.rows).toEqual([]);
+  });
+
+  it("holds out a batch with no slide key at all", async () => {
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { stallsByOccupancy } = await import("../scripts/triage.mjs");
+    const r = stallsByOccupancy([round([batch(0), batch(0)])], 1);
+    expect(r.unresolved).toBe(2);
+  });
+
+  it("buckets resolved rows and attributes the stall to the batch before it", async () => {
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { stallsByOccupancy } = await import("../scripts/triage.mjs");
+    const r = stallsByOccupancy([round([batch(0, "s1"), batch(30, "s1"), stall(), batch(5, "s1")])], 1);
+    const busy = r.rows.find((x: { bucket: string }) => x.bucket === "26-50");
+    expect(busy.stalls).toBe(1);
+    expect(r.rows.find((x: { bucket: string }) => x.bucket === "0 (empty)").stalls).toBe(0);
+  });
+
+  it("refuses to call a trend it cannot support", async () => {
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { stallsByOccupancy } = await import("../scripts/triage.mjs");
+    // Fifteen stalls across six thousand draws is what the archive has. Printing
+    // a trend off that is the error this whole report exists to stop.
+    const thin = round([
+      ...Array(40)
+        .fill(0)
+        .map(() => batch(0, "s1")),
+      ...Array(40)
+        .fill(0)
+        .map(() => batch(30, "s1")),
+      stall(),
+    ]);
+    expect(stallsByOccupancy([thin], 1).separable).toBe(false);
+  });
+
+  it("calls it separable once every bucket has stalls to rate", async () => {
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { stallsByOccupancy } = await import("../scripts/triage.mjs");
+    const fat = round([
+      ...Array(10)
+        .fill(0)
+        .flatMap(() => [batch(0, "s1"), stall()]),
+      ...Array(10)
+        .fill(0)
+        .flatMap(() => [batch(30, "s1"), stall()]),
+    ]);
+    expect(stallsByOccupancy([fat], 1).separable).toBe(true);
+  });
+});
