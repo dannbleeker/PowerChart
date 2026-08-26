@@ -19,6 +19,7 @@
  * a gate like that: it gets switched off.
  */
 import { readFileSync, readdirSync } from "fs";
+import { execFileSync } from "child_process";
 import { isMain } from "./is-main.mjs";
 import {
   scenarioRegressions,
@@ -38,6 +39,32 @@ import {
   roundSpanSeconds,
   paneAgeAtStartSeconds,
 } from "./triage.mjs";
+
+/**
+ * Did the SHIPPED BUNDLE change between two archived rounds?
+ *
+ * `true` changed · `false` identical · `null` CANNOT TELL, and the third value
+ * is the point. A shallow clone, a build stamp that names no commit, or no git
+ * at all must leave the gate exactly as it was rather than volunteer a guess —
+ * "the product did not change" is a strong claim and a wrong one would excuse a
+ * real regression. Everything unknown returns null and prints nothing.
+ *
+ * `src/` ONLY. `scripts/` and `test/` do not ship; a round runs against the
+ * deployed bundle, and that is built from `src/`. A commit that rewrites the
+ * driver cannot change what the pane executes.
+ */
+export function bundleChanged(fromBuild, toBuild, run = execFileSync) {
+  const sha = (b) => /^([0-9a-f]{7,40})/.exec(String(b ?? ""))?.[1];
+  const from = sha(fromBuild);
+  const to = sha(toBuild);
+  if (!from || !to) return null;
+  if (from === to) return false;
+  try {
+    return run("git", ["diff", "--name-only", `${from}..${to}`, "--", "src/"], { encoding: "utf8" }).trim().length > 0;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Every archived round, oldest first — the order `scenarioRegressions` expects.
@@ -501,9 +528,31 @@ if (isMain(import.meta.url, process.argv[1])) {
     process.exit(0);
   }
   console.error(`  ${gone.length} scenario(s) STOPPED PASSING in the newest round:`);
+  // WHETHER THE PRODUCT COULD POSSIBLY BE RESPONSIBLE, asked of git rather than
+  // left to the reader. A round whose SHIPPED BUNDLE is byte-identical to the
+  // rounds it is judged against cannot have regressed the product — a verdict
+  // that moved across identical `src/` is the host, definitionally.
+  //
+  // Round 273 is why this exists. `two slides claiming one slot` stopped passing
+  // and the cycle halted on its one fatal check, correctly. The build under
+  // judgement changed `scripts/round.mjs`, a test, and an archive file, and
+  // nothing under `src/` at all — so the bundle was the same one four previous
+  // rounds had passed on. Establishing that took a git diff anyone could have
+  // run and nobody was prompted to.
+  const sameProfileRounds = rounds.filter((r) => roundProfile(r) === roundProfile(rounds[rounds.length - 1]));
+  const bundleMoved = bundleChanged(
+    sameProfileRounds[sameProfileRounds.length - 2]?.build,
+    rounds[rounds.length - 1]?.build,
+  );
   for (const g of gone)
     console.error(
       `    ${g.name} — ${g.failed === 1 ? "FIRST failure" : `failed ${g.failed} times`} in ${g.ran} round(s) at this profile`,
+    );
+  if (bundleMoved === false)
+    console.error(
+      "  THE SHIPPED BUNDLE IS UNCHANGED since the previous round at this profile — nothing under\n" +
+        "  `src/` differs between the two builds. Whatever moved, the product did not: read this as\n" +
+        "  the host. Still exit 1, because a scenario falling is worth a person's eyes either way.",
     );
   console.error("  A round is evidence; this is the only thing that holds a build to it. See docs/ROUNDS.md.");
   process.exit(1);

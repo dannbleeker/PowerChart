@@ -140,3 +140,55 @@ describe("reading an archive with a bad file in it", () => {
     expect(rounds.unreadable).toEqual(["081-bbbbbbb.json"]);
   });
 });
+
+describe("whether the shipped bundle could possibly be responsible", () => {
+  // Round 273 is why this exists. `two slides claiming one slot` stopped passing
+  // and the cycle halted on its one fatal check, correctly — but the build under
+  // judgement had changed `scripts/round.mjs`, a test and an archive file, and
+  // NOTHING under `src/`. It was the same bundle four earlier rounds had passed
+  // on, so the product could not have caused it. Establishing that took a git
+  // diff anyone could have run and nobody was prompted to.
+  it("says the bundle is unchanged when only non-shipping files moved", async () => {
+    // @ts-expect-error — plain .mjs tool, no types.
+    const { bundleChanged } = await import("../scripts/rounds-gate.mjs");
+    // `git diff --name-only … -- src/` answering empty is the whole signal.
+    const noSrc = () => "";
+    expect(bundleChanged("e97699e · 2026-08-26 21:28Z", "10f8c60 · 2026-08-27 00:10Z", noSrc)).toBe(false);
+  });
+
+  it("says it changed when src/ moved", async () => {
+    // @ts-expect-error — plain .mjs tool, no types.
+    const { bundleChanged } = await import("../scripts/rounds-gate.mjs");
+    const withSrc = () => "src/render/powerpoint.ts\n";
+    expect(bundleChanged("aaaaaaa · x", "bbbbbbb · y", withSrc)).toBe(true);
+  });
+
+  it("answers NULL rather than guessing when it cannot tell", async () => {
+    // @ts-expect-error — plain .mjs tool, no types.
+    const { bundleChanged } = await import("../scripts/rounds-gate.mjs");
+    // THE THIRD VALUE IS THE POINT. "The product did not change" is a strong
+    // claim, and a wrong one would excuse a real regression — so a shallow
+    // clone, an unknown sha, or no git at all must say nothing at all.
+    const throws = () => {
+      throw new Error("fatal: bad object");
+    };
+    expect(bundleChanged("aaaaaaa · x", "bbbbbbb · y", throws), "a git failure was read as 'unchanged'").toBe(null);
+    expect(bundleChanged(undefined, "bbbbbbb · y", throws), "a missing build was read as an answer").toBe(null);
+    expect(bundleChanged("not-a-sha", "bbbbbbb · y", throws), "an unparseable stamp was read as an answer").toBe(null);
+  });
+
+  it("does not shell out when both rounds name the same build", async () => {
+    // @ts-expect-error — plain .mjs tool, no types.
+    const { bundleChanged } = await import("../scripts/rounds-gate.mjs");
+    // A pair runs twice on ONE build, which is the common case for this check.
+    // Spawning git to compare a sha with itself is waste, and the answer is
+    // known: the same build ships the same bundle.
+    let calls = 0;
+    const counting = () => {
+      calls++;
+      return "src/x.ts";
+    };
+    expect(bundleChanged("abc1234 · x", "abc1234 · y", counting)).toBe(false);
+    expect(calls, "it shelled out to compare a build with itself").toBe(0);
+  });
+});
