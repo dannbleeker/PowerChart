@@ -2341,11 +2341,38 @@ async function collectRound(sh, stamp, sleep, driverSize = null, driverRun = nul
     }
     clickRef(sh, dl);
     await sleep(12000);
-    const logPath = `${sh.dir ?? "."}/.playwright-cli/powerchart-run-log.json`;
-    if (!existsSync(logPath)) {
+    // WHERE THE BROWSER PUTS IT IS NOT WHERE THIS INVOCATION EXPECTS IT.
+    //
+    // The download directory belongs to the RUNNING BROWSER SESSION, fixed when
+    // it was opened, and does not move because a later invocation passed a
+    // different `--dir`. So a browser opened by `node scripts/round.mjs` (dir =
+    // cwd) keeps downloading to `./.playwright-cli/` even when `cycle.mjs` then
+    // spawns legs with `--dir .pw-session` and reads `.pw-session/.playwright-cli/`.
+    //
+    // That mismatch cost two cycles on 2026-08-27, and its symptom was actively
+    // misleading: a STALE log from an earlier round sits at the expected path,
+    // so `existsSync` is true and the round is "archived" from the wrong file.
+    // What caught it was `archive`'s build check — "that log is build 67f4124
+    // and the pane is serving e97699e" — which is the guard doing precisely the
+    // job it was added for.
+    //
+    // Take the NEWEST of the candidates rather than trusting either path. Safe
+    // because the build check still runs on whatever is chosen: a wrong pick is
+    // refused, not filed.
+    const candidates = [...new Set([`${sh.dir ?? "."}/.playwright-cli`, ".playwright-cli"])].map(
+      (d) => `${d}/powerchart-run-log.json`,
+    );
+    const found = candidates
+      .filter((p) => existsSync(p))
+      .map((p) => ({ p, at: statSync(p).mtimeMs }))
+      .sort((a, b) => b.at - a.at);
+    if (!found.length) {
       console.error("  the run log did not arrive — archive it by hand once it does");
       return null;
     }
+    const logPath = found[0].p;
+    if (found.length > 1 && found[0].p !== candidates[0])
+      console.log(`  the run log landed in ${logPath}, not where this invocation looked — using the newer one`);
     filed = archive(logPath, "rounds", readFileSync, writeFileSync, everyRoundEverFiled, stamp, driverSize, driverRun);
     console.log(`  archived as rounds/${filed}`);
   } catch (err) {
@@ -2476,6 +2503,25 @@ export const RECOVERABLE_STOPS = new Set([
   "pane-closed",
   "pane-stale",
   "deck-dirty",
+  // THE DECK THE CYCLE NAMED IS NOT OPEN — and `recover` has always known how to
+  // fix this. It navigates to OneDrive, clicks the file whose link matches the
+  // name, and selects the tab either way; the "Click the file only when no tab
+  // holds it; select it either way" branch exists for exactly this state.
+  //
+  // It was simply never wired to it. The stop said "Open it, or unset PW_DECK"
+  // and ended the night, while the function that opens it sat one call away. A
+  // full cycle died this way on 2026-08-27: leg 1 wanted `Presentation64`, its
+  // tab had closed during a `--fresh` restart, and the driver stayed on the 4:3
+  // deck and refused — correctly, but for something it could have repaired.
+  //
+  // NOT the same class as `addin-missing` or `wrong-size`. Those need a person
+  // because the first cannot be sideloaded unattended and the second would
+  // CHANGE WHAT THE ROUND MEASURES. Opening the deck the caller explicitly named
+  // changes nothing about the measurement — it is the measurement being set up.
+  //
+  // Bounded by `--retry` like every other stop, so a `PW_DECK` naming a document
+  // that does not exist costs that many navigations and then reports honestly.
+  "deck-missing",
   // A window too narrow for PowerPoint to render its ribbon commands. Recovery
   // does not need to click anything to clear it — `ensureRibbonRoom` widens the
   // window on the next attempt — and the alternative is `addin-missing`, a stop

@@ -494,6 +494,21 @@ describe("talking to the browser at all", () => {
     expect(RECOVERABLE_STOPS.has("addin-missing"), "addin-missing must stay a hard stop").toBe(false);
   });
 
+  it("recovers a deck that is merely not open, but never a wrong slide size", async () => {
+    // `recover` navigates to OneDrive and clicks the file whose link matches the
+    // name — that branch has existed for months and `deck-missing` was never
+    // wired to it, so the stop ended the night with the repair one call away. A
+    // full cycle died this way on 2026-08-27 when leg 1's tab closed during a
+    // `--fresh` restart.
+    expect(RECOVERABLE_STOPS.has("deck-missing"), "recovery can open the named deck and should").toBe(true);
+
+    // THE LINE THAT MUST NOT MOVE WITH IT. `wrong-size` is excluded because
+    // setting the size would change WHAT THE ROUND MEASURES, which is the one
+    // thing recovery is forbidden to do — `cycle.mjs` says so in its header.
+    // Opening the deck the caller named is setup; resizing it is falsification.
+    expect(RECOVERABLE_STOPS.has("wrong-size"), "recovery must never set the slide size").toBe(false);
+  });
+
   it("never reads `find`'s miss message as a hit", async () => {
     // THE WORST POLARITY A BUG CAN HAVE, and it caught me twice on 2026-08-20.
     // `playwright-cli find` answers a miss with:
