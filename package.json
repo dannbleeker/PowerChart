@@ -21,7 +21,7 @@
     "test": "vitest run",
     "gate": "node scripts/gate.mjs",
     "coverage": "vitest run --coverage",
-    "icons": "node scripts/make-icons.mjs",
+    "icons": "node scripts/build-icons.mjs",
     "gallery": "node scripts/render-gallery.mjs",
     "skill": "npm run build:lib && node scripts/build-skill.mjs",
     "showcase": "npm run build:lib && node scripts/build-showcase.mjs",
