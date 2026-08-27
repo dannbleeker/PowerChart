@@ -256,3 +256,171 @@ describe("a scatter's point labels over its axis numbers", () => {
     expect(nodes.some((n) => n.kind === "line" && /^gridline-/.test(n.name ?? ""))).toBe(true);
   });
 });
+
+/**
+ * The other axis of the same problem: several SERIES labelling one category.
+ *
+ * `neighbourFs` above bounds a line's labels against the ones beside it in the
+ * SAME series. A combo with ten line series draws ten numbers per category, and
+ * nothing compared them to each other — sideways they run along one row,
+ * upright they stack in one column above the same mark. It was the whole of the
+ * `combo-label` residue left in the variant sweep after the category fix.
+ *
+ * Measured across the frame sweep at both fonts, both orientations:
+ *
+ *     before   209 labels drawn   137 overlapping pairs
+ *     after     95 labels drawn     0 overlapping pairs
+ *
+ * The everyday combo is untouched at 79 labels, before and after. Ten series
+ * labelling one category at nearly the same value cannot all be labelled at any
+ * size — their MARKS are on top of each other too, so a number beside them names
+ * neither — and that is what the drop is saying.
+ */
+const tenSeries = (base: ChartConfig): ChartConfig => ({
+  ...base,
+  data: {
+    ...base.data,
+    series: Array.from({ length: 10 }, (_, i) => ({
+      ...base.data.series[i % base.data.series.length],
+      name: `Series ${i + 1}`,
+      values: base.data.series[i % base.data.series.length].values.map((v) => (v == null ? v : v + i)),
+    })),
+  },
+});
+
+describe("a combo with more series than any category can label", () => {
+  it("draws no point label over another, in either orientation", () => {
+    for (const [w, h] of FRAMES)
+      for (const fontSize of [10, 18])
+        for (const horizontal of [false, true]) {
+          const cfg = tenSeries({ ...plain("combo", w, h, fontSize), horizontal } as ChartConfig);
+          const labels = textsOf(cfg, /^combo-label-/);
+          expect(pairsAmong(labels), `${w}x${h} fs=${fontSize} H=${horizontal}: ten series are colliding`).toBe(0);
+        }
+  });
+
+  it("still labels what it can", () => {
+    // The drop must not be total — a rule that answered "no labels" everywhere
+    // would pass the overlap check and be useless. Nearly half survive.
+    let drawn = 0;
+    for (const [w, h] of FRAMES)
+      for (const fontSize of [10, 18])
+        for (const horizontal of [false, true])
+          drawn += textsOf(
+            tenSeries({ ...plain("combo", w, h, fontSize), horizontal } as ChartConfig),
+            /^combo-label-/,
+          ).length;
+    expect(drawn, "ten series lost every label").toBeGreaterThan(60);
+    expect(drawn, "ten series lost nothing, so the rule is not engaging").toBeLessThan(150);
+  });
+
+  it("charges the everyday combo nothing at all", () => {
+    // THE REGRESSION THAT WOULD MATTER, and it is exact rather than a bound:
+    // the sample combo draws 79 point labels across this sweep, before this rule
+    // and after it. Not "about the same" — the same.
+    let drawn = 0;
+    for (const [w, h] of FRAMES)
+      for (const fontSize of [10, 18])
+        for (const horizontal of [false, true])
+          drawn += textsOf({ ...plain("combo", w, h, fontSize), horizontal } as ChartConfig, /^combo-label-/).length;
+    expect(drawn, "the everyday combo paid for the ten-series case").toBe(79);
+  });
+
+  it("keeps every mark, whatever happens to the numbers", () => {
+    // Dropping a LABEL loses a reading; the series themselves are the chart.
+    const cfg = tenSeries(plain("combo", 480, 300, 10));
+    const marks = buildChart(cfg).nodes.filter((n) => /^combo-(marker|line)-/.test(n.name ?? ""));
+    expect(marks.length, "the overlay lost marks along with its labels").toBeGreaterThan(20);
+  });
+});
+
+describe("what the peer fit measures, per orientation", () => {
+  /**
+   * Two series a hair apart, labelled with single digits, upright.
+   *
+   * THE MUTANT THIS EXISTS FOR. Upright the peer labels stack in one column, so
+   * what has to fit between two marks is a LINE HEIGHT. Measuring their WIDTH
+   * instead — which is right sideways, where they run along a row — passed every
+   * other test in this file, because a wide number makes the width rule the
+   * TIGHTER of the two and nothing was left overlapping. It is single digits
+   * that separate them: "1" is about 0.6 em wide and 1.4 em tall, so a width
+   * rule grants more than twice the size a line height allows, and the two
+   * labels are drawn through each other.
+   */
+  const hairsBreadth = (fontSize: number, gap: number): ChartConfig =>
+    ({
+      kind: "combo",
+      width: 480,
+      height: 300,
+      style: { fontSize },
+      // SINGLE-DIGIT labels, which is what makes the two rules disagree: "9" is
+      // about 0.6 em wide and 1.4 em tall. With the formatter left alone these
+      // come out "8.0" and "9.0", three characters and 1.65 em, at which point
+      // the width rule is the TIGHTER of the two and the mutant passes.
+      numberFormat: { decimals: 0 },
+      data: {
+        categories: ["A", "B", "C", "D"],
+        series: [
+          { name: "Bars", values: [10, 20, 30, 40] },
+          { name: "Up", type: "line", values: [8, 8, 8, 8] },
+          { name: "Down", type: "line", values: [8 + gap, 8 + gap, 8 + gap, 8 + gap] },
+        ],
+      },
+      decorations: { segmentLabels: true },
+    }) as ChartConfig;
+
+  it("upright, a line height — not the width of the digits", () => {
+    // SWEPT over the value gap, not pinned to one. A single gap is hostage to
+    // where the two constraints happen to cross: at 3% apart both rules drop
+    // the label and the mutant survives, at 6% only the line-height rule does.
+    // The property is "no gap between two series produces a collision".
+    for (const fontSize of [10, 14, 18])
+      for (const gap of [0.1, 0.25, 0.5, 1, 2, 4]) {
+        const labels = textsOf(hairsBreadth(fontSize, gap), /^combo-label-/);
+        expect(
+          pairsAmong(labels),
+          `fs=${fontSize} gap=${gap}: two near-identical series are drawn through each other`,
+        ).toBe(0);
+      }
+  });
+
+  it("EQUIVALENT MUTANTS, recorded rather than chased", () => {
+    // TWO of them, and both were hunted before being written down.
+    //
+    // 1. UPRIGHT, USING THE LABEL WIDTH INSTEAD OF A LINE HEIGHT. `1.4` is the
+    //    quantity that is true — the peer labels stack in one column, so what
+    //    must fit between two marks is a line of text — but a width rule cannot
+    //    be caught out. For every label wider than 1.4 em, which is everything
+    //    from three characters up, the width rule is the STRICTER of the two.
+    //    For single digits it is looser, and looser can only draw MORE; across
+    //    eight frames, three fonts, six value gaps and both orientations it
+    //    never draws one that collides, because the 5pt floor removes the
+    //    marginal cases first. Kept as 1.4 because it is the right number, not
+    //    because a test can tell.
+    //
+    // 2. THE SINGLE-SERIES GUARD, below.
+
+    // `lines.length < 2` skips the peer pass entirely. Removing it changes no
+    // answer and no test caught it — correctly, because with one series the
+    // sorted list holds one entry, there is no next, and every label keeps
+    // `pointFs`. It is a fast path for the common chart, not a rule, and it is
+    // asserted as one: one line series must be untouched by the peer fit.
+    const one: ChartConfig = {
+      kind: "combo",
+      width: 480,
+      height: 300,
+      style: { fontSize: 10 },
+      data: {
+        categories: ["A", "B", "C", "D"],
+        series: [
+          { name: "Bars", values: [10, 20, 30, 40] },
+          { name: "Line", type: "line", values: [12, 22, 32, 42] },
+        ],
+      },
+      decorations: { segmentLabels: true },
+    } as ChartConfig;
+    const labels = textsOf(one, /^combo-label-/);
+    expect(labels.length, "a single line series lost labels to a rule about peers").toBe(4);
+    for (const l of labels) expect(l.fontSize, "a single line series was shrunk by the peer fit").toBe(10);
+  });
+});

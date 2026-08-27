@@ -1105,8 +1105,17 @@ export function layoutCombo(cfg: ChartConfig, style: ChartStyle, decor: Decorati
     lines.flatMap((s) => s.values.filter((v): v is number => v != null)),
     cfg.numberFormat,
   );
-  lines.forEach((s, li) => {
-    const color = seriesColor(style, cols.length + li, s.color);
+  /**
+   * Each line's value→coordinate map, hoisted out of the draw loop.
+   *
+   * It was computed inside `lines.forEach`, which was fine while nothing else
+   * needed it. The sideways row fit below has to know where EVERY series lands
+   * at a category before any of them is drawn, and re-deriving the mapping there
+   * would be the same arithmetic written twice — two copies that agree until one
+   * is edited, which is how a fit comes to measure a label the chart does not
+   * draw.
+   */
+  const toYs = lines.map((s) => {
     // Independent axis: zoom this line to its own value range (a nice-ticked
     // [min,max]) so its shape is visible whatever its units; the point labels
     // carry the real values since there is no shared numeric axis to read.
@@ -1114,12 +1123,72 @@ export function layoutCombo(cfg: ChartConfig, style: ChartStyle, decor: Decorati
     const ownTicks = independent && nums.length ? niceTicks(Math.min(...nums), Math.max(...nums)) : [0, 1];
     const lo = ownTicks[0];
     const hi = ownTicks[ownTicks.length - 1];
-    const toY = independent
+    return independent
       ? H
         ? (v: number) => anchors.plot.x + ((v - lo) / (hi - lo || 1)) * anchors.plot.w
         : (v: number) => anchors.plot.y + anchors.plot.h - ((v - lo) / (hi - lo || 1)) * anchors.plot.h
       : lineToY;
-    const labelOn = decor.segmentLabels || independent;
+  });
+  const labelOnAll = decor.segmentLabels || independent;
+
+  /**
+   * Sideways, how big each point label may be given the OTHER SERIES' labels on
+   * the same category row. Zero means it is not drawn.
+   *
+   * `pointFs` bounds these by the row pitch, which is the right bound for one
+   * label per row and no bound at all for ten. A horizontal combo with ten line
+   * series draws ten numbers along one row, positioned by value, and they ran
+   * through each other — the entire remaining `combo-label` residue in the
+   * variant sweep, 97 pairs on a single chart shape.
+   *
+   * Upright this does not arise: there each series' label hangs above its own
+   * mark and the crowding is between CATEGORIES, which `neighbourFs` handles.
+   *
+   * Shrink, then drop, and nothing moves — as everywhere else. Two series whose
+   * values nearly coincide cannot both be labelled at any size, and that is the
+   * honest answer: their marks are on top of each other too, so a number beside
+   * them names neither.
+   */
+  const rowFs: number[][] = (() => {
+    const blank = lines.map((s) => s.values.map(() => pointFs));
+    if (!labelOnAll || pointFs <= 0 || lines.length < 2) return blank;
+    const out = lines.map((s) => s.values.map(() => 0));
+    for (let c = 0; c < anchors.categoryX.length; c++) {
+      // Every series that labels this category, ordered along the axis their
+      // labels are spread over: x sideways (they sit on one row), y upright
+      // (they sit in one column, above their own marks).
+      const here = lines
+        .map((s, li) => ({ li, v: s.values[c] }))
+        .filter((e): e is { li: number; v: number } => e.v != null)
+        .map((e) => ({ li: e.li, q: toYs[e.li](e.v), em: textWidth(formatNumber(e.v, fmt), 1) }))
+        .sort((a, b) => a.q - b.q);
+      for (let i = 0; i < here.length; i++) {
+        const me = here[i];
+        // SIDEWAYS: only the neighbour to the RIGHT, and only my own width.
+        // Every label starts AT its mark and runs rightward, so what must fit
+        // between two marks is the LEFT label's width — mine. Constraining a
+        // label by its left neighbour's width was the first version: it shrinks
+        // the wrong label, since the left one is the one in the way.
+        //
+        // UPRIGHT: the labels share their category's x and are stacked by value,
+        // so what must fit between two marks is a LINE HEIGHT. `q` ascends down
+        // the canvas here, so the neighbour that matters is the next one down.
+        // Anchored on the MARKS rather than the drawn label tops, which each sit
+        // 1.65 of their own size above their mark — a bound that depended on the
+        // size it is computing could not be solved in one pass, and the mark gap
+        // is the same number for equal sizes and conservative for unequal ones.
+        const next = here[i + 1];
+        const room = next ? Math.abs(next.q - me.q) : Infinity;
+        out[me.li][c] = next ? bandFontSize(pointFs, room, H ? me.em : 1.4) : pointFs;
+      }
+    }
+    return out;
+  })();
+
+  lines.forEach((s, li) => {
+    const color = seriesColor(style, cols.length + li, s.color);
+    const toY = toYs[li];
+    const labelOn = labelOnAll;
     // A marker series is this same overlay minus the connecting segments: the
     // values are per-category facts (a benchmark, a target, a consensus), and a
     // line between them would claim they interpolate. The mark is a little
@@ -1225,11 +1294,17 @@ export function layoutCombo(cfg: ChartConfig, style: ChartStyle, decor: Decorati
       // Upright the label hangs above its mark AND sits between the marks either
       // side of it, so it has to clear both — the smaller of the two bounds is
       // the one it can actually take.
-      const uprightPointFs = Math.min(aboveMarkFontSize(fs, pt.y, titleInkBottom(cfg, style), 1.3), neighbourFs[c]);
+      const uprightPointFs = Math.min(
+        aboveMarkFontSize(fs, pt.y, titleInkBottom(cfg, style), 1.3),
+        neighbourFs[c],
+        rowFs[li][c],
+      );
       if (
         labelOn &&
         pointFs > 0 &&
-        (H ? comboLabelW >= textWidth(formatNumber(v, fmt), pointFs) : uprightPointFs >= MIN_LABEL_FS)
+        (H
+          ? rowFs[li][c] >= MIN_LABEL_FS && comboLabelW >= textWidth(formatNumber(v, fmt), rowFs[li][c])
+          : uprightPointFs >= MIN_LABEL_FS)
       ) {
         // Categories run down a bar chart, so a label ABOVE its point would sit
         // on the neighbouring category's row; put it beside the mark instead.
@@ -1244,11 +1319,11 @@ export function layoutCombo(cfg: ChartConfig, style: ChartStyle, decor: Decorati
                 // beside its mark to avoid the neighbouring ROW, put on the
                 // neighbouring COLUMN instead.
                 x: Math.min(pt.x + r + 2, Math.max(0, cfg.width - comboLabelW)),
-                y: pt.y - pointFs * 0.7,
+                y: pt.y - rowFs[li][c] * 0.7,
                 w: comboLabelW,
-                h: pointFs * 1.4,
+                h: rowFs[li][c] * 1.4,
                 text: formatNumber(v, fmt),
-                fontSize: pointFs,
+                fontSize: rowFs[li][c],
                 color: independent ? color : style.text,
                 align: "left",
                 valign: "middle",
