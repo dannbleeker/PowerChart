@@ -2,7 +2,7 @@
 /**
  * Draw the add-in icons in the SSF palette.
  *
- *     node scripts/build-icons.mjs           # write assets/icon-*.png
+ *     node scripts/build-icons.mjs           # write assets/icon-*.png + store logo
  *     node scripts/build-icons.mjs --check   # fail if they are stale
  *
  * GENERATED RATHER THAN DRAWN, because these are four sizes of one mark and the
@@ -39,6 +39,20 @@ const BAR_W = 0.175;
 const BASELINE = 0.925;
 
 const SIZES = [16, 32, 64, 80];
+
+/**
+ * The AppSource listing image, which is not a ribbon icon.
+ *
+ * `docs/STORE-LISTING.md` asks for a 300x300 store logo and says in as many
+ * words that it is separate from the 16/32/80 the manifest carries. Generated
+ * from the SAME geometry and constants anyway: a listing image drawn by hand
+ * would be the one place the mark could drift, and it is the one place a drift
+ * is seen by strangers rather than by us.
+ *
+ * Written to `assets/` beside the icons rather than into `docs/`, because it is
+ * an artefact rather than documentation, and `--check` covers it too.
+ */
+const STORE_LOGO = 300;
 
 /** One icon as raw RGBA pixels. */
 function pixels(size) {
@@ -112,8 +126,11 @@ function png(size, px) {
 
 const check = process.argv.includes("--check");
 let stale = 0;
-for (const size of SIZES) {
-  const path = `assets/icon-${size}.png`;
+const outputs = [
+  ...SIZES.map((size) => ({ size, path: `assets/icon-${size}.png` })),
+  { size: STORE_LOGO, path: "assets/store-logo-300.png" },
+];
+for (const { size, path } of outputs) {
   const bytes = png(size, pixels(size));
   if (check) {
     const current = existsSync(path) ? readFileSync(path) : Buffer.alloc(0);
@@ -126,5 +143,5 @@ for (const size of SIZES) {
     console.log(`${path} (${size}x${size}, ${bytes.length} bytes)`);
   }
 }
-if (check && !stale) console.log("icons are current");
+if (check && !stale) console.log("icons and the store logo are current");
 process.exit(stale ? 1 : 0);

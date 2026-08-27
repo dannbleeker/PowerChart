@@ -259,6 +259,71 @@ is what is left, measured, so nobody has to re-derive it.
 they are legibility, not damage. Worth doing when someone is next in `frame.ts`
 with the totals row open in front of them.
 
+
+### The crash is in the deck SCAN, not the screenshots — located 2026-08-27
+
+Five crashed rounds ended at the same step and none of them died there. The step
+was `probe re-asked what the empty deck could not answer`, and it was simply the
+last line anything WROTE: what runs next is `collectDeckEvidence`, which traced
+only in its catch. Per-phase traces went in on 2026-08-27 and the very next
+crash located itself:
+
+    798.3s  probe  re-asked what the empty deck could not answer   <- where 4 earlier crashes "ended"
+    798.3s  pane   collecting deck evidence — scanning knownBefore=1
+
+**THE HYPOTHESIS WAS WRONG, AND THE INSTRUMENT SAID SO IN ONE ROUND.** The
+commit that added those traces named the screenshot loop as the prime suspect —
+`slideShots` runs uncapped under `picture every slide`, which the rounds enable.
+It is not that. The run dies in `listChartsInDeck({ withInventory: true })`, the
+FIRST phase, before slide ids are listed and before a single shot is taken. Had
+the shots been the cause there would be two more lines: "listing slide ids" and
+"shooting slides", with the count it was about to attempt.
+
+**And there is no cheap fix, which is worth saying plainly.** The obvious one —
+"the scan reads the whole deck at once, so page it" — is already done:
+`listChartsInDeck` pages by `READBACK_PAGE` with a sync per page and a guard for
+a page whose sync rejected. So this is not an unbounded read. It is PowerPoint
+falling over during a legitimately bounded scan of a 7-slide deck, 798 seconds
+(13 minutes) into a round.
+
+**IT REPRODUCED IMMEDIATELY.** The next crash, on the following attempt of the
+same leg, stopped at the identical step:
+
+    2026-08-27T15-59-56   552 steps   798.1s   collecting deck evidence — scanning
+    2026-08-27T16-13-30   536 steps   692.1s   collecting deck evidence — scanning
+
+Two crashes, one phase, a hundred seconds apart. Before the per-phase traces
+this pair would have been filed under the probe re-ask along with the other
+four, and the scan would never have been suspected.
+
+**BUT THE THIRD CRASH OF THE SAME LEG WENT SOMEWHERE ELSE**, and that is the
+part that stops this being a single-cause story:
+
+    2026-08-27T16-21-34   400 steps   409.9s   draw  parts list outcome  chart=3/8
+
+Mid-rescale, at the OLDER signature — the `parts list outcome` cluster this
+archive already held five of. So the 4:3 leg is not dying in one place. Two of
+today's three went at the scan and one went at a draw, half the run earlier.
+
+That is consistent with a host that is SPENT rather than one call that is
+dangerous, which is also what six attempts to complete one leg suggests. The
+scan being located is still progress — it was invisible before, and two of three
+is not nothing — but "the deck scan kills PowerPoint" would be a stronger claim
+than three crashes support.
+
+**What is now known, and what is not.** Known: the phase, that it is bounded,
+that it reproduces, and that the host has been drawing for 11-13 minutes when it
+happens. Not known: whether the scan is the CAUSE or merely the first thing to
+touch a host that was already dying — the 4:3 leg needed six attempts on
+2026-08-27 and every failure was a crash, which suggests a host under strain
+rather than one specific read.
+
+**Next step, when someone is here for it:** `--check` runs the same scan against
+a rested host in seconds and has never crashed, so the difference is the 13
+minutes, not the call. Comparing a scan at the START of a round against the one
+at the end would separate "this call is dangerous" from "this host is spent" —
+and that is a measurement, not a guess, which is the only kind of answer this
+question has ever accepted.
 ### Report what this project has measured to the office-js tracker
 
 **Researched:** 2026-08-06. **Owner-gated — nothing may be filed without the
