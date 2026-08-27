@@ -2787,3 +2787,38 @@ describe("whether buying a slide actually helped", () => {
     expect((replaced[0].data as { why?: string }).why).toBe("shape-refused");
   });
 });
+
+describe("why a scratch slide was bought", () => {
+  it("names a shape refusal instead of filing it as unrecorded", async () => {
+    const { scratchReplacementWhy } = await import("../src/render/host-probe");
+    // `unrecorded` is reserved for the ~17,000 events archived before any cause
+    // was carried out of the catch. Putting a cause we DO have into that bucket
+    // makes those rounds unreadable, which is the reading that motivated this
+    // line existing at all.
+    expect(scratchReplacementWhy({ answer: "no-scratch-shape" })).toBe("shape-refused");
+  });
+
+  it("prefers a cause the probe already carried over any inference", async () => {
+    const { scratchReplacementWhy } = await import("../src/render/host-probe");
+    // A `why` on the result is the host's own account. Inferring one from the
+    // answer when a real one is present would overwrite evidence with a guess.
+    expect(scratchReplacementWhy({ answer: "no-scratch-shape", why: "gone" })).toBe("gone");
+  });
+
+  it("says unrecorded ONLY when it genuinely does not know", async () => {
+    const { scratchReplacementWhy } = await import("../src/render/host-probe");
+    expect(scratchReplacementWhy({ answer: "no-scratch-slide" })).toBe("unrecorded");
+  });
+
+  it("is ONE function, because two inline copies drifted", async () => {
+    // THE REASON THIS IS EXTRACTED. The expression lived inline at both places
+    // that buy a slide and only the main loop was ever given the
+    // `no-scratch-shape` case, so every partner replacement filed as
+    // `unrecorded` — 68 of the last ten rounds' 248 replacements, 27%.
+    const src = await import("fs").then((fs) => fs.readFileSync("src/render/host-probe.ts", "utf8"));
+    const inlineCopies = src.match(/no-scratch-shape" \? "shape-refused" : "unrecorded"/g) ?? [];
+    expect(inlineCopies.length, "the formula was inlined again instead of calling the helper").toBe(1);
+    // Both call sites go through it.
+    expect((src.match(/scratchReplacementWhy\(/g) ?? []).length).toBeGreaterThanOrEqual(3);
+  });
+});

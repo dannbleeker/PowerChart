@@ -2837,6 +2837,80 @@ function reportPartsListOutcome(logs) {
  * rest are 24-node. The confound the surrounding section warns about swallowed
  * the result whole on the first pass.
  */
+/**
+ * WHERE THE HOST DIES, pooled — because nothing has ever read this directory.
+ *
+ * `keepCrashedRun` has been filing every unfinished round under `crashes/` for
+ * weeks and no tool opens them. Fourteen sat there on 2026-08-27, read one at a
+ * time by hand, and reading them one at a time is exactly why nobody saw that
+ * the three most recent all stopped at the SAME step — a step none of the
+ * eleven before them stopped at:
+ *
+ *     probe  re-asked what the empty deck could not answer
+ *
+ * Older crashes die mid-draw at ~400 steps (`parts list outcome`, `batch
+ * issued`); those three die at 535-540 in the probe's end-of-phase cleanup,
+ * across two builds and both slide sizes. That is a signature, and finding it
+ * took an afternoon of hand-reading that this function does in a second.
+ *
+ * KEYED ON CHANNEL AND MESSAGE ONLY. The step line carries a timestamp and a
+ * data blob, both of which differ every run; grouping on the raw line would put
+ * every crash in its own bucket and report nothing.
+ */
+export function poolCrashLastSteps(crashes) {
+  const groups = new Map();
+  for (const c of crashes ?? []) {
+    const steps = Array.isArray(c?.steps) ? c.steps : [];
+    if (!steps.length) continue;
+    const key = crashStepKey(steps[steps.length - 1]);
+    if (!groups.has(key)) groups.set(key, { key, n: 0, at: [], steps: [] });
+    const g = groups.get(key);
+    g.n++;
+    g.at.push(c.name);
+    g.steps.push(steps.length);
+  }
+  return [...groups.values()].sort((a, b) => b.n - a.n || b.at[0].localeCompare(a.at[0]));
+}
+
+/** Channel and message, with the timing and the data blob stripped off. */
+export function crashStepKey(line) {
+  const withoutTime = String(line ?? "").replace(/^\s*[\d.]+s\s+/, "");
+  const fields = withoutTime.split(/\s{2,}/).filter(Boolean);
+  return fields.slice(0, 2).join("  ").slice(0, 72) || "(no steps recorded)";
+}
+
+function reportCrashes(dir = "crashes", list = readdirSync, read = readFileSync) {
+  let files;
+  try {
+    files = list(dir).filter((f) => /-crashed-run\.json$/.test(f));
+  } catch {
+    return; // no crashes directory is a good state, not an error
+  }
+  if (!files.length) return;
+  const crashes = [];
+  for (const f of files) {
+    try {
+      const s = JSON.parse(read(`${dir}/${f}`, "utf8"));
+      crashes.push({ name: f.slice(0, 19), steps: s.steps ?? [], build: String(s.build ?? "").slice(0, 7) });
+    } catch {
+      /* a truncated crash file is not worth taking the report down for */
+    }
+  }
+  const groups = poolCrashLastSteps(crashes);
+  if (!groups.length) return;
+  console.log(`
+  WHERE THE HOST DIED — ${crashes.length} crashed run(s) kept, pooled by their LAST step`);
+  for (const g of groups.slice(0, 8)) {
+    const span = `${Math.min(...g.steps)}-${Math.max(...g.steps)}`;
+    console.log(`    ${String(g.n).padStart(3)}x  steps ${span.padEnd(9)} ${g.key}`);
+    if (g.n > 1) console.log(`         ${g.at.slice(-4).join("  ")}`);
+  }
+  console.log("    A crash is the HOST falling over, not a scenario failing — none of these rounds");
+  console.log("    reached a verdict. What makes them worth pooling is that a repeated last step is");
+  console.log("    a place the host is reliably unhappy, and one crash never says that.");
+  console.log("    THE SLIDE SIZE IS NOT HERE because a crashed run does not record it. Classifying");
+  console.log("    these by profile still needs the cycle log, which is the next gap to close.");
+}
 export function poolOccupancyCost(logs) {
   const cells = new Map();
   let rounds = 0;
@@ -5718,6 +5792,7 @@ if (invokedDirectly) {
     reportPartsListOutcome(pooled);
     reportPositionalGuess(pooled);
     reportSettleAsks(pooled);
+    reportCrashes();
     reportOccupancyCost(pooled);
     reportUpdateCost(pooled);
     reportFlatFields(pooled);

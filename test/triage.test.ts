@@ -4692,3 +4692,43 @@ describe("does a busy slide stall a draw", () => {
     expect(stallsByOccupancy([fat], 1).separable).toBe(true);
   });
 });
+
+describe("where the host died", () => {
+  it("groups crashes by their last step, ignoring timing and payload", async () => {
+    // @ts-expect-error — plain .mjs tool, no types.
+    const { poolCrashLastSteps } = await import("../scripts/triage.mjs");
+    // The real lines carry a timestamp and a data blob, both different every
+    // run. Grouping on the raw string would give every crash its own bucket and
+    // report nothing — which is indistinguishable from "no pattern here".
+    const step = (t: string, tail: string) => `  ${t}s  probe  re-asked what the empty deck could not answer  ${tail}`;
+    const groups = poolCrashLastSteps([
+      { name: "A", steps: ["x", step("583.8", 'asked=["a"]')] },
+      { name: "B", steps: ["x", "y", step("630.9", 'asked=["b"] answered=["yes"]')] },
+      { name: "C", steps: ["  341.7s  draw  parts list outcome  chart=2/8"] },
+    ]);
+    expect(groups.length, "the two probe crashes did not group together").toBe(2);
+    expect(groups[0].n).toBe(2);
+    expect(groups[0].key).toContain("re-asked what the empty deck could not answer");
+    expect(groups[0].at).toEqual(["A", "B"]);
+    // The step COUNT range is what separates "died early" from "died at the
+    // end" — four crashes at 535-540 steps against five at 389-411 is the shape
+    // that made the cluster visible.
+    expect(groups[0].steps).toEqual([2, 3]);
+  });
+
+  it("ignores a crash file that recorded no steps at all", async () => {
+    // @ts-expect-error — plain .mjs tool, no types.
+    const { poolCrashLastSteps } = await import("../scripts/triage.mjs");
+    // A run that died before writing a step says nothing about WHERE. Bucketing
+    // it under "(no steps recorded)" would invent a location.
+    expect(poolCrashLastSteps([{ name: "A", steps: [] }, { name: "B" }])).toEqual([]);
+  });
+
+  it("keys on channel and message, so the same step from two channels stays apart", async () => {
+    // @ts-expect-error — plain .mjs tool, no types.
+    const { crashStepKey } = await import("../scripts/triage.mjs");
+    expect(crashStepKey("  12.3s  probe  asking  id=foo")).toBe("probe  asking");
+    expect(crashStepKey("  12.3s  draw  asking  id=foo")).toBe("draw  asking");
+    expect(crashStepKey("")).toBe("(no steps recorded)");
+  });
+});

@@ -470,6 +470,24 @@ type Probe = {
 export const NOT_ASKED = new Set(["no-scratch-slide", "no-scratch-shape", "no-named-slide", "not-asked"]);
 
 /**
+ * Why a scratch slide had to be bought, in the vocabulary the archive pools on.
+ *
+ * ONE FUNCTION BECAUSE TWO COPIES DRIFTED. This expression lived inline at both
+ * places that buy a slide, and only the main loop was ever given the
+ * `no-scratch-shape` case — so every partner replacement was filed as
+ * `unrecorded`: 68 of the last ten rounds' 248, 27% of them, saying nothing
+ * about why a slide was bought. Duplication is why they could differ at all.
+ *
+ * `unrecorded` MEANS UNKNOWN, never "known and unsaid". It is the bucket for the
+ * ~17,000 events archived before any cause was carried out of the catch, and
+ * putting a cause we DO have into it makes those rounds unreadable — the reading
+ * that motivated the main loop's version of this line.
+ */
+export function scratchReplacementWhy(result: { why?: string; answer: string }): string {
+  return result.why ?? (result.answer === "no-scratch-shape" ? "shape-refused" : "unrecorded");
+}
+
+/**
  * Answers that mean "the question was put and produced nothing to name".
  *
  * `other` is every probe's catch-all: it is what a question returns when the
@@ -3400,7 +3418,7 @@ export async function runHostProbes(
                 // was refused — and calling that unrecorded put 12 events a
                 // round into the bucket reserved for rounds that predate the
                 // instrument.
-                why: result.why ?? (result.answer === "no-scratch-shape" ? "shape-refused" : "unrecorded"),
+                why: scratchReplacementWhy(result),
               });
               const retry = await ask(probe, replacement, durableSlideId);
               // DID BUYING THE SLIDE HELP? Counted, because the decision to buy
@@ -3497,8 +3515,28 @@ export async function runHostProbes(
                 id: follow.probe.id,
                 scratchId: replacement,
                 after: r.answer,
+                // THE SAME FORMULA THE MAIN LOOP USES, and it was missing here.
+                // `WHAT THE PROBE SPENDS ON SLIDES IT COULD NOT KEEP` pools both
+                // traces, so every partner replacement landed in `unrecorded` —
+                // 68 of the last ten rounds' 248 replacements, 27%, saying
+                // nothing about why a slide was bought. The main line has
+                // carried this since the `unrecorded`-means-UNKNOWN fix and this
+                // one was simply never given it.
+                why: scratchReplacementWhy(r),
               });
               const retry = await ask(follow.probe, replacement, durableSlideId);
+              // DID BUYING IT HELP, asked here too. The main loop's own note
+              // says this measurement is what the decision to buy a slide rests
+              // on — "the same shape as the re-read whose successes went
+              // uncounted for 227 rounds while its failures were tallied" — and
+              // the partner path buys about seven slides a round without it.
+              trace("probe", "the replacement slide answered", {
+                id: follow.probe.id,
+                after: r.answer,
+                answer: retry.answer,
+                rescued: !NOT_ASKED.has(retry.answer),
+                partner: true,
+              });
               // Same rule as the main loop: only adopt a retry that got somewhere.
               if (!NOT_ASKED.has(retry.answer)) r = retry;
             }

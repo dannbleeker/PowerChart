@@ -3241,7 +3241,22 @@ function describeLitter(deck: RunLogFile["deck"]): string {
  */
 async function collectDeckEvidence(idsBefore: string[] | undefined): Promise<RunLogFile["deck"] | undefined> {
   try {
+    // TRACED PER PHASE, because a crash in here has been blaming the wrong step.
+    //
+    // Four consecutive crashed runs on 2026-08-27 record the same last step,
+    // `re-asked what the empty deck could not answer`, and none of them died
+    // there — that is simply the last line anything WROTE. What runs next is
+    // this function, which scans the whole deck, lists its slide ids and then
+    // RENDERS A PICTURE OF EVERY NEW SLIDE, and until now it traced only in its
+    // catch. So a host that fell over mid-screenshot filed a crash pointing at
+    // an innocent probe re-ask, and `WHERE THE HOST DIED` pooled four of them
+    // under that name.
+    //
+    // Cheap: three lines on a path that already takes seconds and runs once per
+    // round, after every verdict is in.
+    trace("pane", "collecting deck evidence — scanning", { knownBefore: idsBefore?.length ?? null });
     const scan = await listChartsInDeck({ withInventory: true });
+    trace("pane", "collecting deck evidence — listing slide ids", { charts: scan.charts?.length ?? null });
     const idsAfter = await deckSlideIds();
     // Only slides that were not there before. Without the diff a picture of a
     // forty-slide deck is mostly slides nobody touched — and the id list is the
@@ -3266,7 +3281,16 @@ async function collectDeckEvidence(idsBefore: string[] | undefined): Promise<Run
     // about to be read, and a value captured when the pane loaded would be the
     // one from before the owner ticked it.
     const shotAll = ($("demo-shot-all") as HTMLInputElement | null)?.checked ?? false;
+    // THE EXPENSIVE ONE, and the prime suspect for those four crashes: it
+    // renders an image per new slide. Traced with the COUNT it is about to
+    // attempt, so the next crash says how many it was asked for rather than
+    // leaving the number to be inferred from the deck.
+    trace("pane", "collecting deck evidence — shooting slides", {
+      slides: newSlides.length,
+      max: shotAll ? MAX_SHOTS_ALL : MAX_SHOTS,
+    });
     const shots = await slideShots(newSlides, { max: shotAll ? MAX_SHOTS_ALL : MAX_SHOTS });
+    trace("pane", "collecting deck evidence — done", { shots: shots.length });
     return {
       inventory: scan.inventory ?? [],
       ...(scanIsComplete(scan) ? {} : { gap: scanGap(scan) }),
