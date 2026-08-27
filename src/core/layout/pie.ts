@@ -173,9 +173,58 @@ export function layoutPie(cfg: ChartConfig, style: ChartStyle, decor: Decoration
     return f;
   })();
 
+  /**
+   * How big each OUTSIDE label may be, given the one next to it. `null` drops it.
+   *
+   * WHY THIS EXISTS. An outside label's only fit rule was `room` below —
+   * horizontal distance to the frame edge — which cannot see a neighbour. With
+   * a handful of slices that never mattered; at 24 it is 46 of this project's 75
+   * known text overlaps, because adjacent labels sit two or three points apart
+   * vertically and each one thinks it has the whole margin to itself.
+   *
+   * De-collision is NOT the fix here, and the reason is written in `collide.ts`:
+   * `resolveLabelCollisions` nudges upward only, and pie labels are not in
+   * `MOVABLE` precisely because a nudge past a neighbour would leave the label
+   * beside the wrong wedge with its leader line pointing at it. "A label that
+   * names someone else's line" is the failure that file exists to prevent.
+   *
+   * So: SHRINK, THEN DROP — the order this file already takes for the whole
+   * ring, for inside labels, and that the funnel's rows and the butterfly's
+   * names take before it. Nothing moves, so nothing can end up beside the wrong
+   * slice; the smallest slices lose their labels first, because their angular
+   * gaps are smallest, and those are the labels worth least. The wedges are all
+   * still drawn, so no data leaves the chart.
+   *
+   * Compared on the SAME SIDE only. Left and right labels are separated by the
+   * whole pie horizontally and never collide however close their anchors sit in
+   * y — comparing across would drop labels that were never in each other's way.
+   */
+  const outsideFs: (number | null)[] = (() => {
+    if (!outerLabelsFit) return slices.map(() => null);
+    let a = hasBreakout ? 90 + ((otherSum / denom) * 360) / 2 : 0;
+    const anchors = slices.map(({ v }) => {
+      const span = (v / denom) * 360;
+      const mid = a + span / 2;
+      a += span;
+      const p = polar(cx, cy, r + outerFs * 0.8, mid);
+      return { y: p.y, right: ((mid % 360) + 360) % 360 < 180, span };
+    });
+    return anchors.map((me, i) => {
+      if (me.span <= 0) return null;
+      let gap = Infinity;
+      for (let j = 0; j < anchors.length; j++) {
+        if (j === i || anchors[j].span <= 0 || anchors[j].right !== me.right) continue;
+        gap = Math.min(gap, Math.abs(anchors[j].y - me.y));
+      }
+      // A lone label on its side has no neighbour to yield to.
+      const fs = gap === Infinity ? outerFs : Math.min(outerFs, gap / 1.25);
+      return fs >= 5 ? fs : null;
+    });
+  })();
+
   let angle = hasBreakout ? 90 + ((otherSum / denom) * 360) / 2 : 0;
   let otherStart = 0;
-  slices.forEach(({ v, c }) => {
+  slices.forEach(({ v, c }, sliceIndex) => {
     const span = (v / denom) * 360;
     if (span <= 0) return;
     const other = c === "other";
@@ -210,7 +259,11 @@ export function layoutPie(cfg: ChartConfig, style: ChartStyle, decor: Decoration
     // `return` — an early exit skips the advance and every later slice starts at
     // the same place. It is written as a condition on the block for that reason.
     const inside = span >= 30 && !doughnut && !varR;
-    if (decor.segmentLabels && (inside || outerLabelsFit)) {
+    // An outside label now needs room from its NEIGHBOUR as well as from the
+    // ring — `outsideFs` is null when even the 5pt floor will not fit between
+    // this label and the one next to it on the same side.
+    const roomFromNeighbour = outsideFs[sliceIndex];
+    if (decor.segmentLabels && (inside || (outerLabelsFit && roomFromNeighbour !== null))) {
       const mid = angle + span / 2;
       const label = sliceLabelText(v, c);
       const p = polar(ecx, ecy, inside ? rr * 0.62 : rr + outerFs * 0.8, mid);
@@ -232,7 +285,7 @@ export function layoutPie(cfg: ChartConfig, style: ChartStyle, decor: Decoration
       // shrunk to. Shrink first and clip second, the same order as the funnel's
       // rows and the butterfly's category names: shrinking keeps the whole word,
       // and the clip is only there for the label no floor can fit.
-      const lf = inside ? insideFs : outerFs;
+      const lf = inside ? insideFs : (roomFromNeighbour ?? outerFs);
       const room = inside ? insideChord(span) : Math.max(fs, (rightHalf ? cfg.width - p.x : p.x) - 4);
       const shown = clipToWidth(label, lf, room);
       const w = textWidth(shown, lf) + 4;

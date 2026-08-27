@@ -2430,3 +2430,44 @@ and it is the only one that separates the two.
 every future round would then carry a pause, which changes what a round measures
 for every claim already resting on the archive. The flag is opt-in for that
 reason.
+
+### 24-category pie labels — RESEARCHED AND FIXED 2026-08-27
+
+Owner: "research and go with your recommendation". The research changed the
+answer, so it is recorded rather than just the outcome.
+
+**The premise above was wrong.** This entry said the outside labels "already
+shrink to the gap between NEIGHBOURS (the sunburst rule)". They did not. That
+is the sunburst's rule. A pie's outside label had exactly one fit test — 
+`clipToWidth` against the horizontal distance to the frame edge — which cannot
+see the label two points above it. And pie labels are absent from `MOVABLE` in
+`collide.ts`, so `resolveLabelCollisions` treated them as fixed obstacles that
+never yield. Nothing in the pipeline compared one label to another.
+
+**The obvious fix is the wrong one.** Adding `/^label-/` to `MOVABLE` would let
+the de-collider nudge them apart — upward only, which on a ring drags a label
+past its neighbour and leaves it beside the wrong wedge with its leader line
+pointing at it. `collide.ts` documents that exact failure for cartesian charts
+and it is worse here, because a pie label carries a leader.
+
+**So: shrink-then-drop against the neighbour gap**, which is the order this
+layout already takes for the whole ring, for inside labels, and that the funnel
+and butterfly take before it. Each outside label gets the vertical distance to
+the nearest label ON THE SAME SIDE as its budget; it shrinks to fit and is
+dropped below the existing 5pt floor. Nothing moves, so nothing can end up
+mislabelled. The narrowest slices lose their labels first, which are the labels
+worth least, and every wedge is still drawn — a dropped label loses a name, not
+a number.
+
+Measured on a 24-category pie at 480x300:
+
+    before   24 labels drawn   7 overlapping pairs
+    after    21 labels drawn   0 overlapping pairs
+
+A five-slice pie is untouched, which is the regression that would have mattered:
+paying for the crowded case out of the everyday one.
+
+**Not chosen, and why.** Auto-collapsing the tail into "Other" is what Excel's
+bar-of-pie does and this product already has it as `pie.breakout` — but it is
+user-supplied on purpose. Doing it automatically restructures the chart the user
+asked for and changes what it means; dropping a crowded label does not.
