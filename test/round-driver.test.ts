@@ -2682,6 +2682,7 @@ describe("an attempt that ran no round keeps out of the session", () => {
 
 describe("which kind of missing the add-in is", () => {
   it("calls a browser death absent, and puts it back", async () => {
+    // @ts-expect-error — plain .mjs tool, no types.
     const { needsSideload } = await import("../scripts/round.mjs");
     // No pane, no command, nothing to open — a web sideload does not survive
     // the browser process.
@@ -2689,6 +2690,7 @@ describe("which kind of missing the add-in is", () => {
   });
 
   it("does not call a FIRST sighting of a dead pane stale", async () => {
+    // @ts-expect-error — plain .mjs tool, no types.
     const { needsSideload } = await import("../scripts/round.mjs");
     // THIS IS THE WHOLE GUARD. A `Disconnected` document greys its ribbon and
     // answers nothing, and it looks exactly like a sideload whose host has gone
@@ -2700,6 +2702,7 @@ describe("which kind of missing the add-in is", () => {
   });
 
   it("calls it stale once a second attempt has seen the same thing", async () => {
+    // @ts-expect-error — plain .mjs tool, no types.
     const { needsSideload } = await import("../scripts/round.mjs");
     // The state the 2026-08-27 domain move left: `Insert chart` in the ribbon,
     // opening a pane pinned to a host that had stopped existing. Readiness read
@@ -2708,6 +2711,7 @@ describe("which kind of missing the add-in is", () => {
   });
 
   it("never asks for a sideload when the pane is open", async () => {
+    // @ts-expect-error — plain .mjs tool, no types.
     const { needsSideload } = await import("../scripts/round.mjs");
     // A sideload is the most expensive thing the driver can do to a document.
     // A pane that is already there settles every other question.
