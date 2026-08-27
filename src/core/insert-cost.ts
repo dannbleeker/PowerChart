@@ -2,11 +2,17 @@
  * How long an insert onto a given slide is likely to take.
  *
  * SSF Charts is fast exactly when it CREATES a slide and slow exactly when it
- * ADDS to one. A chart on a new slide costs about 0.75s; the same chart onto a
- * slide that already holds content costs about 24s — roughly 32x, measured over
- * 2,917 timed batches in 169 rounds. The cause is the host's, not ours: adding
- * to an existing slide has to draw shape by shape, where a new slide can be
- * handed over as a generated file.
+ * ADDS to one: about 0.75s against about 24s, roughly 32x, measured over 2,917
+ * timed batches in 169 rounds. The cause is the host's, not ours — a deck is
+ * handed over as a generated file, where adding to a live slide has to draw
+ * shape by shape.
+ *
+ * TWO DIFFERENT COMPARISONS, AND ONLY ONE OF THEM IS THIS FILE'S. That 0.75s is
+ * the DECK path. A single insert cannot take it: even onto a blank slide the
+ * pane draws shape by shape, so a 40-shape chart costs ~15s there too. What this
+ * file prices is the second axis — the same shape-by-shape draw, onto a slide
+ * that is empty against one that is crowded. Confusing the two is what made the
+ * first version of the offer promise "nearly instant"; see `offerSentence`.
  *
  * The user cannot see any of that. This is the number that lets the pane say so.
  *
@@ -82,9 +88,57 @@ export function estimateInsertMs(shapes: number, present: number): number {
  */
 export const SLOW_INSERT_MS = 14_000;
 
-/** Whether this insert is slow enough to be worth offering an alternative. */
+/** Whether this insert is slow enough to be worth telling the user about. */
 export function isSlowInsert(shapes: number, present: number): boolean {
   return estimateInsertMs(shapes, present) > SLOW_INSERT_MS;
+}
+
+/**
+ * Whether moving this chart to its own slide would actually help.
+ *
+ * SLOW IS NOT THE SAME AS WORTH MOVING, and conflating them was the first
+ * version of this. A big chart takes ~15s on a completely EMPTY slide — a normal
+ * insert draws shape by shape wherever it lands — so `isSlowInsert` alone fires
+ * there and offers a new slide that would be exactly as slow. An offer that
+ * cannot deliver is worse than silence: it spends the user's attention and their
+ * trust in the next warning.
+ *
+ * So the offer needs the slowness to be the SLIDE'S fault. Moving must at least
+ * halve the wait, which it does exactly when the target is crowded — the thing
+ * the offer is actually about.
+ *
+ * (The 0.75s figure quoted for "a chart on a new slide" belongs to the deck
+ * path, which hands the host a generated FILE and draws nothing. A single insert
+ * cannot take that route, so the honest comparison is this one: the same
+ * shape-by-shape draw onto an empty slide.)
+ */
+export function worthOwnSlide(shapes: number, present: number): boolean {
+  if (!isSlowInsert(shapes, present)) return false;
+  return estimateInsertMs(shapes, 0) <= estimateInsertMs(shapes, present) / 2;
+}
+
+/**
+ * The sentence the offer puts in front of the user.
+ *
+ * A pure function rather than a template inside the pane, so what it says can be
+ * asserted instead of grepped for. The first draft lived in `app.ts` and the
+ * test that guarded it had to search the source for a banned phrase — which then
+ * matched the comment explaining the ban. A string a test can read is worth more
+ * than a comment a test can trip over.
+ *
+ * BOTH NUMBERS. The draft said a new slide was "nearly instant"; it is not. That
+ * 0.75s belongs to the deck path, which hands the host a generated file. A single
+ * insert onto a blank slide still draws shape by shape, and for a chart big
+ * enough to earn this offer that is around fifteen seconds. Quoting the real
+ * pair lets the user decide whether a slide is worth the saving. A slogan would
+ * have them press it once, wait anyway, and discount every later estimate.
+ */
+export function offerSentence(present: number, hereMs: number, freshMs: number): string {
+  const shapes = `${present} shape${present === 1 ? "" : "s"}`;
+  return (
+    `This slide already holds ${shapes}, so adding here takes ${describeMs(hereMs)}. ` +
+    `On a new slide, ${describeMs(freshMs)}.`
+  );
 }
 
 /** "about 20 seconds" / "about a minute" — for a sentence, not a readout. */

@@ -1868,6 +1868,42 @@ export async function slideOccupancy(slideIds: string[]): Promise<Map<string, nu
   return (await slideShapeCounts(slideIds)).counts;
 }
 
+/**
+ * Add one blank slide for a chart to go on, and name it. `null` if it did not.
+ *
+ * For the slow-insert offer: adding to a loaded slide costs about 24s where a
+ * new slide costs about 0.75s, so the pane offers to move the chart rather than
+ * make the user wait. That offer is only honest if the slide it promises
+ * actually arrives.
+ *
+ * THROUGH `addSlides`, NOT AROUND IT, and that is the whole reason this exists
+ * as a function rather than a `slides.add()` at the call site. This host DROPS
+ * add() calls: `addSlides` retries `MAX_ADD_RETRY_ROUNDS` times, re-reads the
+ * count from a fresh context, and returns thunks only for slides that really
+ * landed — plus it books the shortfall into `lastAddsLost` so a lost slide is
+ * counted rather than merely absent. A hand-rolled add here would silently put
+ * a chart nowhere and report success, which is worse than the slow insert it
+ * was trying to avoid.
+ *
+ * `null` on every failure — a dropped add, a slide that will not name itself, a
+ * throw — because the caller's fallback is to insert where the user originally
+ * asked. Losing the offer is a nuisance; losing the chart is not acceptable.
+ */
+export async function addSlideForChart(): Promise<string | null> {
+  try {
+    return await PowerPoint.run(async (context) => {
+      const thunks = await addSlides(context, 1, await blankLayoutId(context));
+      if (!thunks.length) return null;
+      const slide = thunks[0]();
+      slide.load("id");
+      await boundedSync(context, "naming the slide the chart will go on");
+      return loadedValue(() => (slide as unknown as { id?: string }).id) ?? null;
+    });
+  } catch {
+    return null;
+  }
+}
+
 async function slideShapeCounts(
   slideIds: string[],
   settle = false,

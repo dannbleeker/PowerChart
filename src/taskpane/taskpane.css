@@ -1082,6 +1082,44 @@ input[type="checkbox"] {
   display: none;
 }
 
+/*
+ * The slow-insert offer, pinned directly above the action bar.
+ *
+ * PEACH GROUND, ORANGE EDGE — the SSF "Bemærk / Regel" component, and the one
+ * place the orange budget legitimately leaves the tick. This is a state the user
+ * is being asked to act on; the tick is decoration beside it. The two are never
+ * both prominent: the tick sits at the top of a scrolled pane, this is pinned to
+ * the bottom, and it exists only for the seconds the question is open.
+ */
+.slow-offer {
+  flex: 0 0 auto;
+  padding: 10px 13px;
+  border-top: 1px solid var(--orange);
+  background: var(--peach);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.slow-offer[hidden] {
+  display: none;
+}
+.slow-offer-text {
+  margin: 0;
+  color: var(--ink);
+  font-size: 12.5px;
+}
+.slow-offer-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+/* The faster route is the filled button: it is the recommendation, not the
+   escape hatch. "Add here anyway" stays plain and available, because the user
+   picked this slide and may well mean it. */
+.slow-offer-row .primary {
+  flex: 0 1 auto;
+}
+
 .action-bar {
   flex: 0 0 auto;
   display: flex;

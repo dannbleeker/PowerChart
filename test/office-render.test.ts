@@ -49,6 +49,7 @@ import {
   replaceSlideWithDeck,
   deleteShapesById,
   addScratchSlide,
+  addSlideForChart,
   deleteSlideById,
   clearShapeSelection,
   MAX_ADD_RETRY_ROUNDS,
@@ -6522,6 +6523,104 @@ describe("a group refused in the batch redraws, and says so", () => {
     } finally {
       faults.refuseShapeById = false;
       setTracing(false);
+    }
+  });
+});
+
+/**
+ * `addSlideForChart` — the slide the slow-insert offer puts a chart on.
+ *
+ * Small, and worth its own block because BOTH its answers are load-bearing. The
+ * id sends the insert to a blank slide; `null` sends it back to the slide the
+ * user picked. This host drops `slides.add()` calls, so `null` is not a
+ * defensive branch nobody reaches — it is a Tuesday.
+ */
+describe("adding the slide a slow insert is offered", () => {
+  it("answers the new slide's id, and grows the deck by exactly one", async () => {
+    const deck: FakeSlide[] = [makeSlide("s1")];
+    installHost(deck);
+    const before = deck.length;
+    const id = await addSlideForChart();
+    expect(id, "no id came back for a slide that was added").toBeTruthy();
+    expect(deck.length - before, "the deck did not grow by one").toBe(1);
+    // The id has to name a slide that EXISTS, or the insert addresses nothing.
+    expect(deck.some((s) => s.id === id)).toBe(true);
+  });
+
+  it("answers null when every add is dropped, rather than an id for no slide", async () => {
+    // The failure this host really has. `addSlides` retries; when the retries
+    // are defeated too, the honest answer is "there is no slide" — the pane then
+    // inserts where the user asked. An id for a slide that was never created
+    // would send the chart nowhere and report success.
+    const deck: FakeSlide[] = [makeSlide("s1")];
+    installHost(deck);
+    const before = deck.length;
+    faults.swallowAdds = ADDS_TO_DEFEAT_ONE_SLIDE;
+    try {
+      expect(await addSlideForChart()).toBeNull();
+      expect(deck.length, "a slide appeared despite every add being dropped").toBe(before);
+    } finally {
+      faults.swallowAdds = 0;
+    }
+  });
+
+  it("answers null when the slide lands but will not say its name", async () => {
+    // THE MUTANT THAT SURVIVED. A slide exists here — the deck grows — and the
+    // host still refuses its id after the load and the sync. The temptation is
+    // to hand back something rather than nothing; a fabricated id would send the
+    // insert to a slide that does not answer to it, and report success. `null`
+    // sends the chart to the slide the user picked, which is slower and right.
+    const deck: FakeSlide[] = [makeSlide("s1")];
+    installHost(deck);
+    const before = deck.length;
+    faults.slideIdNeverReadable = true;
+    try {
+      expect(await addSlideForChart(), "an id came back from a host that gave none").toBeNull();
+    } finally {
+      faults.slideIdNeverReadable = false;
+    }
+    // And the slide really was created — this is the "landed, unnameable" case,
+    // not a second dressing-up of the dropped-add one above.
+    expect(deck.length - before, "no slide landed, so this tested the wrong thing").toBeGreaterThan(0);
+  });
+
+  it("recovers when ONE sync fails, because addSlides retries", async () => {
+    // Written expecting null; the code was right and the expectation was wrong.
+    // A single failed sync is recoverable and `addSlides` recovers it. Kept as
+    // the boundary against the case below — the difference between a host having
+    // a bad moment and a host that will not do this at all.
+    const deck: FakeSlide[] = [makeSlide("s1")];
+    installHost(deck);
+    faults.failSyncOn = 1;
+    try {
+      expect(await addSlideForChart(), "a recoverable stall lost the slide").toBeTruthy();
+    } finally {
+      faults.failSyncOn = 0;
+    }
+  });
+
+  it("answers null when every sync fails, rather than taking the pane down", async () => {
+    // This runs inside the Insert click. A throw here would abandon a chart the
+    // user has already pressed for, so the catch is the point, not decoration.
+    const deck: FakeSlide[] = [makeSlide("s1")];
+    installHost(deck);
+    for (let i = 1; i <= 40; i++) failSyncsOn.add(i);
+    try {
+      expect(await addSlideForChart()).toBeNull();
+    } finally {
+      failSyncsOn.clear();
+    }
+  });
+
+  it("answers null when there is no host at all", async () => {
+    // The pane boots in browsers with no Office. `PowerPoint.run` throws on the
+    // global lookup itself, before any of the above.
+    const saved = (globalThis as { PowerPoint?: unknown }).PowerPoint;
+    delete (globalThis as { PowerPoint?: unknown }).PowerPoint;
+    try {
+      expect(await addSlideForChart()).toBeNull();
+    } finally {
+      (globalThis as { PowerPoint?: unknown }).PowerPoint = saved;
     }
   });
 });

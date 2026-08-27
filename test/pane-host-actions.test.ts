@@ -162,6 +162,15 @@ const host = vi.hoisted(() => ({
    */
   deckSlideIds: undefined as undefined | string[],
   deckSlideIdsBeforeFails: false,
+  /**
+   * What `addSlideForChart` answers when the pane takes up the slow-path offer.
+   *
+   * `null` is not an edge case here either: this host DROPS `slides.add()`, so
+   * "accepted, and no slide appeared" is a real outcome and the pane's fallback
+   * to inserting where the user asked has to be reachable from a test.
+   */
+  addSlideResult: "own-slide-1" as string | null,
+  addSlideCalls: 0,
   /** Whether the host will draw a slide — PowerPointApi 1.8, absent on plenty of hosts. */
   canRaster: true,
   /**
@@ -236,6 +245,10 @@ vi.mock("../src/render/powerpoint", () => ({
     return true;
   }),
   getSlideShapeBounds: vi.fn(async () => host.slideShapes),
+  addSlideForChart: vi.fn(async () => {
+    host.addSlideCalls++;
+    return host.addSlideResult;
+  }),
   insertSceneIntoSlide: vi.fn(
     async (
       scene: { nodes: unknown[] },
@@ -558,6 +571,8 @@ async function bootHostPane(opts?: { deckStyle?: Record<string, unknown> | null 
   host.selectionDropped = [];
   host.deckSlideIdCalls = 0;
   host.deckSlideIdsBeforeFails = false;
+  host.addSlideResult = "own-slide-1";
+  host.addSlideCalls = 0;
   host.roundAddsSlides = ["probe-a", "probe-b"];
   host.refuseSlideDelete = [];
   host.selectionCharts = [];

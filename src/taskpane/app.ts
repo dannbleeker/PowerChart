@@ -1,4 +1,5 @@
 import { buildChart, clampDim, DEFAULT_SIZE, valueExtent } from "../core/chart";
+import { estimateInsertMs, worthOwnSlide, offerSentence } from "../core/insert-cost";
 import { PALETTES } from "../core/style";
 import type { ChartConfig, ChartKind, Decorations, Series } from "../core/types";
 import { resolveStyleFile, isEmptyStyle, type DeckStyle, type StylePreference } from "../core/deck-style";
@@ -8,6 +9,7 @@ import {
   roundEnvironment,
   canInsertPicture,
   getSelectionBounds,
+  addSlideForChart,
   getSlideShapeBounds,
   insertAgendaSlides,
   insertDemoDeck,
@@ -486,6 +488,42 @@ function currentConfig(): ChartConfig {
 // --- UI wiring ------------------------------------------------------------
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
+
+/**
+ * Ask whether to put this chart on its own slide, and wait for the answer.
+ *
+ * Only reached when the estimate crosses `SLOW_INSERT_MS`. Resolves to
+ * `"own-slide"` or `"here"`; there is no third answer, because the user pressed
+ * Insert and something has to happen.
+ *
+ * A PROMISE ROUND A PAIR OF BUTTONS rather than `confirm()`. The pane runs in an
+ * Office iframe where a native modal blocks the host as well as the pane, and
+ * this is a speed hint — it does not deserve to freeze PowerPoint. Both handlers
+ * are removed on the way out so a second slow insert cannot resolve the first
+ * one's promise.
+ */
+function offerOwnSlide(estimateMs: number, freshMs: number, present: number): Promise<"own-slide" | "here"> {
+  const box = $("slow-offer");
+  const text = $("slow-offer-text");
+  const own = $<HTMLButtonElement>("slow-offer-own");
+  const here = $<HTMLButtonElement>("slow-offer-here");
+  // The wording lives in `insert-cost.ts` beside the numbers it quotes, where a
+  // test can read what it actually says rather than grep for what it must not.
+  text.textContent = offerSentence(present, estimateMs, freshMs);
+  box.hidden = false;
+  return new Promise((resolve) => {
+    const done = (choice: "own-slide" | "here") => () => {
+      own.removeEventListener("click", onOwn);
+      here.removeEventListener("click", onHere);
+      box.hidden = true;
+      resolve(choice);
+    };
+    const onOwn = done("own-slide");
+    const onHere = done("here");
+    own.addEventListener("click", onOwn);
+    here.addEventListener("click", onHere);
+  });
+}
 
 const gallery = $("gallery");
 const preview = $("preview");
@@ -1956,6 +1994,9 @@ async function runInsert(asNew: boolean) {
   // is a stretched chart.
   // `moved` is absent on the placeholder branch, and deliberately: the user
   // picked that position themselves, so there is nothing to report about it.
+  // Hoisted so the slow-insert offer below can price the target slide from the
+  // read this path already makes. `null` means the host would not say.
+  let occupied: Awaited<ReturnType<typeof getSlideShapeBounds>> = null;
   let at: {
     left: number;
     top: number;
@@ -1996,7 +2037,7 @@ async function runInsert(asNew: boolean) {
       width: clampDim(cfg.width, DEFAULT_SIZE.width),
       height: clampDim(cfg.height, DEFAULT_SIZE.height),
     };
-    const occupied = await getSlideShapeBounds();
+    occupied = await getSlideShapeBounds();
     at = occupied
       ? placeChart(
           occupied,
@@ -2010,10 +2051,50 @@ async function runInsert(asNew: boolean) {
   }
   cfg = { ...cfg, width: at.width, height: at.height };
   const scene = buildChart(cfg);
+  /**
+   * THE SLOW-INSERT OFFER. Adding to a loaded slide costs several times what
+   * the same chart costs on an empty one, and nothing used to say so — the pane
+   * simply looked hung for half a minute.
+   *
+   * Offered on `worthOwnSlide`, not on `isSlowInsert`. Slow is not the same as
+   * worth moving: a big chart is slow on a blank slide too, and offering a new
+   * slide there would cost a slide and save nothing.
+   *
+   * Priced from `occupied`, the read this path ALREADY made to place the chart.
+   * No second host call: an earlier draft added one, and duplicating a read the
+   * insert had just done is the "adding counting sites moves the baseline"
+   * mistake this repo warns about.
+   *
+   * `occupied === null` means the host would not say. Treated as UNKNOWN rather
+   * than empty and left silent: a warning that fires because a read failed is
+   * worse than one that never fires.
+   */
+  let ownSlideId: string | undefined;
+  const sceneShapes = estimateOfficeShapes(scene);
+  if (occupied && worthOwnSlide(sceneShapes, occupied.length)) {
+    const choice = await offerOwnSlide(
+      estimateInsertMs(sceneShapes, occupied.length),
+      estimateInsertMs(sceneShapes, 0),
+      occupied.length,
+    );
+    if (choice === "own-slide") {
+      note("Adding a slide…", "busy");
+      // `null` when the host dropped the add even after `addSlides` retried. The
+      // chart then goes where the user originally asked — slowly, but it goes.
+      // Losing the offer is a nuisance; losing the chart is not acceptable.
+      ownSlideId = (await addSlideForChart()) ?? undefined;
+      if (!ownSlideId) note("Could not add a slide — inserting here instead.", "err");
+    }
+  }
+  // PLACEMENT IS RECOMPUTED FOR AN EMPTY SLIDE. `at` was cascaded around the
+  // shapes on the CROWDED slide, so carrying it over would drop the chart into
+  // a corner of a blank one for no reason — offset from obstacles that are not
+  // there.
+  const place = ownSlideId ? { left: 60, top: 90 } : { left: at.left, top: at.top };
   const { png, warn } = await chartPicture(cfg, scene);
   const inserted = await insertSceneIntoSlide(
     scene,
-    { tagData: JSON.stringify(cfg), left: at.left, top: at.top, pictureBase64: png },
+    { tagData: JSON.stringify(cfg), ...place, pictureBase64: png, ...(ownSlideId ? { slideId: ownSlideId } : {}) },
     phaseNote,
   );
   state.editTarget = null;

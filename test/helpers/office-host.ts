@@ -306,6 +306,21 @@ export const faults = {
    */
   slideIdUnreadableBeforeFirstSync: false,
   /**
+   * The id NEVER reads, however many syncs the load has had.
+   *
+   * The sibling above models the ordinary PropertyNotLoaded — a read that came
+   * too early and works once the sync lands. This models the host that takes the
+   * `load("id")`, takes the sync, and still will not say: the slide exists, and
+   * its name is unobtainable. The archive's `idRefusals` counter is this.
+   *
+   * It matters because the alternative to "no id" is not "wait longer", it is
+   * "make one up". `addSlideForChart` ends in `?? null` for exactly this, and
+   * without a fault that reaches it, a mutant returning a fabricated id passed
+   * every test — an insert addressed to a slide that does not answer to that
+   * name, reported as success.
+   */
+  slideIdNeverReadable: false,
+  /**
    * The same short answer, on an `items/name` load.
    *
    * A real host does not care which properties were asked for — a collection
@@ -1792,7 +1807,7 @@ export function makeSlide(id: string) {
     enumerable: true,
     configurable: true,
     get() {
-      if (faults.slideIdUnreadableBeforeFirstSync && syncsInContext === 0)
+      if (faults.slideIdNeverReadable || (faults.slideIdUnreadableBeforeFirstSync && syncsInContext === 0))
         throw new Error(
           "The property 'id' is not available. Before reading the property's value, call the load " +
             'method on the containing object and call "context.sync()" on the associated request context. ' +
@@ -1804,7 +1819,23 @@ export function makeSlide(id: string) {
       id = v;
     },
   });
-  return slide;
+  // The fake's OWN bookkeeping reads through this, never through `id`.
+  //
+  // `slides.add` files each new slide under its id, and doing that through the
+  // throwing accessor made `faults.slideIdNeverReadable` break the fake instead
+  // of the code under test: the add itself raised, no slide landed, and a test
+  // aimed at "the slide exists and has no name" quietly became another
+  // dropped-add test. Non-enumerable so nothing that spreads or JSONs a slide
+  // sees a second id.
+  Object.defineProperty(slide, "rawId", {
+    enumerable: false,
+    configurable: true,
+    get: () => id,
+  });
+  // Cast rather than a literal field: `defineProperty` is invisible to
+  // inference, and a plain `get rawId()` in the literal would be enumerable —
+  // which is the one thing the note above says it must not be.
+  return slide as typeof slide & { readonly rawId: string };
 }
 
 export type FakeSlide = ReturnType<typeof makeSlide>;
@@ -2286,8 +2317,8 @@ export function installHost(
             return;
           }
           const made = makeSlide(`slide-${slides.length + 1}`);
-          addedSlideOrder.set(made.id, slideAddSeq++);
-          addedSlideIds.add(made.id);
+          addedSlideOrder.set(made.rawId, slideAddSeq++);
+          addedSlideIds.add(made.rawId);
           // Appending renumbers an EXISTING slide — see `faults.renumbersOnAdd`.
           // Done before the push so the new slide is untouched and stays last,
           // which is the whole basis on which `addScratchSlide` claims it.
@@ -2304,8 +2335,8 @@ export function installHost(
           // against a host that never produced the state it exists for.
           for (let extra = 0; extra < faults.addLandsExtra; extra++) {
             const twin = makeSlide(`slide-${slides.length + 1}`);
-            addedSlideOrder.set(twin.id, slideAddSeq++);
-            addedSlideIds.add(twin.id);
+            addedSlideOrder.set(twin.rawId, slideAddSeq++);
+            addedSlideIds.add(twin.rawId);
             slides.push(twin);
           }
         },
@@ -2813,6 +2844,7 @@ export function installHost(
   faults.readsMissing = 0;
   faults.slideReadsEmpty = null;
   faults.slideIdUnreadableBeforeFirstSync = false;
+  faults.slideIdNeverReadable = false;
   faults.stallDrawAfterSelect = false;
   selectionStanding = false;
   pictureLanded = false;

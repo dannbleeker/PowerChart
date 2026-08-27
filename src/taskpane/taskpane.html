@@ -445,6 +445,26 @@
       </div>
     </div>
 
+    <!-- THE SLOW-INSERT OFFER, shown only when the estimate earns it.
+         The host draws shape by shape, and the cost per shape climbs with what
+         the slide already holds: the same chart that takes seconds on a blank
+         slide takes the better part of a minute on a full one. Nothing used to
+         say so, so a loaded slide made the pane look hung. The offer quotes both
+         waits rather than calling the new slide instant — it is not, and a
+         promise the insert cannot keep costs more than the wait does.
+
+         Inline, above the action bar, rather than a dialog: it interrupts the
+         press the user just made, and a modal for a speed hint would be worse
+         than the wait. It does gate this insert, because it is a question about
+         THIS chart — "Add here anyway" simply proceeds. -->
+    <div class="slow-offer" id="slow-offer" role="group" aria-live="polite" hidden>
+      <p class="slow-offer-text" id="slow-offer-text"></p>
+      <div class="slow-offer-row">
+        <button id="slow-offer-own" class="primary">Put it on its own slide</button>
+        <button id="slow-offer-here">Add here anyway</button>
+      </div>
+    </div>
+
     <!-- Sticky action bar — the primary Insert/Update is always reachable no
          matter how far the pane has scrolled. -->
     <footer class="action-bar">
