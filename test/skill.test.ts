@@ -41,7 +41,7 @@ describe("skill pptx renderer", () => {
   const out = join(dir, "out.pptx");
 
   beforeAll(() => {
-    if (!existsSync("dist-lib/powerchart.js")) {
+    if (!existsSync("dist-lib/ssf-charts.js")) {
       execSync("npx vite build --config vite.config.lib.ts", { stdio: "pipe" });
     }
     const cfg = {
@@ -106,7 +106,7 @@ describe("skill pptx renderer — annular sectors", () => {
   const readSlide = (n: number) => readPart(out, `ppt/slides/slide${n}.xml`);
 
   beforeAll(() => {
-    if (!existsSync("dist-lib/powerchart.js")) {
+    if (!existsSync("dist-lib/ssf-charts.js")) {
       execSync("npx vite build --config vite.config.lib.ts", { stdio: "pipe" });
     }
     const cfgs = [
@@ -149,7 +149,7 @@ describe("skill pptx renderer — dotted lines stay dotted", () => {
   const out = join(dir, "dash.pptx");
 
   beforeAll(() => {
-    if (!existsSync("dist-lib/powerchart.js")) {
+    if (!existsSync("dist-lib/ssf-charts.js")) {
       execSync("npx vite build --config vite.config.lib.ts", { stdio: "pipe" });
     }
     // A waterfall draws thin [1.5,1.5] dotted carry connectors between bars.
@@ -177,7 +177,7 @@ describe("skill pptx renderer — 8-digit hex colours", () => {
   const out = join(dir, "alpha.pptx");
 
   beforeAll(() => {
-    if (!existsSync("dist-lib/powerchart.js")) {
+    if (!existsSync("dist-lib/ssf-charts.js")) {
       execSync("npx vite build --config vite.config.lib.ts", { stdio: "pipe" });
     }
     // #RRGGBBAA is a valid, SVG-honoured colour form. A single explicit series
@@ -202,7 +202,7 @@ describe("skill pptx renderer — 8-digit hex colours", () => {
 
 describe("packaged skill layout", () => {
   beforeAll(() => {
-    if (!existsSync("dist-lib/powerchart.js")) {
+    if (!existsSync("dist-lib/ssf-charts.js")) {
       execSync("npx vite build --config vite.config.lib.ts", { stdio: "pipe" });
     }
     execSync("node scripts/build-skill.mjs", { stdio: "pipe" });
@@ -214,10 +214,10 @@ describe("packaged skill layout", () => {
     // that fixes this used to be shelled out to `node -e`, which silently did
     // nothing on Windows while still exiting 0, shipping a renderer that could
     // not start.
-    const src = readFileSync("skill-dist/powerchart-charts/scripts/render-svg.mjs", "utf8");
-    expect(src).toContain("../lib/powerchart.js");
-    expect(src).not.toContain("../dist-lib/powerchart.js");
+    const src = readFileSync("skill-dist/ssf-charts/scripts/render-svg.mjs", "utf8");
+    expect(src).toContain("../lib/ssf-charts.js");
+    expect(src).not.toContain("../dist-lib/ssf-charts.js");
     // And the path it now imports has to be real.
-    expect(existsSync("skill-dist/powerchart-charts/lib/powerchart.js")).toBe(true);
+    expect(existsSync("skill-dist/ssf-charts/lib/ssf-charts.js")).toBe(true);
   });
 });

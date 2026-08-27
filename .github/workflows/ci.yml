@@ -52,8 +52,8 @@ jobs:
       - run: npm run skill
       - uses: actions/upload-artifact@v4
         with:
-          name: powerchart-charts-skill
-          path: skill-dist/powerchart-charts.zip
+          name: ssf-charts-skill
+          path: skill-dist/ssf-charts.zip
       # The committed showcase deck must match a fresh build — regenerate and
       # compare slide XMLs (deterministic; docProps timestamps excluded).
       - name: Showcase deck is current
@@ -151,10 +151,10 @@ jobs:
       - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           tag_name: skill-latest
-          name: PowerChart Agent Skill (latest)
+          name: SSF Charts Agent Skill (latest)
           body: >
             Rolling build of the Claude Agent Skill from the latest main.
             Upload the zip at claude.ai → Customize → Skills; it then also
             appears inside Claude for PowerPoint.
           prerelease: true
-          files: skill-dist/powerchart-charts.zip
+          files: skill-dist/ssf-charts.zip

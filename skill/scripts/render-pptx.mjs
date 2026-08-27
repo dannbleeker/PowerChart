@@ -18,7 +18,7 @@ import { IN, hexOr, makeAddNode } from "./pptx-paint.mjs";
 // Engine location: packaged skill layout first, then repo layout.
 let engine;
 const failures = [];
-for (const candidate of ["../lib/powerchart.js", "../../dist-lib/powerchart.js"]) {
+for (const candidate of ["../lib/ssf-charts.js", "../../dist-lib/ssf-charts.js"]) {
   const href = new URL(candidate, import.meta.url).href;
   try {
     engine = await import(href);
@@ -39,8 +39,8 @@ for (const candidate of ["../lib/powerchart.js", "../../dist-lib/powerchart.js"]
 if (!engine) {
   console.error(
     failures.length
-      ? `powerchart engine failed to load:\n  ${failures.join("\n  ")}`
-      : "powerchart engine not found — run `npm run build:lib` first",
+      ? `SSF Charts engine failed to load:\n  ${failures.join("\n  ")}`
+      : "SSF Charts engine not found — run `npm run build:lib` first",
   );
   process.exit(1);
 }
@@ -69,7 +69,7 @@ for (const [name, fn] of Object.entries({
   injectGroupsAndTags,
 })) {
   if (typeof fn !== "function") {
-    console.error(`powerchart engine is missing export "${name}" — rebuild the lib (npm run build:lib)`);
+    console.error(`SSF Charts engine is missing export "${name}" — rebuild the lib (npm run build:lib)`);
     process.exit(1);
   }
 }
@@ -100,7 +100,7 @@ async function rasterScene(scene, background) {
   return png;
 }
 
-const [, , input, output = "powerchart.pptx"] = process.argv;
+const [, , input, output = "ssf-charts.pptx"] = process.argv;
 if (!input) {
   console.error("usage: node scripts/render-pptx.mjs <charts.json> [out.pptx]");
   process.exit(1);

@@ -1,14 +1,14 @@
 import { defineConfig } from "vite";
 import { resolve } from "node:path";
 
-// Library build for automation use: `npm run build:lib` → dist-lib/powerchart.js
+// Library build for automation use: `npm run build:lib` → dist-lib/ssf-charts.js
 export default defineConfig({
   build: {
     outDir: "dist-lib",
     lib: {
       entry: resolve(__dirname, "src/index.ts"),
       formats: ["es"],
-      fileName: "powerchart",
+      fileName: "ssf-charts",
     },
     rollupOptions: {
       // jszip stays a peer, not a passenger. Bundling it put a 133 KB copy

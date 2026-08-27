@@ -16,7 +16,7 @@
  */
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { basename, join } from "node:path";
-import { buildChart, buildAgendaScene, sceneToSvg, DEFAULT_SIZE } from "../dist-lib/powerchart.js";
+import { buildChart, buildAgendaScene, sceneToSvg, DEFAULT_SIZE } from "../dist-lib/ssf-charts.js";
 
 const [, self, input, outDir = "out"] = process.argv;
 if (!input) {

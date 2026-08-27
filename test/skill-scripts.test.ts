@@ -15,7 +15,7 @@ import JSZip from "jszip";
  * (JSZip reads the .pptx — it ships with pptxgenjs, which writes it.)
  */
 
-const LIB = "dist-lib/powerchart.js";
+const LIB = "dist-lib/ssf-charts.js";
 
 function ensureLib() {
   if (existsSync(LIB)) return;
@@ -81,7 +81,7 @@ describe("render-batch.mjs — the skill's SVG previewer", () => {
     mkdirSync(join(pkg, "scripts"));
     mkdirSync(join(pkg, "dist-lib"));
     copyFileSync("scripts/render-batch.mjs", join(pkg, "scripts", "render-svg.mjs"));
-    copyFileSync(LIB, join(pkg, "dist-lib", "powerchart.js"));
+    copyFileSync(LIB, join(pkg, "dist-lib", "ssf-charts.js"));
     const r = run([join(pkg, "scripts", "render-svg.mjs")]);
     expect(r.status).toBe(1);
     expect(r.stderr).toContain("usage: node scripts/render-svg.mjs");

@@ -2,19 +2,19 @@
 /**
  * Assemble the uploadable PowerChart Agent Skill:
  *   npm run build:lib && node scripts/build-skill.mjs
- * → skill-dist/powerchart-charts.zip  (upload at claude.ai → Customize → Skills;
+ * → skill-dist/ssf-charts.zip  (upload at claude.ai → Customize → Skills;
  *   it then also appears inside Claude for PowerPoint)
  */
 import { cpSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync, existsSync } from "node:fs";
 import { join, relative } from "node:path";
 import JSZip from "jszip";
 
-if (!existsSync("dist-lib/powerchart.js")) {
+if (!existsSync("dist-lib/ssf-charts.js")) {
   console.error("run `npm run build:lib` first");
   process.exit(1);
 }
 
-const root = "skill-dist/powerchart-charts";
+const root = "skill-dist/ssf-charts";
 rmSync("skill-dist", { recursive: true, force: true });
 mkdirSync(`${root}/scripts`, { recursive: true });
 mkdirSync(`${root}/lib`, { recursive: true });
@@ -26,13 +26,13 @@ cpSync("skill/scripts/render-pptx.mjs", `${root}/scripts/render-pptx.mjs`);
 // so the relative "./pptx-paint.mjs" import resolves in the packaged layout too.
 cpSync("skill/scripts/pptx-paint.mjs", `${root}/scripts/pptx-paint.mjs`);
 cpSync("scripts/render-batch.mjs", `${root}/scripts/render-svg.mjs`);
-cpSync("dist-lib/powerchart.js", `${root}/lib/powerchart.js`);
+cpSync("dist-lib/ssf-charts.js", `${root}/lib/ssf-charts.js`);
 cpSync("examples/charts.json", `${root}/examples/charts.json`);
 writeFileSync(
   `${root}/package.json`,
   JSON.stringify(
     {
-      name: "powerchart-charts-skill",
+      name: "ssf-charts-skill",
       private: true,
       type: "module",
       dependencies: {
@@ -62,11 +62,11 @@ writeFileSync(
 // render-svg.mjs was written for the repo layout — point it at the bundled lib.
 // Done in-process: shelling out to `node -e` to rewrite a file from a Node
 // script bought nothing and broke on Windows, silently shipping a skill whose
-// renderer imported ../dist-lib/powerchart.js, a path that doesn't exist here.
+// renderer imported ../dist-lib/ssf-charts.js, a path that doesn't exist here.
 const renderSvg = `${root}/scripts/render-svg.mjs`;
-const patched = readFileSync(renderSvg, "utf8").replace("../dist-lib/powerchart.js", "../lib/powerchart.js");
-if (!patched.includes("../lib/powerchart.js")) {
-  console.error(`${renderSvg}: import of ../dist-lib/powerchart.js not found — skill would ship broken`);
+const patched = readFileSync(renderSvg, "utf8").replace("../dist-lib/ssf-charts.js", "../lib/ssf-charts.js");
+if (!patched.includes("../lib/ssf-charts.js")) {
+  console.error(`${renderSvg}: import of ../dist-lib/ssf-charts.js not found — skill would ship broken`);
   process.exit(1);
 }
 writeFileSync(renderSvg, patched);
@@ -97,7 +97,7 @@ function filesUnder(dir) {
 const zip = new JSZip();
 for (const file of filesUnder(root)) {
   // Forward slashes and a path relative to skill-dist, so the archive unpacks
-  // to `powerchart-charts/…` exactly as the python version's did.
+  // to `ssf-charts/…` exactly as the python version's did.
   const name = relative("skill-dist", file).split("\\").join("/");
   zip.file(name, readFileSync(file), { date: new Date(0) });
 }
@@ -106,5 +106,5 @@ const bytes = await zip.generateAsync({
   compression: "DEFLATE",
   compressionOptions: { level: 9 },
 });
-writeFileSync("skill-dist/powerchart-charts.zip", bytes);
-console.log("skill-dist/powerchart-charts.zip");
+writeFileSync("skill-dist/ssf-charts.zip", bytes);
+console.log("skill-dist/ssf-charts.zip");

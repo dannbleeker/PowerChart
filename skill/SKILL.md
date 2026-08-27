@@ -1,9 +1,9 @@
 ---
-name: powerchart-charts
+name: ssf-charts
 description: Create think-cell-style consulting charts as native, editable PowerPoint shapes — waterfalls (EBITDA bridges), Mekko/Marimekko, stacked/clustered columns, Gantt plans, combo, pie, scatter/bubble, butterfly — plus agenda slides, from a JSON chart config. Use when the user asks for professional/consulting/think-cell-style charts, a chart in PowerPoint (.pptx), a waterfall or bridge chart, a Mekko, a Gantt/project plan slide, or CAGR/difference-arrow annotations.
 ---
 
-# PowerChart: think-cell-style charts for PowerPoint
+# SSF Charts: think-cell-style charts for PowerPoint
 
 Turn a JSON **ChartConfig** into a `.pptx` slide made of **native, individually
 editable PowerPoint shapes** (never pictures) — with think-cell's signature

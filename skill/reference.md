@@ -1,6 +1,6 @@
 # ChartConfig reference
 
-Everything the PowerChart engine accepts. All lengths in points (1pt = 1/72").
+Everything the SSF Charts engine accepts. All lengths in points (1pt = 1/72").
 
 ```ts
 {
@@ -475,7 +475,7 @@ adjustable pie geometry. The slide takes the chart's own `style.background`
 away the rest of the batch.
 
 Each chart lands as **one grouped object carrying its own config**, so a deck
-rendered here opens in the PowerChart task pane exactly like one the pane drew:
+rendered here opens in the SSF Charts task pane exactly like one the pane drew:
 select a chart, click *Edit selected chart*, change the data, update it in
 place. The grouping and the `POWERCHART_CONFIG` tag are injected into the OOXML
 after pptxgenjs is done — it can express neither — by the same code the add-in
