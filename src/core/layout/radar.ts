@@ -8,6 +8,15 @@ import { columnPositiveTotal } from "./totals";
 import { maxOf } from "../agg";
 
 /**
+ * Smallest a perimeter name may be drawn before it is dropped instead.
+ *
+ * The same 5pt the pie's labels use, and for the same reason: below it the text
+ * is present without being readable, which costs the reader a glance and gives
+ * them nothing. Kept as a named constant so the two rings cannot drift apart.
+ */
+const PERIM_FLOOR_FS = 5;
+
+/**
  * Radar (spider) chart: categories = spokes (first at 12 o'clock,
  * clockwise), series = polygons with translucent fills. Gridlines are
  * straight polygons by default (business style); scale is shared across
@@ -122,6 +131,89 @@ export function layoutRadar(cfg: ChartConfig, style: ChartStyle, decor: Decorati
   // on the scale.
   const toR = (v: number) => ((Math.min(max, Math.max(min, v)) - min) / (max - min || 1)) * r;
   const angle = (c: number) => (360 / Math.max(1, n)) * c;
+
+  /**
+   * Where a perimeter label lands, at a given size. One source for the box the
+   * crowding check measures and the box the node is drawn with, because two
+   * copies of this arithmetic would drift and the check would then be measuring
+   * a label the chart does not draw.
+   *
+   * The ANCHOR does not move with `size` — it is pinned at `r + fs * 0.6` off
+   * the chart font — so shrinking a label pulls it in around its anchor rather
+   * than sliding it along the ring. That is what makes shrinking safe here: a
+   * label cannot travel to another spoke.
+   */
+  const perimBox = (c: number, size: number) => {
+    const p = polar(cx, cy, r + fs * 0.6, angle(c));
+    const a = angle(c) % 360;
+    const align: "center" | "left" | "right" =
+      a < 10 || a > 350 || Math.abs(a - 180) < 10 ? "center" : a < 180 ? "left" : "right";
+    const w = textWidth(data.categories[c] ?? "", size) + 4;
+    return {
+      x: align === "center" ? p.x - w / 2 : align === "left" ? p.x : p.x - w,
+      y: p.y - (a < 10 || a > 350 ? size * 1.4 : Math.abs(a - 180) < 10 ? 0 : size * 0.7),
+      w,
+      h: size * 1.4,
+      align,
+    };
+  };
+
+  /**
+   * How big each perimeter name may be, given the ones beside it. `null` drops it.
+   *
+   * `perimFs` above bounds every name by the CHORD between two spokes, which is
+   * the room a label has along the ring. It is not the room it has where the
+   * ring runs horizontally: near the top and the bottom two adjacent names sit
+   * almost side by side, and what limits them there is their WIDTH, which the
+   * chord never looked at. A 24-spoke web drew `category-9` over `category-10`
+   * for exactly that reason — the last of the "24 categories" family, after the
+   * pie's outside labels were fixed the same way. Across the frame sweep: 96
+   * overlapping pairs before, none after, and 236 of 288 names still drawn.
+   *
+   * SHRINK, THEN DROP, and nothing moves. The alternative — nudging labels apart
+   * — puts a name beside the wrong spoke, which on a web is not a cosmetic loss:
+   * the whole chart is read by which axis a point sits on. A name that leaves is
+   * a name the reader looks up in the legend; a name that lies is worse than no
+   * name at all.
+   *
+   * ONLY THE TWO ADJACENT SPOKES, and that was tested rather than assumed. An
+   * all-pairs version was written first, on the worry that a wide name near the
+   * top reaches past its neighbour to the one beyond. It changed no answer: a
+   * search over 3,024 combinations — spoke counts 8 to 60, name lengths 1 to 40
+   * characters, eight frames, six fonts — found not one overlap that the
+   * neighbour check missed. Yielding to the neighbour already costs enough size
+   * to clear everything past it. The general check was kept for one commit, cost
+   * a spoke-count cap to bound its quadratic, and justified neither.
+   *
+   * Neighbours are measured at the SAME size, because an even ring shrinks
+   * uniformly where it shrinks at all.
+   */
+  const perimSizes: (number | null)[] = (() => {
+    if (!ringFits || perimFs <= 0) return data.categories.map(() => null);
+    // OVERLAPPING AREA, not overlapping extent on both axes. The first version
+    // asked for more than a point of intersection in x AND in y, which let a
+    // sliver a third of a point wide and eight tall — plainly two names touching
+    // — pass as clear. Four such pairs survived the whole pass. Area is also the
+    // rule the frame gate measures overlaps by, and a layout that fits itself by
+    // a different rule than the one it is checked against will always leave a
+    // residue nobody can explain.
+    const hits = (i: number, j: number, size: number) => {
+      const a = perimBox(i, size);
+      const b = perimBox(j, size);
+      const w = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x);
+      const h = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y);
+      return w > 0 && h > 0 && w * h > 1;
+    };
+    return data.categories.map((_, c) => {
+      if (n < 2) return perimFs;
+      const before = (c - 1 + n) % n;
+      const after = (c + 1) % n;
+      let size = perimFs;
+      while (size >= PERIM_FLOOR_FS && (hits(c, before, size) || hits(c, after, size))) size -= 0.5;
+      return size >= PERIM_FLOOR_FS ? size : null;
+    });
+  })();
+
   // Per-spoke scales: normalise each spoke to its own maximum so spokes in
   // different KPI units become comparable in shape (numeric ticks dropped).
   const perSpoke = !!cfg.radar?.perSpoke && !stacked && data.series.length >= 1;
@@ -230,21 +322,20 @@ export function layoutRadar(cfg: ChartConfig, style: ChartStyle, decor: Decorati
     // Dropped when the ring will not fit, and equally when the chord between
     // two spokes cannot carry a legible label — the same answer, from the same
     // reasoning, for the two ways the room can run out.
-    if (!ringFits || perimFs <= 0) return;
-    const p = polar(cx, cy, r + fs * 0.6, angle(c));
-    const a = angle(c) % 360;
-    const align = a < 10 || a > 350 || Math.abs(a - 180) < 10 ? "center" : a < 180 ? "left" : "right";
-    const w = textWidth(cat, perimFs) + 4;
+    if (!ringFits) return;
+    const size = perimSizes[c];
+    if (size == null) return;
+    const b = perimBox(c, size);
     nodes.push({
       kind: "text",
-      x: align === "center" ? p.x - w / 2 : align === "left" ? p.x : p.x - w,
-      y: p.y - (a < 10 || a > 350 ? perimFs * 1.4 : Math.abs(a - 180) < 10 ? 0 : perimFs * 0.7),
-      w,
-      h: perimFs * 1.4,
+      x: b.x,
+      y: b.y,
+      w: b.w,
+      h: b.h,
       text: cat,
-      fontSize: perimFs,
+      fontSize: size,
       color: style.text,
-      align,
+      align: b.align,
       valign: "middle",
       name: `category-${c}`,
     });

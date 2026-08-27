@@ -283,6 +283,10 @@ pairs it cannot see. The overflow half of both sweeps is closed and gated; this
 is what is left, measured, so nobody has to re-derive it.
 
     46  24 categories        pie/doughnut adjacent outside labels, radar category names
+                             -- BOTH FIXED 2026-08-27, re-measured to zero. What is
+                             left under this heading is a different family, named
+                             below: combo data labels, and scatter/bubble axis
+                             numbers against point labels.
      8  10 series            legend rows against each other and against the plot
      8  long category names  the shared category axis, already fitted, at its floor
     11  valueAxisTitle       against the column totals and the topmost tick number
@@ -293,11 +297,21 @@ is what is left, measured, so nobody has to re-derive it.
 
 **Why each is left rather than clamped.**
 
-- **24 categories** is the honest one: a 24-slice pie has more labels than it has
-  ring. The outside labels already shrink to the gap between NEIGHBOURS (the
-  sunburst rule), and at 24 slices that floor is reached and the labels are
-  dropped or collide. What is missing is a decision — drop every label past N, or
-  draw a legend instead — and that is a product call, not a bound.
+- **24 categories** — FIXED for the two kinds this line named, 2026-08-27. Both
+  the pie's outside labels and the radar's spoke names now shrink against their
+  neighbours and are dropped below 5pt; see the two entries at the foot of this
+  file for the research and the measurements. **The premise written here was
+  wrong** and is left standing as the correction it earned: it claimed the
+  outside labels "already shrink to the gap between NEIGHBOURS". They did not —
+  that is the sunburst's rule. Nothing in either pipeline compared one label to
+  another, which is why the fix was a new pass rather than a tuned constant.
+
+  A re-measurement of the sweep afterwards found the pie and doughnut clean at
+  every frame and font, and the radar clean too. What still counts under the "24
+  categories" heading is a family this line never named: **combo data labels**
+  against each other, and **scatter/bubble axis numbers** against point labels.
+  Those are two independent numeric strips sharing a band — the same shape as the
+  four entries below — and not the ring-crowding problem this line described.
 - **`valueAxisTitle` was attempted and REVERTED**, which is the useful record.
   Its width is `Math.max(frame.x - 4, textWidth(…))`, a floor that raises a
   width, so a long unit grows right over the totals. Fitting it to the axis
@@ -2471,3 +2485,46 @@ paying for the crowded case out of the everyday one.
 bar-of-pie does and this product already has it as `pie.breakout` — but it is
 user-supplied on purpose. Doing it automatically restructures the chart the user
 asked for and changes what it means; dropping a crowded label does not.
+
+### 24-category radar names — FIXED 2026-08-27
+
+The other half of the line above, found by re-measuring the sweep after the pie
+was fixed rather than by trusting what the table said. Of the "24 categories"
+overlaps that remained, six pairs were radar spoke names; the rest were a
+different family (combo data labels, scatter/bubble axis numbers against point
+labels) that the table had never named.
+
+**Why the existing bound missed it.** A radar already sized its perimeter names
+by the CHORD between two spokes — the room a name has ALONG the ring. Near the
+top and the bottom of the web the ring runs horizontally, two adjacent names sit
+almost side by side, and what limits them there is their WIDTH. The chord never
+looked at width, so `category-9` was drawn over `category-10`.
+
+**Same remedy as the pie**, for the same reason and in the same order: shrink
+each name against its neighbours, drop it below the 5pt floor, and move nothing.
+On a web this matters more than anywhere else — the chart IS the mapping from
+name to spoke, so a name nudged onto the neighbouring axis does not look untidy,
+it lies.
+
+Measured across the frame sweep's eight sizes at both sweep fonts:
+
+    before   288 names drawn   96 overlapping pairs
+    after    236 names drawn    0 overlapping pairs
+
+A five-spoke web draws exactly what it drew before, 35 names across the same
+sweep — not 80, because a small web drops its whole perimeter ring long before
+any of this (`ringFits`).
+
+**Two things the mutation pass changed.**
+
+- The check had to measure overlap by AREA, not by extent on both axes. Asking
+  for more than a point of intersection in x AND in y let a sliver a third of a
+  point wide and eight tall pass as clear, and four such pairs survived the whole
+  rule. Area is also what the frame gate measures by — a layout that fits itself
+  by a different rule than the one it is checked against always leaves a residue.
+- An all-pairs comparison was written first, on the worry that a wide name near
+  the top reaches past its neighbour. A search over 3,024 combinations (spoke
+  counts 8-60, name lengths 1-40, eight frames, six fonts) found not one overlap
+  the two-neighbour check missed, so the general version was dropped along with
+  the spoke-count cap its quadratic needed. Yielding to the neighbour already
+  costs enough size to clear everything past it.
