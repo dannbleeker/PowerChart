@@ -122,12 +122,12 @@ body {
 .mark i:nth-child(2) {
   height: 13px;
 }
-/* The tallest bar is the ONE orange in the header. The tick above the pane's
-   heading is the orange for the body, and the two never show together: the
-   header is chrome the eye stops seeing, the tick marks where reading starts. */
+/* WHITE, not orange. This bar was orange and the comment here claimed it and
+   the tick "never show together" — they plainly would, both being in view at
+   once, which is the exact failure the one-orange rule names. The tick is the
+   system's signature; the mark is chrome. The budget goes to the tick. */
 .mark i:nth-child(3) {
   height: 9px;
-  background: var(--orange);
 }
 .head-text {
   display: flex;
