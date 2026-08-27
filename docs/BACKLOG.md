@@ -283,10 +283,13 @@ pairs it cannot see. The overflow half of both sweeps is closed and gated; this
 is what is left, measured, so nobody has to re-derive it.
 
     46  24 categories        pie/doughnut adjacent outside labels, radar category names
-                             -- BOTH FIXED 2026-08-27, re-measured to zero. What is
-                             left under this heading is a different family, named
-                             below: combo data labels, and scatter/bubble axis
-                             numbers against point labels.
+                             -- CLOSED 2026-08-27, in four passes. The two this line
+                             names were fixed first; re-measuring then showed the
+                             heading had outlived its description, and what was left
+                             under it was combo point labels running into each other
+                             plus scatter/bubble point labels printed across the axis
+                             numbers. Both are fixed too. All four kinds re-measure to
+                             ZERO overlapping pairs across the frame sweep.
      8  10 series            legend rows against each other and against the plot
      8  long category names  the shared category axis, already fitted, at its floor
     11  valueAxisTitle       against the column totals and the topmost tick number
@@ -307,11 +310,11 @@ is what is left, measured, so nobody has to re-derive it.
   another, which is why the fix was a new pass rather than a tuned constant.
 
   A re-measurement of the sweep afterwards found the pie and doughnut clean at
-  every frame and font, and the radar clean too. What still counts under the "24
-  categories" heading is a family this line never named: **combo data labels**
+  every frame and font, and the radar clean too. What still counted under the "24
+  categories" heading was a family this line never named: **combo point labels**
   against each other, and **scatter/bubble axis numbers** against point labels.
-  Those are two independent numeric strips sharing a band — the same shape as the
-  four entries below — and not the ring-crowding problem this line described.
+  Both were then fixed as well — see the entry at the foot of this file — so the
+  whole heading is now closed and the four kinds re-measure to zero.
 - **`valueAxisTitle` was attempted and REVERTED**, which is the useful record.
   Its width is `Math.max(frame.x - 4, textWidth(…))`, a floor that raises a
   width, so a long unit grows right over the totals. Fitting it to the axis
@@ -2528,3 +2531,60 @@ any of this (`ringFits`).
   the two-neighbour check missed, so the general version was dropped along with
   the spoke-count cap its quadratic needed. Yielding to the neighbour already
   costs enough size to clear everything past it.
+
+### Combo point labels and scatter axis numbers — FIXED 2026-08-27
+
+The rest of the "24 categories" family, and the two halves needed different
+remedies. Measured over the frame sweep's eight sizes at both sweep fonts, by the
+frame gate's own ink rule:
+
+    combo     225 overlapping pairs -> 0     301 point labels drawn -> 156
+    scatter    72 overlapping pairs -> 0     266 point labels -> 265
+    bubble     68 overlapping pairs -> 0     265 point labels -> 267
+
+**Combo: the pie's rule again.** Upright, a point label is centred on its mark
+and its only fits were VERTICAL — the band between the title and the mark — plus
+a horizontal clamp to the plot's edge. Neither can see the label one category
+across. The room a label really has is the CATEGORY PITCH, shared with whichever
+neighbour is closer, and the pair clears when their half-widths together fit the
+gap between the marks. Shrink to that, drop below the shared 5pt floor, move
+nothing. Sideways is untouched: there the labels sit beside their marks, one per
+row, and the row pitch already bounds them.
+
+At 480x300 and 18pt the effect is visible in one number: twenty-four labels
+asking for 18pt on a plot with 17.5pt of pitch, all twenty-four still drawn, at
+14.8. The everyday six-category combo does not merely survive — it draws four
+MORE labels across the sweep, because smaller labels collide with the column
+totals less often and the drop pass that runs after takes fewer.
+
+**Scatter and bubble: a verdict this engine had already reached and never
+carried out.** The placer that positions point labels is given a band a line and
+a half taller than the plot, and that strip is where the x tick numbers live.
+The comment recording that decision says why: confining the band to the plot
+drops 56 of 301 point labels on a chart as comfortable as 480x300, and "a point's
+label is DATA and a tick number is chrome, so the chrome yields."
+
+**It did not yield.** Both were drawn, through each other — the one overlap the
+frame gate allows by name. So the tick numbers a point label lands on are now
+dropped, and the gate's exception is gone with them.
+
+Dropping alone was too expensive: a 200x150 scatter at 18pt kept 2 of its 10 tick
+numbers. So the placement runs TWICE — once with the tick numbers as obstacles,
+then again for whatever could not be placed, with the ticks not counted. Nothing
+is refused a position it would have had, and 341 of 423 tick numbers survive
+rather than 310. Per chart it is starker: that 200x150 keeps 5 rather than 2, and
+a 120x90 keeps 10 rather than 5. The comfortable sizes — 480x300, 960x540 — lose
+nothing at all, before or after.
+
+The one honest cost: the two-pass placement puts labels in different SLOTS, so a
+later label can find its spot taken, or find one freed. Across the sweep at seven
+fonts that is 266 point labels becoming 265 on a scatter, and 265 becoming 267 on
+a bubble. Two either way out of five hundred.
+
+**Two mutants that survived, and what they taught.** A version reading `c - 1`
+instead of the nearest DRAWN neighbour passed every test twice over. Skip exactly
+one category and it computes the same answer by accident — it halves the gap and
+drops the absent neighbour's width, and the two errors cancel exactly. With two
+categories skipped they no longer cancel, and the assertion has to be on the
+RATIO (three pitches against one) rather than on "larger", because "larger" is
+true of the wrong answer as well.

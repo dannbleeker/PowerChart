@@ -23,7 +23,7 @@ import { layoutViolin } from "./layout/violin";
 import { layoutCandlestick } from "./layout/candlestick";
 import { footnoteNode, hundredPercentTotal, titleHeight, titleNode } from "./layout/frame";
 import { bandNodes, decorationNodes } from "./decor";
-import { resolveLabelCollisions, unplaceableComboLabels } from "./collide";
+import { resolveLabelCollisions, unplaceableComboLabels, tickLabelsUnderPointLabels } from "./collide";
 import { formatNumber, niceTicks, parseDateToken, resolveFormat, GANTT_DATE_ROW } from "./format";
 import type { SceneNode } from "./scene";
 import { clipTextToFrame, finiteNodes } from "./scene";
@@ -1109,6 +1109,19 @@ export function buildChart(rawCfg: ChartConfig): Scene {
     const drop = unplaceableComboLabels(nodes, decor.tightLabelPriority ?? "columns");
     // Spliced rather than reassigned: `nodes` is the scene array the whole
     // builder has been appending to, and later passes hold the same reference.
+    if (drop.size) for (let i = nodes.length - 1; i >= 0; i--) if (drop.has(nodes[i])) nodes.splice(i, 1);
+  }
+
+  // The other half of a trade this engine had already decided but not carried
+  // out: a scatter or bubble point label is allowed into the strip where the
+  // tick numbers live, because a point's label is data and a tick number is
+  // chrome. Both were drawn anyway, through each other. The chrome yields now.
+  //
+  // After de-collision and after the combo drop, for the same reason those run
+  // in that order: only a tick number still covered once every legal move has
+  // been made is worth removing.
+  {
+    const drop = tickLabelsUnderPointLabels(nodes);
     if (drop.size) for (let i = nodes.length - 1; i >= 0; i--) if (drop.has(nodes[i])) nodes.splice(i, 1);
   }
 

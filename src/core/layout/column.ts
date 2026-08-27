@@ -33,6 +33,22 @@ import { layoutLine } from "./line";
 import { columnNegativeTotal, columnPositiveTotal, columnSignedTotal } from "./totals";
 import { maxOf, minOf } from "../agg";
 
+/**
+ * The nearest drawn category before / after `c`, or -1.
+ *
+ * A line skips its gaps — a null value draws no mark and no label — so "the
+ * label beside this one" is not `c - 1`. Measuring against a category that was
+ * never drawn would shrink a label to clear something that is not there.
+ */
+function prevDrawn(drawn: boolean[], c: number): number {
+  for (let i = c - 1; i >= 0; i--) if (drawn[i]) return i;
+  return -1;
+}
+function nextDrawn(drawn: boolean[], c: number): number {
+  for (let i = c + 1; i < drawn.length; i++) if (drawn[i]) return i;
+  return -1;
+}
+
 export interface LayoutResult {
   nodes: SceneNode[];
   anchors: LayoutAnchors;
@@ -1057,6 +1073,55 @@ export function layoutCombo(cfg: ChartConfig, style: ChartStyle, decor: Decorati
     // line between them would claim they interpolate. The mark is a little
     // larger, since it has no line to carry it.
     const markersOnly = s.type === "marker";
+
+    /**
+     * How big each of this line's point labels may be, given the ones beside it.
+     * Zero means there is no room and the label is not drawn, which is the same
+     * "no room" answer `pointFs` and `uprightPointFs` already give.
+     *
+     * WHY THIS EXISTS. Upright, a point label is centred on its mark and its only
+     * fits were VERTICAL — the band between the title and the mark — plus a
+     * horizontal clamp to the plot's edge. Neither can see the label one category
+     * across. With four or six categories that never showed; at twenty-four it is
+     * 306 of this project's remaining text overlaps, every one of them a number
+     * drawn through the number beside it.
+     *
+     * The room a label really has is the CATEGORY PITCH, shared with whichever
+     * neighbour is closer, and the pair clears when their half-widths together
+     * fit the gap between their marks. Expressed through `bandFontSize` so the
+     * legibility floor is the one every other fit in this engine uses.
+     *
+     * Sideways this stays untouched: there the labels sit BESIDE their marks, one
+     * per row, and `pointFs` is already fitted to the row pitch. The crowding is
+     * a property of the direction the categories run in, so the fix belongs on
+     * one axis only.
+     *
+     * SHRINK, THEN DROP, and nothing moves — the same order the pie's and the
+     * radar's names take. `resolveLabelCollisions` would be the other candidate
+     * and it is the wrong one twice over: it moves labels VERTICALLY, which does
+     * not answer a horizontal collision, and a point label nudged off its mark
+     * names the wrong category.
+     */
+    const neighbourFs: number[] = (() => {
+      if (H) return s.values.map(() => pointFs);
+      const drawn = s.values.map((v, c) => v != null && c < anchors.categoryX.length);
+      // Width at one point, so the pair constraint solves for size directly:
+      // two centred labels clear when their half-widths together fit the gap,
+      // i.e. size <= 2 * gap / (emWidth(a) + emWidth(b)).
+      const em = s.values.map((v, c) => (drawn[c] ? textWidth(formatNumber(v as number, fmt), 1) : 0));
+      return s.values.map((_v, c) => {
+        if (!drawn[c]) return 0;
+        let worst = Infinity;
+        for (const j of [prevDrawn(drawn, c), nextDrawn(drawn, c)]) {
+          if (j < 0) continue;
+          const gap = Math.abs(anchors.categoryX[j] - anchors.categoryX[c]);
+          worst = Math.min(worst, bandFontSize(pointFs, 2 * gap, em[c] + em[j]));
+        }
+        // A lone point has no neighbour to yield to.
+        return worst === Infinity ? pointFs : worst;
+      });
+    })();
+
     let prev: { x: number; y: number } | null = null;
     let last: { x: number; y: number } | null = null;
     s.values.forEach((v, c) => {
@@ -1105,11 +1170,14 @@ export function layoutCombo(cfg: ChartConfig, style: ChartStyle, decor: Decorati
       const comboLabelW = Math.max(0, Math.min(60, anchors.plot.x + anchors.plot.w - (pt.x + r + 2)));
       // Upright the label hangs above the mark, so the room it has is whatever
       // is over the mark — `pt.y * (1 / 1.3)` is where its top ink lands.
-      const uprightPointFs = aboveMarkFontSize(fs, pt.y, titleInkBottom(cfg, style), 1.3);
+      // Upright the label hangs above its mark AND sits between the marks either
+      // side of it, so it has to clear both — the smaller of the two bounds is
+      // the one it can actually take.
+      const uprightPointFs = Math.min(aboveMarkFontSize(fs, pt.y, titleInkBottom(cfg, style), 1.3), neighbourFs[c]);
       if (
         labelOn &&
         pointFs > 0 &&
-        (H ? comboLabelW >= textWidth(formatNumber(v, fmt), pointFs) : uprightPointFs > 0)
+        (H ? comboLabelW >= textWidth(formatNumber(v, fmt), pointFs) : uprightPointFs >= MIN_LABEL_FS)
       ) {
         // Categories run down a bar chart, so a label ABOVE its point would sit
         // on the neighbouring category's row; put it beside the mark instead.

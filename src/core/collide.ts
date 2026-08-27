@@ -85,7 +85,7 @@ const movableRank = (name: string | undefined): number => {
 };
 
 /** Actual painted extent of a text node, given its alignment. */
-function tightBox(n: TextNode): Box {
+export function tightBox(n: TextNode): Box {
   const w = Math.min(n.w, textWidth(n.text, n.fontSize, n.bold));
   const h = Math.min(n.h, n.fontSize * 1.25);
   const x = n.align === "left" ? n.x : n.align === "right" ? n.x + n.w - w : n.x + (n.w - w) / 2;
@@ -252,6 +252,49 @@ export function unplaceableComboLabels(nodes: SceneNode[], priority: "columns" |
   for (const l of losers) {
     const lb = tightBox(l);
     if (others.some((k) => overlaps(lb, tightBox(k)))) drop.add(l);
+  }
+  return drop;
+}
+
+/**
+ * Axis tick numbers a point label has been drawn over. The tick numbers go.
+ *
+ * SCATTER AND BUBBLE ONLY, by the names involved. The placer that positions
+ * point labels is given a band a line and a half TALLER than the plot, and that
+ * extra strip is where the x tick numbers live. That was decided and measured:
+ * confining the band to the plot takes the overlapping-text count for these two
+ * kinds from 889 to 599 and drops 56 of 301 point labels on a chart as
+ * comfortable as 480x300. The verdict was that a point's label is DATA and a
+ * tick number is chrome, so the chrome yields.
+ *
+ * IT DID NOT ACTUALLY YIELD. Both were drawn, on top of each other — the one
+ * overlap the frame gate allows by name, and 140 pairs across the sweep. A
+ * number printed through another number is not chrome giving way; it is two
+ * unreadable numbers where the decision called for one readable one. This is the
+ * pass that carries out the verdict already reached.
+ *
+ * The tick numbers are dropped, never moved. Moving one puts it beside the wrong
+ * gridline, which on an axis is the same class of lie a pie label beside the
+ * wrong wedge would be.
+ *
+ * NOT bounded by "keep at least N ticks". A bound like that would have to keep a
+ * number the reader cannot see, which is the state this pass exists to end — and
+ * the gridlines stay whatever happens, so the axis keeps its structure. Where
+ * every tick on an axis is covered, the chart was already telling the reader
+ * nothing on that axis, and now it says so honestly.
+ */
+export function tickLabelsUnderPointLabels(nodes: SceneNode[]): Set<SceneNode> {
+  const drop = new Set<SceneNode>();
+  // `!!n.text` rather than `.trim()`, for the reason above: `text` is typed as a
+  // string and arrives as a number from a pasted config.
+  const texts = nodes.filter((n): n is TextNode => n.kind === "text" && !!n.text);
+  const points = texts.filter((t) => /^label-\d+$/.test(t.name ?? ""));
+  if (!points.length) return drop;
+  const boxes = points.map(tightBox);
+  for (const t of texts) {
+    if (t.name !== "x-axis" && t.name !== "y-axis") continue;
+    const tb = tightBox(t);
+    if (boxes.some((b) => overlaps(tb, b))) drop.add(t);
   }
   return drop;
 }
