@@ -117,7 +117,7 @@ import { trace, traceAbout, traceElapsed } from "../core/trace";
  * OFF UNLESS ASKED, and read per run rather than cached, so both arms can be run
  * against one build without a rebuild:
  *
- *     localStorage.setItem("powerchart-scan-settle-ms", "3000")
+ *     localStorage.setItem("ssf-charts-scan-settle-ms", "3000")
  *
  * It only PAYS as a product change if the pause is shorter than the ~20s it
  * saves. That is not what this measures — this measures whether the pause moves
@@ -133,7 +133,7 @@ import { trace, traceAbout, traceElapsed } from "../core/trace";
  * costs a round: `Number("")` is 0 but `Number("abc")` is NaN, and a NaN
  * setTimeout fires immediately rather than failing loudly.
  */
-export const SCAN_SETTLE_KEY = "powerchart-scan-settle-ms";
+export const SCAN_SETTLE_KEY = "ssf-charts-scan-settle-ms";
 export const SCAN_SETTLE_MAX_MS = 60_000;
 
 export function scanSettleMs(read: (key: string) => string | null = readScanSettle): number {
@@ -548,13 +548,13 @@ export function pickLoneChart(slideIds: readonly string[], wantLoaded = false): 
 /**
  * Which arm the lone-chart scenario runs — clear slide by default.
  *
- *     localStorage.setItem("powerchart-lone-chart-loaded", "1")
+ *     localStorage.setItem("ssf-charts-lone-chart-loaded", "1")
  *
  * Off unless asked, read per run, and traced either way so a round always says
  * which arm produced its number. Same discipline as `scanSettleMs`: an untraced
  * default is how an experiment contaminates its own control.
  */
-export const LONE_LOADED_KEY = "powerchart-lone-chart-loaded";
+export const LONE_LOADED_KEY = "ssf-charts-lone-chart-loaded";
 
 export function wantsLoadedLoneChart(read: (key: string) => string | null = readLoneLoaded): boolean {
   try {

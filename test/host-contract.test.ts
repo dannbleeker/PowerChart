@@ -4,6 +4,7 @@ import { fileURLToPath } from "url";
 // @ts-expect-error — a plain .mjs tool with no types. The tables live THERE so
 // the diff tool and this gate cannot drift apart.
 import { FAKE_BASELINE, KNOWN_DIVERGENCES, PENDING_QUESTIONS, answersOf, diffAnswers } from "../scripts/host-diff.mjs";
+import { isHostAnswersKind } from "../src/render/host-probe";
 
 /**
  * The fake, checked against a real PowerPoint — in CI, on every commit.
@@ -32,7 +33,13 @@ describe("the fake, against the real host it stands for", () => {
     // A sheet with no provenance cannot be read a week later: the same verdict
     // means different things on 1.4 and 1.10, and on a build before a probe was
     // rewritten it may mean nothing at all.
-    expect(realSheet.kind).toBe("powerchart-host-answers");
+    // RECOGNISED, not equal to today's spelling. This fixture is a real sheet
+    // captured from the live host before the 2026-08-27 rename, so it carries
+    // `powerchart-host-answers` — and it should keep carrying it. Rewriting a
+    // captured artefact to match a rename falsifies the evidence, and pinning
+    // the new name here would force exactly that. The archive holds 257 rounds
+    // in the same position.
+    expect(isHostAnswersKind(realSheet.kind), `unrecognised sheet kind: ${realSheet.kind}`).toBe(true);
     expect(realSheet.source, "the fixture does not say which host answered").toBeTruthy();
     expect(realSheet.build, "the fixture does not say which build asked").toBeTruthy();
     expect(realSheet.requirementSets?.length, "the fixture does not say what the host supports").toBeGreaterThan(0);

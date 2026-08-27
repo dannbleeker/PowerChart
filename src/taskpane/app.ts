@@ -297,7 +297,7 @@ function stateFromConfig(cfg: ChartConfig): Omit<AppState, "editTarget"> {
 type StyleFile = DeckStyle;
 let styleFile: StyleFile = {};
 try {
-  styleFile = JSON.parse(localStorage.getItem("powerchart-style") ?? "{}");
+  styleFile = JSON.parse(localStorage.getItem("ssf-charts-style") ?? localStorage.getItem("powerchart-style") ?? "{}");
 } catch {
   /* corrupted style file — start fresh */
 }
@@ -1620,7 +1620,7 @@ $("download").addEventListener("click", () => {
   const blob = new Blob([svg], { type: "image/svg+xml" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
-  a.download = "powerchart.svg";
+  a.download = "ssf-charts.svg";
   a.click();
   URL.revokeObjectURL(a.href);
 });
@@ -1765,7 +1765,7 @@ $("download-png").addEventListener("click", () => {
         }
         const a = document.createElement("a");
         a.href = URL.createObjectURL(png);
-        a.download = "powerchart.png";
+        a.download = "ssf-charts.png";
         a.click();
         URL.revokeObjectURL(a.href);
       }, "image/png");
@@ -2291,8 +2291,34 @@ wireElementPreviews();
 
 // --- Templates & style file ----------------------------------------------------
 
-const TEMPLATES_KEY = "powerchart-templates";
-const STYLE_KEY = "powerchart-style";
+const TEMPLATES_KEY = "ssf-charts-templates";
+const STYLE_KEY = "ssf-charts-style";
+
+/**
+ * The keys these two used to have, read once when the new ones are empty.
+ *
+ * Renamed with the product on 2026-08-27. These hold WORK THE USER DID — saved
+ * chart templates and a deck style — so a plain rename would not lose a
+ * setting, it would lose their templates, silently, on the first load after an
+ * update. The pane would come up looking correct and emptied.
+ *
+ * Read-through rather than a migration write: the old value is used when the
+ * new key is absent, and the next save writes the new key. Nothing is deleted,
+ * so a downgrade still finds its data.
+ */
+const LEGACY_TEMPLATES_KEY = "powerchart-templates";
+// The style's own fallback is spelled out at its read site instead of using a
+// constant from here: that read runs during MODULE EVALUATION, above this
+// declaration, so a `const` reference would hit the temporal dead zone.
+
+/** The new key's value, or the old key's if this browser predates the rename. */
+function readStored(key: string, legacy: string): string | null {
+  try {
+    return localStorage.getItem(key) ?? localStorage.getItem(legacy);
+  } catch {
+    return null;
+  }
+}
 
 /**
  * The saved templates, on an object with NO prototype.
@@ -2321,7 +2347,7 @@ function loadTemplates(): Record<string, ChartConfig> {
     // `JSON.parse` creates `__proto__` as an OWN property (it uses
     // CreateDataProperty, not assignment), so a template stored under that name
     // survives the round trip once the target cannot be re-parented.
-    return Object.assign(empty(), JSON.parse(localStorage.getItem(TEMPLATES_KEY) ?? "{}"));
+    return Object.assign(empty(), JSON.parse(readStored(TEMPLATES_KEY, LEGACY_TEMPLATES_KEY) ?? "{}"));
   } catch {
     return empty();
   }
@@ -3782,7 +3808,7 @@ function wireInsert() {
         note("No run to save yet — insert the demo deck first.", "err");
         return;
       }
-      if (!downloadJson("powerchart-run-log.json", lastRunLog)) {
+      if (!downloadJson("ssf-charts-run-log.json", lastRunLog)) {
         note("The browser would not save the file. Copy the Live steps instead — they carry the same run.", "err");
         return;
       }
@@ -3858,7 +3884,7 @@ function wireInsert() {
           describeHost(),
           typeof __BUILD_STAMP__ === "string" ? __BUILD_STAMP__ : "dev",
         );
-        const saved = downloadJson("powerchart-host-answers.json", sheet);
+        const saved = downloadJson("ssf-charts-host-answers.json", sheet);
         // The diff, here, now — rather than after a round trip.
         //
         // Every probe run so far has been "download it, send it, wait for
@@ -3963,7 +3989,7 @@ function wireInsert() {
         recordCrashFinding("hostAnswers", sheet);
         note(`Probe done — ${describeHostSheet(sheet)} Now the self-test…`, "busy");
         if (isStopRequested()) {
-          const saved = downloadJson("powerchart-round.json", lastRunLog);
+          const saved = downloadJson("ssf-charts-round.json", lastRunLog);
           note(
             saved
               ? "Stopped after the probe. Its answers are saved."
@@ -4066,7 +4092,7 @@ function wireInsert() {
         // marked finished, which made it unrecoverable, and the download was
         // attempted afterwards. PowerPoint died, the pane reopened, and there
         // was nothing to offer back.
-        const saved = downloadJson("powerchart-round.json", lastRunLog);
+        const saved = downloadJson("ssf-charts-round.json", lastRunLog);
         endCrashLog(saved);
         const needed = sheetNeedsAttention(sheet) || selfTestNeedsAttention(results);
         note(
@@ -4129,7 +4155,7 @@ function wireInsert() {
         "err",
       );
       crashBtn.addEventListener("click", () => {
-        if (!downloadJson("powerchart-crashed-run.json", crashed)) {
+        if (!downloadJson("ssf-charts-crashed-run.json", crashed)) {
           note("The browser would not save the file. Copy the Live steps instead.", "err");
           return;
         }

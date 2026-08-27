@@ -219,7 +219,9 @@ export function describeFinding(value) {
 }
 
 export function crashLogIn(log) {
-  return log?.kind === "powerchart-crash-log" && Array.isArray(log.steps) ? log : null;
+  return (log?.kind === "ssf-charts-crash-log" || log?.kind === "powerchart-crash-log") && Array.isArray(log.steps)
+    ? log
+    : null;
 }
 
 /**

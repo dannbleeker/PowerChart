@@ -885,7 +885,7 @@ describe("task pane — PNG export", () => {
     expect(btn.getAttribute("role")).toBe("menuitem");
   });
 
-  it("rasterizes the preview to a powerchart.png download", async () => {
+  it("rasterizes the preview to a ssf-charts.png download", async () => {
     await bootPane();
     // jsdom decodes no SVG image and has no 2D canvas, so stand both in.
     class FakeImage {
@@ -912,7 +912,7 @@ describe("task pane — PNG export", () => {
     try {
       $("download-png").click();
       await new Promise((r) => setTimeout(r, 5));
-      expect(clicks).toContain("powerchart.png");
+      expect(clicks).toContain("ssf-charts.png");
     } finally {
       vi.unstubAllGlobals();
       vi.restoreAllMocks();

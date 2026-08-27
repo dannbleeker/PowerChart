@@ -56,7 +56,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          title="office-js watch: issues touching APIs PowerChart calls"
+          title="office-js watch: issues touching APIs SSF Charts calls"
           existing=$(gh issue list --state all --search "$title in:title" --json number,state --jq '.[0].number // empty')
           if [ -n "$existing" ]; then
             gh issue comment "$existing" --body-file /tmp/report.md

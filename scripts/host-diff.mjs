@@ -55,7 +55,9 @@ if (isMain(import.meta.url, process.argv[1])) {
   const real = answersOf(realSheet);
   const fake = answersOf(fakeSheet);
   if (!real || !fake) {
-    console.error("that file is not an answer sheet (expected kind: powerchart-host-answers)");
+    console.error(
+      "that file is not an answer sheet (expected kind: ssf-charts-host-answers, or powerchart-host-answers from an older round)",
+    );
     process.exit(2);
   }
   // The guard above cannot fire for any JSON OBJECT: `answersOf` deliberately

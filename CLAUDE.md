@@ -1,4 +1,4 @@
-# PowerChart — project memory
+# SSF Charts — project memory
 
 Open-source think-cell clone: a PowerPoint charting add-in whose charts are
 **native, editable shapes** (never pictures), plus a Claude Agent Skill that
@@ -85,7 +85,7 @@ npm run dev        # gallery + pane at localhost:3000
 npm test           # full suite; npm run coverage enforces thresholds
 npm run typecheck
 npm run showcase   # regenerate the showcase deck (required after feature work)
-npm run skill      # build skill-dist/powerchart-charts.zip
+npm run skill      # build skill-dist/ssf-charts.zip
 npm run triage     # join a real run's deck + run log, and say where they differ
 npm run host-diff  # line a probe answer sheet up against the fake
 ```
@@ -1227,7 +1227,7 @@ labels when the outer ring will not fit` passed on three nodes carrying the
   default font generally. 6, 8, 14 and 18pt are in it now — the range a deck
   actually uses — and 24 and 32pt deliberately are not (282 pairs, and at that
   size the chrome genuinely exceeds the frame, which is a decision about how
-  small a chart PowerChart claims to draw rather than another bound).
+  small a chart SSF Charts claims to draw rather than another bound).
 
   **Half of the 98 were ONE mechanism, and it is the mirror of the marker
   clamp.** A value drawn above a mark — a column total, a waterfall value, a

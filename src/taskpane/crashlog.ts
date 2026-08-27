@@ -44,7 +44,7 @@
 /**
  * The run being written now. Overwritten at the start of each run.
  */
-const LIVE_KEY = "powerchart.crashlog.live.v1";
+const LIVE_KEY = "ssf-charts.crashlog.live.v1";
 /**
  * The most recent run that ended without being marked finished — i.e. crashed.
  *
@@ -53,7 +53,7 @@ const LIVE_KEY = "powerchart.crashlog.live.v1";
  * crash (reload the pane, run it again) would erase exactly what was worth
  * keeping, and it would do so before anyone had a chance to look.
  */
-const KEPT_KEY = "powerchart.crashlog.kept.v1";
+const KEPT_KEY = "ssf-charts.crashlog.kept.v1";
 
 /**
  * Steps kept. Mirrors the trace's own ring so the two cannot disagree about
@@ -78,10 +78,22 @@ const FLUSH_MS = 400;
 const MAX_FINDINGS = 40;
 const MAX_FINDING_BYTES = 128 * 1024;
 
+/** Does this name a crash log, under either name it has had? */
+export function isCrashLogKind(kind: unknown): boolean {
+  return kind === "ssf-charts-crash-log" || kind === "powerchart-crash-log";
+}
+
 /** One captured run, as written to storage and handed back for download. */
 export interface CrashLog {
-  /** Names the file for whatever reads it — the shape is not a run log. */
-  kind: "powerchart-crash-log";
+  /**
+   * Names the file for whatever reads it — the shape is not a run log.
+   *
+   * BOTH SPELLINGS ARE READ, one is written. Every crash already archived under
+   * `crashes/` carries `powerchart-crash-log`, and the reader below selects on
+   * it; narrowing to the new name would make this build refuse to open its own
+   * crash history. New logs are stamped `ssf-charts-crash-log`.
+   */
+  kind: "ssf-charts-crash-log" | "powerchart-crash-log";
   build: string;
   host: string;
   /** What the run was: "self-test", "demo deck (file)", … */
@@ -161,7 +173,7 @@ export interface CrashLog {
 function store(): Storage | null {
   try {
     const s = window.localStorage;
-    s.getItem("powerchart.crashlog.probe");
+    s.getItem("ssf-charts.crashlog.probe");
     return s;
   } catch {
     return null;
@@ -177,7 +189,7 @@ function read(key: string): CrashLog | null {
     const parsed = JSON.parse(raw) as CrashLog;
     // A record written by an older build, or a half-written one from a crash
     // mid-write, must not reach the UI as if it were sound.
-    return parsed && parsed.kind === "powerchart-crash-log" && Array.isArray(parsed.steps) ? parsed : null;
+    return parsed && isCrashLogKind(parsed.kind) && Array.isArray(parsed.steps) ? parsed : null;
   } catch {
     return null;
   }
@@ -263,7 +275,7 @@ export function beginCrashLog(meta: { build: string; host: string; label: string
     }
   }
   live = {
-    kind: "powerchart-crash-log",
+    kind: "ssf-charts-crash-log",
     build: meta.build,
     host: meta.host,
     label: meta.label,

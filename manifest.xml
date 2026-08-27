@@ -14,7 +14,7 @@
   <Description DefaultValue="Consulting-grade charts — waterfall/bridge, Mekko/Marimekko, stacked columns, CAGR and difference arrows — inserted as native, fully editable PowerPoint shapes." />
   <IconUrl DefaultValue="https://localhost:3000/assets/icon-32.png" />
   <HighResolutionIconUrl DefaultValue="https://localhost:3000/assets/icon-80.png" />
-  <SupportUrl DefaultValue="https://github.com/dannbleeker/powerchart" />
+  <SupportUrl DefaultValue="https://github.com/dannbleeker/SSF-Charts" />
 
   <Hosts>
     <Host Name="Presentation" />
@@ -44,14 +44,14 @@
           </GetStarted>
           <ExtensionPoint xsi:type="PrimaryCommandSurface">
             <OfficeTab id="TabHome">
-              <Group id="PowerChart.Group">
+              <Group id="SSFCharts.Group">
                 <Label resid="Group.Label" />
                 <Icon>
                   <bt:Image size="16" resid="Icon.16" />
                   <bt:Image size="32" resid="Icon.32" />
                   <bt:Image size="80" resid="Icon.80" />
                 </Icon>
-                <Control xsi:type="Button" id="PowerChart.OpenPane">
+                <Control xsi:type="Button" id="SSFCharts.OpenPane">
                   <Label resid="OpenPane.Label" />
                   <Supertip>
                     <Title resid="OpenPane.Label" />
@@ -63,11 +63,11 @@
                     <bt:Image size="80" resid="Icon.80" />
                   </Icon>
                   <Action xsi:type="ShowTaskpane">
-                    <TaskpaneId>PowerChartPane</TaskpaneId>
+                    <TaskpaneId>SSFChartsPane</TaskpaneId>
                     <SourceLocation resid="Taskpane.Url" />
                   </Action>
                 </Control>
-                <Control xsi:type="Menu" id="PowerChart.InsertMenu">
+                <Control xsi:type="Menu" id="SSFCharts.InsertMenu">
                   <Label resid="Menu.Label" />
                   <Supertip>
                     <Title resid="Menu.Label" />
@@ -79,7 +79,7 @@
                     <bt:Image size="80" resid="Icon.80" />
                   </Icon>
                   <Items>
-                    <Item id="PowerChart.Insert.stacked">
+                    <Item id="SSFCharts.Insert.stacked">
                       <Label resid="Menu.stacked.Label" />
                       <Supertip>
                         <Title resid="Menu.stacked.Label" />
@@ -91,11 +91,11 @@
                         <bt:Image size="80" resid="Icon.80" />
                       </Icon>
                       <Action xsi:type="ShowTaskpane">
-                        <TaskpaneId>PowerChartPane</TaskpaneId>
+                        <TaskpaneId>SSFChartsPane</TaskpaneId>
                         <SourceLocation resid="Taskpane.Url.stacked" />
                       </Action>
                     </Item>
-                    <Item id="PowerChart.Insert.waterfall">
+                    <Item id="SSFCharts.Insert.waterfall">
                       <Label resid="Menu.waterfall.Label" />
                       <Supertip>
                         <Title resid="Menu.waterfall.Label" />
@@ -107,11 +107,11 @@
                         <bt:Image size="80" resid="Icon.80" />
                       </Icon>
                       <Action xsi:type="ShowTaskpane">
-                        <TaskpaneId>PowerChartPane</TaskpaneId>
+                        <TaskpaneId>SSFChartsPane</TaskpaneId>
                         <SourceLocation resid="Taskpane.Url.waterfall" />
                       </Action>
                     </Item>
-                    <Item id="PowerChart.Insert.mekko">
+                    <Item id="SSFCharts.Insert.mekko">
                       <Label resid="Menu.mekko.Label" />
                       <Supertip>
                         <Title resid="Menu.mekko.Label" />
@@ -123,11 +123,11 @@
                         <bt:Image size="80" resid="Icon.80" />
                       </Icon>
                       <Action xsi:type="ShowTaskpane">
-                        <TaskpaneId>PowerChartPane</TaskpaneId>
+                        <TaskpaneId>SSFChartsPane</TaskpaneId>
                         <SourceLocation resid="Taskpane.Url.mekko" />
                       </Action>
                     </Item>
-                    <Item id="PowerChart.Insert.gantt">
+                    <Item id="SSFCharts.Insert.gantt">
                       <Label resid="Menu.gantt.Label" />
                       <Supertip>
                         <Title resid="Menu.gantt.Label" />
@@ -139,11 +139,11 @@
                         <bt:Image size="80" resid="Icon.80" />
                       </Icon>
                       <Action xsi:type="ShowTaskpane">
-                        <TaskpaneId>PowerChartPane</TaskpaneId>
+                        <TaskpaneId>SSFChartsPane</TaskpaneId>
                         <SourceLocation resid="Taskpane.Url.gantt" />
                       </Action>
                     </Item>
-                    <Item id="PowerChart.Insert.pie">
+                    <Item id="SSFCharts.Insert.pie">
                       <Label resid="Menu.pie.Label" />
                       <Supertip>
                         <Title resid="Menu.pie.Label" />
@@ -155,11 +155,11 @@
                         <bt:Image size="80" resid="Icon.80" />
                       </Icon>
                       <Action xsi:type="ShowTaskpane">
-                        <TaskpaneId>PowerChartPane</TaskpaneId>
+                        <TaskpaneId>SSFChartsPane</TaskpaneId>
                         <SourceLocation resid="Taskpane.Url.pie" />
                       </Action>
                     </Item>
-                    <Item id="PowerChart.Insert.scatter">
+                    <Item id="SSFCharts.Insert.scatter">
                       <Label resid="Menu.scatter.Label" />
                       <Supertip>
                         <Title resid="Menu.scatter.Label" />
@@ -171,13 +171,13 @@
                         <bt:Image size="80" resid="Icon.80" />
                       </Icon>
                       <Action xsi:type="ShowTaskpane">
-                        <TaskpaneId>PowerChartPane</TaskpaneId>
+                        <TaskpaneId>SSFChartsPane</TaskpaneId>
                         <SourceLocation resid="Taskpane.Url.scatter" />
                       </Action>
                     </Item>
                   </Items>
                 </Control>
-                <Control xsi:type="Menu" id="PowerChart.ElementsMenu">
+                <Control xsi:type="Menu" id="SSFCharts.ElementsMenu">
                   <Label resid="ElementsMenu.Label" />
                   <Supertip>
                     <Title resid="ElementsMenu.Label" />
@@ -189,7 +189,7 @@
                     <bt:Image size="80" resid="Icon.80" />
                   </Icon>
                   <Items>
-                    <Item id="PowerChart.El.harvey">
+                    <Item id="SSFCharts.El.harvey">
                       <Label resid="El.harvey.Label" />
                       <Supertip>
                         <Title resid="El.harvey.Label" />
@@ -201,11 +201,11 @@
                         <bt:Image size="80" resid="Icon.80" />
                       </Icon>
                       <Action xsi:type="ShowTaskpane">
-                        <TaskpaneId>PowerChartPane</TaskpaneId>
+                        <TaskpaneId>SSFChartsPane</TaskpaneId>
                         <SourceLocation resid="Taskpane.Url.el.harvey" />
                       </Action>
                     </Item>
-                    <Item id="PowerChart.El.check">
+                    <Item id="SSFCharts.El.check">
                       <Label resid="El.check.Label" />
                       <Supertip>
                         <Title resid="El.check.Label" />
@@ -217,11 +217,11 @@
                         <bt:Image size="80" resid="Icon.80" />
                       </Icon>
                       <Action xsi:type="ShowTaskpane">
-                        <TaskpaneId>PowerChartPane</TaskpaneId>
+                        <TaskpaneId>SSFChartsPane</TaskpaneId>
                         <SourceLocation resid="Taskpane.Url.el.check" />
                       </Action>
                     </Item>
-                    <Item id="PowerChart.El.flow">
+                    <Item id="SSFCharts.El.flow">
                       <Label resid="El.flow.Label" />
                       <Supertip>
                         <Title resid="El.flow.Label" />
@@ -233,11 +233,11 @@
                         <bt:Image size="80" resid="Icon.80" />
                       </Icon>
                       <Action xsi:type="ShowTaskpane">
-                        <TaskpaneId>PowerChartPane</TaskpaneId>
+                        <TaskpaneId>SSFChartsPane</TaskpaneId>
                         <SourceLocation resid="Taskpane.Url.el.flow" />
                       </Action>
                     </Item>
-                    <Item id="PowerChart.El.kpi">
+                    <Item id="SSFCharts.El.kpi">
                       <Label resid="El.kpi.Label" />
                       <Supertip>
                         <Title resid="El.kpi.Label" />
@@ -249,11 +249,11 @@
                         <bt:Image size="80" resid="Icon.80" />
                       </Icon>
                       <Action xsi:type="ShowTaskpane">
-                        <TaskpaneId>PowerChartPane</TaskpaneId>
+                        <TaskpaneId>SSFChartsPane</TaskpaneId>
                         <SourceLocation resid="Taskpane.Url.el.kpi" />
                       </Action>
                     </Item>
-                    <Item id="PowerChart.El.table">
+                    <Item id="SSFCharts.El.table">
                       <Label resid="El.table.Label" />
                       <Supertip>
                         <Title resid="El.table.Label" />
@@ -265,7 +265,7 @@
                         <bt:Image size="80" resid="Icon.80" />
                       </Icon>
                       <Action xsi:type="ShowTaskpane">
-                        <TaskpaneId>PowerChartPane</TaskpaneId>
+                        <TaskpaneId>SSFChartsPane</TaskpaneId>
                         <SourceLocation resid="Taskpane.Url.el.table" />
                       </Action>
                     </Item>
@@ -285,7 +285,7 @@
       </bt:Images>
       <bt:Urls>
         <bt:Url id="Taskpane.Url" DefaultValue="https://localhost:3000/src/taskpane/taskpane.html" />
-        <bt:Url id="GetStarted.LearnMoreUrl" DefaultValue="https://github.com/dannbleeker/powerchart" />
+        <bt:Url id="GetStarted.LearnMoreUrl" DefaultValue="https://github.com/dannbleeker/SSF-Charts" />
         <bt:Url id="Taskpane.Url.stacked" DefaultValue="https://localhost:3000/src/taskpane/taskpane.html?kind=stacked" />
         <bt:Url id="Taskpane.Url.waterfall" DefaultValue="https://localhost:3000/src/taskpane/taskpane.html?kind=waterfall" />
         <bt:Url id="Taskpane.Url.mekko" DefaultValue="https://localhost:3000/src/taskpane/taskpane.html?kind=mekko" />

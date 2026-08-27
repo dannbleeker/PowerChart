@@ -1,4 +1,4 @@
-# Contributing to PowerChart
+# Contributing to SSF Charts
 
 ## Setup & daily loop
 

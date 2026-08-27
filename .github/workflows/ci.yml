@@ -72,7 +72,7 @@ jobs:
           EOF
       # Two file-level gates on the deck the step above just proved current.
       # They ask different questions and catch nearly disjoint sets: the first
-      # is "did PowerChart write what it meant to" (slot tags, groups, config
+      # is "did SSF Charts write what it meant to" (slot tags, groups, config
       # parts, duplicate shape ids); the second is "is this a legal .pptx at
       # all", against the OOXML grammar. Neither needs a PowerPoint.
       - name: The showcase deck is structurally sound

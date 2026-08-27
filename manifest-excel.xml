@@ -14,7 +14,7 @@
   <Description DefaultValue="Excel companion for SSF Charts: turn a selected range into a chart config to paste into PowerPoint." />
   <IconUrl DefaultValue="https://localhost:3000/assets/icon-32.png" />
   <HighResolutionIconUrl DefaultValue="https://localhost:3000/assets/icon-80.png" />
-  <SupportUrl DefaultValue="https://github.com/dannbleeker/powerchart" />
+  <SupportUrl DefaultValue="https://github.com/dannbleeker/SSF-Charts" />
 
   <Hosts>
     <Host Name="Workbook" />
@@ -44,14 +44,14 @@
           </GetStarted>
           <ExtensionPoint xsi:type="PrimaryCommandSurface">
             <OfficeTab id="TabHome">
-              <Group id="PowerChartLink.Group">
+              <Group id="SSFChartsLink.Group">
                 <Label resid="Group.Label" />
                 <Icon>
                   <bt:Image size="16" resid="Icon.16" />
                   <bt:Image size="32" resid="Icon.32" />
                   <bt:Image size="80" resid="Icon.80" />
                 </Icon>
-                <Control xsi:type="Button" id="PowerChartLink.OpenPane">
+                <Control xsi:type="Button" id="SSFChartsLink.OpenPane">
                   <Label resid="OpenPane.Label" />
                   <Supertip>
                     <Title resid="OpenPane.Label" />
@@ -63,7 +63,7 @@
                     <bt:Image size="80" resid="Icon.80" />
                   </Icon>
                   <Action xsi:type="ShowTaskpane">
-                    <TaskpaneId>PowerChartLinkPane</TaskpaneId>
+                    <TaskpaneId>SSFChartsLinkPane</TaskpaneId>
                     <SourceLocation resid="Taskpane.Url" />
                   </Action>
                 </Control>
@@ -81,7 +81,7 @@
       </bt:Images>
       <bt:Urls>
         <bt:Url id="Taskpane.Url" DefaultValue="https://localhost:3000/src/excel/excel.html" />
-        <bt:Url id="GetStarted.LearnMoreUrl" DefaultValue="https://github.com/dannbleeker/powerchart" />
+        <bt:Url id="GetStarted.LearnMoreUrl" DefaultValue="https://github.com/dannbleeker/SSF-Charts" />
       </bt:Urls>
       <bt:ShortStrings>
         <bt:String id="Group.Label" DefaultValue="SSF Charts" />

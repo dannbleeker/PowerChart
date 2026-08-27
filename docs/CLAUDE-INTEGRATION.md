@@ -30,7 +30,7 @@ The engine was built API-first without knowing it:
 - **The scene graph is renderer-agnostic** — rects, lines, texts, wedges with
   absolute coordinates. Mapping scene → PptxgenJS shapes (or DrawingML XML) is
   mechanical, the same way the Office.js renderer works today.
-- **`dist-lib/powerchart.js`** already exposes `buildChart`/`sampleConfig`
+- **`dist-lib/ssf-charts.js`** already exposes `buildChart`/`sampleConfig`
   headlessly for Node — the exact runtime a skill's scripts use.
 
 ## Integration options, ranked
@@ -40,7 +40,7 @@ The engine was built API-first without knowing it:
 Package the engine as a custom skill:
 
 ```
-powerchart-skill/
+ssf-charts-skill/
 ├── SKILL.md            # triggers: waterfall, Mekko, Gantt, "consulting chart",
 │                       # think-cell-style; the ChartConfig JSON schema in brief
 ├── reference.md        # full config reference: kinds, datasheet-row
@@ -50,7 +50,7 @@ powerchart-skill/
 │   ├── render-svg.mjs  # config JSON → SVG (exists: scripts/render-batch.mjs)
 │   └── render-pptx.mjs # config JSON → .pptx with NATIVE shapes (to build:
 │                       # scene → PptxgenJS; ~1 day, mirrors the Office.js renderer)
-└── dist-lib/powerchart.js
+└── dist-lib/ssf-charts.js
 ```
 
 Claude's flow: user asks for "an EBITDA bridge from this Excel" → Claude emits
@@ -88,7 +88,7 @@ this is the fallback and the testing path for A.
 ## Status: Option A is built
 
 The skill lives in `skill/` (SKILL.md, reference.md, `scripts/render-pptx.mjs`).
-`npm run skill` assembles and zips it to `skill-dist/powerchart-charts.zip`;
+`npm run skill` assembles and zips it to `skill-dist/ssf-charts.zip`;
 upload at claude.ai → Customize → Skills, and it becomes available in Claude
 for PowerPoint too. The pptx renderer emits native shapes with **exact**
 adjustable pie geometry (verified in OOXML: `prst="pie"` with correct

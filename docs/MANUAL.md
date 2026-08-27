@@ -501,7 +501,7 @@ chart: at the default font on a slide-sized frame every fit is the identity.
 **Export current** copies the chart's `ChartConfig` JSON; **Import** loads
 one; **Insert batch** inserts an array of configs at once. The same JSON
 drives the CLI (`npm run render`) and the **Claude Agent Skill**
-(`skill-dist/powerchart-charts.zip` — upload at claude.ai → Settings →
+(`skill-dist/ssf-charts.zip` — upload at claude.ai → Settings →
 Capabilities → Skills, then ask Claude for "a waterfall of …" on any
 surface, including Claude for PowerPoint).
 

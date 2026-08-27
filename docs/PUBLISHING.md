@@ -668,7 +668,7 @@ trace was on. That file is the right attachment for a Phase-2 regression.
 
 ## Phase 3 — Activate the Claude skill ([owner])
 
-1. Download `powerchart-charts.zip` from the latest release (the rolling
+1. Download `ssf-charts.zip` from the latest release (the rolling
    [`skill-latest`](../../releases/tag/skill-latest) is rebuilt on every
    merge).
 2. claude.ai → Settings → Capabilities → **Skills** → upload the zip.

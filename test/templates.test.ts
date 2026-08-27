@@ -16,7 +16,8 @@ import type { ChartConfig } from "../src/core/types";
  */
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
-const TEMPLATES_KEY = "powerchart-templates";
+const TEMPLATES_KEY = "ssf-charts-templates";
+const LEGACY_TEMPLATES_KEY = "powerchart-templates";
 
 async function bootPane() {
   window.localStorage.clear();
@@ -67,6 +68,21 @@ afterEach(() => {
 });
 
 describe("saved chart templates", () => {
+  it("still finds templates saved under the pre-rename key", async () => {
+    // THE RENAME COULD HAVE EATEN SOMEONE'S WORK. These keys moved from
+    // `powerchart-*` to `ssf-charts-*` on 2026-08-27, and this one holds saved
+    // chart templates — not a preference that can be set again, but work the
+    // user did. A plain rename would have come up looking correct and emptied,
+    // silently, on the first load after an update.
+    //
+    // Read-through, not a migration write: the old value is used when the new
+    // key is absent, and the next save writes the new key. Nothing is deleted,
+    // so a downgrade still finds its data.
+    window.localStorage.removeItem(TEMPLATES_KEY);
+    window.localStorage.setItem(LEGACY_TEMPLATES_KEY, JSON.stringify({ "from before": { kind: "waterfall" } }));
+    await reopenPane();
+    expect(offered(), "a template saved under the old key was lost by the rename").toContain("from before");
+  });
   it("saves the chart you have, offers it back, and loads it", async () => {
     ($("chart-title") as HTMLInputElement).value = "Q3 revenue";
     ($("chart-title") as HTMLInputElement).dispatchEvent(new Event("input"));

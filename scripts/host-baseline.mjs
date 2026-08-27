@@ -568,8 +568,22 @@ const WHAT_IT_MEANS = {
  * "Run the whole round" writes one file for both halves precisely so there is
  * one thing to send; every reader of it has to unwrap the same way.
  */
+/**
+ * Does this look like an answer sheet, under either name it has had?
+ *
+ * BOTH SPELLINGS, and the old one is not legacy cruft — 39 of the last 40
+ * archived rounds carry `powerchart-host-answers`. Accepting only the new name
+ * would make this file reject 257 rounds of evidence, which is the archive the
+ * whole project reasons from. Duplicated from `host-probe.ts` rather than
+ * imported because this is a plain `.mjs` tool with no build step; the two are
+ * kept in step by the test that reads a real archived round.
+ */
+function isHostAnswersKind(kind) {
+  return kind === "ssf-charts-host-answers" || kind === "powerchart-host-answers";
+}
+
 export function sheetOf(file) {
-  if (file?.kind === "powerchart-host-answers") return file;
+  if (isHostAnswersKind(file?.kind)) return file;
   if (file?.hostAnswers) return sheetOf(file.hostAnswers);
   return file ?? null;
 }
@@ -577,7 +591,7 @@ export function sheetOf(file) {
 /** Read a sheet, whichever shape it arrived in. */
 export function answersOf(file) {
   const sheet = sheetOf(file);
-  if (sheet?.kind === "powerchart-host-answers" && Array.isArray(sheet.answers)) {
+  if (isHostAnswersKind(sheet?.kind) && Array.isArray(sheet.answers)) {
     return Object.fromEntries(sheet.answers.map((a) => [a.id, a.answer]));
   }
   // A bare map, e.g. the committed baseline.

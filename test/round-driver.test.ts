@@ -1911,7 +1911,7 @@ describe("the steps a crashed round managed to write", () => {
       (() => true) as never,
     );
     expect(copied, "the crashed run was offered and not saved").toHaveLength(1);
-    expect(copied[0][0]).toBe(".pw/.playwright-cli/powerchart-crashed-run.json");
+    expect(copied[0][0]).toBe(".pw/.playwright-cli/ssf-charts-crashed-run.json");
     expect(to, "kept it but did not say where").toMatch(/^crashes\/.*-crashed-run\.json$/);
     // It has to actually press the button, not merely notice it.
     expect(

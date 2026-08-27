@@ -25,7 +25,7 @@ editable PowerPoint shapes**, never pictures or opaque OLE objects.
     (Windows 2207+, Mac 16.62+, or PowerPoint on the web).
 - **Use it from Claude** (headless chart generation): the
   [`skill-latest`](../../releases/tag/skill-latest) release ships
-  `powerchart-charts.zip` — upload it under claude.ai → Settings → Capabilities
+  `ssf-charts.zip` — upload it under claude.ai → Settings → Capabilities
   → Skills.
 
 ## Feature overview

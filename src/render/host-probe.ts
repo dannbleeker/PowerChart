@@ -258,9 +258,32 @@ export function regimeFrom(
   return "unknown";
 }
 
+/**
+ * The sheet's format marker, written into every archived round.
+ *
+ * BOTH SPELLINGS ARE VALID ON READ, and that is not tidiness — 39 of the last
+ * 40 archived rounds carry `powerchart-host-answers`, and `host-baseline.mjs`
+ * and `host-diff.mjs` select on it. Renaming the write without widening the read
+ * would make every tool reject 257 rounds of evidence, which is the archive this
+ * whole project is built on.
+ *
+ * New sheets are stamped `ssf-charts-host-answers`. Old ones keep working
+ * forever; nothing rewrites them, because rewriting an archive to match a rename
+ * is how a record stops being a record.
+ */
+export type HostAnswerSheetKind = "ssf-charts-host-answers" | "powerchart-host-answers";
+
+/** The marker written on sheets this build produces. */
+export const HOST_ANSWERS_KIND: HostAnswerSheetKind = "ssf-charts-host-answers";
+
+/** Does this look like an answer sheet, under either name it has had? */
+export function isHostAnswersKind(kind: unknown): boolean {
+  return kind === "ssf-charts-host-answers" || kind === "powerchart-host-answers";
+}
+
 /** A complete sheet, plus what produced it. */
 export interface HostAnswerSheet {
-  kind: "powerchart-host-answers";
+  kind: HostAnswerSheetKind;
   /**
    * The host's answer to the cheapest possible call, before any question.
    *
@@ -977,7 +1000,7 @@ const PROBES: Probe[] = [
     noSlideNeeded: true,
     question: "What does getItemOrNullObject give for an id that does not exist?",
     ask: async (ctx) => {
-      const slide = ctx.slides.getItemOrNullObject("powerchart-no-such-slide");
+      const slide = ctx.slides.getItemOrNullObject("ssf-charts-no-such-slide");
       slide.load("id");
       await ctx.sync();
       try {
@@ -3852,7 +3875,7 @@ export async function runHostProbes(
     if (support) row.support = support;
   }
   return {
-    kind: "powerchart-host-answers",
+    kind: HOST_ANSWERS_KIND,
     source,
     build,
     requirementSets: requirementSets(),

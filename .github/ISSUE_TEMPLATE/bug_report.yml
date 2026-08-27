@@ -11,7 +11,7 @@ body:
         - Task pane inside PowerPoint
         - Inserted shapes on the slide
         - Claude Agent Skill / render-pptx
-        - Excel companion (PowerChart Link)
+        - Excel companion (SSF Charts Link)
     validations:
       required: true
   - type: textarea

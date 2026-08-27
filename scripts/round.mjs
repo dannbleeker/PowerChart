@@ -2358,7 +2358,7 @@ export async function keepCrashedRun(sh, sleep, copy = copyFileSync, exists = ex
     if (!ref) return null;
     clickRef(sh, ref);
     await sleep(8000);
-    const from = `${sh.dir ?? "."}/.playwright-cli/powerchart-crashed-run.json`;
+    const from = `${sh.dir ?? "."}/.playwright-cli/ssf-charts-crashed-run.json`;
     if (!exists(from)) {
       console.error("  a crashed run was offered but its file never arrived");
       return null;
@@ -2389,7 +2389,7 @@ async function collectRound(sh, stamp, sleep, driverSize = null, driverRun = nul
       // nowhere, so the two remaining legs of the night were lost to a
       // diagnosis that had to be read out of the source.
       console.error("  the pane offered no `Download run log` button — the round ran but cannot be filed");
-      console.error("  archive it by hand: node scripts/round.mjs --archive .playwright-cli/powerchart-run-log.json");
+      console.error("  archive it by hand: node scripts/round.mjs --archive .playwright-cli/ssf-charts-run-log.json");
       return null;
     }
     clickRef(sh, dl);
@@ -2413,7 +2413,7 @@ async function collectRound(sh, stamp, sleep, driverSize = null, driverRun = nul
     // because the build check still runs on whatever is chosen: a wrong pick is
     // refused, not filed.
     const candidates = [...new Set([`${sh.dir ?? "."}/.playwright-cli`, ".playwright-cli"])].map(
-      (d) => `${d}/powerchart-run-log.json`,
+      (d) => `${d}/ssf-charts-run-log.json`,
     );
     const found = candidates
       .filter((p) => existsSync(p))
@@ -3611,7 +3611,7 @@ if (isMain(import.meta.url, process.argv[1])) {
   const argv = process.argv.slice(2);
   if (argv[0] === "--archive") {
     if (!argv[1] || !existsSync(argv[1])) {
-      console.error("usage: node scripts/round.mjs --archive <powerchart-round.json>");
+      console.error("usage: node scripts/round.mjs --archive <ssf-charts-round.json>");
       process.exit(2);
     }
     console.log(`archived as rounds/${archive(argv[1], "rounds", readFileSync, writeFileSync, everyRoundEverFiled)}`);

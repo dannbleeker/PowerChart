@@ -304,7 +304,7 @@ describe("the fake host's answer sheet", () => {
     // did not say which would be uninterpretable a week later.
     installHost([makeSlide("s1")]);
     const sheet = await runHostProbes("fake", "test");
-    expect(sheet.kind).toBe("powerchart-host-answers");
+    expect(sheet.kind).toBe("ssf-charts-host-answers");
     expect(sheet.requirementSets.length).toBeGreaterThan(0);
     expect(sheet.requirementSets).toContain("1.5");
   });

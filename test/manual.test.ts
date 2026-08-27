@@ -158,6 +158,6 @@ describe("user manual coverage", () => {
 
   it("documents the Excel companion and the Claude skill", () => {
     expect(manual).toContain("manifest-excel.xml");
-    expect(manual).toContain("powerchart-charts.zip");
+    expect(manual).toContain("ssf-charts.zip");
   });
 });

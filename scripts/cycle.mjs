@@ -155,7 +155,7 @@ export function nextStep({ exitCode, receipt, gateStatus }) {
   //
   // Sailing past that costs the round twice over: the gate re-judges the
   // PREVIOUS round and passes, so the night reads as healthy, and the next
-  // leg's download overwrites `.playwright-cli/powerchart-run-log.json` — the
+  // leg's download overwrites `.playwright-cli/ssf-charts-run-log.json` — the
   // only copy of the evidence. That is exactly the state the archive-ENOENT
   // bug produced, and this is the layer that should have caught it.
   if (exitCode === 0 && reasonFinished(receipt) && !receipt.roundFile)
