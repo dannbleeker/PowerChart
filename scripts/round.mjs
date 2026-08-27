@@ -597,7 +597,7 @@ export function isOverflow(err) {
 }
 
 /** Which manifest a re-sideload uploads. The PROD one — see `sideloadAddIn`. */
-export const MANIFEST_PATH = process.env.PW_MANIFEST ?? "C:/devtools/PowerChart/manifest-prod.xml";
+export const MANIFEST_PATH = process.env.PW_MANIFEST ?? "C:/devtools/SSF-Charts/manifest-prod.xml";
 
 /**
  * Has this process already tried to put the add-in back? One attempt, ever.
@@ -1487,7 +1487,7 @@ export function noBrowser(listOutput) {
  * `list` enumerates every browser the daemon knows about, whatever session it
  * belongs to. Every other command is SESSION-KEYED, and the daemon keys its
  * sessions by the working-directory STRING. So a browser opened from a shell
- * whose cwd was `C:/devtools/PowerChart/.pw-session` is invisible to a driver
+ * whose cwd was `C:/devtools/SSF-Charts/.pw-session` is invisible to a driver
  * whose cwd is `C:\devtools\PowerChart\.pw-session` — same folder, different
  * string, different session. `sessionDir` normalises the driver's own path and
  * cannot do anything about a browser opened from outside it.
