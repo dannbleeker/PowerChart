@@ -19,6 +19,7 @@ import {
   titleHeight,
   valueScale,
   bandFontSize,
+  tickGapScale,
   markInFrame,
   MIN_LABEL_FS,
   type Frame,
@@ -1011,7 +1012,56 @@ export function layoutCombo(cfg: ChartConfig, style: ChartStyle, decor: Decorati
       ? (v: number) => plot.x + ((v - min2) / (max2 - min2 || 1)) * plot.w
       : (v: number) => plot.y + plot.h - ((v - min2) / (max2 - min2 || 1)) * plot.h;
     const fmt2 = resolveFormat(ticks2, cfg.numberFormat);
-    for (const t of ticks2) {
+    /**
+     * How much of its size this strip may keep, from the gap between its own
+     * ticks. Zero drops the numbers and leaves the axis to its gridlines.
+     *
+     * IT HAD NO FIT AT ALL, which made it the largest single shape left in this
+     * project's overlap sweep — 617 pairs of `secondary-axis` on
+     * `secondary-axis`, plus 320 more onto the category names it was drawn
+     * across. Every combo, pareto and dual-axis column draws this strip, and the
+     * scatter a few hundred lines away had the very fit it needed.
+     *
+     * The two orientations need DIFFERENT dimensions, which is the whole reason
+     * `tickGapScale` takes a `want`. Sideways the labels sit at one y and spread
+     * along x, so what one needs is its WIDTH; upright they stack down the right
+     * edge, so it is a line height. Measuring the wrong one is how a scatter's x
+     * axis came to be drawn through itself.
+     */
+    const tickScale2 = tickGapScale(
+      fs * 0.9,
+      ticks2,
+      lineToY,
+      H ? plot.w : plot.h,
+      H ? (t) => textWidth(formatNumber(t, fmt2), fs * 0.9) + 2 : () => fs * 1.4,
+    );
+    /**
+     * One shift for the WHOLE sideways strip, rather than a clamp per label.
+     *
+     * The clamp below keeps a label on the canvas, and sideways that is not a
+     * free move: the labels are spaced along x, so pulling the last one left
+     * closes the gap the fit above had just opened. A horizontal pareto at 80x60
+     * had its ticks fitted to a 19.8pt gap and then squeezed into 14.8, and the
+     * numbers touched anyway — the fit was right and the clamp undid it.
+     *
+     * Moving all of them by the same amount keeps every gap exactly as measured.
+     * Where the strip cannot be brought onto the canvas whole — it is wider than
+     * the chart — the numbers are dropped rather than crushed, which is the
+     * answer this strip already gives when its ticks will not fit.
+     *
+     * Upright there is nothing to do: every label shares one x, so clamping it
+     * moves the strip as a block already.
+     */
+    const boxW = fs * 3.4 * tickScale2;
+    const stripShift = (() => {
+      if (!H || tickScale2 <= 0) return 0;
+      const lefts = ticks2.map((t) => lineToY(t) - fs * 1.7 * tickScale2);
+      const under = Math.min(...lefts);
+      const over = Math.max(...lefts) + boxW - cfg.width;
+      if (under < 0 && over > 0) return NaN; // wider than the canvas — see below
+      return under < 0 ? -under : over > 0 ? -over : 0;
+    })();
+    for (const t of tickScale2 > 0 && !Number.isNaN(stripShift) ? ticks2 : []) {
       // The base chart's own axis sits below (horizontal) or left (vertical), so
       // the secondary strip goes on the opposite side: above the plot for bars,
       // right of it for columns. Drawn at plot right on a bar chart it ran off
@@ -1029,19 +1079,21 @@ export function layoutCombo(cfg: ChartConfig, style: ChartStyle, decor: Decorati
       if (!H && printsOnTitle(cfg, style, q - fs * 0.7)) continue;
       nodes.push({
         kind: "text",
-        // Clamped on BOTH orientations for the same reason: no gutter is reserved
-        // for this strip, so on a column chart whose plot runs to the canvas edge
-        // it started 2pt from it and every tick label was drawn off the chart —
-        // where the frame-clip then removed it and the axis had no labels at all.
-        // Overlapping the plot's last few points is the cheaper failure.
-        x: H
-          ? Math.max(0, Math.min(q - fs * 1.7, cfg.width - fs * 3.4))
-          : Math.max(0, Math.min(plot.x + plot.w + 2, cfg.width - fs * 3.4)),
-        y: H ? Math.max(0, plot.y - fs * 1.5) : q - fs * 0.7,
-        w: fs * 3.4,
-        h: fs * 1.4,
+        // No gutter is reserved for this strip, so on a column chart whose plot
+        // runs to the canvas edge it started 2pt from it and every tick label
+        // was drawn off the chart — where the frame-clip then removed it and the
+        // axis had no labels at all. Overlapping the plot's last few points is
+        // the cheaper failure.
+        //
+        // Sideways the correction is `stripShift`, applied to every label alike;
+        // clamping them one at a time is what closed the gaps. Upright they all
+        // share one x, so the clamp there already moves the strip as a block.
+        x: H ? q - fs * 1.7 * tickScale2 + stripShift : Math.max(0, Math.min(plot.x + plot.w + 2, cfg.width - boxW)),
+        y: H ? Math.max(0, plot.y - fs * 1.5 * tickScale2) : q - fs * 0.7 * tickScale2,
+        w: boxW,
+        h: fs * 1.4 * tickScale2,
         text: formatNumber(t, fmt2),
-        fontSize: fs * 0.9,
+        fontSize: fs * 0.9 * tickScale2,
         color: style.mutedText,
         align: H ? "center" : "left",
         valign: "middle",

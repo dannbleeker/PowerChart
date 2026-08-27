@@ -47,6 +47,41 @@ export const MIN_LABEL_FS = 5;
  * small to read is not there, so do not spend the band drawing it. Callers
  * branch on it, which is also what stops the invalid size reaching a renderer.
  */
+/**
+ * How much of its size a strip of TICK LABELS may keep, given the gap between
+ * its own ticks. `0` means there is no room and the strip is not drawn.
+ *
+ * `want` is what one label needs in the direction the ticks are spaced. Down a
+ * vertical axis the labels stack, so that is a line height. Across a horizontal
+ * one they sit side by side, so it is the WIDEST label's width — and using the
+ * line height there fits the wrong dimension entirely: `1,234,567,890` is 60
+ * points wide at the default font and clears a 14-point test with ease, so the
+ * numbers were drawn straight through each other. Ordinary values hide it; the
+ * defect arrives with the magnitude, not with the frame.
+ *
+ * SHARED, and it was not. This lived inside `layoutScatter` and the secondary
+ * value axis — which every combo, pareto and dual-axis column draws — had no fit
+ * of any kind. Its ticks overlapped each other in 617 pairs of the variant
+ * sweep, the largest single shape left in it, on a strip a few points from the
+ * one this helper was already protecting.
+ *
+ * `drawnFs` is the size the labels are actually drawn at, not the chart font:
+ * both callers draw their ticks at `fs * 0.9`, and comparing the chart font to
+ * the floor would keep a strip that is drawn below it.
+ */
+export function tickGapScale(
+  drawnFs: number,
+  vals: number[],
+  to: (v: number) => number,
+  span: number,
+  want: (t: number) => number,
+): number {
+  const gap = vals.length > 1 ? Math.min(...vals.slice(1).map((t, i) => Math.abs(to(t) - to(vals[i])))) : span;
+  const need = Math.max(1, ...vals.map(want));
+  const scale = Math.min(1, gap / need);
+  return drawnFs * scale < MIN_LABEL_FS ? 0 : scale;
+}
+
 export function bandFontSize(fs: number, band: number, boxRatio: number): number {
   const f = Math.min(fs, band / boxRatio);
   return Number.isFinite(f) && f >= MIN_LABEL_FS ? f : 0;

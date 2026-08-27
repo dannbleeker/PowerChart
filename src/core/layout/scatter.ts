@@ -18,6 +18,7 @@ import {
   legendWrapWalk,
   MIN_PLOT_SIDE,
   MIN_LABEL_FS,
+  tickGapScale,
 } from "./frame";
 import type { LayoutResult } from "./column";
 
@@ -481,23 +482,12 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
    */
   /**
    * How much of the chart font a tick strip may take, from the gap between its
-   * own ticks.
-   *
-   * `want` is what one label needs in the direction the ticks are spaced. Down
-   * the Y AXIS the labels stack, so that is a line height — `fs * 1.4`, which is
-   * what this always used. Across the X AXIS they sit side by side, so it is the
-   * WIDEST LABEL's width, and using the line height there fitted the wrong
-   * dimension entirely: `1,234,567,890` is 60 points wide at the default font
-   * and cleared a 14-point test with ease, so the numbers on a scatter's x axis
-   * were drawn straight through each other. Ordinary values hid it — the defect
-   * arrives with the magnitude, not with the frame.
+   * own ticks. Lives in `frame.ts` now — the secondary value axis needs exactly
+   * this and had no fit at all, which was the largest remaining shape in the
+   * overlap sweep. See `tickGapScale`.
    */
-  const gapScale = (vals: number[], to: (v: number) => number, span: number, want: (t: number) => number) => {
-    const gap = vals.length > 1 ? Math.min(...vals.slice(1).map((t, i) => Math.abs(to(t) - to(vals[i])))) : span;
-    const need = Math.max(1, ...vals.map(want));
-    const scale = Math.min(1, gap / need);
-    return fs * 0.9 * scale < MIN_LABEL_FS ? 0 : scale;
-  };
+  const gapScale = (vals: number[], to: (v: number) => number, span: number, want: (t: number) => number) =>
+    tickGapScale(fs * 0.9, vals, to, span, want);
   const yTickScale = gapScale(yTicks, toY, plot.h, () => fs * 1.4);
   const xTickScale = gapScale(xTicks, toX, plot.w, (t) => textWidth(formatNumber(t, xFmt), fs * 0.9) + 2);
   for (const t of yTicks) {

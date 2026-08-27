@@ -2588,3 +2588,50 @@ drops the absent neighbour's width, and the two errors cancel exactly. With two
 categories skipped they no longer cancel, and the assertion has to be on the
 RATIO (three pitches against one) rather than on "larger", because "larger" is
 true of the wrong answer as well.
+
+### The secondary value axis had no fit at all — FIXED 2026-08-28
+
+Found by re-measuring the option and data-shape variant sweep with the frame
+gate's OWN ink rule, after the "24 categories" family closed. The measurement
+that had stood in this file — 75 overlapping pairs — was taken with a cruder
+rule and was not comparable to anything. The real total was 2,148, and it was
+concentrated:
+
+    pareto          1060      secondary-axis / secondary-axis   617
+    valueAxisTitle   292      category# / secondary-axis        320
+    secondaryAxis    258      combo-label / combo-label         137
+    10 series        200      value-axis-title / legend         104
+    pie.semi         120      x-axis / x-axis                    84
+
+`pareto` and `secondaryAxis` are ONE defect. Every combo, every pareto and every
+dual-axis column draws the same strip — five nice ticks, each label placed at its
+own tick and none measured against the next — and on a short plot they were
+simply drawn through each other. 44% of every text overlap the engine had left.
+
+**The fix was already written, four hundred lines away.** `gapScale` lived
+inside `layoutScatter`, doing exactly this for the scatter's own two axes. It
+moved to `frame.ts` as `tickGapScale` and the secondary axis calls it. The
+scatter's output is unchanged, which the frame gate checks.
+
+**The clamp then undid the fit, and that was the second half.** Sideways the
+labels are spaced along x, so the per-label clamp that keeps one on the canvas
+closes the gap the fit had just opened: a horizontal pareto at 80x60 was fitted
+to a 19.8pt gap, clamped into 14.8, and its numbers touched anyway. One shift
+for the whole strip keeps every gap as measured; a strip that cannot be brought
+onto the canvas whole is dropped rather than crushed. Upright needs none of this
+— every label there shares one x, so the clamp already moves the strip as a block.
+
+    2,148 overlapping pairs -> 1,193
+
+**A test that asserted nothing, caught by mutation.** The WIDTH-versus-HEIGHT
+rule was first checked by building a horizontal chart with ten-digit numbers and
+looking for shrinkage. Numbers that wide make the strip wider than the canvas, so
+it is dropped outright and the assertion ran against an empty list — passing
+against the correct code AND against a mutant that measured the wrong dimension.
+The property is now checked on `tickGapScale` directly, where the two `want`
+functions can be compared against the same ticks.
+
+**What is left, in order.** `valueAxisTitle` (292, and this file records an
+earlier attempt at it that was reverted for a good reason), `10 series` legend
+rows (200), `pie.semi` gauge labels (120), and a residue of `combo-label` pairs
+(137) that survive under other options and want their own look.
