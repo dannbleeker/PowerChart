@@ -1466,7 +1466,7 @@ const editViaSelection: Scenario = async (prefix) => {
     // three minutes to learn a thing we already know, so it is given ten
     // seconds and a name for what it found.
     const picked = await loadChartFromSelection(selectionBudgetMs());
-    if (!picked) return { ok: false, detail: "the selected chart did not read back as a PowerChart" };
+    if (!picked) return { ok: false, detail: "the selected chart did not read back as an SSF chart" };
     const was = JSON.parse(picked.configJson) as ChartConfig;
     if (was.title !== chart.cfg.title) {
       return { ok: false, detail: `the selection read back a different chart: "${was.title}"` };
@@ -2331,14 +2331,14 @@ const editViaRealClick: Scenario = async () => {
   if (!canWatchSelection()) {
     return { ok: false, skipped: true, detail: "host does not raise DocumentSelectionChanged" };
   }
-  prompt?.("Click a PowerChart on a slide now — the self-test is waiting for it.");
+  prompt?.("Click an SSF chart on a slide now — the self-test is waiting for it.");
   trace("selftest", "WAITING FOR YOU: click a chart on the slide", { seconds: CLICK_WAIT_MS / 1000 });
   const {
     chart: picked,
     sawClick,
     readFailed,
   } = await awaitSelectedChart(CLICK_WAIT_MS, selectionBudgetMs(), (left) => {
-    prompt?.(`Click a PowerChart on a slide — ${left}s left.`);
+    prompt?.(`Click an SSF chart on a slide — ${left}s left.`);
     trace("selftest", "still waiting for a click", { secondsLeft: left });
   });
   if (!picked) {
@@ -2358,8 +2358,8 @@ const editViaRealClick: Scenario = async () => {
       ok: false,
       skipped: true,
       detail: sawClick
-        ? "you clicked, but what you clicked is not a PowerChart — nothing was checked"
-        : `nobody clicked a PowerChart within ${CLICK_WAIT_MS / 1000}s — nothing was checked`,
+        ? "you clicked, but what you clicked is not an SSF chart — nothing was checked"
+        : `nobody clicked an SSF chart within ${CLICK_WAIT_MS / 1000}s — nothing was checked`,
     };
   }
   prompt?.("Got it — editing the chart you clicked.");

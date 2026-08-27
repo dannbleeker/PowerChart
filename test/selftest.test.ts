@@ -462,7 +462,7 @@ describe("the scenarios the selection API unlocked", () => {
     // then edit a chart the user did not click — the failure this scenario is
     // for, and one no shape count or tag read can see.
     //
-    // It lands on the "did not read back as a PowerChart" branch rather than
+    // It lands on the "did not read back as an SSF chart" branch rather than
     // the "read back a different chart" one, because the shape it wrongly
     // selects is a chart PART and parts carry no config tag. Both branches are
     // the same defect — the selection went to the wrong shape — and the message
@@ -475,7 +475,7 @@ describe("the scenarios the selection API unlocked", () => {
     faults.selectionIgnoresIds = false;
     expect(bad.ok, `reported ok against a host that selects the wrong shape: ${bad.detail}`).toBe(false);
     expect(bad.skipped, "reported as skipped rather than broken").toBeFalsy();
-    expect(bad.detail).toMatch(/did not read back as a PowerChart|read back a different chart/);
+    expect(bad.detail).toMatch(/did not read back as an SSF chart|read back a different chart/);
   });
 
   it("calls a host that stops answering after a select a known limitation, not a failure", async () => {

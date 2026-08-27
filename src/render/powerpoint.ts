@@ -4562,7 +4562,7 @@ async function rescueGroupAndTag(
         trace("group", "the host refused addGroup", { slideIndex, shapes: items.length });
         return false;
       }
-      group.name = "PowerChart";
+      group.name = GROUP_NAME;
       const canTag = supports("1.3") && !!tagData;
       if (canTag) {
         group.tags.add(CHART_TAG, tagData);
@@ -6000,6 +6000,13 @@ async function findBlankAddedSlides(
  * is how a chart already on a slide is found again, here and in `ooxml.ts`.
  * Rename it and the add-in stops recognising every chart it has ever inserted.
  * See `CHART_TAG` for the full note.
+ *
+ * EVERY WRITER GOES THROUGH THIS CONSTANT. Three sites used to assign the
+ * literal `"PowerChart"` instead — `group.name` twice and `shape.name` for the
+ * picture path. They were correct only because the strings happened to match,
+ * which is the same duplication that let the scratch-slide `why` formula drift
+ * apart from its twin and file 27% of replacements as `unrecorded`. A name that
+ * must equal the name we search for should exist once.
  */
 const GROUP_NAME = "PowerChart";
 
@@ -8716,7 +8723,7 @@ async function renderPictureShape(
       height: scene.height,
     });
     // Named like a chart group, so the Selection Pane reads the same either way.
-    shape.name = "PowerChart";
+    shape.name = GROUP_NAME;
     (shape.fill as unknown as { setImage(b64: string): void }).setImage(barePng(opts.pictureBase64!));
     // A picture-filled shape must not wear PowerPoint's default outline.
     // UNVERIFIED on a real host: every existing precedent for this assignment is
@@ -9746,7 +9753,7 @@ async function groupAndTagAll(
         const group = (
           it.getSlide().shapes as unknown as { addGroup(items: PowerPoint.Shape[]): PowerPoint.Shape }
         ).addGroup(members);
-        group.name = "PowerChart";
+        group.name = GROUP_NAME;
         // Accessible alt text on the group, queued in this same grouping sync so
         // a screen reader announces the chart — the description the engine built.
         applyAltText(group, it.opts);

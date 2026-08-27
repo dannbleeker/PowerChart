@@ -3466,7 +3466,7 @@ function wireStepsPanel(): { revealSteps: () => void } {
     }
     // Labelled, because the order is the opposite of what a log usually is
     // and a reader who assumes otherwise reads the run backwards.
-    const text = [`PowerChart steps — NEWEST FIRST (${lines.length} lines)`, ...lines].join("\n");
+    const text = [`SSF Charts steps — NEWEST FIRST (${lines.length} lines)`, ...lines].join("\n");
     // Two ways, because the first one does not work where this runs.
     //
     // `navigator.clipboard` needs a secure context, a user gesture AND the
@@ -4417,7 +4417,7 @@ function wireInsert() {
         // counts adds that never landed (strays that landed cancel out).
         const lost = Math.max(0, addsIssued - slidesAdded);
         const secs = (totalMs / 1000).toFixed(1);
-        console.log("PowerChart demo self-check:");
+        console.log("SSF Charts demo self-check:");
         console.table(
           results.map((r, i) => ({
             chart: items[i].title,
