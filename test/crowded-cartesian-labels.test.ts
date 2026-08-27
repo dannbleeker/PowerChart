@@ -424,3 +424,95 @@ describe("what the peer fit measures, per orientation", () => {
     for (const l of labels) expect(l.fontSize, "a single line series was shrunk by the peer fit").toBe(10);
   });
 });
+
+/**
+ * The scatter's own x tick numbers, against each other.
+ *
+ * This strip HAD a fit — `gapScale` guarantees the tick spacing can carry the
+ * widest label — and still drew numbers through each other, because the fit was
+ * spent after it was granted. The label on the axis's origin is centred on its
+ * tick, so half of it hangs into the y axis's gutter, and it is nudged right by
+ * exactly the overhang. Right is toward its neighbour.
+ *
+ * The same defect as the secondary value axis, and it takes the other remedy.
+ * There, one shift for the whole strip keeps every gap. Here only the FIRST
+ * label moves, so shifting all of them by its overhang would push the last one
+ * off the canvas — this strip pays in SIZE instead, shrinking until the nudged
+ * layout clears and dropping the numbers if it cannot.
+ *
+ * The cost is three tick numbers in 731 across the sweep.
+ */
+describe("a scatter's x tick numbers pay for their own nudge", () => {
+  const DATA: [string, (c: ChartConfig) => ChartConfig][] = [
+    ["plain", (c) => c],
+    [
+      "billions",
+      (c) => ({
+        ...c,
+        data: {
+          ...c.data,
+          series: c.data.series.map((s) => ({ ...s, values: s.values.map((v) => (v == null ? v : v * 1234567)) })),
+        },
+      }),
+    ],
+    [
+      "tiny fractions",
+      (c) => ({
+        ...c,
+        data: {
+          ...c.data,
+          series: c.data.series.map((s) => ({ ...s, values: s.values.map((v) => (v == null ? v : v / 100000)) })),
+        },
+      }),
+    ],
+  ];
+
+  it("draws no tick number over another, at any frame or magnitude", () => {
+    for (const kind of ["scatter", "bubble"] as const)
+      for (const [dname, shape] of DATA)
+        for (const [w, h] of FRAMES)
+          for (const fontSize of [10, 18]) {
+            const ticks = textsOf(shape(plain(kind, w, h, fontSize)), /^x-axis$/);
+            expect(pairsAmong(ticks), `${kind} ${dname} ${w}x${h} fs=${fontSize}: x tick numbers collide`).toBe(0);
+          }
+  });
+
+  it("pays in size, not by abandoning the strip", () => {
+    // The shrink must engage without emptying the axis — a rule that answered
+    // "no numbers" would pass the check above and tell the reader nothing.
+    let drawn = 0;
+    for (const kind of ["scatter", "bubble"] as const)
+      for (const [, shape] of DATA)
+        for (const [w, h] of FRAMES)
+          for (const fontSize of [10, 18]) drawn += textsOf(shape(plain(kind, w, h, fontSize)), /^x-axis$/).length;
+    expect(drawn, "the x strip was abandoned rather than shrunk").toBeGreaterThan(200);
+  });
+
+  it("drops the strip rather than shrinking it past reading", () => {
+    // The shrink loop has to STOP. Without a floor it converges on a legible-
+    // looking layout made of two-point numbers: the overlap check passes and the
+    // reader gets ink. The same answer the pie ring, the radar names and the
+    // secondary axis give — below the floor there is no strip.
+    const bad: string[] = [];
+    for (const kind of ["scatter", "bubble"] as const)
+      for (const [dname, shape] of DATA)
+        for (const [w, h] of FRAMES)
+          for (const fontSize of [10, 18])
+            for (const t of textsOf(shape(plain(kind, w, h, fontSize)), /^x-axis$/))
+              if (t.fontSize < 5) bad.push(`${kind} ${dname} ${w}x${h} fs=${fontSize}: ${t.fontSize.toFixed(2)}pt`);
+    expect(bad, "an x tick was drawn below the legibility floor").toEqual([]);
+  });
+
+  it("leaves a comfortable scatter's x strip at full size", () => {
+    // THE REGRESSION THAT WOULD MATTER: the nudge only bites where the origin
+    // label is wide relative to its gap, so an ordinary chart must not shrink.
+    for (const [w, h] of [
+      [480, 300],
+      [960, 540],
+    ]) {
+      const ticks = textsOf(plain("scatter", w, h, 10), /^x-axis$/);
+      expect(ticks.length, `${w}x${h}: the x strip vanished`).toBeGreaterThan(2);
+      for (const t of ticks) expect(t.fontSize, `${w}x${h}: a roomy chart's x tick was shrunk`).toBeCloseTo(9, 5);
+    }
+  });
+});

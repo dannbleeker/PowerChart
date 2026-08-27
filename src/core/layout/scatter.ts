@@ -489,7 +489,50 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
   const gapScale = (vals: number[], to: (v: number) => number, span: number, want: (t: number) => number) =>
     tickGapScale(fs * 0.9, vals, to, span, want);
   const yTickScale = gapScale(yTicks, toY, plot.h, () => fs * 1.4);
-  const xTickScale = gapScale(xTicks, toX, plot.w, (t) => textWidth(formatNumber(t, xFmt), fs * 0.9) + 2);
+  /**
+   * The x strip's size, AFTER the origin nudge has been paid for.
+   *
+   * `gapScale` guarantees the tick spacing can carry the widest label. The nudge
+   * below then spends part of that guarantee: the label on the axis's origin is
+   * centred on its tick, so half of it hangs into the y axis's gutter, and it is
+   * moved right by exactly the overhang. Moving it right moves it TOWARD its
+   * neighbour, and the gap the fit had just opened closes by the same amount —
+   * 84 pairs of `x-axis` on `x-axis` in the variant sweep, on a strip that had a
+   * fit and looked correct.
+   *
+   * The secondary value axis had the same defect and took the other remedy: one
+   * shift for the whole strip, which keeps every gap. That is not available here
+   * because only the FIRST label is nudged, and shifting all of them right by
+   * its overhang would push the last one off the canvas. So this strip pays in
+   * SIZE instead: shrink until the nudged layout clears, and drop the numbers if
+   * it cannot — the answer this file already gives when the ticks will not fit.
+   *
+   * Half a point at a time rather than solving it: the nudge depends on the
+   * label width, which depends on the size, which is what is being solved for.
+   * A dozen iterations at most, on a strip of five or six numbers.
+   */
+  const xTickScale = (() => {
+    const want = (t: number) => textWidth(formatNumber(t, xFmt), fs * 0.9) + 2;
+    let scale = gapScale(xTicks, toX, plot.w, want);
+    if (scale <= 0 || xTicks.length < 2) return scale;
+    // Where each label's ink actually lands at this size, nudge included.
+    const spans = (s: number) =>
+      xTicks.map((t) => {
+        const half = textWidth(formatNumber(t, xFmt), fs * 0.9 * s) / 2;
+        const centre = Math.max(toX(t), plot.x + half);
+        return { lo: centre - half, hi: centre + half };
+      });
+    const clears = (s: number) => {
+      const b = spans(s);
+      for (let i = 1; i < b.length; i++) if (b[i].lo - b[i - 1].hi < 1) return false;
+      return true;
+    };
+    while (scale > 0 && !clears(scale)) {
+      scale -= 0.05;
+      if (fs * 0.9 * scale < MIN_LABEL_FS) return 0;
+    }
+    return scale;
+  })();
   for (const t of yTicks) {
     const y = toY(t);
     nodes.push({
