@@ -1,0 +1,9 @@
+{
+  "name": "image-size",
+  "version": "1.2.1",
+  "description": "Stub. Replaces an unused, permanently-vulnerable transitive dependency — see README.md in this directory.",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "license": "MIT",
+  "private": true
+}

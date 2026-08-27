@@ -44,7 +44,8 @@
   },
   "_overrides_why": "qs: GHSA-q8mj-m7cp-5q26 reaches us only through @stryker-mutator/core -> typed-rest-client, which pins a vulnerable range. `npm audit fix` reported a fix available and then changed nothing, because it cannot move a pinned transitive. The advisory range is 6.11.1-6.15.1 and 6.15.3 is outside it, so this is a PATCH bump on the same minor, not a version gamble. Dev-only: qs is never shipped. Remove this once typed-rest-client ships a version that does not pin a vulnerable qs.",
   "overrides": {
-    "qs": "^6.15.3"
+    "qs": "^6.15.3",
+    "image-size": "file:vendor/image-size-stub"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

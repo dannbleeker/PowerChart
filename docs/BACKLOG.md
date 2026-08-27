@@ -2155,7 +2155,23 @@ Found by the archive sweep of 2026-08-23. The sweep reported it as "every round
 eats a 4-second timeout — 38 of 38, never zero", which is the recent era and not
 the archive: it is 44 of 147 overall, and universal only since round 117.
 
-### The four dependabot advisories, and why three of them are not ours — 2026-08-26
+### The four dependabot advisories — ALL FOUR NOW FIXED, 2026-08-27
+
+**`npm audit` reports 0 vulnerabilities.** `qs` was cleared with an overrides pin
+on 2026-08-27; `image-size` is stubbed, and the reasoning is in
+`vendor/image-size-stub/README.md`. The short version: every published version of
+`image-size` is covered by both advisories (`<=2.0.2`, and 2.0.2 is latest), so
+there was nothing to upgrade to — but NOTHING IMPORTS IT. It appears in
+pptxgenjs`s package.json and nowhere in pptxgenjs`s code, nothing else in the
+tree requires it, and this project never calls `addImage`. Replacing it with a
+stub removes the vulnerable parsers from disk with no call site to break. The
+stub THROWS if anything ever imports it, so the assumption that made this safe
+fails loudly rather than silently returning a wrong dimension.
+
+The original analysis is kept below because the reasoning that got here — and
+the two things it got wrong on the way — is worth more than the conclusion.
+
+### The original analysis — 2026-08-26
 
 Every push prints "GitHub found 3 vulnerabilities on the default branch (2 high,
 1 moderate)". Checked once so it does not have to be re-checked every push.
