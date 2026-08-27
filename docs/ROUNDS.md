@@ -220,7 +220,7 @@ ordinary closed pane.** `recover` handles a dead browser well — the persistent
 profile keeps the sign-in, so it reopens the window, finds the deck by name and
 fronts it, all without a password. What it cannot restore is the ADD-IN. A web
 sideload does not survive the browser process, so the deck comes back with its
-slides intact, its ribbon showing `Add-ins`, and no PowerChart command anywhere.
+slides intact, its ribbon showing `Add-ins`, and no SSF Charts command anywhere.
 
 Observed on 2026-08-16: the browser died mid-round, recovery brought back
 `Presentation64` perfectly, and every subsequent attempt refused with "could not

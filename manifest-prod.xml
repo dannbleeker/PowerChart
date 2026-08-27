@@ -12,8 +12,8 @@
   <DefaultLocale>en-US</DefaultLocale>
   <DisplayName DefaultValue="SSF Charts" />
   <Description DefaultValue="Consulting-grade charts — waterfall/bridge, Mekko/Marimekko, stacked columns, CAGR and difference arrows — inserted as native, fully editable PowerPoint shapes." />
-  <IconUrl DefaultValue="https://powerchart.struktureretsundfornuft.dk/assets/icon-32.png" />
-  <HighResolutionIconUrl DefaultValue="https://powerchart.struktureretsundfornuft.dk/assets/icon-80.png" />
+  <IconUrl DefaultValue="https://ssf-chart.struktureretsundfornuft.dk/assets/icon-32.png" />
+  <HighResolutionIconUrl DefaultValue="https://ssf-chart.struktureretsundfornuft.dk/assets/icon-80.png" />
   <SupportUrl DefaultValue="https://github.com/dannbleeker/powerchart" />
 
   <Hosts>
@@ -28,7 +28,7 @@
   </Requirements>
 
   <DefaultSettings>
-    <SourceLocation DefaultValue="https://powerchart.struktureretsundfornuft.dk/src/taskpane/taskpane.html" />
+    <SourceLocation DefaultValue="https://ssf-chart.struktureretsundfornuft.dk/src/taskpane/taskpane.html" />
   </DefaultSettings>
 
   <Permissions>ReadWriteDocument</Permissions>
@@ -279,24 +279,24 @@
     </Hosts>
     <Resources>
       <bt:Images>
-        <bt:Image id="Icon.16" DefaultValue="https://powerchart.struktureretsundfornuft.dk/assets/icon-16.png" />
-        <bt:Image id="Icon.32" DefaultValue="https://powerchart.struktureretsundfornuft.dk/assets/icon-32.png" />
-        <bt:Image id="Icon.80" DefaultValue="https://powerchart.struktureretsundfornuft.dk/assets/icon-80.png" />
+        <bt:Image id="Icon.16" DefaultValue="https://ssf-chart.struktureretsundfornuft.dk/assets/icon-16.png" />
+        <bt:Image id="Icon.32" DefaultValue="https://ssf-chart.struktureretsundfornuft.dk/assets/icon-32.png" />
+        <bt:Image id="Icon.80" DefaultValue="https://ssf-chart.struktureretsundfornuft.dk/assets/icon-80.png" />
       </bt:Images>
       <bt:Urls>
-        <bt:Url id="Taskpane.Url" DefaultValue="https://powerchart.struktureretsundfornuft.dk/src/taskpane/taskpane.html" />
+        <bt:Url id="Taskpane.Url" DefaultValue="https://ssf-chart.struktureretsundfornuft.dk/src/taskpane/taskpane.html" />
         <bt:Url id="GetStarted.LearnMoreUrl" DefaultValue="https://github.com/dannbleeker/powerchart" />
-        <bt:Url id="Taskpane.Url.stacked" DefaultValue="https://powerchart.struktureretsundfornuft.dk/src/taskpane/taskpane.html?kind=stacked" />
-        <bt:Url id="Taskpane.Url.waterfall" DefaultValue="https://powerchart.struktureretsundfornuft.dk/src/taskpane/taskpane.html?kind=waterfall" />
-        <bt:Url id="Taskpane.Url.mekko" DefaultValue="https://powerchart.struktureretsundfornuft.dk/src/taskpane/taskpane.html?kind=mekko" />
-        <bt:Url id="Taskpane.Url.gantt" DefaultValue="https://powerchart.struktureretsundfornuft.dk/src/taskpane/taskpane.html?kind=gantt" />
-        <bt:Url id="Taskpane.Url.pie" DefaultValue="https://powerchart.struktureretsundfornuft.dk/src/taskpane/taskpane.html?kind=pie" />
-        <bt:Url id="Taskpane.Url.scatter" DefaultValue="https://powerchart.struktureretsundfornuft.dk/src/taskpane/taskpane.html?kind=scatter" />
-        <bt:Url id="Taskpane.Url.el.harvey" DefaultValue="https://powerchart.struktureretsundfornuft.dk/src/taskpane/taskpane.html?tab=elements&amp;el=harvey" />
-        <bt:Url id="Taskpane.Url.el.check" DefaultValue="https://powerchart.struktureretsundfornuft.dk/src/taskpane/taskpane.html?tab=elements&amp;el=check" />
-        <bt:Url id="Taskpane.Url.el.flow" DefaultValue="https://powerchart.struktureretsundfornuft.dk/src/taskpane/taskpane.html?tab=elements&amp;el=flow" />
-        <bt:Url id="Taskpane.Url.el.kpi" DefaultValue="https://powerchart.struktureretsundfornuft.dk/src/taskpane/taskpane.html?tab=elements&amp;el=kpi" />
-        <bt:Url id="Taskpane.Url.el.table" DefaultValue="https://powerchart.struktureretsundfornuft.dk/src/taskpane/taskpane.html?tab=elements&amp;el=table" />
+        <bt:Url id="Taskpane.Url.stacked" DefaultValue="https://ssf-chart.struktureretsundfornuft.dk/src/taskpane/taskpane.html?kind=stacked" />
+        <bt:Url id="Taskpane.Url.waterfall" DefaultValue="https://ssf-chart.struktureretsundfornuft.dk/src/taskpane/taskpane.html?kind=waterfall" />
+        <bt:Url id="Taskpane.Url.mekko" DefaultValue="https://ssf-chart.struktureretsundfornuft.dk/src/taskpane/taskpane.html?kind=mekko" />
+        <bt:Url id="Taskpane.Url.gantt" DefaultValue="https://ssf-chart.struktureretsundfornuft.dk/src/taskpane/taskpane.html?kind=gantt" />
+        <bt:Url id="Taskpane.Url.pie" DefaultValue="https://ssf-chart.struktureretsundfornuft.dk/src/taskpane/taskpane.html?kind=pie" />
+        <bt:Url id="Taskpane.Url.scatter" DefaultValue="https://ssf-chart.struktureretsundfornuft.dk/src/taskpane/taskpane.html?kind=scatter" />
+        <bt:Url id="Taskpane.Url.el.harvey" DefaultValue="https://ssf-chart.struktureretsundfornuft.dk/src/taskpane/taskpane.html?tab=elements&amp;el=harvey" />
+        <bt:Url id="Taskpane.Url.el.check" DefaultValue="https://ssf-chart.struktureretsundfornuft.dk/src/taskpane/taskpane.html?tab=elements&amp;el=check" />
+        <bt:Url id="Taskpane.Url.el.flow" DefaultValue="https://ssf-chart.struktureretsundfornuft.dk/src/taskpane/taskpane.html?tab=elements&amp;el=flow" />
+        <bt:Url id="Taskpane.Url.el.kpi" DefaultValue="https://ssf-chart.struktureretsundfornuft.dk/src/taskpane/taskpane.html?tab=elements&amp;el=kpi" />
+        <bt:Url id="Taskpane.Url.el.table" DefaultValue="https://ssf-chart.struktureretsundfornuft.dk/src/taskpane/taskpane.html?tab=elements&amp;el=table" />
       </bt:Urls>
       <bt:ShortStrings>
         <bt:String id="Group.Label" DefaultValue="SSF Charts" />

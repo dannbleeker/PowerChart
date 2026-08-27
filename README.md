@@ -1,8 +1,8 @@
-# PowerChart
+# SSF Charts
 
 An open-source, think-cell-style chart add-in for PowerPoint, built on **Office.js**.
 
-PowerChart gives you the charts consultants reach for think-cell to make — waterfalls,
+SSF Charts gives you the charts consultants reach for think-cell to make — waterfalls,
 Mekko/Marimekko, stacked and clustered columns, 100% charts, lines and areas — with
 think-cell's signature annotations (**CAGR arrows, difference arrows, value lines,
 column totals, smart segment labels**), inserted into the slide as **native, fully
@@ -13,14 +13,14 @@ editable PowerPoint shapes**, never pictures or opaque OLE objects.
 ## Try it
 
 - **Live demo gallery** (no install, renders in the browser):
-  <https://powerchart.struktureretsundfornuft.dk/>
+  <https://ssf-chart.struktureretsundfornuft.dk/>
 - **Install in PowerPoint** (sideload the add-in):
   1. Download **`manifest-prod.xml`** from the [latest release](../../releases/latest)
      (Excel companion: `manifest-excel-prod.xml`).
   2. PowerPoint on the web → open a deck → **Home ▸ Add-ins ▸ More add-ins ▸
      My Add-ins ▸ Upload My Add-in** → pick the manifest. (Desktop Windows/Mac:
      see the [publishing runbook](docs/PUBLISHING.md#phase-2--sideload-in-powerpoint-owner-agent-assists).)
-  3. The **PowerChart** group appears on the Home tab — open the pane and insert.
+  3. The **SSF Charts** group appears on the Home tab — open the pane and insert.
   - Requires PowerPoint with the Office **PowerPointApi 1.4+** requirement set
     (Windows 2207+, Mac 16.62+, or PowerPoint on the web).
 - **Use it from Claude** (headless chart generation): the
@@ -33,7 +33,7 @@ editable PowerPoint shapes**, never pictures or opaque OLE objects.
 **[User manual](docs/MANUAL.md)** — how to use the pane, the datasheet
 conventions, and every option.
 
-| think-cell feature                                                               | PowerChart                                                                                                                                  |
+| think-cell feature                                                               | SSF Charts                                                                                                                                  |
 | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
 | Stacked / clustered / 100% column charts                                         | ✅                                                                                                                                          |
 | Stacked waterfall (multi-series deltas)                                          | ✅                                                                                                                                          |
@@ -249,7 +249,7 @@ outside PowerPoint the **Download SVG** button replaces slide insertion.
    - **PowerPoint on the web**: Insert → Add-ins → Upload My Add-in.
    - **Windows/Mac desktop**: see the
      [Office add-in sideloading docs](https://learn.microsoft.com/office/dev/add-ins/testing/test-debug-office-add-ins).
-3. Open the **PowerChart** button on the Home tab, pick a chart, paste data,
+3. Open the **SSF Charts** button on the Home tab, pick a chart, paste data,
    and hit **Insert into slide**.
 
 Requires PowerPoint with **PowerPointApi 1.4+** (Microsoft 365 desktop or web).
@@ -268,13 +268,13 @@ available; both degrade gracefully on older hosts. Marker symbols need only
   100% charts — columns whose series sum to less stay short of full height.
 - **`X extent` row**: name a row `X` or `X extent` to give a Mekko explicit
   column widths (think-cell's "Mekko with units").
-- **Re-editing**: select an inserted PowerChart on the slide and press
+- **Re-editing**: select an inserted SSF chart on the slide and press
   **Edit selected chart** — the pane reloads its data and "Update chart"
   replaces it in place.
 
 ## Disclaimer
 
-PowerChart is an independent open-source project. It is not affiliated with,
+SSF Charts is an independent open-source project. It is not affiliated with,
 endorsed by, or derived from think-cell Software GmbH. "think-cell" is a
 trademark of its owner; it is referenced here only to describe compatibility
 of concepts.

@@ -1,7 +1,7 @@
-name: PowerChart — ellipse vs rectangle render on PowerPoint web
+name: SSF Charts — ellipse vs rectangle render on PowerPoint web
 description: >-
   Draws a filled rectangle (control) beside three filled-ellipse variants on the
-  CURRENT slide. On PowerPoint on the web, PowerChart's bubble/scatter points
+  CURRENT slide. On PowerPoint on the web, SSF Charts' bubble/scatter points
   (drawn as GeometricShapeType.ellipse + fill.setSolidColor) do not appear, while
   rectangles drawn the identical way do. This isolates whether the ellipse fill
   fails, and whether a sync-before-fill or dropping the outline changes anything.
@@ -22,13 +22,13 @@ script:
         const slide = context.presentation.getSelectedSlides().getItemAt(0);
         const shapes = slide.shapes;
 
-        // 1. CONTROL — filled rectangle (PowerChart bars render fine this way).
+        // 1. CONTROL — filled rectangle (SSF Charts bars render fine this way).
         const rect = shapes.addGeometricShape(PowerPoint.GeometricShapeType.rectangle,
           { left: 40, top: 70, width: 90, height: 90 });
         rect.fill.setSolidColor("#2a78d6");
         rect.name = "repro-1-rect";
 
-        // 2. SUSPECT — ellipse + fill + white 1pt outline, EXACTLY as PowerChart
+        // 2. SUSPECT — ellipse + fill + white 1pt outline, EXACTLY as SSF Charts
         //    draws a bubble.
         const e1 = shapes.addGeometricShape(PowerPoint.GeometricShapeType.ellipse,
           { left: 160, top: 70, width: 90, height: 90 });

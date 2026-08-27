@@ -1,7 +1,7 @@
 # Prompt for a local round session (owner's Windows box)
 
 Paste everything below the line into a Claude Code session running in the
-PowerChart repo on the machine that has PowerPoint on the web signed in and the
+SSF Charts repo on the machine that has PowerPoint on the web signed in and the
 add-in sideloaded. It is self-contained.
 
 ---

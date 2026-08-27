@@ -1,7 +1,7 @@
 name: Deploy Pages
 
 # Hosts the add-in + demo gallery on GitHub Pages (custom domain:
-# powerchart.struktureretsundfornuft.dk). Office add-ins load their task pane
+# ssf-chart.struktureretsundfornuft.dk). Office add-ins load their task pane
 # and icons over HTTPS from here; the production manifests point at this origin.
 # Separate from ci.yml so a docs/test change doesn't redeploy the site.
 on:

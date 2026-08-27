@@ -29,7 +29,7 @@
  * of this one: a deck written by a newer build then reads as "no style I know"
  * on an older one, which is the safe direction.
  */
-export const DECK_STYLE_NS = "https://powerchart.struktureretsundfornuft.dk/schemas/style/1.0";
+export const DECK_STYLE_NS = "https://ssf-chart.struktureretsundfornuft.dk/schemas/style/1.0";
 
 /** The style defaults a deck carries. Every field optional — a partial style is normal. */
 export interface DeckStyle {

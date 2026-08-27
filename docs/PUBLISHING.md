@@ -1,7 +1,7 @@
-# Publishing runbook — get PowerChart live in PowerPoint
+# Publishing runbook — get SSF Charts live in PowerPoint
 
 Instructions for a Claude (Opus 4.8) session working with the repo owner to
-take PowerChart from "feature-complete on main" to "usable inside
+take SSF Charts from "feature-complete on main" to "usable inside
 PowerPoint, with the Claude skill active". Read `CLAUDE.md` first — the
 working conventions there (lockstep rule, branch flow, auto-merge policy,
 visual QA) apply to every change you make here.
@@ -32,10 +32,10 @@ Do the phases in order — later phases depend on the hosted URLs.
 
 Office add-ins load from an HTTPS URL; the dev manifests point at
 `https://localhost:3000`. The site is hosted on GitHub Pages under a **custom
-domain**, `https://powerchart.struktureretsundfornuft.dk/`. Because a custom
+domain**, `https://ssf-chart.struktureretsundfornuft.dk/`. Because a custom
 domain serves the project site from its **root**, the bundle base is `/`
 (no `/PowerChart/` path segment) — the prod-manifest URLs are just
-`https://powerchart.struktureretsundfornuft.dk/…`.
+`https://ssf-chart.struktureretsundfornuft.dk/…`.
 
 1. **[agent] Build for Pages** — ✅ `npm run build:pages`
    (`scripts/pages-postbuild.mjs`): runs the prod-manifest gen, `tsc`, a
@@ -51,7 +51,7 @@ domain serves the project site from its **root**, the bundle base is `/`
    `main`, `npm ci` → `npm run build:pages` → `upload-pages-artifact` (path
    `dist`) → `deploy-pages`, with `pages: write` / `id-token: write`.
 3. **[owner] Enable Pages + custom domain** — ✅ done (Source: GitHub Actions;
-   domain `powerchart.struktureretsundfornuft.dk`). Confirm **Enforce HTTPS**
+   domain `ssf-chart.struktureretsundfornuft.dk`). Confirm **Enforce HTTPS**
    is checked once the cert provisions.
 4. **[agent] Production manifests** — ✅ `scripts/build-manifest.mjs` rewrites
    `https://localhost:3000` → the custom-domain origin into
@@ -76,7 +76,7 @@ domain serves the project site from its **root**, the bundle base is `/`
    > free to stay below 1.0. `test/manifest.test.ts` pins the rule offline so it
    > cannot come back when the validation service is unreachable.
 5. **[agent/owner] Smoke-test the deployment**: after the first Pages run,
-   `curl -sI https://powerchart.struktureretsundfornuft.dk/src/taskpane/taskpane.html`
+   `curl -sI https://ssf-chart.struktureretsundfornuft.dk/src/taskpane/taskpane.html`
    → 200, and the icons under `/assets/icon-*.png`. Load the demo gallery URL
    in a browser to confirm assets render.
 
@@ -225,7 +225,7 @@ beginning, never its end.
 | 2a | **Demo deck — file path.** Path → **One file insert** → **Insert demo deck**. ~6 s. | The file half must report **38 of 38 complete** — anything less is a regression. |
 | 2b | **Demo deck — shape path, on a FRESH deck.** Close the deck from 2a without saving, open a new one, then Path → **Shape by shape**. 1–2 minutes. | What the everyday path costs at 38× scale. Some items running short is the *measurement*, not a defect. This is the one thing no battery can stand in for: it is the only test at real scale, and scale is what crashes the tab. |
 | 3 | **Look at the deck.** Scroll the 38 slides the demo run added. | The judgement a machine does not have. The battery's visibility check answers "did anything render"; it does not answer "is this the right chart, drawn well". Look for charts off the slide edge, overlapping labels, and anything that is visibly not what the gallery shows. |
-| 4 | **One selection round trip, by hand.** Click a chart. The pane says "A PowerChart is selected." Press **Edit it**, change a number, **Update chart**. Drag the chart, then edit it again. | The battery drives the same machinery through `setSelectedShapes`, which is Office.js selecting a shape — not a human clicking one. Those are the same call in theory. This is the check that they are the same in practice, plus the drag-delta round trip (`POWERCHART_ORIGIN`), which needs a real drag and so cannot be scripted at all. |
+| 4 | **One selection round trip, by hand.** Click a chart. The pane says "An SSF chart is selected." Press **Edit it**, change a number, **Update chart**. Drag the chart, then edit it again. | The battery drives the same machinery through `setSelectedShapes`, which is Office.js selecting a shape — not a human clicking one. Those are the same call in theory. This is the check that they are the same in practice, plus the drag-delta round trip (`POWERCHART_ORIGIN`), which needs a real drag and so cannot be scripted at all. |
 
 **Why 2a and 2b are now two tests on two decks.** They used to be one click —
 *Both, one after the other* — and that click has twice ended in PowerPoint's
@@ -283,7 +283,7 @@ disagreed.
 
 One divergence is already known without running it: the fake does not implement
 `untrack`, and Office.js does. So every `untrack()` call in this repo is a no-op
-under test, and the claim that PowerChart releases proxies to avoid Office.js's
+under test, and the claim that SSF Charts releases proxies to avoid Office.js's
 "too many proxy objects" warning is entirely unverified. That is the kind of
 thing this probe exists to surface, and it surfaced one before ever reaching a
 real host.
@@ -444,7 +444,7 @@ run log's `slide size` line records the value *and which rung produced it*;
 
 **Wider feature sweep** — once per release, rather than per build:
 
-1. Ribbon shows the PowerChart menu; pane opens; gallery renders.
+1. Ribbon shows the SSF Charts menu; pane opens; gallery renders.
 2. Pie chart on a 1.10+ host (triangle-fan rotation), grouping on 1.8+.
 3. **Use deck theme** on a 1.10+ host pulls the template's accent colors.
 4. Elements (harvey ball, table with a total row) and Agenda insert.
@@ -586,7 +586,7 @@ to a thing this project got wrong for months. `setSelectedShapes` is Office.js
 selecting a shape; a human clicking one is the same call in theory and
 demonstrably not the same in practice on the web. So the battery stops
 pretending and asks: pick the scenario, and it waits 30 seconds for you to click
-a PowerChart, counting down in the pane. Click one, and it runs the whole chain
+an SSF chart, counting down in the pane. Click one, and it runs the whole chain
 the pane's *Edit it* button runs — read the selection back, edit through the
 target that read produced, confirm the result is still re-editable — and reports
 what happened.
@@ -676,7 +676,7 @@ trace was on. That file is the right attachment for a Phase-2 regression.
    Volume +14, Price +9, Cost −12, FX −4, FY24 total"* → expect a .pptx
    with native shapes. Then test inside **Claude for PowerPoint** (the
    add-in from AppSource) — skills enabled in settings are available there,
-   which closes the loop: Claude builds PowerChart charts directly in the
+   which closes the loop: Claude builds SSF Charts charts directly in the
    user's deck.
 
 ## Phase 4 — Cut the release ✅ v0.2.0 done
@@ -708,7 +708,7 @@ while the published release stayed wrong.
 - **AppSource** (public store): requires a Partner Center account (free for
   Office Store apps) and Microsoft validation (works on every claimed platform,
   WCAG, privacy + terms + support URLs). Substantial process; only worth it if
-  PowerChart should be publicly installable. Prep is staged:
+  SSF Charts should be publicly installable. Prep is staged:
   - **[agent, done]** Hosted **privacy** (`/privacy.html`) + **terms**
     (`/terms.html`) pages (in `public/`, built to the site root), a
     trademark-clean store listing in `docs/STORE-LISTING.md`, and the

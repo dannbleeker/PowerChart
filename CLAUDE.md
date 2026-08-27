@@ -720,7 +720,7 @@ emptyReReads: 0` — a pure logic bug of ours — while `same scale` failed with
   Versioned releases via the Release workflow's manual dispatch (the git proxy
   rejects tag pushes — dispatch creates the tag server-side).
 - **Flag manifest re-installs to the owner**: the add-in is hosted on GitHub
-  Pages (`powerchart.struktureretsundfornuft.dk`) and the sideloaded
+  Pages (`ssf-chart.struktureretsundfornuft.dk`) and the sideloaded
   `manifest-prod.xml` only points at stable URLs — so code/pane/chart changes
   ship through `main` → Pages with **no** re-install. But when a change touches
   the **manifest itself** (ribbon buttons/menu items, `Permissions`,
@@ -3034,7 +3034,7 @@ feature table and git for what has shipped.
 
 `docs/PUBLISHING.md` is the go-live runbook. Phases 0, 1 and 4 are done: the
 repo is public and protected, the add-in is hosted at
-<https://powerchart.struktureretsundfornuft.dk/>, and **v0.2.0** ships the
+<https://ssf-chart.struktureretsundfornuft.dk/>, and **v0.2.0** ships the
 prod manifests, the skill zip and the showcase deck.
 
 What is left needs the owner, not the agent:

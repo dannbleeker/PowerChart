@@ -2,7 +2,7 @@
 
 This report condenses a fan-out research run (5 search angles, 22 sources fetched,
 59 claims extracted, top 25 adversarially verified 3-0 each — 0 refuted) into the
-findings that shaped PowerChart. Confidence is high for everything below unless
+findings that shaped SSF Charts. Confidence is high for everything below unless
 flagged; caveats at the end.
 
 ## 1. What think-cell actually is
@@ -66,13 +66,13 @@ flagged; caveats at the end.
   schema) — and still requires a licensed think-cell install to render.
 - Lesson 1: the rendering pipeline is closed; a real clone must build its own.
 - Lesson 2: the **JSON-in → deck-out automation surface is a proven, valued
-  interface** worth replicating (PowerChart's `ChartConfig` is JSON-shaped for
+  interface** worth replicating (SSF Charts' `ChartConfig` is JSON-shaped for
   exactly this reason).
 - Commercial alternatives (UpSlide, Empower, Aploris, Vizzlo, Zebra BI) exist,
   but no specific claims about their internals survived verification — treat
   anything written about them as unvetted.
 
-## 4. Office.js feasibility (what PowerChart is built on)
+## 4. Office.js feasibility (what SSF Charts is built on)
 
 - **Shape construction is fully supported**: `ShapeCollection.addGeometricShape`
   (GeometricShapeType + position/size in points from the slide's top-left),
@@ -91,7 +91,7 @@ flagged; caveats at the end.
   No freeform/path shapes either (hence triangle-shape arrowheads).
 - **Verified architecture conclusion**: render charts as grouped native shapes,
   persist the data model in tags, recompute layout and re-emit shapes on every
-  edit. This is exactly PowerChart's pipeline.
+  edit. This is exactly SSF Charts' pipeline.
 
 ## 4b. Re-check, 2026-08: is the Office.js approach still right?
 
@@ -257,7 +257,7 @@ One caveat to carry: [office-js#2780](https://github.com/OfficeDev/office-js/iss
 and [#5896](https://github.com/OfficeDev/office-js/issues/5896) report
 `insertSlidesFromBase64` losing source formatting, both closed without
 resolution. Reading them, the complaints concern *theme-inherited* formatting
-when copying slides between decks. PowerChart emits explicit formatting on
+when copying slides between decks. SSF Charts emits explicit formatting on
 every shape, which is why its runs land clean — so **do not drift toward
 theme-inherited styling in the generated deck**; that is what would expose us
 to this.
@@ -325,9 +325,9 @@ related from `ppt/presentation.xml`. Parts written at the package root
 turned out to be a scoping rule rather than a defect. A part written into our
 generated deck must be related from the presentation, not dropped at the root.
 
-## 5. How the findings map to PowerChart
+## 5. How the findings map to SSF Charts
 
-| Finding | Status in PowerChart |
+| Finding | Status in SSF Charts |
 |---|---|
 | Layout/labeling engine is the core IP | Pure-TS engine in `src/core`, unit-tested |
 | Native grouped shapes + tags persistence | `src/render/powerpoint.ts` (tags: `POWERCHART_CONFIG` on the group) |

@@ -5,17 +5,17 @@
 - **Host**: PowerPoint on the web (Office Online), accessed via
   office.com.
 - **Office.js requirement set**: PowerPointApi 1.3+ (`slides.add()` itself
-  requires only 1.3; the PowerChart add-in's manifest requests up through
+  requires only 1.3; the SSF Charts add-in's manifest requests up through
   1.10 for other features, but this bug reproduces using nothing beyond the
   base `slides.add()` / `slides.getCount()` API surface).
-- **Add-in**: PowerChart, sideloaded via `manifest-prod.xml` (Phase 2 of
+- **Add-in**: SSF Charts, sideloaded via `manifest-prod.xml` (Phase 2 of
   `docs/PUBLISHING.md`), hosted at
-  `https://powerchart.struktureretsundfornuft.dk/`.
+  `https://ssf-chart.struktureretsundfornuft.dk/`.
 - **Client**: browser-hosted Office Online session, not a desktop build.
 
 ## Observed behavior
 
-Two independent Phase-2 validation runs of the PowerChart add-in against a
+Two independent Phase-2 validation runs of the SSF Charts add-in against a
 real PowerPoint-web deck both show slides going missing after
 `context.presentation.slides.add()` calls that completed their
 `context.sync()` with no thrown error.
@@ -144,7 +144,7 @@ ones.
 
 ## Workaround
 
-PowerChart's harness works around this by verifying the settled slide
+SSF Charts' harness works around this by verifying the settled slide
 count after each batch of adds and re-issuing `slides.add()` for whatever
 is missing:
 
@@ -161,7 +161,7 @@ is missing:
 Run 3 showed the limit of doing this inline: every check above races a
 commit whose deadline the host does not publish, and losing that race
 writes fiction into the deck (a duplicate slide, a banner contradicting its
-own content, a chart reported failed that landed twice). PowerChart
+own content, a chart reported failed that landed twice). SSF Charts
 therefore now also runs a **settled reconciliation pass after the run
 finishes** — `src/core/reconcile.ts` plus `reconcileDeck` in
 `src/render/powerpoint.ts`. It re-reads the added range once the host has

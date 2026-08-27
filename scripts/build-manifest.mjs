@@ -15,7 +15,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 
 const DEV_ORIGIN = "https://localhost:3000";
-const PAGES_ORIGIN = (process.env.PAGES_ORIGIN ?? "https://powerchart.struktureretsundfornuft.dk").replace(/\/$/, "");
+const PAGES_ORIGIN = (process.env.PAGES_ORIGIN ?? "https://ssf-chart.struktureretsundfornuft.dk").replace(/\/$/, "");
 
 const PAIRS = [
   ["manifest.xml", "manifest-prod.xml"],

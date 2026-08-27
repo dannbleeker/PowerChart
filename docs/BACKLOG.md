@@ -199,7 +199,7 @@ ten-shape batch has a floor of 3886ms, so 4 charts drawn shape-by-shape could
 not finish in three seconds and never do.
 
 You cannot hand the host a file to add shapes to a slide that already exists, so
-that path draws shape by shape and pays the curve. **PowerChart is fast exactly
+that path draws shape by shape and pays the curve. **SSF Charts is fast exactly
 when it CREATES slides and slow exactly when it ADDS to one.**
 
 **Why this is a product decision and not a fix.** The side-by-side layout — two
@@ -2187,7 +2187,7 @@ to remove it.
 **`image-size` is NOT REACHABLE.** It arrives under `pptxgenjs`, which IS a
 runtime dependency — `src/render/pptx-deck.ts:74` imports it dynamically — so the
 tree alone makes it look shipped and live. It is not: pptxgenjs calls
-`image-size` to size images handed to `addImage`, and **PowerChart never calls
+`image-size` to size images handed to `addImage`, and **SSF Charts never calls
 `addImage`**. There is no image path in `pptx-deck.ts`, no PNG or JPEG or data
 URI anywhere in it. The deck is shapes and text. Both parsers named in the
 advisories need an image to parse and are handed none.

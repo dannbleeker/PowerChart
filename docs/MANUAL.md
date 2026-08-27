@@ -1,16 +1,16 @@
-# PowerChart User Manual
+# SSF Charts User Manual
 
-PowerChart makes think-cell-style charts in PowerPoint as **native, editable
+SSF Charts makes think-cell-style charts in PowerPoint as **native, editable
 shapes** — every bar, label, and line is a real PowerPoint object you can
 tweak after insertion. This manual covers the task pane; for driving
-PowerChart from JSON or from Claude, see the [automation](#automation-json)
+SSF Charts from JSON or from Claude, see the [automation](#automation-json)
 section and `skill/reference.md`.
 
 ## Getting started
 
 1. Sideload the add-in: in PowerPoint, **Insert → Add-ins → Upload My
    Add-in** → pick `manifest.xml` (the dev server must be running:
-   `npm run dev`). The **PowerChart** ribbon group has an **Insert chart**
+   `npm run dev`). The **SSF Charts** ribbon group has an **Insert chart**
    button and menu (direct entries for the most common chart types) plus an
    **Insert element** menu (Harvey ball, checkbox, process flow, KPI tile,
    table) that opens the pane on the Elements tab with that element highlighted.
@@ -175,12 +175,12 @@ the one thing the mark is for. `pareto` keeps only the bars and its cumulative
 line, so a marker series does not survive it.
 
 **Overlap relief** (`scatter.spread: "x" | "y"` on scatter/bubble): when markers
-cover each other, PowerChart can nudge them along ONE axis you name — the other
+cover each other, SSF Charts can nudge them along ONE axis you name — the other
 stays exact. The shift is hard-capped (`scatter.spreadLimit`, in that axis's
 own units; 2% of the range by default) and the cap is printed in the footnote,
 so the chart discloses its own approximation. It is ignored under `quadrants`:
 a nudge must never move a point across a quadrant line. Both axes carry data,
-so PowerChart will not move a marker freely in 2D — that would corrupt two
+so SSF Charts will not move a marker freely in 2D — that would corrupt two
 readings at once.
 
 **Marker symbols** (`scatter.markers` on scatter/bubble): give each `Group` a
@@ -213,7 +213,7 @@ only sign carrier — and on calendar heatmaps, which never draw labels at all.
 A cell of exactly zero gets no mark: the scale already paints it the neutral
 midpoint, and zero has no sign to state. The option is inert on one-signed
 data, where every mark would say the same thing. Not up/down arrows: an arrow on a matrix of KPIs
-reads as movement against last period, a claim PowerChart does not check.
+reads as movement against last period, a claim SSF Charts does not check.
 
 **Marginal histograms** (`decorations.marginals: "x" | "y" | "both"` on
 scatter/bubble): distribution bars in a gutter along the top and/or right
@@ -425,7 +425,7 @@ count of how many of its options are currently on.
 ## Small charts and big fonts
 
 A chart's size and its font size are both numbers you type, and the two together
-decide how much room the chart has for anything that is not a mark. PowerChart
+decide how much room the chart has for anything that is not a mark. SSF Charts
 adapts rather than spilling, and it does so in a fixed order — so it is worth
 knowing what you will see when you shrink a chart onto a busy slide or raise the
 font for a poster.
@@ -642,7 +642,7 @@ it — seconds instead of minutes, and far less to clean up afterwards.
 Two entries in that menu are **only** reachable that way.
 
 *Edit the chart YOU click* waits for you. Pick it and the pane asks you to click
-a PowerChart, counting down for 30 seconds; click one and it does exactly what
+an SSF chart, counting down for 30 seconds; click one and it does exactly what
 pressing *Edit it* does — reads the chart back from your selection, edits it,
 and checks the result is still editable — then reports what happened. It is left
 out of a full run because it blocks on a person, and if nobody clicks it reports
@@ -812,7 +812,7 @@ A violin is 253 native shapes; an area chart 176, a tile map 122, a waffle 103.
 PowerPoint on the web will not draw those reliably — it is the one host with no
 resource limits of its own, so an add-in that asks too much takes the whole tab
 down rather than being throttled. On the web only, and only past ~90 shapes,
-PowerChart inserts such a chart as a picture and says so. It still carries its
+SSF Charts inserts such a chart as a picture and says so. It still carries its
 configuration, so **Edit selected chart** works as usual and **Explode to native
 shapes** turns it back into shapes on a host that can take them. Ticking
 **Insert as picture** yourself always wins; this never overrides your choice.
@@ -871,7 +871,7 @@ asked for.
 ## Excel companion
 
 Sideload `manifest-excel.xml` in Excel, select a range, and **Generate**
-turns it into PowerChart JSON to paste into the pane's Automation box — the
+turns it into SSF Charts JSON to paste into the pane's Automation box — the
 practical substitute for live data links.
 
 ## Troubleshooting
@@ -880,7 +880,7 @@ practical substitute for live data links.
   still works, shapes just aren't grouped.
 - **Pie slices missing** — host below 1.10 (no shape rotation).
 - **"Theme unavailable"** — host below 1.10.
-- **Chart not recognized for editing** — it must carry the PowerChart tag;
+- **Chart not recognized for editing** — it must carry the SSF Charts tag;
   charts inserted before tagging existed can't be re-opened.
 - **Other languages** — the pane is translation-ready and localizes itself from
   `Office.context.displayLanguage`, but **no dictionary ships today**: every

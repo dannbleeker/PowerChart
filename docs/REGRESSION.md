@@ -1,6 +1,6 @@
 # Real-host regression: the demo deck
 
-The **Insert demo deck** action (Automation tab) is PowerChart's real-host
+The **Insert demo deck** action (Automation tab) is SSF Charts' real-host
 regression harness. It drops one slide per chart kind + feature + element onto
 fresh slides, so a human — or a diff — can see what PowerPoint *actually* draws.
 This catches host-only bugs the vitest fakes cannot (ellipse repaint, wedge

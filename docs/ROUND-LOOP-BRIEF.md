@@ -1,4 +1,4 @@
-# PowerChart round loop — brief
+# SSF Charts round loop — brief
 
 One round per cycle: run it, mine it, fix what it exposes, journal it, land it.
 Repeat. **Read `PAIR POSITION` in the gate before comparing any two rounds:** the
@@ -374,7 +374,7 @@ Gate → commit → push → green CI → merge. Don't ask first.
 
 ## Starting from nothing
 
-    cd C:\devtools\PowerChart
+    cd C:\devtools\SSF Charts
     . scripts/pw.sh
     pw open --persistent --profile=C:/devtools/pw-profile --headed "https://onedrive.live.com/"
 
@@ -393,7 +393,7 @@ If you see the bar again, the config did not reach the launch — check that
 
 **Do NOT fix it by removing the flag.** That was tried in #668 and reverted in
 #669: round 156 never produced a round, two consecutive `--check` runs reported
-the add-in gone, and a re-sideload uploaded the manifest without a PowerChart
+the add-in gone, and a re-sideload uploaded the manifest without an SSF Charts
 command appearing. The mechanism is known rather than guessed — the flag hides
 `navigator.webdriver`, and this host sniffs automation and silently skips
 sideloading when it sees it. Rounds 157-180 all ran clean with the flag restored,

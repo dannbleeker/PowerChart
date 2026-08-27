@@ -3369,7 +3369,7 @@ async function defaultFetchBuild() {
   // turns the empty string into `null` and `readiness` already says what a
   // missing build means.
   try {
-    const r = await fetch(`https://powerchart.struktureretsundfornuft.dk/build.json?cb=${Date.now()}`);
+    const r = await fetch(`https://ssf-chart.struktureretsundfornuft.dk/build.json?cb=${Date.now()}`);
     return await r.text();
   } catch {
     return "";

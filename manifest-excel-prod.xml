@@ -12,8 +12,8 @@
   <DefaultLocale>en-US</DefaultLocale>
   <DisplayName DefaultValue="SSF Charts Link" />
   <Description DefaultValue="Excel companion for SSF Charts: turn a selected range into a chart config to paste into PowerPoint." />
-  <IconUrl DefaultValue="https://powerchart.struktureretsundfornuft.dk/assets/icon-32.png" />
-  <HighResolutionIconUrl DefaultValue="https://powerchart.struktureretsundfornuft.dk/assets/icon-80.png" />
+  <IconUrl DefaultValue="https://ssf-chart.struktureretsundfornuft.dk/assets/icon-32.png" />
+  <HighResolutionIconUrl DefaultValue="https://ssf-chart.struktureretsundfornuft.dk/assets/icon-80.png" />
   <SupportUrl DefaultValue="https://github.com/dannbleeker/powerchart" />
 
   <Hosts>
@@ -28,7 +28,7 @@
   </Requirements>
 
   <DefaultSettings>
-    <SourceLocation DefaultValue="https://powerchart.struktureretsundfornuft.dk/src/excel/excel.html" />
+    <SourceLocation DefaultValue="https://ssf-chart.struktureretsundfornuft.dk/src/excel/excel.html" />
   </DefaultSettings>
 
   <Permissions>ReadWriteDocument</Permissions>
@@ -75,12 +75,12 @@
     </Hosts>
     <Resources>
       <bt:Images>
-        <bt:Image id="Icon.16" DefaultValue="https://powerchart.struktureretsundfornuft.dk/assets/icon-16.png" />
-        <bt:Image id="Icon.32" DefaultValue="https://powerchart.struktureretsundfornuft.dk/assets/icon-32.png" />
-        <bt:Image id="Icon.80" DefaultValue="https://powerchart.struktureretsundfornuft.dk/assets/icon-80.png" />
+        <bt:Image id="Icon.16" DefaultValue="https://ssf-chart.struktureretsundfornuft.dk/assets/icon-16.png" />
+        <bt:Image id="Icon.32" DefaultValue="https://ssf-chart.struktureretsundfornuft.dk/assets/icon-32.png" />
+        <bt:Image id="Icon.80" DefaultValue="https://ssf-chart.struktureretsundfornuft.dk/assets/icon-80.png" />
       </bt:Images>
       <bt:Urls>
-        <bt:Url id="Taskpane.Url" DefaultValue="https://powerchart.struktureretsundfornuft.dk/src/excel/excel.html" />
+        <bt:Url id="Taskpane.Url" DefaultValue="https://ssf-chart.struktureretsundfornuft.dk/src/excel/excel.html" />
         <bt:Url id="GetStarted.LearnMoreUrl" DefaultValue="https://github.com/dannbleeker/powerchart" />
       </bt:Urls>
       <bt:ShortStrings>

@@ -54,7 +54,7 @@ describe("the add-in manifests", () => {
     // A prod manifest can be perfectly CURRENT and full of localhost, if the
     // rewrite in build-manifest.mjs ever stops matching.
     expect(
-      checkManifest(good.replace("powerchart.struktureretsundfornuft.dk", "localhost:3000"), "manifest-prod.xml"),
+      checkManifest(good.replace("ssf-chart.struktureretsundfornuft.dk", "localhost:3000"), "manifest-prod.xml"),
     ).toEqual([expect.stringContaining("localhost")]);
     expect(checkManifest("<html>not a manifest</html>", "manifest-prod.xml")).toEqual([
       expect.stringContaining("not an Office add-in manifest"),
@@ -134,7 +134,7 @@ describe("the URLs a manifest asks the host to fetch", () => {
     // pass for a host that merely carries the string. Same rule as the code.
     const hosts = urlsIn(read("manifest-prod.xml")).map((u: string) => new URL(u).hostname);
     expect(hosts).not.toContain("schemas.microsoft.com");
-    expect(hosts).toContain("powerchart.struktureretsundfornuft.dk");
+    expect(hosts).toContain("ssf-chart.struktureretsundfornuft.dk");
     // The substring test excused this one. It is a real host and must be checked.
     expect(urlsIn('"https://evil.example/x?ref=schemas.microsoft.com"')).toEqual([
       "https://evil.example/x?ref=schemas.microsoft.com",

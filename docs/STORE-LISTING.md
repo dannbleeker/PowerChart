@@ -1,24 +1,24 @@
 # AppSource store listing — copy & submission checklist
 
-Everything needed to submit PowerChart to **Microsoft AppSource** (via Partner
+Everything needed to submit SSF Charts to **Microsoft AppSource** (via Partner
 Center). This is the *public store* path — heavier than sideloading or an
 org-wide admin deploy (see `PUBLISHING.md` "Distribution beyond sideloading").
 
 > **Trademark rule for anything store-facing:** the internal docs describe
-> PowerChart as a "think-cell clone / think-cell-style" tool, but the public
+> SSF Charts as a "think-cell clone / think-cell-style" tool, but the public
 > listing, name, description, and screenshots must **not** use the "think-cell"
 > mark as branding. Describe the features generically. A nominative disclaimer
 > ("not affiliated with … think-cell") is fine and lives on `/terms.html`.
 
 ## Listing copy (paste into Partner Center)
 
-**Name:** PowerChart
+**Name:** SSF Charts
 
 **Subtitle / summary (≤ ~100 chars):**
 > Consulting-grade charts as native, editable PowerPoint shapes.
 
 **Short description (≤ ~1,000 chars):**
-> PowerChart turns a simple data table into the charts that consultants and
+> SSF Charts turns a simple data table into the charts that consultants and
 > analysts actually use — waterfall/bridge, Mekko/Marimekko, stacked and
 > clustered columns, 100% charts, lines, areas, pie/doughnut, scatter/bubble,
 > Gantt plans, and more — inserted onto your slide as **native, fully editable
@@ -41,8 +41,8 @@ org-wide admin deploy (see `PUBLISHING.md` "Distribution beyond sideloading").
 **Search keywords:** waterfall chart, bridge chart, Mekko, Marimekko, Gantt,
 consulting charts, CAGR, editable charts, data visualization
 **Support URL:** https://github.com/dannbleeker/PowerChart
-**Privacy URL:** https://powerchart.struktureretsundfornuft.dk/privacy.html
-**Terms URL:** https://powerchart.struktureretsundfornuft.dk/terms.html
+**Privacy URL:** https://ssf-chart.struktureretsundfornuft.dk/privacy.html
+**Terms URL:** https://ssf-chart.struktureretsundfornuft.dk/terms.html
 
 ## Assets to produce
 - **Store logo** 300×300 PNG (Partner Center listing image — separate from the
@@ -58,7 +58,7 @@ consulting charts, CAGR, editable charts, data visualization
       Mac — testers check all of them). Do Phase 2 validation first.
 - [ ] Privacy + Terms pages live (they build to `/privacy.html`, `/terms.html`).
 - [ ] Listing copy above is trademark-clean; screenshots contain no competitor marks.
-- [ ] Value is demonstrable **without a login** (PowerChart needs none — good).
+- [ ] Value is demonstrable **without a login** (SSF Charts needs none — good).
 - [ ] Submit → respond to Microsoft validation feedback (days–weeks).
 
 ## Faster alternative (recommended first)

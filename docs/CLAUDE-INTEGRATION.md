@@ -1,4 +1,4 @@
-# Making PowerChart accessible to Claude in PowerPoint
+# Making SSF Charts accessible to Claude in PowerPoint
 
 Research into how Claude can create and edit think-cell-style charts in users'
 decks, and which integration path to build first. (Researched July 2026.)
@@ -19,9 +19,9 @@ Three facts from Anthropic's current product surface shape the answer:
 3. **Anthropic's own `pptx` skill** builds decks with **PptxgenJS** (from
    scratch) or **raw OOXML manipulation** (template editing) — *not*
    python-pptx — and mandates visual QA via slide thumbnails. This is exactly
-   the level PowerChart's scene graph sits at.
+   the level SSF Charts' scene graph sits at.
 
-## Why PowerChart is unusually well-positioned
+## Why SSF Charts is unusually well-positioned
 
 The engine was built API-first without knowing it:
 
@@ -35,7 +35,7 @@ The engine was built API-first without knowing it:
 
 ## Integration options, ranked
 
-### Option A — a **PowerChart Agent Skill** (recommended start)
+### Option A — a **SSF Charts Agent Skill** (recommended start)
 
 Package the engine as a custom skill:
 
@@ -66,22 +66,22 @@ no auth, private-by-default, and ~90% of it already exists in this repo.
 
 Host a small MCP server exposing `render_chart(config) → pptx/svg` (and
 `list_kinds`, `sample_config`). Claude for PowerPoint and claude.ai both take
-custom remote MCP connectors, so Claude-in-PowerPoint could call PowerChart
+custom remote MCP connectors, so Claude-in-PowerPoint could call SSF Charts
 live. Cloudflare Workers would host `dist-lib` trivially.
 **Cost:** hosting + auth + connector review friction. **When:** after A, if
 team-wide distribution (vs per-user skill upload) matters.
 
-### Option C — **Claude inside the PowerChart pane**
+### Option C — **Claude inside the SSF Charts pane**
 
 A "Describe your chart…" box in our task pane calling the Claude API
 (`claude-sonnet-5`, tool-forced to emit `ChartConfig`), rendering instantly via
 the existing preview → Insert. Great demo, but every user needs an API key (or
-we need a proxy service), and it only reaches people who installed PowerChart.
+we need a proxy service), and it only reaches people who installed SSF Charts.
 **When:** as a showcase feature once A exists.
 
 ### Option D — the manual bridge (works today)
 
-Ask any Claude to output PowerChart `ChartConfig` JSON (paste `reference.md`
+Ask any Claude to output SSF Charts `ChartConfig` JSON (paste `reference.md`
 as context) → paste into the pane's **Automation → Import**. Zero new code —
 this is the fallback and the testing path for A.
 
