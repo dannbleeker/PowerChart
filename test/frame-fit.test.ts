@@ -538,35 +538,39 @@ describe("no chart draws outside its own frame at any font", () => {
  * adjacent CATEGORY AXIS labels, which is one defect rather than seven because
  * that axis is shared by every cartesian kind.
  *
- * This gate is deliberately narrow: it pins the two that were fixed rather than
- * asserting no chart anywhere overlaps, which is not true yet. The rest are
- * listed in the PR that added this.
+ * This gate was deliberately narrow — it pinned the two defects that were fixed
+ * rather than asserting no chart anywhere overlaps, which was not true yet. It
+ * is no longer narrow in the way that matters: as of 2026-08-27 it carries NO
+ * exception, so within the frames and fonts it sweeps, no chart draws any text
+ * over any other text. What it still does not sweep is option and data-shape
+ * VARIANTS of each kind, which is where the "24 categories" family was found and
+ * measured; see docs/BACKLOG.md.
  */
 describe("labels are not drawn on top of each other", () => {
   /**
-   * The ONE overlap this gate allows, and it is a decision rather than an
-   * oversight.
+   * THE ONE OVERLAP THIS GATE ALLOWED, and there is no exception here now —
+   * 2026-08-27. Both sweeps below assert against EVERY pair.
    *
-   * A scatter or bubble point label may touch an axis TICK label. Both fixes for
-   * it have been tried and measured: giving the point placer the axis labels as
-   * obstacles, and confining its band to the plot. Each removes the overlaps by
-   * DROPPING point labels — 56 of 301 on charts as roomy as 480x300 — because
-   * the y axis owns the left margin. A point's label is data and a tick label is
-   * chrome, so the trade is refused, and the reason is at the call site in
-   * `layout/scatter.ts`.
+   * A scatter or bubble point label was permitted to touch an axis TICK number.
+   * Two fixes had been tried and measured and both were refused, each removing
+   * the overlaps by DROPPING point labels — 56 of 301 on charts as roomy as
+   * 480x300 — because the y axis owns the left margin. A point's label is data
+   * and a tick number is chrome, so the trade was refused.
    *
-   * Narrow on purpose: only these two kinds, only a tick against a NUMBERED
-   * point label. Anything else, in either direction, still fails. Written as an
-   * exception the gate STATES rather than a frame the gate avoids — the previous
-   * arrangement was the second, and it left 146 real overlapping pairs outside
-   * the two frames it happened to check.
+   * The verdict was right and the conclusion drawn from it was not. "The chrome
+   * yields" does not mean both are drawn through each other; it means the tick
+   * number goes. It does now — `tickLabelsUnderPointLabels` — and placement runs
+   * a dodging pass first so the axis keeps 341 of its 423 numbers rather than
+   * 310. Point labels are not paid: 266 become 265 on a scatter, 265 become 267
+   * on a bubble.
+   *
+   * The note is kept although the code is gone, because HOW the exception was
+   * written is worth more than the exception was: it stated itself, rather than
+   * being a frame the gate quietly avoided. The arrangement before it was the
+   * second kind, and it left 146 real overlapping pairs outside the two frames
+   * it happened to check.
    */
-  const acceptedTrade = (kind: string, a?: string, b?: string): boolean => {
-    if (kind !== "scatter" && kind !== "bubble") return false;
-    const tick = (x?: string) => x === "x-axis" || x === "y-axis";
-    const point = (x?: string) => !!x && /^label-\d+$/.test(x);
-    return (tick(a) && point(b)) || (tick(b) && point(a));
-  };
+  // (no exception function — the sweeps below allow nothing.)
 
   /**
    * Every font this engine claims to draw at, 6 to 32.
@@ -681,7 +685,7 @@ describe("labels are not drawn on top of each other", () => {
           const boxes = ts.map((t) => inkBox(t)!);
           for (let i = 0; i < boxes.length; i++) {
             for (let j = i + 1; j < boxes.length; j++) {
-              if (overlap(boxes[i], boxes[j]) > 1 && !acceptedTrade(kind, ts[i].name, ts[j].name)) {
+              if (overlap(boxes[i], boxes[j]) > 1) {
                 bad.push(`${kind} at ${w}x${h} ${fontSize}pt: ${ts[i].name} over ${ts[j].name}`);
               }
             }
@@ -849,7 +853,7 @@ describe("labels are not drawn on top of each other", () => {
           const boxes = ts.map((t) => inkBox(t)!);
           for (let i = 0; i < boxes.length; i++) {
             for (let j = i + 1; j < boxes.length; j++) {
-              if (overlap(boxes[i], boxes[j]) > 1 && !acceptedTrade(kind, ts[i].name, ts[j].name))
+              if (overlap(boxes[i], boxes[j]) > 1)
                 bad.push(`${kind} at ${w}x${h} ${fontSize}pt: ${ts[i].name} over ${ts[j].name}`);
             }
           }
