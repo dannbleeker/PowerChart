@@ -612,9 +612,52 @@ export const MANIFEST_PATH = process.env.PW_MANIFEST ?? "C:/devtools/SSF-Charts/
  */
 let sideloadAttempted = false;
 
+/**
+ * How many attempts have found a ribbon command whose pane will not open.
+ *
+ * THE STATE A DOMAIN MOVE LEAVES, and the driver had no name for it. A web
+ * sideload pins the pane's URL: after the cutover to `ssf-chart` on 2026-08-27,
+ * `Insert chart` was still in the ribbon and still opened a pane that could
+ * never load, because the host it named had stopped existing. `commandPresent`
+ * was true, so the walk below never ran, and readiness read it as the TRANSIENT
+ * `host-disconnected` — a document that merely has to reconnect. It retried
+ * seven times against a cause no amount of retrying can reach.
+ *
+ * Retrying is exactly what tells the two apart. A disconnected document comes
+ * back; a sideload pointing at a dead host does not. So the count, not the
+ * single reading, is what unlocks the sideload — the second attempt to see it
+ * is evidence the first could not be.
+ */
+let commandWithoutPane = 0;
+
+/**
+ * Does the add-in need putting back, and which kind of missing is it?
+ *
+ * `"absent"` · `"stale"` · `null`, and the three are decided here rather than in
+ * the driver's flow so the rule can be stated and tested instead of inferred
+ * from a five-clause `if`.
+ *
+ * ABSENT is a browser death: no pane, no command, nothing to open. STALE is a
+ * command that is still in the ribbon opening a pane that cannot load, which is
+ * what a domain move leaves and what read as a transient disconnect for seven
+ * attempts on 2026-08-27.
+ *
+ * `sightings` is what separates stale from transient, and nothing else can: a
+ * disconnected document reconnects on the next attempt, a sideload pointing at
+ * a host that no longer exists does not. One reading cannot tell them apart, so
+ * the second is the evidence.
+ */
+export function needsSideload({ pane, canOpenPane, commandPresent, sightings = 0 }) {
+  if (pane) return null;
+  if (!canOpenPane && !commandPresent) return "absent";
+  if (commandPresent && sightings >= 2) return "stale";
+  return null;
+}
+
 /** Test-only: let a suite arm the latch more than once. */
 export function _resetSideloadLatchForTest() {
   sideloadAttempted = false;
+  commandWithoutPane = 0;
 }
 
 /**
@@ -1685,14 +1728,24 @@ export async function attempt(argv, deps, sh, healed = false) {
   // a deck that already had the add-in, because a narrow window hid the command
   // it was looking for. A sideload is the most expensive thing this driver can
   // do to a document; it must never be triggered by a reading it cannot trust.
-  if (
-    !pane &&
-    !canOpenPane &&
-    !commandPresent &&
-    slides !== null &&
-    !sideloadAttempted &&
-    wideEnoughToJudge(ribbonRoom)
-  ) {
+  //
+  // TWO STATES, ONE WALK. The add-in can be ABSENT — a browser death took the
+  // sideload with it, which is the case above — or PRESENT AND STALE, its
+  // command still in the ribbon and its pane pinned to a URL that no longer
+  // answers. The second is what a domain move leaves behind, and it looked
+  // identical to a transient disconnect until it had been seen twice.
+  //
+  // The stale case deliberately does NOT require `!canOpenPane`: the command is
+  // right there, which is precisely why the absent-case guard could not see it.
+  // What it requires instead is a SECOND sighting, because that is the reading
+  // the first one cannot give — a disconnected document reconnects, a dead host
+  // does not. Both still share the one-per-process latch and the cramped-ribbon
+  // guard, so this cannot spend more sideloads than before.
+  if (!pane && commandPresent && slides !== null) commandWithoutPane++;
+  const missing = needsSideload({ pane, canOpenPane, commandPresent, sightings: commandWithoutPane });
+  if (missing && slides !== null && !sideloadAttempted && wideEnoughToJudge(ribbonRoom)) {
+    if (missing === "stale")
+      console.log("  the ribbon command opens a pane that will not load — re-sideloading, its URL may be stale");
     sideloadAttempted = true;
     if (await sideloadAddIn(sh, sleep)) {
       // RE-READ, because everything below was measured before the add-in

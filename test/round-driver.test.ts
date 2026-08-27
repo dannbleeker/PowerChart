@@ -2679,3 +2679,39 @@ describe("an attempt that ran no round keeps out of the session", () => {
     expect(after.index, "waiting past the gap must start a fresh session").toBe(1);
   });
 });
+
+describe("which kind of missing the add-in is", () => {
+  it("calls a browser death absent, and puts it back", async () => {
+    const { needsSideload } = await import("../scripts/round.mjs");
+    // No pane, no command, nothing to open — a web sideload does not survive
+    // the browser process.
+    expect(needsSideload({ pane: null, canOpenPane: false, commandPresent: false })).toBe("absent");
+  });
+
+  it("does not call a FIRST sighting of a dead pane stale", async () => {
+    const { needsSideload } = await import("../scripts/round.mjs");
+    // THIS IS THE WHOLE GUARD. A `Disconnected` document greys its ribbon and
+    // answers nothing, and it looks exactly like a sideload whose host has gone
+    // — on one reading. It reconnects; the dead host does not. Spending the
+    // one-per-process sideload on the first sighting would burn it on a
+    // document that merely had to wait, which is the mistake the absent-case
+    // guard already carries a comment about.
+    expect(needsSideload({ pane: null, canOpenPane: true, commandPresent: true, sightings: 1 })).toBe(null);
+  });
+
+  it("calls it stale once a second attempt has seen the same thing", async () => {
+    const { needsSideload } = await import("../scripts/round.mjs");
+    // The state the 2026-08-27 domain move left: `Insert chart` in the ribbon,
+    // opening a pane pinned to a host that had stopped existing. Readiness read
+    // it as transient and retried seven times.
+    expect(needsSideload({ pane: null, canOpenPane: true, commandPresent: true, sightings: 2 })).toBe("stale");
+  });
+
+  it("never asks for a sideload when the pane is open", async () => {
+    const { needsSideload } = await import("../scripts/round.mjs");
+    // A sideload is the most expensive thing the driver can do to a document.
+    // A pane that is already there settles every other question.
+    expect(needsSideload({ pane: "ref_1", canOpenPane: true, commandPresent: true, sightings: 9 })).toBe(null);
+    expect(needsSideload({ pane: "ref_1", canOpenPane: false, commandPresent: false, sightings: 9 })).toBe(null);
+  });
+});
