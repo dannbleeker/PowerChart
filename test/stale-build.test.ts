@@ -1,86 +1,95 @@
-// @vitest-environment jsdom
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { readFileSync } from "node:fs";
+import { describe, it, expect } from "vitest";
+import { lazy, isStaleBuild, StaleBuildError } from "../src/render/lazy";
+import { errorText } from "../src/render/powerpoint";
 
 /**
- * Does the pane notice it is older than the site it came from?
+ * What the pane says when a release lands while it is open.
  *
- * GitHub Pages serves the pane's HTML with `Cache-Control: max-age=600` and
- * gives us no way to set headers, so for ten minutes after a deploy PowerPoint
- * hands back the cached page — which names the PREVIOUS hashed bundle, still in
- * the browser's own cache even after that file 404s on the server. Old page,
- * old script, old build stamp, and until now nothing on screen saying so.
+ * FOUND BY A ROUND. The 4:3 leg of the 2026-08-28 cycle failed every scenario
+ * after the first, and the first one's message was the browser's:
  *
- * It has cost two rounds. One ran a fix that was not in the build under test
- * and the result was read as evidence about it; the other went on hard-reloading
- * a pane that looked the same either way. The stamp was always there to read —
- * what was missing is that reading it only helps if you already know the number
- * it should be, and that number is on GitHub.
+ *     Failed to fetch dynamically imported module:
+ *     https://ssf-chart.struktureretsundfornuft.dk/assets/pptxgen.es-C8DOodSg.js
+ *
+ * A build had been published while the pane was open. Vite hashes every chunk,
+ * a deploy replaces the whole `assets/` directory, and the pane was holding an
+ * `index.html` naming chunks the server no longer had.
+ *
+ * It is not a harness problem — it is the ordinary shape of a user's day. The
+ * pane stays open for a PowerPoint session, releases go out during one, and the
+ * next deck insert asks for a file that has been deleted. What that user saw was
+ * a URL, from an add-in that looked broken.
  */
-const STAMP = "abc1234 · 2026-08-10 08:10Z";
-const NEWER = "def5678 · 2026-08-10 09:30Z";
-
-/** Boot the pane against the real markup, with a chosen answer from build.json. */
-async function boot(build: { ok: boolean; body?: unknown } | "reject") {
-  const parsed = new DOMParser().parseFromString(readFileSync("src/taskpane/taskpane.html", "utf8"), "text/html");
-  parsed.querySelectorAll("script").forEach((s) => s.remove());
-  document.body.innerHTML = parsed.body.innerHTML;
-  vi.stubGlobal("__BUILD_STAMP__", STAMP);
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(async () =>
-      build === "reject"
-        ? Promise.reject(new Error("blocked by the host"))
-        : ({ ok: build.ok, json: async () => build.body } as unknown as Response),
-    ),
-  );
-  vi.resetModules();
-  await import("../src/taskpane/app");
-  // The check is fired and not awaited, so let its microtasks run.
-  await new Promise((r) => setTimeout(r, 0));
-  return document.getElementById("build-stamp")!;
-}
-
-afterEach(() => vi.unstubAllGlobals());
-
-describe("a pane that is older than the site it came from", () => {
-  it("says so, in the one place the build is already written", async () => {
-    const el = await boot({ ok: true, body: { build: NEWER } });
-    expect(el.textContent, "the pane did not name the newer build").toContain(NEWER);
-    expect(el.textContent, "the pane stopped naming its OWN build").toContain(STAMP);
-    expect(el.classList.contains("stale"), "nothing marked it as a problem").toBe(true);
+describe("a chunk the server no longer has", () => {
+  it("recognises the wording of all three browser families", () => {
+    // ALL THREE OR IT IS WORSE THAN NOTHING. Matching only Chrome would give the
+    // honest message on Windows and the raw one on a Mac or an iPad, which is
+    // the harder of the two bugs to diagnose — the same failure reported two
+    // different ways depending on who hit it.
+    expect(isStaleBuild(new Error("Failed to fetch dynamically imported module: https://x/assets/a-B1.js"))).toBe(true);
+    expect(isStaleBuild(new Error("error loading dynamically imported module"))).toBe(true);
+    expect(isStaleBuild(new TypeError("Importing a module script failed."))).toBe(true);
   });
 
-  it("stays quiet when the site agrees with it", async () => {
-    // The failure mode that would make this feature worse than nothing: a
-    // warning on every boot is one nobody reads, including on the boot that
-    // matters. `build.json` is written from the stamp inside the built bundle
-    // for exactly this reason — recomputing it would disagree by a minute or
-    // two on every deploy and cry stale forever.
-    const el = await boot({ ok: true, body: { build: STAMP } });
-    expect(el.textContent).toBe(STAMP);
-    expect(el.classList.contains("stale")).toBe(false);
+  it("does NOT claim a plain network failure is a stale build", () => {
+    // The check that matters most. `TypeError: Failed to fetch` is any network
+    // trouble — dropped wifi, a proxy, the site down — and telling someone to
+    // reopen the pane when the network is out sends them round a loop with no
+    // exit. Only the module-loading wording counts.
+    expect(isStaleBuild(new TypeError("Failed to fetch"))).toBe(false);
+    expect(isStaleBuild(new Error("NetworkError when attempting to fetch resource."))).toBe(false);
+    expect(isStaleBuild(new Error("An internal error has occurred."))).toBe(false);
+    expect(isStaleBuild(undefined)).toBe(false);
+    expect(isStaleBuild(null)).toBe(false);
   });
 
-  it("says nothing at all when it cannot find out", async () => {
-    // This is the add-in's FIRST outbound request, and the host may simply
-    // refuse it — the pane runs inside an Office iframe with a CSP nobody here
-    // controls. A convenience that breaks the pane it is diagnosing is worse
-    // than the trap it replaces, so every way of not knowing is silent.
-    // The non-OK case carries a body that WOULD warn, so the response check is
-    // what has to reject it. With an empty body the later "is it a string"
-    // guard caught it instead and `!res.ok` could be deleted with every test
-    // still green — a 404 page that happens to parse is exactly the case it is
-    // there for.
-    for (const answer of [
-      { ok: false, body: { build: NEWER } },
-      { ok: true, body: {} },
-      { ok: true, body: { build: "" } },
-      "reject",
-    ] as const) {
-      const el = await boot(answer);
-      expect(el.textContent, `answered "${JSON.stringify(answer)}" with a warning`).toBe(STAMP);
-      expect(el.classList.contains("stale")).toBe(false);
-    }
+  it("says what happened and what to do, and never shows a URL", () => {
+    const err = new StaleBuildError("the deck writer");
+    expect(err.message).toContain("has been updated");
+    expect(err.message).toContain("the deck writer");
+    expect(err.message, "the pane must say how to recover, not merely what broke").toMatch(/open it again/i);
+    // A REASSURANCE, because the failure arrives mid-insert and the honest
+    // question is whether the deck was damaged. It was not.
+    expect(err.message).toMatch(/slides are untouched/i);
+    expect(err.message, "a chunk URL is not something the reader can act on").not.toMatch(/https?:|\.js\b/);
+  });
+
+  it("does not dress a real bug up as a stale deploy", () => {
+    // If the imported module itself throws, that is a defect in this codebase
+    // and it must arrive intact — anything else sends the next person debugging
+    // it to the deploy pipeline instead of to the stack trace.
+    const real = new Error("Cannot read properties of undefined (reading 'addSlide')");
+    return expect(lazy(() => Promise.reject(real), "the deck writer")).rejects.toBe(real);
+  });
+
+  it("passes the module through when nothing is wrong", async () => {
+    expect(await lazy(() => Promise.resolve({ default: 42 }), "anything")).toEqual({ default: 42 });
+  });
+
+  it("replaces the browser's message wherever an error is reported", async () => {
+    // `errorText` is the one funnel — the pane's notes, the round self-test's
+    // verdicts and the traces all come through it — so the substitution belongs
+    // there rather than at each call site.
+    const raw = new Error("Failed to fetch dynamically imported module: https://x/assets/pptxgen.es-C8DOodSg.js");
+    expect(errorText(raw), "the raw browser message reached the user").not.toMatch(/dynamically imported/i);
+    expect(errorText(raw)).toMatch(/has been updated/i);
+    // And the wrapped form keeps the part name it was given.
+    await expect(lazy(() => Promise.reject(raw), "the deck writer")).rejects.toThrow(/the deck writer/);
+    await lazy(() => Promise.reject(raw), "the deck writer").catch((e) => {
+      expect(errorText(e)).toMatch(/the deck writer/);
+    });
+  });
+
+  it("keeps the Office.js detail on errors that are NOT this", () => {
+    // The guard against over-reaching: `errorText` exists to surface `code` and
+    // `debugInfo`, which a plain String(err) drops, and a stale-build shortcut
+    // that swallowed those would trade one silent failure for another.
+    const office = Object.assign(new Error("An internal error has occurred."), {
+      code: "GeneralException",
+      debugInfo: { errorLocation: "Slide.id" },
+    });
+    const said = errorText(office);
+    expect(said).toContain("code=GeneralException");
+    expect(said).toContain("Slide.id");
   });
 });

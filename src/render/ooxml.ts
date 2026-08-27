@@ -27,6 +27,7 @@
  * marker it expects — a pptxgenjs upgrade that changes the output fails loudly
  * here instead of silently producing a deck PowerPoint will not open.
  */
+import { lazy } from "./lazy";
 import { xmlText } from "./svg";
 
 const TAGS_REL_TYPE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/tags";
@@ -429,7 +430,7 @@ export async function injectGroupsAndTags(
   /** Destination slide size in EMU. Omitted, the deck declares 16:9. */
   slideEmu?: { cx: number; cy: number },
 ): Promise<{ base64: string; shapesPerSlide: number[] }> {
-  const { default: JSZip } = await import("jszip");
+  const { default: JSZip } = await lazy(() => import("jszip"), "the file reader");
   const zip = await JSZip.loadAsync(base64, { base64: true });
 
   // One dressing entry per slide, or nothing below can be trusted: the two are

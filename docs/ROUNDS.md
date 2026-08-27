@@ -242,6 +242,35 @@ bare as a document with no add-in — and since this refusal is not retried,
 firing it on a loading tab would end a night on a state that clears itself in
 twenty seconds.
 
+## Do not push while a cycle is running
+
+The 4:3 leg of the 2026-08-28 cycle failed twelve of fourteen scenarios. The
+first failure said:
+
+    threw: Failed to fetch dynamically imported module:
+    https://ssf-chart.struktureretsundfornuft.dk/assets/pptxgen.es-C8DOodSg.js
+
+and the other eleven are its cascade — no probe chart could be created, so every
+scenario that needs one reported "no probe chart in the deck".
+
+**Nothing was wrong with the build.** A commit was pushed while the cycle was
+mid-flight. Pages redeployed, the new build replaced `assets/` with
+freshly-hashed chunks, and the pane — loaded minutes earlier, holding the old
+`index.html` — asked for a file that no longer existed. The round's own build
+stamp says `2bf766b` while the site had already moved on.
+
+So: **a cycle runs against a live deployment, and pushing changes it underneath
+the round.** A leg that spans a deploy is not evidence about the build it names.
+Finish the cycle, then push. `npm run cycle` takes about half an hour.
+
+**The product bug it found is real and was worth the leg.** Every user meets
+this eventually: the pane stays open for a PowerPoint session, a release goes
+out during one, and the next deck insert asks for a deleted chunk. They saw a
+URL from an add-in that looked broken. It now says "SSF Charts has been updated
+since this pane was opened … close the pane and open it again — your slides are
+untouched", from `src/render/lazy.ts`. The round found in one night a failure
+mode no unit test had reason to imagine.
+
 ## What stops the driver hanging
 
 Three bounds, and they are not interchangeable. The round's 30-minute deadline is

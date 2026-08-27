@@ -10,6 +10,7 @@
  * addTextBox) — marker symbols are preset geometry, so they need only 1.4 too.
  * Grouping (1.8+) and shape rotation (1.10+) degrade gracefully on older hosts.
  */
+import { lazy, isStaleBuild, StaleBuildError } from "./lazy";
 import { polar, arrowheadBox, wedgeFanSteps, wedgeFanChord, symbolPreset, dashKind } from "../core/geometry";
 import { estimateOfficeShapes } from "../core/scene";
 import { buildChart } from "../core/chart";
@@ -1274,6 +1275,20 @@ export function stepOf(err: unknown): string | undefined {
  */
 export function errorText(err: unknown): string {
   if (!err || typeof err !== "object") return String(err);
+  // A CHUNK THE SERVER NO LONGER HAS, said as a sentence and nothing else.
+  //
+  // Handled at the funnel rather than at each call site, so the pane, the round
+  // self-test and the trace all say the same thing. `StaleBuildError` already
+  // carries the sentence; the raw form is caught too, because an import added
+  // later without `lazy` would otherwise report a URL to somebody who cannot do
+  // anything with one.
+  //
+  // Returned WITHOUT `code=` or `debugInfo=`: those exist to place an Office.js
+  // refusal, and there is no host refusal here. Appending them to a message
+  // that is already an instruction just buries it.
+  if (isStaleBuild(err)) {
+    return err instanceof StaleBuildError ? err.message : new StaleBuildError("one of its parts", err).message;
+  }
   const e = err as { message?: string; code?: string; debugInfo?: unknown };
   const bits = [e.message ?? String(err)];
   // The phase the add-in was in, when a `step` recorded one. Office.js says
@@ -7433,7 +7448,7 @@ export function _resetSlideSizeCache(): void {
 /** Read `<p:sldSz>` out of a base64 .pptx, in points. */
 async function slideSizeFromPptxBase64(base64: string): Promise<SlideSize | null> {
   try {
-    const { default: JSZip } = await import("jszip");
+    const { default: JSZip } = await lazy(() => import("jszip"), "the file reader");
     const zip = await JSZip.loadAsync(base64, { base64: true });
     const part = zip.file("ppt/presentation.xml");
     if (!part) return null;
@@ -7628,7 +7643,7 @@ async function slideSizeFromDocumentFile(): Promise<{ width: number; height: num
       bytes.set(p, at);
       at += p.length;
     }
-    const { default: JSZip } = await import("jszip");
+    const { default: JSZip } = await lazy(() => import("jszip"), "the file reader");
     const zip = await JSZip.loadAsync(bytes);
     const part = zip.file("ppt/presentation.xml");
     if (!part) return null;

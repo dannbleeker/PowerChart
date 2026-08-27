@@ -25,6 +25,7 @@
  * pptxgenjs has no API for either — it can only write flat shapes onto a
  * slide.
  */
+import { lazy } from "./lazy";
 import { arrowheadBox, annularSectorPoints, dashKind, symbolPreset } from "../core/geometry";
 import type { Scene } from "../core/scene";
 import { sceneFingerprint } from "../core/scene-diff";
@@ -71,7 +72,7 @@ export async function buildDeckBase64(
    */
   slideSizePt?: { width: number; height: number },
 ): Promise<{ base64: string; shapesPerSlide: number[] }> {
-  const { default: PptxGen } = await import("pptxgenjs");
+  const { default: PptxGen } = await lazy(() => import("pptxgenjs"), "the deck writer");
   const pres = new PptxGen();
   const size = slideSizePt ? { w: slideSizePt.width / 72, h: slideSizePt.height / 72 } : DECK_SIZE;
   pres.defineLayout({ name: "WIDE", width: size.w, height: size.h });
