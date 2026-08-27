@@ -32,7 +32,7 @@ import { readFileSync } from "node:fs";
 import { checkManifest, urlsIn } from "./manifest-rules.mjs";
 import { isMain } from "./is-main.mjs";
 
-const REPO = "dannbleeker/PowerChart";
+const REPO = "dannbleeker/SSF-Charts";
 
 /** The files the README's install steps tell a user to download. */
 export const PUBLISHED_MANIFESTS = ["manifest-prod.xml", "manifest-excel-prod.xml"];

@@ -16,7 +16,7 @@ Re-read it with:
 
 ```bash
 npm audit
-gh api repos/dannbleeker/PowerChart/dependabot/alerts --jq '.[] | select(.state=="open") | "\(.security_advisory.severity)\t\(.dependency.package.name)\t\(.dependency.scope)"'
+gh api repos/dannbleeker/SSF-Charts/dependabot/alerts --jq '.[] | select(.state=="open") | "\(.security_advisory.severity)\t\(.dependency.package.name)\t\(.dependency.scope)"'
 ```
 
 ## Cleared 2026-08-10

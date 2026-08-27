@@ -40,7 +40,7 @@ org-wide admin deploy (see `PUBLISHING.md` "Distribution beyond sideloading").
 **Categories:** Productivity; Data visualization
 **Search keywords:** waterfall chart, bridge chart, Mekko, Marimekko, Gantt,
 consulting charts, CAGR, editable charts, data visualization
-**Support URL:** https://github.com/dannbleeker/PowerChart
+**Support URL:** https://github.com/dannbleeker/SSF-Charts
 **Privacy URL:** https://ssf-chart.struktureretsundfornuft.dk/privacy.html
 **Terms URL:** https://ssf-chart.struktureretsundfornuft.dk/terms.html
 
