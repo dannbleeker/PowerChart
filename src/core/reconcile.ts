@@ -33,7 +33,15 @@
  * in `src/render/powerpoint.ts` is the thin part that talks to PowerPoint.
  */
 
-/** The banner shape `stampSlide` writes on a slide it believes came out short. */
+/**
+ * The banner shape `stampSlide` writes on a slide it believes came out short.
+ *
+ * NOT renamed with the product on 2026-08-27. The banner is written into the
+ * deck and found again by this exact name — `shapes.items.find(s => s.name ===
+ * NOT_COMPLETE_NAME)` — so a rename would strand every banner already out
+ * there, and a slide that says it is incomplete would never be cleared.
+ * See `CHART_TAG` in `render/powerpoint.ts`.
+ */
 export const NOT_COMPLETE_NAME = "PowerChart:not-complete";
 
 /**

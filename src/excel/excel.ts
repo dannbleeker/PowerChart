@@ -43,7 +43,7 @@ async function generate() {
         ($("transpose") as HTMLInputElement | null)?.checked ?? false,
       );
       ($("output") as HTMLTextAreaElement).value = JSON.stringify(cfg, null, 2);
-      note.textContent = `Generated from ${range.address}. Paste into PowerChart → Automation → Import.`;
+      note.textContent = `Generated from ${range.address}. Paste into SSF Charts → Automation → Import.`;
     });
   } catch (err) {
     note.textContent = `Failed: ${err instanceof Error ? err.message : String(err)}`;

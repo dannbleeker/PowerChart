@@ -35,8 +35,9 @@ describe("demo deck", () => {
   it("opens with a title slide and a contents/manifest table", () => {
     expect(items[0].title).toBe("Title");
     expect(items[1].title).toMatch(/^Contents/);
-    // Title slide names the deck.
-    expect(items[0].scene.nodes.some((n) => n.kind === "text" && /chart gallery/i.test(n.text))).toBe(true);
+    // Title slide names the deck. Renamed with the product on 2026-08-27:
+    // "PowerChart chart gallery" read as a stutter once the name changed.
+    expect(items[0].scene.nodes.some((n) => n.kind === "text" && /ssf charts gallery/i.test(n.text))).toBe(true);
     // Every contents page stays within the harness page budget. Not the ~90
     // web budget it used to fit: at 79 shapes the full deck's single contents
     // page crashed PowerPoint on the web, while the 27-shape one did not.

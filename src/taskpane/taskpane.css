@@ -1,21 +1,53 @@
+/*
+ * The SSF visual system at task-pane width. See the `ssf-design` skill for the
+ * system itself and `SSF-Merge/src/pane/taskpane.css` for the pane-width
+ * reading of it — this file follows that one deliberately, so the two panes are
+ * recognisably the same product.
+ *
+ * THREE ROLES, AND THEY DO NOT TRADE PLACES:
+ *   NAVY   headings and numbers the user reads as facts, and the header bar
+ *   BLUE   chrome — links, primary button, field tags, list markers
+ *   ORANGE the ONE accent, and the budget is one per view
+ *
+ * The orange budget is the rule most easily broken here, because this pane has
+ * four tabs and many states where the SSF-Merge pane has one column of steps.
+ * Normally the orange is the tick above the heading. When something on the
+ * slide is temporarily untrue — a preview showing, a state the user must undo —
+ * the orange moves there and the tick goes away. Two oranges in one glance and
+ * neither means anything.
+ *
+ * The old palette was warm neutral (#1a1a19 ink on #fbfbf9) with a blue accent.
+ * Every value below is a REPLACEMENT for one of those, so the 192 `var(--)`
+ * uses through this file re-theme without being touched.
+ */
 :root {
-  --ink: #1a1a19;
-  --ink-2: #55534e;
-  --muted: #8f8d86;
-  --faint: #b6b4ac;
-  --line: #e6e4dd;
-  --line-2: #efeee9;
-  --surface: #fbfbf9;
+  --navy: #00254c;
+  --blue: #2b6cb0;
+  --orange: #ed8936;
+
+  --ink: #1a202c;
+  --ink-2: #3d4756;
+  --muted: #6b7280;
+  --faint: #a0aec0;
+  --line: #cbd5e0;
+  --line-2: #e2e8f0;
+  --surface: #ffffff;
   --panel: #ffffff;
-  --accent: #1e6fd0;
-  --accent-ink: #155bb0;
-  --accent-soft: #eaf2fd;
-  --accent-line: #c4ddfb;
+  --calm: #edf2f7;
+  --lightblue: #ddebf7;
+  --peach: #fdebdc;
+  /* `--accent` is BLUE, not orange: it is chrome here — links, the primary
+     button, focus rings — and orange must not be spent on furniture. */
+  --accent: #2b6cb0;
+  --accent-ink: #00254c;
+  --accent-soft: #ddebf7;
+  --accent-line: #a9c9e8;
+  --head: #00254c;
   --ok: #1f7a3d;
   --err: #c0432f;
   --r: 8px;
   --r-sm: 5px;
-  --sh-1: 0 1px 2px rgba(20, 20, 18, 0.05);
+  --sh-1: 0 1px 2px rgba(0, 37, 76, 0.06);
 }
 
 * {
@@ -47,56 +79,103 @@ body {
 }
 
 /* ── header ─────────────────────────────────────────── */
+/*
+ * A NAVY BAR, like the SSF-Merge pane and the blue spine on an SSF cover. The
+ * old header was a white strip with a gradient chart glyph; the identity is the
+ * bar and the wordmark, not a logo shape.
+ */
 .pane-header {
   display: flex;
   align-items: center;
   gap: 9px;
-  padding: 10px 13px;
-  border-bottom: 1px solid var(--line);
-  background: var(--panel);
+  padding: 10px 14px;
+  background: var(--navy);
+  color: #fff;
 }
+/*
+ * The three bars kept, in white on the navy.
+ *
+ * SSF-Merge has no glyph — it is a wordmark alone — but this pane is a CHART
+ * tool and the ascending bars say so at 22px in a way the words cannot. Kept as
+ * a flat white mark rather than the old blue gradient: a gradient is a fourth
+ * colour, and the palette has three roles.
+ */
 .mark {
-  width: 22px;
-  height: 22px;
-  border-radius: 6px;
-  background: linear-gradient(135deg, var(--accent), #3f9be8);
+  width: 20px;
+  height: 20px;
   flex: 0 0 auto;
   display: flex;
   align-items: flex-end;
   justify-content: center;
-  gap: 1.5px;
-  padding: 4px;
+  gap: 2px;
+  padding: 2px 0;
 }
 .mark i {
   display: block;
-  width: 2.5px;
+  width: 3px;
   border-radius: 1px;
   background: #fff;
 }
 .mark i:nth-child(1) {
-  height: 5px;
+  height: 6px;
 }
 .mark i:nth-child(2) {
-  height: 10px;
+  height: 13px;
 }
+/* The tallest bar is the ONE orange in the header. The tick above the pane's
+   heading is the orange for the body, and the two never show together: the
+   header is chrome the eye stops seeing, the tick marks where reading starts. */
 .mark i:nth-child(3) {
-  height: 7px;
+  height: 9px;
+  background: var(--orange);
 }
 .head-text {
   display: flex;
   flex-direction: column;
   min-width: 0;
 }
+/*
+ * THE WORDMARK: `SSF` solid, `Charts` in the muted blue beside it, baseline
+ * aligned. Straight from the SSF-Merge header, where it is `<b>SSF</b><span>`,
+ * so the two panes read as one family at a glance.
+ */
 .pane-header h1 {
   margin: 0;
-  font-size: 15px;
-  font-weight: 650;
-  letter-spacing: -0.01em;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0;
+  color: #fff;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.pane-header h1 .product {
+  color: #a8c4e0;
+  font-weight: 400;
+  font-size: 13px;
 }
 .tagline {
   margin: 0;
-  color: var(--muted);
+  color: #a8c4e0;
   font-size: 11px;
+}
+
+/*
+ * THE TICK — the system's signature. A short orange bar above a heading,
+ * marking where something starts without taking room. One per view: if a state
+ * on the slide has taken the orange budget, the tick is hidden rather than
+ * competing with it.
+ */
+.tick {
+  display: block;
+  width: 26px;
+  height: 3px;
+  background: var(--orange);
+  border-radius: 1px;
+  margin: 0 0 8px;
+}
+.tick[hidden] {
+  display: none;
 }
 
 /* ── top-level mode tabs (segmented control) ─────────── */
@@ -188,7 +267,7 @@ body {
   background: none;
   border: 0;
   padding: 0;
-  color: var(--accent, #2563eb);
+  color: var(--accent, #2b6cb0);
   font: inherit;
   cursor: pointer;
   text-decoration: underline;
@@ -758,7 +837,7 @@ textarea {
   color: var(--ink);
 }
 .datasheet input.header {
-  background: #f6f5f1;
+  background: var(--calm);
   font-weight: 650;
 }
 .datasheet input:focus {
@@ -1105,24 +1184,32 @@ input[type="checkbox"] {
 /* ── dark (Office dark themes) ──────────────────────── */
 @media (prefers-color-scheme: dark) {
   :root {
-    --ink: #f2f1ec;
-    --ink-2: #c8c6bd;
-    --muted: #918f88;
-    --faint: #6f6d66;
-    --line: #3a3a38;
-    --line-2: #333331;
-    --surface: #1b1b1a;
-    --panel: #262624;
-    --accent: #5aa2ee;
-    --accent-ink: #8cc0f6;
-    --accent-soft: #16324e;
+    --ink: #dce9f7;
+    --ink-2: #b6c8dc;
+    --muted: #93a7bc;
+    --faint: #6b7f95;
+    --line: #20364b;
+    --line-2: #1a2c3e;
+    --surface: #0a1420;
+    --panel: #12202f;
+    --calm: #12202f;
+    --lightblue: #122a40;
+    --peach: #2e1f13;
+    --accent: #7fb0e0;
+    --accent-ink: #a8c9ea;
+    --accent-soft: #122a40;
     --accent-line: #2d5580;
+    --head: #dce9f7;
+    /* Navy is the header bar in light; in dark the bar has to separate from a
+       near-black page, so it lifts rather than deepens. Orange is unchanged:
+       it is the one accent and it must read the same in both themes. */
+    --navy: #12202f;
   }
   .datasheet input.header {
-    background: #333331;
+    background: #1a2c3e;
   }
   .datasheet input:disabled {
-    background: #2f2f2d;
+    background: #16283a;
   }
   .thumb-pic {
     background: #fff;
@@ -1143,7 +1230,9 @@ input[type="checkbox"] {
   margin: 2px 0 0;
   font-size: 10px;
   line-height: 1.2;
-  color: var(--muted, #6b6a67);
+  /* ON THE NAVY BAR NOW, so `--muted` (a grey chosen for white surfaces) would
+     read as smudged dark-on-dark. The header's own light blue instead. */
+  color: #8fb0d0;
   font-variant-numeric: tabular-nums;
   user-select: all; /* one click selects it for pasting into a bug report */
 }
@@ -1151,8 +1240,10 @@ input[type="checkbox"] {
 /* The pane is older than the site it came from — see `warnIfStale`.
    Loud on purpose: in muted grey this is the line somebody skims past and then
    spends twenty minutes testing a build that does not contain their fix. */
+/* A stale build is the one thing in the header worth interrupting for, and
+   `--err` is a red tuned for white surfaces. Lifted so it carries on navy. */
 .build-stamp.stale {
-  color: var(--err);
+  color: #ff9c8a;
   font-weight: 600;
 }
 
@@ -1172,7 +1263,7 @@ input[type="checkbox"] {
    host that takes 20s to draw a chart is the whole job. */
 .status-bar {
   height: 3px;
-  background: var(--line-2, #ececea);
+  background: var(--line-2, #e2e8f0);
   overflow: hidden;
 }
 .status-bar[hidden] {
@@ -1181,7 +1272,7 @@ input[type="checkbox"] {
 .status-bar > i {
   display: block;
   height: 100%;
-  background: var(--accent, #2563eb);
+  background: var(--accent, #2b6cb0);
   /* Determinate: width is set inline from real progress. */
   width: 0;
   transition: width 180ms ease-out;
@@ -1221,7 +1312,7 @@ input[type="checkbox"] {
 /* Elapsed seconds: the one number we can honestly report mid-sync. */
 .status-elapsed {
   font-size: 11px;
-  color: var(--muted, #6b6a67);
+  color: var(--muted, #6b7280);
   font-variant-numeric: tabular-nums;
 }
 
@@ -1240,12 +1331,12 @@ input[type="checkbox"] {
   border: 1px solid var(--line);
   border-radius: 4px;
   background: var(--panel);
-  color: var(--muted, #6b6a67);
+  color: var(--muted, #6b7280);
   cursor: pointer;
 }
 .status-stop:hover:not(:disabled) {
-  color: var(--fg, #1a1a18);
-  border-color: var(--muted, #6b6a67);
+  color: var(--fg, #1a202c);
+  border-color: var(--muted, #6b7280);
 }
 .status-stop:disabled {
   opacity: 0.6;

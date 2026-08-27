@@ -151,7 +151,7 @@ function buildTitleScene(buildStamp: string, host: string): Scene {
         y: 96,
         w: 840,
         h: 66,
-        text: "PowerChart chart gallery",
+        text: "SSF Charts gallery",
         fontSize: 40,
         bold: true,
         color: PALETTE[0],

@@ -109,12 +109,12 @@ export const EN = {
     "This host cannot store a deck style (needs PowerPoint API 1.7).",
   "Using this deck's own style.": "Using this deck's own style.",
   "This deck carries no style — using yours.": "This deck carries no style — using yours.",
-  "The selection is not a PowerChart — select an inserted chart group first.":
-    "The selection is not a PowerChart — select an inserted chart group first.",
+  "The selection is not an SSF chart — select an inserted chart group first.":
+    "The selection is not an SSF chart — select an inserted chart group first.",
   "Same scale needs at least two value-axis charts in the deck.":
     "Same scale needs at least two value-axis charts in the deck.",
-  "Select two or more PowerCharts (Ctrl-click), then apply Same scale.":
-    "Select two or more PowerCharts (Ctrl-click), then apply Same scale.",
+  "Select two or more charts (Ctrl-click), then apply Same scale.":
+    "Select two or more charts (Ctrl-click), then apply Same scale.",
   "Couldn't encode the PNG on this browser.": "Couldn't encode the PNG on this browser.",
   "Couldn't render the preview to PNG.": "Couldn't render the preview to PNG.",
   "Shareable chart link copied to the clipboard.": "Shareable chart link copied to the clipboard.",

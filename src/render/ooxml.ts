@@ -76,7 +76,10 @@ export function parseSlideSizeEmu(presentationXml: string): { cx: number; cy: nu
 }
 
 /** The name the live renderer gives a chart's group — kept identical here so
- *  `snapshotAddedSlides` recognises a generated chart as a grouped one. */
+ *  `snapshotAddedSlides` recognises a generated chart as a grouped one.
+ *
+ *  NOT renamed with the product on 2026-08-27: it is written into the deck and
+ *  matched on read. See `CHART_TAG` in `powerpoint.ts`. */
 const GROUP_NAME = "PowerChart";
 
 /** What to add to one slide of the generated deck. */

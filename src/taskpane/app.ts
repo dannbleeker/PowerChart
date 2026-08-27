@@ -2020,7 +2020,7 @@ async function runInsert(asNew: boolean) {
   renderActionState();
   // After the insert, never before: phaseNote would have overwritten it.
   //
-  // A chart with no config tag is on the slide and is not a PowerChart: click
+  // A chart with no config tag is on the slide and is not a SSF Charts: click
   // it and the pane says so, reopen the deck and the settings are gone for
   // good. The renderer has always known — `groupAndTagAll` returns `tagged` —
   // and this path threw the whole return away, so `guard()` printed "Done." in
@@ -2075,7 +2075,7 @@ async function doSameScale(scope: "deck" | "selection" = "deck") {
     note(
       scope === "deck"
         ? "Same scale needs at least two value-axis charts in the deck."
-        : "Select two or more PowerCharts (Ctrl-click), then apply Same scale.",
+        : "Select two or more charts (Ctrl-click), then apply Same scale.",
       "err",
     );
     return;
@@ -2141,7 +2141,7 @@ async function doSameScale(scope: "deck" | "selection" = "deck") {
       swept += await deleteShapesById(w.slideId, w.strayIds);
     }
     console.warn(
-      `PowerChart: same scale swept ${swept} of ${strays} shapes left by ${wreckage.length} stalled redraw(s)`,
+      `SSF Charts: same scale swept ${swept} of ${strays} shapes left by ${wreckage.length} stalled redraw(s)`,
     );
   }
   // Charts the host silently declined to resolve at all.
@@ -2206,7 +2206,7 @@ async function doSameScale(scope: "deck" | "selection" = "deck") {
 async function doLoadSelection() {
   const found = await loadChartFromSelection();
   if (!found) {
-    note("The selection is not a PowerChart — select an inserted chart group first.", "err");
+    note("The selection is not an SSF chart — select an inserted chart group first.", "err");
     return;
   }
   note("Chart loaded — edits will update it in place.", "ok");
@@ -2233,7 +2233,7 @@ async function doLoadSelection() {
 async function doExplode() {
   const found = await loadChartFromSelection();
   if (!found) {
-    note("Select an inserted PowerChart first — Explode re-draws it as native shapes.", "err");
+    note("Select an inserted chart first — Explode re-draws it as native shapes.", "err");
     return;
   }
   const cfg = { ...(JSON.parse(found.configJson) as ChartConfig), render: "shapes" as const };
@@ -2949,7 +2949,7 @@ async function updateChartResilient(
     );
     return { next };
   } catch (err) {
-    console.warn("PowerChart: in-place redraw stalled — trying the slide swap", err);
+    console.warn("SSF Charts: in-place redraw stalled — trying the slide swap", err);
     stall = err;
     wreckage = wreckageOf(err);
   }
@@ -2959,7 +2959,7 @@ async function updateChartResilient(
   // user keeps the wreckage underneath it — the failure made visible twice.
   if (wreckage?.strayIds.length) {
     const swept = await deleteShapesById(wreckage.slideId, wreckage.strayIds);
-    console.warn(`PowerChart: swept ${swept} of ${wreckage.strayIds.length} shapes left by the stalled redraw`);
+    console.warn(`SSF Charts: swept ${swept} of ${wreckage.strayIds.length} shapes left by the stalled redraw`);
   }
 
   // A stop is not a stall, and the ladder below is for stalls. Every rung of it
@@ -2985,7 +2985,7 @@ async function updateChartResilient(
       // and say what happened instead.
       if (swap === "duplicated") return { next: null, duplicated: true };
     } catch (err) {
-      console.warn("PowerChart: slide swap failed — falling back to a picture", err);
+      console.warn("SSF Charts: slide swap failed — falling back to a picture", err);
     }
   }
 
@@ -3017,7 +3017,7 @@ async function updateChartResilient(
   } catch (err) {
     // Nothing left to try. Surface the host's own words rather than a
     // rasterizer error the user can do nothing about.
-    console.warn("PowerChart: picture fallback failed too", err);
+    console.warn("SSF Charts: picture fallback failed too", err);
     throw stall;
   }
 }
@@ -3057,7 +3057,7 @@ async function insertDemoDeckAsFile(items: { scene: Scene; title: string; config
       await slideSize(),
     );
   } catch (err) {
-    console.warn("PowerChart: could not build the deck file — falling back to shapes", err);
+    console.warn("SSF Charts: could not build the deck file — falling back to shapes", err);
     return null;
   }
   let added: number;
@@ -3068,7 +3068,7 @@ async function insertDemoDeckAsFile(items: { scene: Scene; title: string; config
   } catch (err) {
     // A throw is not proof that nothing landed — the same lesson the
     // shape path learned the hard way. Measure before deciding.
-    console.warn("PowerChart: one-shot deck insert failed", err);
+    console.warn("SSF Charts: one-shot deck insert failed", err);
     // …and a failed MEASUREMENT is not proof either. This runs on a host that
     // has just failed once, milliseconds ago; the re-read can fail with it.
     // Treating that as "nothing landed" returns null, and the caller then
@@ -3079,7 +3079,7 @@ async function insertDemoDeckAsFile(items: { scene: Scene; title: string; config
     try {
       after = await slideCount();
     } catch (readErr) {
-      console.warn("PowerChart: could not measure the deck after the failed insert", readErr);
+      console.warn("SSF Charts: could not measure the deck after the failed insert", readErr);
       return {
         text: "PowerPoint would not take the deck, and would not say how much of it landed. Check the deck before inserting again — running it now could add the slides twice.",
         status: "err",
@@ -4512,7 +4512,7 @@ function wireInsert() {
         try {
           resultsPages = buildResultsScenes(rows, summary);
         } catch (e) {
-          console.warn("PowerChart: results scene build failed", e);
+          console.warn("SSF Charts: results scene build failed", e);
         }
         let resultsLanded = 0;
         for (const [i, scene] of resultsPages.entries()) {
@@ -4544,7 +4544,7 @@ function wireInsert() {
             );
             resultsLanded += 1;
           } catch (e) {
-            console.warn(`PowerChart: results page ${i + 1} failed to insert`, e);
+            console.warn(`SSF Charts: results page ${i + 1} failed to insert`, e);
           }
         }
         if (!resultsPages.length) msg += " (results slide not added)";

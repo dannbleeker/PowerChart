@@ -94,7 +94,23 @@ export interface InsertOptions {
   pictureBase64?: string;
 }
 
-/** Tag key under which the chart's serialized config is persisted. */
+/**
+ * Tag key under which the chart's serialized config is persisted.
+ *
+ * THE `POWERCHART_` PREFIX STAYS, and this is not an oversight left over from
+ * the rename to SSF Charts on 2026-08-27. Every one of these strings is written
+ * INTO THE USER'S DECK and read back to recognise a chart as ours. Rename one
+ * and every chart inserted by every earlier build stops being found: the tag is
+ * still on the shape, the add-in no longer asks for it, and re-editability —
+ * the thing this product is for — breaks silently in decks nobody has open.
+ *
+ * The same applies to `GROUP_NAME`, to `NOT_COMPLETE_NAME`, and to the
+ * manifest's `<Id>` GUID, each of which carries its own note. A display string
+ * can be renamed freely; a key written into someone else's file cannot.
+ *
+ * If these ever DO need to change, the change is a migration — read both names
+ * for a release or two, write only the new one — not a find-and-replace.
+ */
 export const CHART_TAG = "POWERCHART_CONFIG";
 
 /**
@@ -3671,7 +3687,7 @@ async function addSlides(
     lastAddsLost += deficit;
     trace("host", "slide add(s) never landed", { requested: count, lost: deficit });
     console.warn(
-      `PowerChart: addSlides lost ${deficit} of ${count} requested slide${count === 1 ? "" : "s"} — ` +
+      `SSF Charts: addSlides lost ${deficit} of ${count} requested slide${count === 1 ? "" : "s"} — ` +
         `the host dropped the add() and the retry did not recover it. Returning ${have} thunk${have === 1 ? "" : "s"}.`,
     );
   }
@@ -4954,7 +4970,7 @@ async function runDemoDeck(
       if (why) {
         degradedAt = i + 1;
         degradeReason = why;
-        console.warn(`PowerChart: drawing the rest as pictures — ${why}`);
+        console.warn(`SSF Charts: drawing the rest as pictures — ${why}`);
         trace("demo", "stopped drawing shapes", { fromItem: i + 1, why, shapesDrawn });
       }
     }
@@ -5976,7 +5992,15 @@ async function findBlankAddedSlides(
   return { positions, items, complete };
 }
 
-/** Name `groupAndTagAll` and `rescueGroupAndTag` give the chart's group shape. */
+/**
+ * Name `groupAndTagAll` and `rescueGroupAndTag` give the chart's group shape.
+ *
+ * STILL "PowerChart" AFTER THE RENAME, deliberately. This looks like a display
+ * string and is a LOOKUP KEY: `shapes.items.find(sh => sh.name === GROUP_NAME)`
+ * is how a chart already on a slide is found again, here and in `ooxml.ts`.
+ * Rename it and the add-in stops recognising every chart it has ever inserted.
+ * See `CHART_TAG` for the full note.
+ */
 const GROUP_NAME = "PowerChart";
 
 /**
@@ -8196,7 +8220,7 @@ export async function withSlideDeselected<T>(slideIds: string[], fn: (deselected
       if (!gone) {
         trace("host", "scratch slide could not be removed", { scratchId });
         console.warn(
-          "PowerChart: could not remove the blank slide used to redraw off-screen — " +
+          "SSF Charts: could not remove the blank slide used to redraw off-screen — " +
             "it is the last slide in the deck and safe to delete by hand.",
         );
       }

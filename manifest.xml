@@ -8,9 +8,9 @@
 
   <Id>b7f6d3a2-4c1e-4e8a-9f2b-7d5c0a1e6f43</Id>
   <Version>1.0.0.0</Version>
-  <ProviderName>PowerChart (open source)</ProviderName>
+  <ProviderName>SSF Charts (open source)</ProviderName>
   <DefaultLocale>en-US</DefaultLocale>
-  <DisplayName DefaultValue="PowerChart" />
+  <DisplayName DefaultValue="SSF Charts" />
   <Description DefaultValue="Consulting-grade charts — waterfall/bridge, Mekko/Marimekko, stacked columns, CAGR and difference arrows — inserted as native, fully editable PowerPoint shapes." />
   <IconUrl DefaultValue="https://localhost:3000/assets/icon-32.png" />
   <HighResolutionIconUrl DefaultValue="https://localhost:3000/assets/icon-80.png" />
@@ -299,9 +299,9 @@
         <bt:Url id="Taskpane.Url.el.table" DefaultValue="https://localhost:3000/src/taskpane/taskpane.html?tab=elements&amp;el=table" />
       </bt:Urls>
       <bt:ShortStrings>
-        <bt:String id="Group.Label" DefaultValue="PowerChart" />
+        <bt:String id="Group.Label" DefaultValue="SSF Charts" />
         <bt:String id="OpenPane.Label" DefaultValue="Insert chart" />
-        <bt:String id="GetStarted.Title" DefaultValue="PowerChart loaded" />
+        <bt:String id="GetStarted.Title" DefaultValue="SSF Charts loaded" />
         <bt:String id="Menu.Label" DefaultValue="Insert chart by type" />
         <bt:String id="Menu.stacked.Label" DefaultValue="Column chart" />
         <bt:String id="Menu.waterfall.Label" DefaultValue="Waterfall chart" />
@@ -317,10 +317,10 @@
         <bt:String id="El.table.Label" DefaultValue="Table from data" />
       </bt:ShortStrings>
       <bt:LongStrings>
-        <bt:String id="OpenPane.Tooltip" DefaultValue="Open the PowerChart pane to insert waterfall, Mekko and stacked charts as native shapes." />
-        <bt:String id="GetStarted.Description" DefaultValue="Find PowerChart on the Home tab and insert your first chart." />
-        <bt:String id="Menu.Tooltip" DefaultValue="Open PowerChart with this chart type preselected." />
-        <bt:String id="ElementsMenu.Tooltip" DefaultValue="Open PowerChart on the Elements tab to insert this element (Harvey ball, checkbox, process flow, KPI tile or table)." />
+        <bt:String id="OpenPane.Tooltip" DefaultValue="Open the SSF Charts pane to insert waterfall, Mekko and stacked charts as native shapes." />
+        <bt:String id="GetStarted.Description" DefaultValue="Find SSF Charts on the Home tab and insert your first chart." />
+        <bt:String id="Menu.Tooltip" DefaultValue="Open SSF Charts with this chart type preselected." />
+        <bt:String id="ElementsMenu.Tooltip" DefaultValue="Open SSF Charts on the Elements tab to insert this element (Harvey ball, checkbox, process flow, KPI tile or table)." />
       </bt:LongStrings>
     </Resources>
   </VersionOverrides>

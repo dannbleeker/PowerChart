@@ -904,7 +904,7 @@ describe("Explode to native shapes", () => {
     $("explode").click();
     await settle();
     expect(host.calls.updateChart).toHaveLength(0);
-    expect($("host-note").textContent).toMatch(/select an inserted powerchart/i);
+    expect($("host-note").textContent).toMatch(/select an inserted chart first/i);
   });
 
   it("does not claim success when the host would not save the config back", async () => {
@@ -1183,7 +1183,7 @@ describe("Load selection", () => {
     host.loadSelectionResult = null;
     $("load-selection").click();
     await settle();
-    expect($("host-note").textContent?.toLowerCase()).toContain("not a powerchart");
+    expect($("host-note").textContent?.toLowerCase()).toContain("not an ssf chart");
     expect(host.calls.updateChart).toHaveLength(0);
   });
 });
@@ -1458,7 +1458,7 @@ describe("guard — busy lockout and error surfacing", () => {
     $("load-selection").click();
     await settle();
     expect($("host-note").textContent).not.toBe("Done.");
-    expect($("host-note").textContent?.toLowerCase()).toContain("not a powerchart");
+    expect($("host-note").textContent?.toLowerCase()).toContain("not an ssf chart");
     expect($("status-bar").classList.contains("indeterminate")).toBe(false);
   });
 });

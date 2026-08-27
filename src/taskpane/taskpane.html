@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>PowerChart</title>
+    <title>SSF Charts</title>
     <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
     <link rel="stylesheet" href="./taskpane.css" />
   </head>
@@ -11,7 +11,11 @@
     <header class="pane-header">
       <span class="mark" aria-hidden="true"><i></i><i></i><i></i></span>
       <div class="head-text">
-        <h1>PowerChart</h1>
+        <!-- The SSF wordmark: the name solid, the product muted beside it,
+             baseline aligned. Same shape as the SSF Merge pane header.
+             `aria-label` because the gap between the two words is a flex `gap`,
+             so the accessible name would otherwise be read as "SSFCharts". -->
+        <h1 aria-label="SSF Charts">SSF<span class="product">Charts</span></h1>
         <p class="tagline">Native, editable PowerPoint charts</p>
         <!-- Which build is actually running. PowerPoint caches the pane hard,
              so without this "reload and retry" is unverifiable. -->
@@ -47,7 +51,7 @@
 
     <div class="scroll">
       <div id="selection-banner" class="banner" style="display: none">
-        A PowerChart is selected on the slide.
+        An SSF chart is selected on the slide.
         <button id="selection-banner-load">Edit it</button>
       </div>
 
