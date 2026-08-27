@@ -11,7 +11,7 @@
  */
 import { writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
-import { sampleConfig, CHART_KINDS } from "../dist-lib/powerchart.js";
+import { sampleConfig, CHART_KINDS } from "../dist-lib/ssf-charts.js";
 
 const day = (iso) => Math.round(Date.parse(iso) / 86400000);
 

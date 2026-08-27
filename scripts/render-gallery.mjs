@@ -5,7 +5,7 @@
  */
 import { writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { buildChart, sceneToSvg, sampleConfig, CHART_KINDS } from "../dist-lib/powerchart.js";
+import { buildChart, sceneToSvg, sampleConfig, CHART_KINDS } from "../dist-lib/ssf-charts.js";
 
 const outDir = process.argv[2] ?? "docs/gallery-svg";
 mkdirSync(outDir, { recursive: true });

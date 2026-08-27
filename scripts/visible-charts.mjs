@@ -166,7 +166,7 @@ async function main() {
   // entry point, and the same code the skill ships. Run `npm run build:lib`
   // first; a stale bundle here would gate the OLD renderer, which is the trap
   // `CLAUDE.md` already records for `skill-scripts.test.ts`.
-  const { buildChart, sampleConfig, CHART_KINDS, sceneToSvg } = await import("../dist-lib/powerchart.js");
+  const { buildChart, sampleConfig, CHART_KINDS, sceneToSvg } = await import("../dist-lib/ssf-charts.js");
 
   const update = process.argv.includes("--update");
   const coverage = update ? {} : JSON.parse(readFileSync(COVERAGE_FILE, "utf8"));
