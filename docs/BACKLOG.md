@@ -221,6 +221,60 @@ cost is per-shape drawing on the host. And not a visibility problem: an earlier
 reading of this same data claimed 2.3x for "the slide the user is looking at"
 and was retracted in `0638b6a` — it split on a sentinel meaning "slide id not
 loaded yet". Nothing in this archive distinguishes on-screen from off-screen.
+
+### The slow-path warning: estimator done, offer NOT wired — 2026-08-27
+
+**Owner's decision, taken 2026-08-27:** show progress on the slow path, and when
+the estimate exceeds **14 seconds**, quietly offer to put the chart on its own
+slide instead. Not a modal — it interrupts the press the user just made — but it
+does gate this insert, because it is a question about THIS chart.
+
+**Done:** `src/core/insert-cost.ts` and its tests. `estimateInsertMs(shapes,
+present)`, `isSlowInsert`, `SLOW_INSERT_MS = 14_000`, `describeMs`. Interpolated
+from the archive's four measured medians, flat past the last reading, and
+deliberately understating. Seven tests, mutation-checked.
+
+**Not done: the wiring.** Attempted and reverted rather than half-shipped, and
+the reason is worth writing down.
+
+**What the attempt got right.** The occupancy is ALREADY IN HAND. The insert path
+calls `getSlideShapeBounds()` to place the chart, which returns every shape on
+the target slide via the same `getTargetSlide` an insert uses — so
+`occupied.length` is the count, free, on a read that already happens. The first
+draft added a second host call for it; that is the "adding counting sites moves
+the baseline" mistake this file warns about two sections up, made while quoting
+the warning. Use `occupied`.
+
+`null` from that read means the host would not say. Treat it as UNKNOWN, never as
+empty: a warning that fires because a read failed is worse than one that never
+fires.
+
+**What stopped it: there is no product path that puts a chart on a NEW slide.**
+The draft wrote `cfg = { ...cfg, newSlide: true }`, and no such option exists —
+invented, and it would have compiled only because `ChartConfig` is loose.
+
+What exists is `InsertOptions.slideId`, so the shape of the fix is: add one
+slide, take its id, insert with it. But `slides.add()` IS LOST BY THIS HOST often
+enough that the deck path carries a whole retry apparatus for it — `addsIssued`,
+`lastAddsLost`, `SLIDE_ADD_RETRIES`. A new exported "add one slide and return its
+id" has to go through that, not around it, or the offer will sometimes put a
+chart nowhere and report success.
+
+**So the remaining work is, in order:**
+
+1. Export an add-one-slide-and-name-it from the renderer that reuses the existing
+   add/retry path. This is the only risky part.
+2. In `app.ts`, after `const occupied = await getSlideShapeBounds()`: if
+   `occupied` is non-null and `isSlowInsert(estimateOfficeShapes(scene),
+   occupied.length)`, show the offer and await the choice.
+3. On "own slide", add the slide and pass its id as `InsertOptions.slideId`.
+4. The offer's markup and styling: peach ground, orange border — the SSF
+   "Bemerk" component. It is the one place the orange budget legitimately moves
+   off the tick, because it is a state the user must act on; the two are never
+   both prominent, the tick being at the top of a scrolled pane and this pinned
+   above the action bar.
+5. A test that a slow estimate offers and a fast one does not, and that a `null`
+   occupancy stays silent.
 ### Text that overlaps text on data the samples do not carry — MEASURED 2026-08-19, not fixed
 
 The frame gate's overlap half sweeps `sampleConfig(kind)`, and a sweep of the
