@@ -263,6 +263,18 @@ So: **a cycle runs against a live deployment, and pushing changes it underneath
 the round.** A leg that spans a deploy is not evidence about the build it names.
 Finish the cycle, then push. `npm run cycle` takes about half an hour.
 
+**A COMMIT IS NOT ENOUGH TO STOP IT, AND WAITING IS NOT THE ONLY ORDER THAT WORKS.**
+The obvious workaround — keep committing locally and hold the push until the
+cycle ends — makes rounds impossible instead: the driver compares HEAD to the
+build the site is serving and refuses when they differ, which is the stronger
+form of this same rule and predates it.
+
+    the site is serving 194b50a but HEAD is e4b810e — wait for Deploy Pages
+
+So the working order is: **push, wait for Deploy Pages, run the cycle, and
+commit nothing until it finishes.** A local commit during a cycle is as
+disqualifying as a push.
+
 **The product bug it found is real and was worth the leg.** Every user meets
 this eventually: the pane stays open for a PowerPoint session, a release goes
 out during one, and the next deck insert asks for a deleted chunk. They saw a

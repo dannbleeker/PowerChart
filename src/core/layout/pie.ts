@@ -509,6 +509,94 @@ function layoutGauge(
   const nodes: SceneNode[] = [];
   const titleN = titleNode(cfg, style);
   if (titleN) nodes.push(titleN);
+
+  /**
+   * Where the big centre total will land, computed BEFORE the labels are placed.
+   *
+   * The note at its own push says "the centre is empty by construction so there
+   * is nothing for it to land on". That is true of the centre and not of the
+   * BOX: the total is clamped to stay inside the chart, and on a short gauge the
+   * clamp carries it down into the band the slice labels use. 58 pairs of
+   * `label` on `gauge-total` in the variant sweep — a number the gauge exists to
+   * show, with a category name printed through it.
+   *
+   * The total wins, which is the same verdict its own note reaches for a
+   * different reason. It is the headline; a slice label is a name for one wedge,
+   * and the leader line still points at that wedge whether or not the name is
+   * beside it.
+   */
+  /**
+   * FITTED TO THE ARC IT SITS IN, which it was not.
+   *
+   * The box is `r * 2` wide and the text was always `fs * 1.7`, so on a small
+   * gauge the number is drawn WIDER than its own box — centred, it then spills
+   * equally off both sides. At 160x120 and an 18pt font that is a 30.6pt number
+   * in a 40pt box, reaching 22pt to the left of where the box starts and onto
+   * the slice label there. A box-to-box check cannot see it, which is how it
+   * survived the check that was written for exactly this collision.
+   *
+   * Measured BOLD, because it is drawn bold. The first version asked `textWidth`
+   * for the plain width and came out 2% short — enough that an 80x60 gauge still
+   * had a 40.8pt number in a 40pt box and the test written for this caught it.
+   *
+   * Shrunk, not dropped, and not clamped either: the note at the push below is
+   * right that this is the number the gauge exists to show. It stays as large as
+   * the arc can hold it. Below the legibility floor there is nothing sensible
+   * left to do, so the floor wins and the number is small but present — a gauge
+   * with no total is not a gauge.
+   */
+  const totalFsPre = Math.max(
+    MIN_LABEL_FS,
+    Math.min(fs * 1.7, ((r * 2 - 2) / Math.max(1, textWidth(formatNumber(total, fmt), 1, true))) as number),
+  );
+  const totalHPre = (fs * 2 * totalFsPre) / (fs * 1.7);
+  const totalBox = {
+    x: cx - r,
+    y: Math.max(0, Math.min(cy - totalFsPre, cfg.height - totalHPre)),
+    w: r * 2,
+    h: totalHPre,
+  };
+
+  /**
+   * How big each slice label may be, given the one next to it. `null` drops it.
+   *
+   * The gauge is a doughnut drawn over half a circle, and its labels crowd for
+   * exactly the reason the full pie's outside labels did — 46 pairs of `label`
+   * on `label` in the sweep, the same shape and the same cause. It never got the
+   * fix the pie had because `layoutGauge` is a separate function that leaves
+   * before any of that code runs.
+   *
+   * Same rule, then: SHRINK, THEN DROP, and nothing moves — so no name can end
+   * up beside the wrong wedge with its leader pointing at it. Compared on the
+   * SAME SIDE only, because the two halves are separated by the whole arc and
+   * never collide however close their anchors sit in y.
+   */
+  const gaugeFs: (number | null)[] = (() => {
+    if (!decor.segmentLabels) return values.map(() => null);
+    let a = 270;
+    const anchors = values.map((v) => {
+      const span = (v / denom) * 180;
+      const mid = a + span / 2;
+      a += span;
+      const p = polar(cx, cy, r + fs * 0.8, mid);
+      return { y: p.y, right: ((mid % 360) + 360) % 360 < 180, span };
+    });
+    return anchors.map((me, i) => {
+      if (me.span <= 0) return null;
+      let gap = Infinity;
+      for (let j = 0; j < anchors.length; j++) {
+        if (j === i || anchors[j].span <= 0 || anchors[j].right !== me.right) continue;
+        gap = Math.min(gap, Math.abs(anchors[j].y - me.y));
+      }
+      // A lone label on its side has no neighbour to yield to.
+      // 1.5, not the pie's 1.25: a gauge label's box is `lf * 1.5` tall where an
+      // outside pie label's is 1.25, and a divisor copied from the other rule
+      // leaves the pairs it was supposed to separate touching by the difference.
+      const size = gap === Infinity ? fs : Math.min(fs, gap / 1.5);
+      return size >= MIN_LABEL_FS ? size : null;
+    });
+  })();
+
   let angle = 270; // start at 9 o'clock, sweep clockwise over the top to 3 o'clock
   values.forEach((v, c) => {
     const span = (v / denom) * 180;
@@ -545,7 +633,14 @@ function layoutGauge(
        * Same shrink-then-drop as every other label here: a gauge with no room
        * for its legends is still a gauge, and its total is drawn in the middle.
        */
-      let lf = fs;
+      // Starts from the neighbour budget rather than the chart font, then the
+      // frame fit below narrows it further if the chart is also too narrow.
+      const budget = gaugeFs[c];
+      if (budget == null) {
+        angle += span;
+        return;
+      }
+      let lf = budget;
       while (lf > MIN_LABEL_FS && textWidth(label, lf) + 4 > cfg.width) lf -= 0.5;
       if (textWidth(label, lf) + 4 > cfg.width) {
         angle += span;
@@ -569,18 +664,33 @@ function layoutGauge(
         strokeWidth: 0.75,
         name: `leader-${c}`,
       });
+      // Clamped as a floor: the margin above sizes the arc so the labels fit,
+      // but on a chart too narrow to hold them at all the arc bottoms out at
+      // its 20pt minimum and the label would still leave the canvas.
+      const lx = Math.max(0, Math.min(cfg.width - w, rightHalf ? p.x : p.x - w));
+      // Clamped vertically too. A slice ending near the gauge's flat side puts
+      // its label level with the centre line, and on a short chart the centre
+      // line is close enough to the foot that the box hangs 6pt below it. The
+      // leader above says which slice this names, so a label nudged up off the
+      // edge still reads as that slice's.
+      const ly = Math.max(0, Math.min(cfg.height - lf * 1.5, p.y - lf * 0.75));
+      // THE CENTRE TOTAL WINS. Its box is clamped into the chart too, and on a
+      // short gauge that carries it down into this band. The leader line is
+      // already drawn and still points at the wedge, so what is lost is a name,
+      // not the identification.
+      if (
+        lx < totalBox.x + totalBox.w &&
+        totalBox.x < lx + w &&
+        ly < totalBox.y + totalBox.h &&
+        totalBox.y < ly + lf * 1.5
+      ) {
+        angle += span;
+        return;
+      }
       nodes.push({
         kind: "text",
-        // Clamped as a floor: the margin above sizes the arc so the labels fit,
-        // but on a chart too narrow to hold them at all the arc bottoms out at
-        // its 20pt minimum and the label would still leave the canvas.
-        x: Math.max(0, Math.min(cfg.width - w, rightHalf ? p.x : p.x - w)),
-        // Clamped vertically too. A slice ending near the gauge's flat side puts
-        // its label level with the centre line, and on a short chart the centre
-        // line is close enough to the foot that the box hangs 6pt below it. The
-        // leader above says which slice this names, so a label nudged up off the
-        // edge still reads as that slice's.
-        y: Math.max(0, Math.min(cfg.height - lf * 1.5, p.y - lf * 0.75)),
+        x: lx,
+        y: ly,
         w,
         h: lf * 1.5,
         text: label,
@@ -594,12 +704,11 @@ function layoutGauge(
     angle += span;
   });
   // Big total in the open centre of the arc.
-  const totalFs = fs * 1.7;
-  // `fs * 2` exactly, as it always was — the clamp below is the whole fix, and a
-  // box height derived from `totalFs` instead moved this box by 0.06pt on the
-  // showcase's own gauge. A change that touches an ordinary chart is not a last
-  // resort; the deck diff is what says so.
-  const totalH = fs * 2;
+  // Computed with the label budget above, so the box the labels were checked
+  // against is the box that is drawn. Two copies of this arithmetic is how a
+  // collision check comes to guard a rectangle nothing occupies.
+  const totalFs = totalFsPre;
+  const totalH = totalHPre;
   nodes.push({
     kind: "text",
     x: cx - r,

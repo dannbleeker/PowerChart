@@ -2635,3 +2635,49 @@ functions can be compared against the same ticks.
 earlier attempt at it that was reverted for a good reason), `10 series` legend
 rows (200), `pie.semi` gauge labels (120), and a residue of `combo-label` pairs
 (137) that survive under other options and want their own look.
+
+### The strips that had a fit and spent it — FIXED 2026-08-28
+
+Three more, and two of them share one mistake: a strip is fitted to the room it
+has, and then a CLAMP that keeps a label on the canvas moves it back toward its
+neighbour and takes the room away again. The fit was right and looked right; the
+clamp undid it a few lines later.
+
+    2,148 overlapping pairs -> 1,032 (secondary axis) -> under 800
+
+**The scatter's x tick numbers, 84 pairs.** `gapScale` guarantees the spacing can
+carry the widest label; the nudge below spends it. The label on the axis's origin
+is centred on its tick, so half of it hangs into the y axis's gutter and it is
+moved right by exactly the overhang — right being toward its neighbour. The
+secondary axis took the other remedy (one shift for the whole strip, which keeps
+every gap); that is not available here because only the FIRST label moves and
+shifting all of them would push the last one off the canvas. So this strip pays
+in SIZE: shrink until the nudged layout clears, drop the numbers if it cannot.
+Three tick numbers lost in 731 across the sweep.
+
+**A combo's series labelling over each other, 137 pairs.** `neighbourFs` bounds a
+line's labels against the ones beside it in the SAME series; nothing compared
+them across series. Ten line series draw ten numbers per category — sideways
+along one row, upright stacked above one mark. Sideways only the right-hand
+neighbour matters and only the label's own width, because every label starts at
+its mark and runs rightward. Upright they share the category's x and what must
+fit is a line height. 209 labels become 95; the everyday combo keeps all 79.
+
+**The gauge, 104 pairs, and it had never had any of this.** `layoutGauge` leaves
+`layoutPie` on its first line, so none of the pie's label work reached it: its
+slice labels crowded exactly as the pie's outside labels used to, 46 pairs. The
+other 58 were labels printed through the big centre total, which its own note
+said could not happen — "the centre is empty by construction so there is nothing
+for it to land on". Half right. Not true of the BOX, which is clamped into the
+chart and on a short gauge is carried down into the labels' band; and not true of
+the TEXT, drawn at `fs * 1.7` inside a box `r * 2` wide, so on a 160x120 gauge a
+30.6pt number sat in a 40pt box and reached 22pt off its left side. The total is
+now fitted to the arc, and the labels yield to it. 128 labels become 88, all
+three collisions to zero.
+
+**Two things the mutation pass caught, both the same kind.** The gauge's fit
+measured the total UNBOLD while the node draws it bold, and came out 2% short —
+enough to leave a 40.8pt number in a 40pt box. And the neighbour divisor was
+copied from the pie's 1.25 when a gauge label's box is `lf * 1.5` tall, which
+left exactly the pairs it was meant to separate touching by the difference. Both
+are the same error: measuring something adjacent to what is drawn.
