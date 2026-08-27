@@ -3751,7 +3751,7 @@ describe("reading a demo deck back and repairing it", () => {
     expect(chart.tagStore.get(CHART_ORIGIN_TAG)).toBe("[239.988,120,239.988,120]"); // the origin is NOT
   });
 
-  it("refuses the retag when there is no PowerChart object to put it on", async () => {
+  it("refuses the retag when there is no SSF Charts object to put it on", async () => {
     const deck = [demoSlide("bare", { slot: { i: 0, title: "Line" }, shapes: 1 })];
     installHost(deck);
     // Shapes present but loose and unnamed: this is a regroup, not a retag.
@@ -4292,13 +4292,13 @@ describe("stopping work in flight", () => {
   });
 
   /**
-   * A chart with no config tag is on the slide and is not a PowerChart.
+   * A chart with no config tag is on the slide and is not an SSF chart.
    *
    * `groupAndTagAll` has always answered this honestly — it returns `tagged` —
    * and the answer had nowhere to go: `EditTarget` carried no such field, so
    * the demo path (which has a repair pass) consumed it and the everyday insert
    * and in-place update (which have none) did not. The user gets "Done." in
-   * green, clicking the chart says "the selection is not a PowerChart", and
+   * green, clicking the chart says "the selection is not an SSF chart", and
    * reopening the deck loses the config for good. A real host produced this
    * four times in one run: *"a chart's tag could not even be queued"* followed
    * by *"tagging failed — charts are not re-editable until repaired"*.

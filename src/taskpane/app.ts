@@ -2020,7 +2020,7 @@ async function runInsert(asNew: boolean) {
   renderActionState();
   // After the insert, never before: phaseNote would have overwritten it.
   //
-  // A chart with no config tag is on the slide and is not a SSF Charts: click
+  // A chart with no config tag is on the slide and is not an SSF chart: click
   // it and the pane says so, reopen the deck and the settings are gone for
   // good. The renderer has always known — `groupAndTagAll` returns `tagged` —
   // and this path threw the whole return away, so `guard()` printed "Done." in
@@ -2850,7 +2850,7 @@ interface RunLog {
  * outside it is read, let alone touched.
  *
  * "Tagged" means tagged BY THIS RUN. The span used to be drawn around every
- * PowerChart slot tag in the presentation, which is only the same thing the
+ * SSF Charts slot tag in the presentation, which is only the same thing the
  * first time the deck is inserted. Insert it twice — or duplicate one demo
  * slide, which copies its tag — and the span covered both copies, every item
  * matched two slides, and the pass deleted one whole healthy run as the other

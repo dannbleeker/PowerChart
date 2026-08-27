@@ -4,7 +4,7 @@ import type { ChartConfig } from "../src/core/types";
 
 /**
  * Drives the Excel companion pane end-to-end with stubbed Excel/Office
- * globals: selected range → generated PowerChart JSON in the output box.
+ * globals: selected range → generated SSF Charts JSON in the output box.
  */
 
 let rangeValues: unknown[][] = [];

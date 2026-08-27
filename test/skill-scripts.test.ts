@@ -197,7 +197,7 @@ describe('render-pptx.mjs — render:"image" mode', () => {
     expect(slide2).not.toContain("<p:sp>");
   });
 
-  it("names the picture PowerChart, like every other chart object", async () => {
+  it("names the picture SSF Charts, like every other chart object", async () => {
     // Not cosmetic. Every repair path in powerpoint.ts finds a chart by
     // `name === "PowerChart"` — retagSlideChart, rescueGroupAndTag,
     // slideHoldsOnlyChart — so a picture left with pptxgenjs's default

@@ -19,7 +19,7 @@ interface Finding {
 /**
  * Schema validation of the generated deck, and the baseline it needs.
  *
- * `verify-deck.mjs` asks "did PowerChart write what it meant to" by scanning
+ * `verify-deck.mjs` asks "did SSF Charts write what it meant to" by scanning
  * for elements it knows about. This asks "is this a legal .pptx at all",
  * against the grammar. The two catch nearly disjoint sets, which is the whole
  * reason for having both — and the reason neither can be dropped in favour of

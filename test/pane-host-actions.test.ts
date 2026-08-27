@@ -12,7 +12,7 @@ import { sceneToSvg } from "../src/render/svg";
  * handlers (`doInsert`, `doLoadSelection`, `doSameScale`) were the pane's
  * largest untested surface: the branch that chooses a selected placeholder's
  * bounds over the tiled offset, the edit-in-place path, the union-extent maths
- * behind Same scale, and the "not a PowerChart" / "needs two charts" guards.
+ * behind Same scale, and the "not an SSF chart" / "needs two charts" guards.
  *
  * The renderer primitives those handlers call (`insertSceneIntoSlide` et al.)
  * are covered against a fake host in `office-render.test.ts`; here the module is
@@ -899,7 +899,7 @@ describe("Explode to native shapes", () => {
     expect(($("render-image") as HTMLInputElement).checked).toBe(false);
   });
 
-  it("refuses politely when the selection is not a PowerChart", async () => {
+  it("refuses politely when the selection is not an SSF chart", async () => {
     host.loadSelectionResult = null;
     $("explode").click();
     await settle();
@@ -1167,7 +1167,7 @@ describe("Insert updates in place after loading a chart", () => {
 describe("Load selection", () => {
   beforeEach(bootHostPane);
 
-  it("loads a PowerChart and reveals the in-place edit affordance", async () => {
+  it("loads an SSF chart and reveals the in-place edit affordance", async () => {
     host.loadSelectionResult = {
       configJson: chartJson([7, 8, 9]),
       target: { slideId: "s1", shapeId: "shape-1", left: 0, top: 0 },
@@ -1179,7 +1179,7 @@ describe("Load selection", () => {
     expect($("selection-banner").style.display).toBe("none");
   });
 
-  it("reports a non-PowerChart selection without touching the deck", async () => {
+  it("reports a non-SSF-chart selection without touching the deck", async () => {
     host.loadSelectionResult = null;
     $("load-selection").click();
     await settle();
@@ -1367,12 +1367,12 @@ describe("guard — busy lockout and error surfacing", () => {
   });
 
   /**
-   * "Done." in green over a chart that is no longer a PowerChart.
+   * "Done." in green over a chart that is no longer an SSF chart.
    *
    * The renderer has always known — `groupAndTagAll` returns `tagged` — and the
    * insert path discarded its whole return value, so nothing reached the user.
-   * The chart is on the slide, clicking it says "the selection is not a
-   * PowerChart", and reopening the deck loses the settings permanently. A real
+   * The chart is on the slide, clicking it says "the selection is not an
+   * SSF chart", and reopening the deck loses the settings permanently. A real
    * host produced it four times in one run.
    */
   it("says when an inserted chart carries no config, instead of Done.", async () => {
@@ -2318,7 +2318,7 @@ describe("demo-insert one-shot deck insert", () => {
 describe("watchSelection", () => {
   beforeEach(bootHostPane);
 
-  it("offers the edit banner when a PowerChart is selected", async () => {
+  it("offers the edit banner when an SSF chart is selected", async () => {
     expect(host.selectionListener).toBeTypeOf("function");
     host.loadSelectionResult = {
       configJson: chartJson([1, 2, 3]),
@@ -2329,7 +2329,7 @@ describe("watchSelection", () => {
     expect($("selection-banner").style.display).toBe(""); // shown
   });
 
-  it("hides the banner when the selection is not a PowerChart", async () => {
+  it("hides the banner when the selection is not an SSF chart", async () => {
     host.loadSelectionResult = null;
     await host.selectionListener!();
     await settle();

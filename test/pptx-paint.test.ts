@@ -473,7 +473,7 @@ describe("lineOf", () => {
  *
  * `hex`'s black fallback is right for ink — a label in an unknown colour is
  * still a label — and catastrophic here: `background: "off-white"` (a typo) or
- * `"transparent"` (a paint PowerChart documents elsewhere) wrote
+ * `"transparent"` (a paint SSF Charts documents elsewhere) wrote
  * `<a:srgbClr val="000000"/>` with the chart's own near-black ink on top. A
  * deck of black slides carrying invisible charts, which opens cleanly,
  * validates, and is reported as a success by the CLI. The SVG renderer has

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Render PowerChart configs to a .pptx with NATIVE, editable shapes —
+ * Render SSF Charts configs to a .pptx with NATIVE, editable shapes —
  * the same output philosophy as the live add-in, headless.
  *
  *   node scripts/render-pptx.mjs charts.json out.pptx
@@ -216,7 +216,7 @@ for (let i = 0; i < configs.length; i++) {
     // labels on white. Default (no style.background) stays FFFFFF.
     // `hexOr`, not `hex`: an unrecognised paint must fall back to the caller's
     // WHITE, not to `hex`'s black. A typo like `background: "off-white"` — or
-    // `"transparent"`, which PowerChart documents as a paint elsewhere — turned
+    // `"transparent"`, which SSF Charts documents as a paint elsewhere — turned
     // the slide black under the chart's own near-black ink, producing a deck of
     // invisible charts that opens cleanly and validates. The SVG renderer has
     // always fallen back to white here, so the two sinks disagreed.

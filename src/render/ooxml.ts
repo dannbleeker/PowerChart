@@ -1,5 +1,5 @@
 /**
- * Post-process a generated .pptx so it carries the two things PowerChart
+ * Post-process a generated .pptx so it carries the two things SSF Charts
  * cannot ship without and pptxgenjs cannot write.
  *
  * pptxgenjs has no API for either — grepping the library turns up exactly two

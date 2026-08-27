@@ -544,7 +544,7 @@ describe("talking to the browser at all", () => {
     // A NOT-YET REPORTED AS A NEVER, and the most expensive version of this
     // repo's house defect so far. `sideloadAddIn` uploaded the manifest, slept
     // 12s, looked for `Insert chart` ONCE, and returned "uploaded, but no
-    // PowerChart command appeared". Round 117 refused on it and told the owner
+    // SSF Charts command appeared". Round 117 refused on it and told the owner
     // only a person could put the add-in back. THE OWNER TOUCHED NOTHING AND
     // THE COMMAND APPEARED ANYWAY — the sideload had worked; the check was
     // early. A verdict that sends a person to redo work the machine already did
@@ -824,7 +824,7 @@ describe("talking to the browser at all", () => {
 
   it("stops on the first attempt when the document has no add-in to open", () => {
     // SEVEN ATTEMPTS AND FIFTEEN MINUTES, on 2026-08-16. A 4:3 leg switched to a
-    // deck PowerChart was not registered for; `recover` reopens the pane from
+    // deck SSF Charts was not registered for; `recover` reopens the pane from
     // the ribbon's `Insert chart` control, that deck offers no such control, and
     // the loop rediscovered this six more times. A refusal recovery cannot
     // address must not be retried.

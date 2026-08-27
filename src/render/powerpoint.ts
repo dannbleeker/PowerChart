@@ -470,7 +470,7 @@ async function step<T>(label: string, fn: () => Promise<T>): Promise<T> {
 
 const DEFAULT_FONT = "Segoe UI";
 
-/** Where an existing PowerChart lives on the deck, for in-place update. */
+/** Where an existing SSF chart lives on the deck, for in-place update. */
 /**
  * A shape this host has demonstrably consented to name, for the one probe that
  * cannot manufacture one.
@@ -608,7 +608,7 @@ export interface EditTarget {
    *   answer had nowhere to go: `EditTarget` carried no such field, so the demo
    *   path (which has a repair pass) consumed it and the everyday insert and
    *   in-place update (which have none) did not. The user gets "Done." in
-   *   green, clicking the chart says "the selection is not a PowerChart", and
+   *   green, clicking the chart says "the selection is not an SSF chart", and
    *   reopening the deck loses the config permanently. A real host produced
    *   this four times in one run.
    * - `"unknown-shape"` — the chart was redrawn and the host would not say
@@ -1653,7 +1653,7 @@ async function insertSceneIntoSlideInner(
   return inserted;
 }
 
-/** Replace an existing PowerChart group with a re-rendered scene, in place. */
+/** Replace an existing SSF Charts group with a re-rendered scene, in place. */
 export async function updateChartInSlide(
   scene: Scene,
   target: EditTarget,
@@ -2116,7 +2116,7 @@ export function targetWithNoTagResult(old: EditTarget, o: { drew: boolean; wreck
 }
 
 /**
- * Replace any number of existing PowerCharts in place, in ONE request context.
+ * Replace any number of existing SSF charts in place, in ONE request context.
  *
  * Every Office.js sync is a round-trip to PowerPoint, so the thing that must not
  * scale with the chart count is the number of syncs — not the number of shapes,
@@ -3029,8 +3029,8 @@ export function deckIdForSelectedSlide(rangeId: string | undefined, deckIds: str
 }
 
 /**
- * Read the PowerChart config back from the current selection (the tag written
- * at insert time). Returns null when the selection is not a PowerChart.
+ * Read the SSF Charts config back from the current selection (the tag written
+ * at insert time). Returns null when the selection is not an SSF chart.
  * Requires PowerPointApi 1.5 (getSelectedShapes).
  */
 export async function loadChartFromSelection(
@@ -3053,13 +3053,13 @@ export async function loadChartFromSelection(
 
       // The host may answer a shape-collection read with nothing at all; then
       // there is no selection to speak of, which is the same answer as "the
-      // selection is not a PowerChart". See `loadedItems`.
+      // selection is not an SSF chart". See `loadedItems`.
       const selected = loadedItems(shapes) ?? [];
       const tags = selected.map((s) => chartTagsOf(s));
       await context.sync();
 
       // The selected slide's id, once. A host that will not name the slide leaves
-      // no target to hand back — the pane's "not a PowerChart" answer, which is
+      // no target to hand back — the pane's "not an SSF chart" answer, which is
       // survivable, rather than a throw out of the pane's most-used read.
       const rangeId = loadedValue(() => slide.id);
       // Matched against the deck's own list rather than trusted. A host that
@@ -3094,7 +3094,7 @@ export async function loadChartFromSelection(
   );
 }
 
-/** Both PowerChart tags of one shape, queued for the next sync. */
+/** Both SSF Charts tags of one shape, queued for the next sync. */
 interface ChartTags {
   config: PowerPoint.Tag;
   parts: PowerPoint.Tag;
@@ -3102,7 +3102,7 @@ interface ChartTags {
 }
 
 /**
- * Queue a shape's PowerChart tags for reading: the config, and the sibling ids
+ * Queue a shape's SSF Charts tags for reading: the config, and the sibling ids
  * an ungrouped chart carries alongside it. Both in the same sync — an update
  * needs the parts wherever it needs the config, and a second round-trip per
  * scan is exactly what the batching elsewhere in this file exists to avoid.
@@ -3162,7 +3162,7 @@ function originOf(origin: PowerPoint.Tag): EditTarget["origin"] {
 }
 
 /**
- * Bounds of the currently selected shape when it is NOT a PowerChart —
+ * Bounds of the currently selected shape when it is NOT an SSF chart —
  * used to insert a new chart into a selected placeholder/frame.
  */
 export async function getSelectionBounds(): Promise<{
@@ -3201,7 +3201,7 @@ export async function getSelectionBounds(): Promise<{
   }
 }
 
-/** All PowerCharts in the current selection (for Same Scale on a subset). */
+/** All SSF charts in the current selection (for Same Scale on a subset). */
 export async function listChartsInSelection(): Promise<{ configJson: string; target: EditTarget }[]> {
   return boundedRun("reading the charts in the selection", async (context) => {
     const slide = context.presentation.getSelectedSlides().getItemAt(0);
@@ -3494,7 +3494,7 @@ async function readChartsPage(
 }
 
 /**
- * Find every PowerChart in the deck (any shape carrying the config tag),
+ * Find every SSF Charts in the deck (any shape carrying the config tag),
  * across all slides. Used by "Same scale" to re-render charts together.
  *
  * Paged, and a page that will not read is skipped rather than fatal — the same
@@ -4038,7 +4038,7 @@ export async function slideCount(): Promise<number> {
  * ungrouped into a re-editable one.
  */
 /**
- * Write the config tag onto a slide's single PowerChart object.
+ * Write the config tag onto a slide's single SSF Charts object.
  *
  * The other half of `rescueGroupAndTag`, for the case where there is nothing
  * to group: a degraded picture, or a group whose tagging sync was dropped
@@ -6312,7 +6312,7 @@ async function tagPass(snapshots: SlideSnapshot[], attempt: number): Promise<Sli
 }
 
 /**
- * Pass C: how many shapes are inside each slide's PowerChart group.
+ * Pass C: how many shapes are inside each slide's SSF Charts group.
  *
  * PAGED, like passes A and B, and it was the one pass that was not. It opened
  * its own context with two syncs for EVERY grouped slide, which made it the
@@ -6704,7 +6704,7 @@ const DECK_INSERT_TIMEOUT_MS = (slides: number): number =>
  * silently drops the call reports no error, and the delta is the only evidence
  * either way. `expectedSlides` only sizes the timeout.
  *
- * `formatting` defaults to keeping the source's own formatting: PowerChart
+ * `formatting` defaults to keeping the source's own formatting: SSF Charts
  * writes explicit colours and fonts on every shape, so adopting the
  * destination theme would override deliberate choices rather than harmonise
  * them.
@@ -6800,7 +6800,7 @@ export const canSelectShapes = (): boolean => supports("1.5");
  * `DocumentSelectionChanged` is a **Common API** event, not a PowerPointApi
  * one — so it is available on hosts far below 1.5, and, more to the point, it
  * does not go through the selection subsystem that a programmatic
- * `setSelectedShapes` wedges. The pane has used it for the "A PowerChart is
+ * `setSelectedShapes` wedges. The pane has used it for the "A SSF Charts is
  * selected" banner all along.
  */
 export function canWatchSelection(): boolean {
@@ -6822,7 +6822,7 @@ export interface SelectionWait {
 }
 
 /**
- * Wait for the user to click a PowerChart, and hand back what they clicked.
+ * Wait for the user to click an SSF chart, and hand back what they clicked.
  *
  * The one path a real user travels that nothing can script. `setSelectedShapes`
  * is Office.js selecting a shape — the same call in theory as a human clicking
@@ -8309,7 +8309,7 @@ export async function slideShapeNames(slideId: string): Promise<string[] | null>
 }
 
 /**
- * True when the slide holds ONE shape and that shape is a PowerChart group —
+ * True when the slide holds ONE shape and that shape is an SSF Charts group —
  * i.e. replacing the whole slide loses nothing but the chart itself.
  *
  * The gate on `replaceSlideWithDeck`. A slide swap is the fastest possible

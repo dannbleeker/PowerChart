@@ -115,7 +115,7 @@ export const hex = (c) => {
  * `hex`'s black fallback is right for INK — a label in an unknown colour is
  * still a label — and catastrophic for a slide BACKGROUND, which is the one
  * paint that decides whether everything else can be seen. `background:
- * "off-white"` (a typo) or `"transparent"` (a paint PowerChart documents
+ * "off-white"` (a typo) or `"transparent"` (a paint SSF Charts documents
  * elsewhere) produced `<a:srgbClr val="000000"/>` with the chart's own near-
  * black ink on top: a deck of black slides carrying invisible charts, opening
  * cleanly, validating, and reported as a success by the CLI.

@@ -69,7 +69,7 @@ function verdictFor(item, rows) {
   // `configOnChart`, NOT `config`. `verify-deck.mjs` draws that distinction on
   // purpose and says why on the field itself: `config` only reports that the
   // tag part EXISTS, which is equally true of a tag nothing in the shape tree
-  // points at. The pane loads a chart by walking from the PowerChart object to
+  // points at. The pane loads a chart by walking from the SSF Charts object to
   // its tag rid, so a config anchored on the SLIDE is a config the user cannot
   // reach — the chart is not re-editable, which is the whole thing this report
   // is about.
@@ -225,7 +225,7 @@ export function crashLogIn(log) {
 }
 
 /**
- * Failure signatures that belong to PowerPoint, not to PowerChart.
+ * Failure signatures that belong to PowerPoint, not to SSF Charts.
  *
  * The first hour of the last diagnosis went into establishing that
  * `InvalidParam passed to GetItem(id)` was a host bug rather than ours. It is,

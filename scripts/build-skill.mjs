@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Assemble the uploadable PowerChart Agent Skill:
+ * Assemble the uploadable SSF Charts Agent Skill:
  *   npm run build:lib && node scripts/build-skill.mjs
  * → skill-dist/ssf-charts.zip  (upload at claude.ai → Customize → Skills;
  *   it then also appears inside Claude for PowerPoint)

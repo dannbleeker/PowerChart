@@ -98,7 +98,7 @@ belongs with the thing it tests, not with the reason it was written.)
   round" for weeks and no control has ever carried that text, which cost a
   round).
 - **The deck a run produces, audited from its bytes** — `verify-deck` (did
-  PowerChart write what it meant to: slot tags, groups, config parts, shape ids
+  SSF Charts write what it meant to: slot tags, groups, config parts, shape ids
   unique per slide), `ooxml-validate` (is it a legal `.pptx` at all, against the
   OOXML grammar, plus the one baselined finding it is allowed to have),
   `triage` (joining a saved deck to the run log that produced it). The first two

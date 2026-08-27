@@ -6,7 +6,7 @@
  *   node scripts/validate-ooxml.mjs <deck.pptx> [more.pptx …] [--json]
  *
  * This is a complement to `verify-deck.mjs`, not an overlap with it. That tool
- * asks "did PowerChart write what it meant to" — slot tags, groups, config
+ * asks "did SSF Charts write what it meant to" — slot tags, groups, config
  * parts — by scanning for the elements it knows about. This one asks "is this
  * a legal .pptx at all", against the grammar, and the two catch almost
  * disjoint sets. Measured on `examples/showcase.pptx` by injecting defects:

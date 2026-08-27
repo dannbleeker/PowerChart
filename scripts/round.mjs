@@ -399,7 +399,7 @@ export function readiness({
     // reconnects, or a reload fixes it. Recoverable on purpose.
     refuse(
       "host-disconnected",
-      "the PowerChart command is in the ribbon but DISABLED — the document is not connected, " +
+      "the SSF Charts command is in the ribbon but DISABLED — the document is not connected, " +
         "so nothing in the ribbon can be clicked. This clears on its own or with a reload; " +
         "it is not a missing add-in.",
     );
@@ -433,7 +433,7 @@ export function readiness({
     // document into a stop only the owner could clear.
     refuse(
       "addin-missing",
-      "this document has no PowerChart command in its ribbon — the add-in is not loaded here. " +
+      "this document has no SSF Charts command in its ribbon — the add-in is not loaded here. " +
         // "A reload will not bring it back" stood here until 2026-08-20 and was
         // FALSE. Round 117 said it; the owner touched nothing; `Insert chart`
         // and `Insert element` were both in the ribbon minutes later, because
@@ -664,7 +664,7 @@ export function _resetSideloadLatchForTest() {
  * Put the add-in back after a browser death took the sideload with it.
  *
  * A web sideload does not survive the browser process. `recover` restores the
- * window, the deck and its tab — and then finds no PowerChart command in the
+ * window, the deck and its tab — and then finds no SSF Charts command in the
  * ribbon, because there is no add-in to open. On 2026-08-16 that ended a night
  * twice, about fifteen minutes each time.
  *
@@ -723,7 +723,7 @@ export async function sideloadAddIn(sh, sleep, manifest = MANIFEST_PATH) {
   // WAITED FOR, NOT SLEPT THROUGH. This was a fixed 55s sleep and one look, and
   // it failed on the first cold browser start it met: round 133, after a machine
   // restart, reported `no Add-ins button in the ribbon` — OFFICE'S OWN button,
-  // not PowerChart's — because the document was still loading 55 seconds after a
+  // not SSF Charts' — because the document was still loading 55 seconds after a
   // reload it had barely begun. Checked by hand a minute later, the whole ribbon
   // was there.
   //
@@ -794,7 +794,7 @@ export async function sideloadAddIn(sh, sleep, manifest = MANIFEST_PATH) {
   const open = await waitForRef(sh, sleep, "Insert chart", /button "Insert chart"/, SIDELOAD_COMMAND_BUDGET_MS);
   if (!open)
     return giveUp(
-      `uploaded, but no PowerChart command appeared within ${SIDELOAD_COMMAND_BUDGET_MS / 1000}s — ` +
+      `uploaded, but no SSF Charts command appeared within ${SIDELOAD_COMMAND_BUDGET_MS / 1000}s — ` +
         "the upload may still land, so re-check the ribbon before sideloading by hand",
     );
   click(open);
@@ -1088,7 +1088,7 @@ export function namePresent(sh, query, pattern) {
  *
  * ONE SLEEP AND ONE LOOK IS NOT A WAIT, and on 2026-08-20 that cost a pair.
  * `sideloadAddIn` uploaded the manifest, slept 12s, checked for `Insert chart`
- * once, found nothing and returned "uploaded, but no PowerChart command
+ * once, found nothing and returned "uploaded, but no SSF Charts command
  * appeared" — a permanent-sounding verdict. Round 117 refused, reporting that
  * only a person could put the add-in back. THE OWNER TOUCHED NOTHING AND THE
  * COMMAND APPEARED ANYWAY: `Insert chart` and `Insert element` were both in the
@@ -1531,7 +1531,7 @@ export function noBrowser(listOutput) {
  * belongs to. Every other command is SESSION-KEYED, and the daemon keys its
  * sessions by the working-directory STRING. So a browser opened from a shell
  * whose cwd was `C:/devtools/SSF-Charts/.pw-session` is invisible to a driver
- * whose cwd is `C:\devtools\PowerChart\.pw-session` — same folder, different
+ * whose cwd is `C:\devtools\SSF Charts\.pw-session` — same folder, different
  * string, different session. `sessionDir` normalises the driver's own path and
  * cannot do anything about a browser opened from outside it.
  *

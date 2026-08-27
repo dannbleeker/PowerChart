@@ -82,7 +82,7 @@ export interface SlideSnapshot {
   /** Top-level shapes on the slide, INCLUDING any banner. */
   shapes: number;
   /**
-   * Children of the PowerChart group, when the item landed grouped. A grouped
+   * Children of the SSF Charts group, when the item landed grouped. A grouped
    * chart is ONE top-level shape, so `shapes` alone would read a perfect
    * 36-shape chart as 1 and condemn it as wreckage. Absent when nothing is
    * grouped. Not proof of completeness on its own — `rescueGroupAndTag` groups
@@ -91,7 +91,7 @@ export interface SlideSnapshot {
    */
   groupChildren?: number;
   /**
-   * A PowerChart group is present on the slide. Set even when its child count
+   * A SSF Charts group is present on the slide. Set even when its child count
    * could not be read (a host without PowerPointApi 1.8 exposes no way in),
    * because grouping only ever runs AFTER a render finished — so the group
    * itself is evidence the item landed, and a slide we cannot measure is a

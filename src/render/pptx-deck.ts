@@ -16,7 +16,7 @@
  * the same pure node-to-pptxgenjs mapping the headless skill renderer uses, so
  * the add-in's file output and the skill's file output stay one implementation
  * rather than two that drift. What this module adds is the two things
- * pptxgenjs cannot express and PowerChart cannot do without:
+ * pptxgenjs cannot express and SSF Charts cannot do without:
  *
  *   - a real `<p:grpSp>` per chart, so the chart is one draggable object;
  *   - a `POWERCHART_CONFIG` tag on that group, so it stays re-editable.

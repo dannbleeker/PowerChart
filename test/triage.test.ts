@@ -1463,7 +1463,7 @@ describe("triage — logs that are not inserts", () => {
 });
 
 describe("triage — naming the host bug behind a failure", () => {
-  it("recognises the signatures that belong to PowerPoint, not to PowerChart", () => {
+  it("recognises the signatures that belong to PowerPoint, not to SSF Charts", () => {
     // The first hour of the last diagnosis went into establishing that
     // `InvalidParam passed to GetItem(id)` was a host bug rather than ours. A
     // reader who sees an issue number stops looking for the mistake in this
@@ -1637,7 +1637,7 @@ describe("triage shows what a crashed run had already concluded", () => {
  * `verify-deck.mjs` draws that distinction on the field itself: `config` only
  * reports that the tag part EXISTS, which is equally true of a tag nothing in
  * the shape tree points at. The pane loads a chart by walking from the
- * PowerChart object to its tag rid, so a config anchored on the SLIDE is
+ * SSF Charts object to its tag rid, so a config anchored on the SLIDE is
  * unreachable and the chart is not re-editable.
  *
  * triage was never migrated when that field was added. For the exact case

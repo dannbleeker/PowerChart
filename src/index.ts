@@ -1,5 +1,5 @@
 /**
- * PowerChart library entry: the pure chart engine, consumable outside the
+ * SSF Charts library entry: the pure chart engine, consumable outside the
  * add-in (batch SVG rendering, .ppttc-style automation pipelines, tests).
  */
 export { buildChart, valueExtent, DEFAULT_SIZE } from "./core/chart";

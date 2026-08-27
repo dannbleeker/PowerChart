@@ -1,7 +1,7 @@
 /**
- * Excel companion pane: turns the selected range into a PowerChart JSON
+ * Excel companion pane: turns the selected range into an SSF chart JSON
  * config (same datasheet convention: row 1 = categories, column A = series).
- * Users paste it into PowerChart's Automation box in PowerPoint and re-run
+ * Users paste it into SSF Charts' Automation box in PowerPoint and re-run
  * whenever the data changes — the feasible substitute for live data links.
  */
 import type { ChartConfig, ChartKind } from "../core/types";

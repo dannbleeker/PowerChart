@@ -573,7 +573,7 @@ describe("labels are not drawn on top of each other", () => {
    *
    * 24 and 32 were outside this gate until 2026-08-19 on the argument that at
    * that size the chrome genuinely exceeds the frame, so the remaining pairs
-   * were a decision about how small a chart PowerChart claims to draw rather
+   * were a decision about how small a chart SSF Charts claims to draw rather
    * than bounds anyone had forgotten. Measured, that turned out to be wrong:
    * 185 pairs, 165 of them on ONE frame (300x60), and the shape was not a chart
    * with more chrome than room — it was `fitPlot` growing a squeezed plot UP

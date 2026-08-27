@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Audit a real PowerPoint deck for what PowerChart actually left in it.
+ * Audit a real PowerPoint deck for what SSF Charts actually left in it.
  *
  * Every hard diagnosis in this project was settled by reading the .pptx, not
  * by reading the add-in's own report — including the one where the report was
