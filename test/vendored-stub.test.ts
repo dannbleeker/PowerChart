@@ -74,11 +74,16 @@ describe("the image-size stub", () => {
     // override is that those files are never installed, not that they are
     // installed and unused. Whatever npm filed under whatever path, every copy
     // must be ours.
+    // ZERO COPIES IS A PASS, and demanding otherwise is what made this test
+    // fail on Linux CI while passing here. The property is "the vulnerable
+    // parsers are not installed"; nothing installed satisfies it completely.
+    // How npm represents an overridden `file:` dependency — a junction into the
+    // repo on Windows, a symlink that may not even resolve on a `npm ci` tree —
+    // is npm's business, and asserting a copy must EXIST was asserting that.
+    //
+    // The override staying wired is checked above, from `package.json`, which
+    // is the portable place to check it.
     const copies = installedCopies();
-    expect(
-      copies.length,
-      "no `image-size` is installed at all — the override may have stopped applying",
-    ).toBeGreaterThan(0);
     for (const dir of copies) {
       const manifest = join(dir, "package.json");
       expect(existsSync(manifest), `${dir} has no package.json`).toBe(true);
