@@ -7,6 +7,57 @@ releases are in the git history and on the [releases page][releases]; there was
 no changelog before this one, and inventing entries for 451 commits after the
 fact would produce a document nobody could trust.
 
+## Unreleased
+
+### Charts stop drawing text over text
+
+A sweep of every chart kind under twenty-four options and ten data shapes — at
+eight frame sizes, two fonts and both orientations — counted **2,148 places
+where this engine drew one piece of text through another**. It is now 467, and
+the sweep runs on every build so the number can only go down.
+
+What that looked like on a real chart:
+
+- **A pie or doughnut with many slices** drew its outside labels through each
+  other. They now shrink to the room the neighbour leaves and are dropped when
+  even that is too small — the wedge is still drawn, so a dropped label loses a
+  name, not a number.
+- **A radar** did the same with its spoke names. On a web this matters more than
+  anywhere else: the chart *is* the mapping from name to axis, so a name nudged
+  onto its neighbour's spoke does not look untidy, it lies. Nothing is moved.
+- **A combo with a label on every point** ran the numbers together at twenty-odd
+  categories, and a combo with several line series stacked their labels on one
+  category. Both now yield to their neighbours.
+- **A scatter or bubble** printed point labels across the axis numbers. The
+  engine had already decided that a point's label is data and an axis number is
+  chrome; it just never acted on it. The chrome yields now, and the placer tries
+  to dodge a number before overwriting it, so the axis keeps most of its scale.
+- **A dual-axis or pareto chart's second axis** had no fit at all: five tick
+  numbers, each placed at its own tick and never measured against the next. On a
+  short plot they were simply drawn on top of one another.
+- **A gantt's date row** thinned by a fixed gap that could not know how wide a
+  date is, so "December 2024" ran into the next one.
+- **A gauge** crowded its slice labels and printed them through the big total in
+  the middle — and drew that total wider than the arc it sits in.
+- **A bubble chart's size key** centred each reference number in a box the width
+  of its own circle, so the smallest number spilled out over its neighbours.
+
+### The pane says when an insert will be slow
+
+Adding a chart to a slide that already holds content costs several times what
+the same chart costs on an empty one, and the pane used to say nothing — a
+loaded slide simply looked like it had hung. It now estimates the wait from
+2,917 timed inserts, and where a slide of its own would at least halve it,
+offers one. Both real waits are quoted; neither is called instant.
+
+### It tells you when a release lands mid-session
+
+If a new version is published while your pane is open, the pane is holding an
+older page and asks the server for files that have been replaced. That used to
+surface as a browser error naming a URL. It now says SSF Charts has been
+updated, that closing and reopening the pane fixes it, and that your slides are
+untouched.
+
 ## 0.4.0 — 2026-08-27
 
 ### Renamed to SSF Charts — **this breaks existing installs**
