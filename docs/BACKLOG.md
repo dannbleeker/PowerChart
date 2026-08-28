@@ -2929,3 +2929,38 @@ the frame reserves — and a test at 480x300 catches neither, because three entr
 fit on one row there and reserving for two or three comes to the same. It takes a
 WRAPPING legend (160x120) to see the reservation, and a chart on the fit boundary
 (120x90 at 10pt) to see the predicate.
+
+### Two labels drawn outside the boxes they were given — FIXED 2026-08-28
+
+**A gantt's task names were never clipped.** Every other label in this engine
+that is handed a box goes through `clipToWidth`; this one read `acts[c]` raw.
+`catW` is capped at 32% of the chart and scaled down again when the gutters
+together want more than 80% of it, so a long task name is routinely wider than
+its box — measured, a box of 32 points holding 86 points of ink. Left-aligned,
+the name ran out of the gutter, across the plot, and over the numbers inside the
+bars. 18 pairs in the sweep, and those numbers are what a gantt is for.
+
+**Clipping it exposed a second defect the overflow had been hiding.** The gutter
+reserves `longest name + 10` and then draws each row into `catW - 6 - indent*10`
+— so every INDENTED row gets a box ten points narrower than the reservation
+allowed for. With `gantt.lanes`, which indents every task under a lane header,
+that is every task on the chart: a 560x280 plan reserved 53 points for
+"Handover" and drew it into 37. Invisible while the name simply overflowed; four
+existing tests went red the moment it was clipped. Two defects that cancelled in
+appearance and compounded in fact. The reservation now measures each name at its
+own indent.
+
+The owner and remark gutters are clipped too. They produce no overlap in the
+sweep — the sample's owner names are short — but they are the same construction
+and the same latent bug.
+
+**And a gauge's slice labels were clamped into the title.** `Math.max(0, …)` on a
+label whose anchor is above the arc's peak, which on a short gauge is the title's
+band. The fourth time this engine has clamped a label to y=0 and found the title
+already there; the previous three were the secondary axis, the scatter's x strip
+and the value-axis title. Moved to clear the title's ink rather than dropped —
+the leader line is already drawn and still points at the wedge.
+
+    category# / bar-label#   18 -> 0
+    title / label#           16 -> 0
+    total                   464 -> 430

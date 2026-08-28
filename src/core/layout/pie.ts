@@ -2,7 +2,7 @@ import type { ChartConfig, ChartStyle, Decorations } from "../types";
 import { contrastInk, polar, textWidth, type SceneNode } from "../scene";
 import { clipToWidth } from "../elements";
 import { formatNumber, resolveFormat, segmentLabel } from "../format";
-import { MIN_LABEL_FS, footnoteH, titleHeight, titleNode } from "./frame";
+import { MIN_LABEL_FS, footnoteH, titleHeight, titleNode, titleInkBottom } from "./frame";
 import type { LayoutResult } from "./column";
 
 /**
@@ -673,7 +673,16 @@ function layoutGauge(
       // line is close enough to the foot that the box hangs 6pt below it. The
       // leader above says which slice this names, so a label nudged up off the
       // edge still reads as that slice's.
-      const ly = Math.max(0, Math.min(cfg.height - lf * 1.5, p.y - lf * 0.75));
+      // CLEAR OF THE TITLE, not merely on the canvas — the fourth time this
+      // engine has clamped a label to y=0 and found the title already there. A
+      // slice near the top of the arc puts its label above the arc's peak, and on
+      // a short gauge `Math.max(0, …)` pinned it into the title's band: 16 pairs
+      // in the variant sweep, every one of them a gauge.
+      //
+      // Moved rather than dropped, because the leader line is already drawn and
+      // still points at the wedge — a label a few points lower still reads as
+      // that slice's, which is the same argument the vertical clamp below makes.
+      const ly = Math.max(titleInkBottom(cfg, style), Math.min(cfg.height - lf * 1.5, p.y - lf * 0.75));
       // THE CENTRE TOTAL WINS. Its box is clamped into the chart too, and on a
       // short gauge that carries it down into this band. The leader line is
       // already drawn and still points at the wedge, so what is lost is a name,

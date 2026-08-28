@@ -191,8 +191,6 @@ const BUDGET: Record<string, number> = {
   "total# / value-axis-title": 25,
   "value-axis-title / label#": 24,
   "combo-series-label# / combo-series-label#": 26,
-  "category# / bar-label#": 18,
-  "title / label#": 16,
   "series-label# / combo-series-label#": 14,
   "value-axis-title / series-label#": 14,
   "label## / footnote": 12,

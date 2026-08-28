@@ -1,5 +1,6 @@
 import type { ChartConfig, ChartStyle, Decorations } from "../types";
 import { contrastInk, textWidth, type SceneNode } from "../scene";
+import { clipToWidth } from "../elements";
 import { formatDay, formatDayRange, formatNumber, monthStarts, niceTicks, resolveFormat, weekStarts } from "../format";
 import { seriesColor } from "../style";
 import type { LayoutResult } from "./column";
@@ -124,7 +125,20 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
   const titleH = titleHeight(cfg, style);
   const bracketH = brackets.length ? fs * 1.9 : 0;
   const headerH = fs * 1.6;
-  const catW0 = Math.min(cfg.width * 0.32, Math.max(0, ...acts.map((c) => textWidth(c, fs))) + 10);
+  /**
+   * The task-name gutter, reserved for the longest name AT ITS OWN INDENT.
+   *
+   * It used to reserve `longest name + 10` and then draw each row into
+   * `catW - 6 - indent * 10`, so every indented row got a box ten points
+   * narrower than the reservation had allowed for. With a lane header above them
+   * — `gantt.lanes`, which indents every task — that is every task on the chart:
+   * a 560x280 plan reserved 53 points for "Handover" and drew it into 37.
+   *
+   * Invisible until the names were clipped to their boxes, because an unclipped
+   * name simply ran out of the gutter and across the plot. Two defects that
+   * cancelled in appearance and compounded in fact.
+   */
+  const catW0 = Math.min(cfg.width * 0.32, Math.max(0, ...acts.map((c, i) => textWidth(c, fs) + indents[i] * 10)) + 10);
   const ownerW0 = hasOwners ? Math.max(0, ...owners.map((o) => textWidth(o, fs))) + 12 : 0;
   const remarkW0 = hasRemarks ? Math.max(0, ...remarks.map((o) => textWidth(o, fs * 0.9))) + 12 : 0;
   // Nothing capped what the gutters take TOGETHER: a "Column" row is capped at
@@ -542,20 +556,36 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
       }
       return;
     }
-    if (rowFs > 0)
+    if (rowFs > 0) {
+      // CLIPPED TO THE GUTTER IT WAS GIVEN, which it never was.
+      //
+      // `catW` is capped at 32% of the chart and then scaled down again when the
+      // gutters together want more than 80% of it, so a long task name is
+      // routinely wider than the box it is drawn in. The box said 32 points and
+      // the ink was 86: left-aligned, the name ran straight out of the gutter,
+      // across the plot and over the bar labels inside the bars — 18 pairs in
+      // the variant sweep, and the numbers on those bars are what the chart is
+      // for.
+      //
+      // Every other label in this engine that is given a box goes through
+      // `clipToWidth`; this one was reading `acts[c]` raw. An ellipsis says the
+      // name is longer than the room, which is true and which nothing else was
+      // saying.
+      const catBoxW = catW - 6 - indents[c] * 10;
       nodes.push({
         kind: "text",
         x: indents[c] * 10,
         y: cy - rowFs * 0.75,
-        w: catW - 6 - indents[c] * 10,
+        w: catBoxW,
         h: rowFs * 1.5,
-        text: acts[c],
+        text: clipToWidth(acts[c], rowFs, catBoxW),
         fontSize: rowFs,
         color: style.text,
         align: "left",
         valign: "middle",
         name: `category-${c}`,
       });
+    }
     // Responsible + remark columns right of the timeline.
     if (hasOwners && owners[c]) {
       nodes.push({
@@ -564,7 +594,10 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
         y: cy - rowFs * 0.75,
         w: ownerW - 6,
         h: rowFs * 1.5,
-        text: owners[c],
+        // Clipped like the task name beside it, and for the same reason: `ownerW`
+        // is scaled down whenever the gutters together want more than 80% of the
+        // chart, so this box is routinely narrower than the name in it.
+        text: clipToWidth(owners[c], rowFs, ownerW - 6),
         fontSize: rowFs,
         color: style.mutedText,
         align: "left",
@@ -579,7 +612,7 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
         y: cy - rowFs * 0.7,
         w: remarkW - 4,
         h: rowFs * 1.4,
-        text: remarks[c],
+        text: clipToWidth(remarks[c], rowFs * 0.9, remarkW - 4),
         fontSize: rowFs * 0.9,
         color: style.mutedText,
         align: "left",
