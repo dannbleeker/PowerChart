@@ -186,8 +186,6 @@ const BUDGET: Record<string, number> = {
   "value-axis-title / legend#": 104,
   "value-axis-title / total#": 43,
   "title / value-axis-title": 41,
-  "timeline / timeline": 36,
-  "size-legend-label# / size-legend-label#": 34,
   "value-axis / value-axis-title": 33,
   "value-axis / combo-series-label#": 28,
   "total# / value-axis-title": 25,
@@ -288,6 +286,6 @@ describe("the text this engine still draws over other text", () => {
 
   it("has not grown in total", () => {
     // Belt to the per-shape braces, and the number docs/BACKLOG.md quotes.
-    expect(total, "the total overlap count grew").toBeLessThanOrEqual(537);
+    expect(total, "the total overlap count grew").toBeLessThanOrEqual(467);
   });
 });

@@ -19,6 +19,7 @@ import {
   MIN_PLOT_SIDE,
   MIN_LABEL_FS,
   tickGapScale,
+  bandFontSize,
 } from "./frame";
 import type { LayoutResult } from "./column";
 
@@ -1071,32 +1072,45 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
         const r = Math.max(2.5, Math.sqrt(v / maxSize) * maxR);
         const cx = lx - r;
         const cy = plot.y + maxR * 1.1 + legendShift + (Math.sqrt(refMax / maxSize) * maxR - r); // bottom-aligned circles
-        nodes.push(
-          {
-            kind: "ellipse",
-            cx,
-            cy,
-            rx: r,
-            ry: r,
-            fill: "none",
-            stroke: style.mutedText,
-            strokeWidth: 1,
-            name: `size-legend-${i}`,
-          },
-          {
+        nodes.push({
+          kind: "ellipse",
+          cx,
+          cy,
+          rx: r,
+          ry: r,
+          fill: "none",
+          stroke: style.mutedText,
+          strokeWidth: 1,
+          name: `size-legend-${i}`,
+        });
+        // THE NUMBER IS FITTED TO ITS OWN CIRCLE, and dropped below the floor.
+        //
+        // The box is `r * 2` — the circle's diameter — and the text was always
+        // `fs * 0.8`. The circles are nested reference sizes, so the smallest is
+        // a 5pt box, and a centred number wider than its box spills equally off
+        // both sides onto the neighbouring key's number. 34 pairs in the variant
+        // sweep, and the same defect the gauge's centre total had: text drawn
+        // wider than the box it is centred in.
+        //
+        // Shrink, then drop, as everywhere else. What is lost is one reference
+        // number on the smallest circle, which is the least informative of the
+        // three — the circle itself still shows the size, and the largest and
+        // middle keys still carry their values.
+        const keyFs = bandFontSize(fs * 0.8, r * 2, textWidth(formatNumber(v, sizeFmt), 1));
+        if (keyFs > 0)
+          nodes.push({
             kind: "text",
             x: cx - r,
             y: cy - Math.sqrt(refMax / maxSize) * maxR - fs * 1.35,
             w: r * 2,
             h: fs * 1.2,
             text: formatNumber(v, sizeFmt),
-            fontSize: fs * 0.8,
+            fontSize: keyFs,
             color: style.mutedText,
             align: "center",
             valign: "bottom",
             name: `size-legend-label-${i}`,
-          },
-        );
+          });
         legendBoxes.push({ x: cx - r, y: cy - r - fs * 1.4, w: r * 2, h: r * 2 + fs * 1.4 });
         lx = cx - r - fs * 0.8;
       });

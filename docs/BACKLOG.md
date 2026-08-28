@@ -2771,3 +2771,39 @@ The blind spot is worth naming for its own sake: `frame-fit.test.ts` sweeps
 every kind at eight frames and seven fonts, and it was green for the nine days
 the "24 categories" family sat in the option and data-shape variants it does not
 sweep. A gate is only as wide as its sweep.
+
+### The crash, counted across the whole archive — 2026-08-28
+
+The entry above is right that this is not a single-cause story, and the archive
+now says so with numbers rather than with one contrary round. Twenty-two crash
+records over fourteen distinct builds, taking the LAST step each one wrote and
+counting each phase once per build so a bad night cannot vote twice:
+
+    4 build(s)   draw  — parts list outcome
+    3 build(s)   pane  — collecting deck evidence — scanning
+    2 build(s)   probe — asking
+    2 build(s)   draw  — batch issued
+    2 build(s)   probe — re-asked what the empty deck could not answer
+    1 build each update / group / probe answered / probe second pass
+
+**Counting records rather than builds would have said `parts list outcome` five
+times to the scan's four** — and three of those five are the same build on the
+same day, 77fc64f on 2026-08-24. One build that crashed three times is one piece
+of evidence, not three, and the difference decides which phase looks dominant.
+
+So: no phase dominates. The deck scan is one of at least two real signatures and
+is not the largest. The per-phase traces did their job — before them, six of
+these would have been filed under the probe re-ask — and what they show is a
+host that falls over in several different places late in a long round, not one
+broken call.
+
+**A fourth scan crash landed tonight**, on d7987a6, after all fourteen scenarios
+had already passed at 624s:
+
+    626.8s  probe  re-asked what the empty deck could not answer
+    626.8s  pane   collecting deck evidence — scanning  knownBefore=1
+
+Worth noting for what it says about severity: the scenarios pass and the round
+archives 14/14. This crash costs the EVIDENCE COLLECTION after the run, not the
+run. That is why it has been survivable for a month, and it is also why it has
+never been urgent enough to fix.

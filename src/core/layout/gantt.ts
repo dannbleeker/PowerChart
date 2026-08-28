@@ -389,7 +389,23 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
   }
 
   // Timeline header on top + vertical gridlines (think-cell's calendar strip).
-  const minLabelGap = fs * 2.6;
+  /**
+   * How far apart two date labels must be before both are drawn.
+   *
+   * `fs * 2.6` — a constant, and a constant cannot know how wide a date is.
+   * "Dec" clears it easily; "December 2024" is more than twice it at the same
+   * font, so the thinning below let two of them through side by side and they
+   * were drawn into each other. 36 pairs of `timeline` on `timeline` in the
+   * variant sweep, the third-largest shape left in it.
+   *
+   * The widest label the strip will draw, plus a two-point gutter, is what the
+   * gap actually has to be. Kept as a floor against the old constant so a strip
+   * of short labels thins exactly as it always did and no ordinary gantt moves.
+   */
+  const minLabelGap = Math.max(
+    fs * 2.6,
+    ticks.reduce((m, t, i) => Math.max(m, textWidth(tickLabel(t, i), headFs)), 0) + 2,
+  );
   let lastLabelX = -1e9;
   ticks.forEach((t, i) => {
     const x = toX(t);
@@ -404,7 +420,17 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
       name: "gridline",
     });
     // Thin out header labels when months are dense.
-    if (x - lastLabelX >= minLabelGap) {
+    //
+    // THINNED ON THE NUDGED POSITION, not the raw tick. The nudge below moves
+    // the first label right and the last one left to keep them on the chart,
+    // and either move closes the gap this test had just verified — the same
+    // clamp-undoes-the-fit defect as the secondary axis and the scatter's x
+    // strip. Testing where the label actually lands costs nothing and needs no
+    // second rule.
+    const text = tickLabel(t, i);
+    const half = textWidth(text, headFs) / 2;
+    const at = Math.min(Math.max(x, half), Math.max(half, cfg.width - half));
+    if (at - lastLabelX >= minLabelGap) {
       // A tick label is CENTRED on its tick, so the last one puts half its width
       // past the end of the timeline and off the chart — from a 14pt font, and
       // separately from the milestone above: reserving the marker radius moved
@@ -415,9 +441,6 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
       // ink is what leaves the chart, the box is wider than the ink here, and a
       // tick label that has moved further than it had to no longer reads as
       // belonging to its tick. Every label that already fits is untouched.
-      const text = tickLabel(t, i);
-      const half = textWidth(text, fs * 0.9) / 2;
-      const at = Math.min(Math.max(x, half), Math.max(half, cfg.width - half));
       if (headFs > 0)
         nodes.push({
           kind: "text",
@@ -432,7 +455,7 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
           valign: "middle",
           name: "timeline",
         });
-      lastLabelX = x;
+      lastLabelX = at;
     }
   });
 
