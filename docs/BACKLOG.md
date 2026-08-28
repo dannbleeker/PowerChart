@@ -2743,3 +2743,31 @@ the gutter idea the earlier attempt reverted.
 
 Not guessing at that at two in the morning. The measurement is here so whoever
 takes it does not start from scratch.
+
+### The overlap sweep is a gate now — 2026-08-28
+
+`test/overlap-budget.test.ts`. The variant sweep that found all of this is no
+longer something somebody has to remember to run: it is in the ordinary suite,
+takes eight seconds, and every remaining overlap is named and capped.
+
+    2,148 overlapping pairs (2026-08-27)  ->  537 (2026-08-28)
+
+**Per SHAPE, not as one total**, because a total hides a trade — one family
+fixed while another grows — and because a shape absent from the table is a
+regression by definition: it is text this engine has never been seen to draw
+over text. Three of the four tests catch a regression; the fourth catches a
+budget left ABOVE the real figure, so improving the engine fails the file and
+the numbers get edited down. A ceiling nobody lowers has stopped ratcheting.
+
+What remains, in families:
+
+    value-axis-title (six shapes)   270   the open decision, above
+    timeline / timeline              36   gantt date row against itself
+    size-legend-label                34   the bubble's size key against itself
+    combo-series-label               52   line names, against the axis and each other
+    everything else                 145   sixteen shapes, none over 18
+
+The blind spot is worth naming for its own sake: `frame-fit.test.ts` sweeps
+every kind at eight frames and seven fonts, and it was green for the nine days
+the "24 categories" family sat in the option and data-shape variants it does not
+sweep. A gate is only as wide as its sweep.
