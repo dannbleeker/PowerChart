@@ -4,7 +4,7 @@ import { clipToWidth } from "../elements";
 import { formatNumber, parseDateToken, resolveFormat } from "../format";
 import { divergingScale, lerpColor, noDataFill, sequentialScale, zoneFill } from "../color";
 import { maxOf, minOf } from "../agg";
-import { bandFontSize, fitPlot, footnoteH, MIN_LABEL_FS, titleHeight, titleNode } from "./frame";
+import { bandFontSize, fitPlot, footnoteH, MIN_LABEL_FS, titleHeight, titleNode, titleInkBottom } from "./frame";
 import type { LayoutResult } from "./column";
 
 /**
@@ -320,7 +320,19 @@ export function layoutHeatmap(cfg: ChartConfig, style: ChartStyle, decor: Decora
   // band is left and dropped below the legibility floor. An unlabelled gradient
   // says less; a labelled one drawn off the chart says it somewhere else.
   const foot = footnoteH(cfg, style, decor);
-  const ly = Math.max(0, Math.min(plot.y + plot.h + totalsH + fs * 0.6, cfg.height - foot - fs * LEGEND_INK));
+  // FLOORED AT THE TITLE'S INK, not at zero. The clamp above keeps the legend
+  // on the canvas; `Math.max(0, …)` then put it at y=0 on a chart whose plot has
+  // been squeezed to the ceiling, and y=0 is where the title is — a 300x60
+  // heatmap at 18pt drew its colour scale across its own name. The fifth time
+  // this engine has clamped a label to zero and found the title already there.
+  //
+  // `legendClearOfGrid` below is unchanged and still does the other half: where
+  // the floor pushes the legend above the grid, there is nowhere for it and it
+  // is not drawn at all.
+  const ly = Math.max(
+    titleInkBottom(cfg, style),
+    Math.min(plot.y + plot.h + totalsH + fs * 0.6, cfg.height - foot - fs * LEGEND_INK),
+  );
   /**
    * …and only while that clamp has not walked the legend back INTO the chart.
    *
@@ -413,19 +425,37 @@ export function layoutHeatmap(cfg: ChartConfig, style: ChartStyle, decor: Decora
     // the "0" tick off the end of the legend strip.
     if (mode === "diverging" && min < 0 && max > 0) {
       const zx = plot.x + ((0 - min) / (max - min)) * lw;
-      nodes.push({
-        kind: "text",
-        x: zx - fs,
-        y: ly + fs * 0.95,
-        w: fs * 2,
-        h: fs * 1.2,
-        text: "0",
-        fontSize: fs * 0.85,
-        color: style.mutedText,
-        align: "center",
-        valign: "top",
-        name: "legend-zero",
-      });
+      /**
+       * AND ONLY WHEN IT CLEARS THE TWO ENDS, which it did not.
+       *
+       * The zero tick is placed proportionally along the strip, so a range that
+       * is nearly all negative puts it hard against the max label and one that
+       * is nearly all positive puts it on the min — 14 pairs in the variant
+       * sweep. Both ends are placed first and both are worth more: they say what
+       * the colours MEAN, where the zero tick only says where the middle is, and
+       * a diverging scale shows that in its own neutral band anyway.
+       *
+       * Measured against the ends' INK, not their boxes. Each end label is given
+       * half the strip to sit in and uses as much of it as the number needs, so
+       * a box test would refuse the tick on almost every chart.
+       */
+      const zeroInk = { lo: zx - textWidth("0", fs * 0.85) / 2, hi: zx + textWidth("0", fs * 0.85) / 2 };
+      const minInk = plot.x + textWidth(formatNumber(min, fmt), endFs);
+      const maxInk = plot.x + lw - textWidth(formatNumber(max, fmt), endFs);
+      if (zeroInk.lo > minInk + 2 && zeroInk.hi < maxInk - 2)
+        nodes.push({
+          kind: "text",
+          x: zx - fs,
+          y: ly + fs * 0.95,
+          w: fs * 2,
+          h: fs * 1.2,
+          text: "0",
+          fontSize: fs * 0.85,
+          color: style.mutedText,
+          align: "center",
+          valign: "top",
+          name: "legend-zero",
+        });
     }
   }
 

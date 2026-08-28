@@ -5,7 +5,7 @@ import { formatNumber, resolveFormat } from "../format";
 import { seriesColor } from "../style";
 import { niceTicks } from "../format";
 import { legendRow, type LayoutResult, type LegendEntry } from "./column";
-import { MIN_PLOT_SIDE, bandFontSize, fitPlot, legendRowCount, titleHeight, titleNode } from "./frame";
+import { MIN_PLOT_SIDE, bandFontSize, fitPlot, footnoteH, legendRowCount, titleHeight, titleNode } from "./frame";
 
 /**
  * Butterfly (tornado) chart: think-cell models this as two bar charts placed
@@ -89,7 +89,14 @@ export function layoutButterfly(cfg: ChartConfig, style: ChartStyle, decor: Deco
     // Floor at 0 for the same reason halfW is floored below: a chart too short
     // for its title/header/axis chrome would otherwise give every bar rect a
     // NEGATIVE height, which SVG drops and PowerPoint clamps to a sliver.
-    h: Math.max(0, cfg.height - titleH - headerH - 6 - axisH),
+    //
+    // AND THE FOOTNOTE IS CHROME TOO, which this was the one cartesian kind not
+    // to say. `footnoteNode` is added centrally, so a butterfly with a footnote
+    // drew one and reserved nothing for it: the bottom rows' names and values
+    // were laid over the source line. 22 pairs in the variant sweep, all of them
+    // this kind. Every sibling that builds its own plot — the funnel, the
+    // waffle, the treemap, the gantt — already subtracts it here.
+    h: Math.max(0, cfg.height - titleH - headerH - 6 - axisH - footnoteH(cfg, style, decor)),
   });
   // Floor at 0: a very narrow frame can drive plot.w below the gutter, which
   // would give the header texts and bar rects negative widths.

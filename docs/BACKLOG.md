@@ -2964,3 +2964,39 @@ the leader line is already drawn and still points at the wedge.
     category# / bar-label#   18 -> 0
     title / label#           16 -> 0
     total                   464 -> 430
+
+### A colour legend on its own title, and a butterfly with no room for its source line — FIXED 2026-08-28
+
+Three more, and two of the three are patterns this file has now named five and
+two times respectively.
+
+**The heatmap's colour scale was clamped to y=0** — `Math.max(0, …)` on a legend
+whose band is computed from a plot that a squeezed frame has pushed to the
+ceiling. A 300x60 heatmap at 18pt drew its colour scale across its own name. The
+FIFTH clamp-to-zero-onto-the-title in this engine: the others were the secondary
+axis, the scatter's x strip, the value-axis title and the gauge's slice labels.
+Floored at the title's ink instead; `legendClearOfGrid` still does the other
+half, dropping the legend where the floor pushes it above the grid.
+
+**The diverging "0" tick was drawn wherever zero fell**, including hard against
+the min or max label — the tick is placed proportionally, so a nearly-all-
+negative range puts it on the max. Both ends are placed first and are worth
+more: they say what the colours MEAN, where the zero tick only says where the
+middle is, and a diverging scale shows that in its own neutral band anyway.
+Measured against the ends' INK, not their boxes — each end gets half the strip
+and uses as much as its number needs, so a box test would refuse the tick on
+almost every chart.
+
+**A butterfly reserved no room for its footnote.** `footnoteNode` is added
+centrally, so a butterfly with one drew it and gave it nothing: the bottom rows'
+names and values were laid over the source line. It is the one cartesian kind
+that builds its own plot and does not subtract `footnoteH` — the funnel, the
+waffle, the treemap and the gantt all do.
+
+    legend-min / legend-zero   10 -> 0
+    legend-max / legend-zero    4 -> 0
+    title / legend-min          2 -> 0
+    title / legend-max          2 -> 0
+    label## / footnote         12 -> 0
+    category# / footnote        6 -> 0
+    total                     430 -> 394
