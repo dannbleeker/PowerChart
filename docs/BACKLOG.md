@@ -27,7 +27,7 @@ shipped, refused, or a finding rather than a task.
 | | What | Where | State |
 |---|---|---|---|
 | 1 | **`valueAxisTitle` runs over the legend and the totals row** — 287 of the 317 remaining overlapping pairs | §3, *Text drawn over text* | **Owner's call.** Three remedies built and measured, all three reverted; three ways out written up. It is the only label here that is text the AUTHOR typed. |
-| 2 | **The slow-insert offer is not wired** | §1, *The slow-path warning* | Estimator, threshold and wording all shipped and tested. Blocked on one thing: there is no product path that puts a chart on a NEW slide, and `slides.add()` is lost by this host often enough to need the existing retry apparatus. Five steps listed. |
+| 2 | ~~**The slow-insert offer is not wired**~~ | §1, *The slow-insert offer* | **SHIPPED 2026-08-29.** All five steps, five pane tests, four mutants dead. The blocker this row named was a stale finding: a fresh slide's id IS usable once the slide settles, and the probe answer flipped at round 254 because of our own commit. Kept in §1 for the lesson, not the task. |
 | 3 | **Adding to an occupied slide costs ~24s; a fresh one ~0.75s** | §1, *Adding a chart to an existing slide* | Measured over 2,917 batches. The arm that would settle it has run once. Item 2 is the user-facing half; making it actually faster is unstarted. |
 | 4 | **The picture fast-path** | §1, first entry, and §3 | The largest product cost left. The in-place fast path writes a closed set of `rect`/`text` properties and a picture fill is neither, so every picture update redraws whole. A real feature, not a small fix. |
 | 5 | **File this project's host measurements to the office-js tracker** | §1, *Report what this project has measured* | **Owner-gated** — it goes out under his GitHub identity, so nothing is filed without his word on that specific issue. Three are written and ready. |
@@ -244,67 +244,66 @@ reading of this same data claimed 2.3x for "the slide the user is looking at"
 and was retracted in `0638b6a` — it split on a sentinel meaning "slide id not
 loaded yet". Nothing in this archive distinguishes on-screen from off-screen.
 
-### The slow-path warning: estimator done, offer NOT wired — 2026-08-27
+### The slow-insert offer — SHIPPED 2026-08-29, and the blocker was a stale finding
 
 **Owner's decision, taken 2026-08-27:** show progress on the slow path, and when
 the estimate exceeds **14 seconds**, quietly offer to put the chart on its own
 slide instead. Not a modal — it interrupts the press the user just made — but it
 does gate this insert, because it is a question about THIS chart.
 
-**Done:** `src/core/insert-cost.ts` and its tests. `estimateInsertMs(shapes,
-present)`, `isSlowInsert`, `SLOW_INSERT_MS = 14_000`, `describeMs`. Interpolated
-from the archive's four measured medians, flat past the last reading, and
-deliberately understating. Seven tests, mutation-checked.
+All five steps are done. `insert-cost.ts` prices the insert from the archive's
+four measured medians; `worthOwnSlide` gates the offer on the slowness being the
+SLIDE'S fault rather than the chart's; `offerSentence` quotes both costs;
+`addSlideForChart` adds the slide through the existing retry path; and the pane
+recomputes the placement for the blank slide instead of carrying over a cascade
+that dodged obstacles which are not there. Five pane tests cover it end to end,
+four mutants dead and the fifth recorded as equivalent.
 
-Also done, 2026-08-27: `worthOwnSlide(shapes, present)` and
-`offerSentence(present, hereMs, freshMs)`. **Slow is not the same as worth
-moving** — a 40-second insert that would still take 35 on a fresh slide is
-expensive because the chart is big, and moving it buys nothing. `worthOwnSlide`
-requires the fresh cost to be at most HALF the here cost, so the offer only
-appears when the occupancy is what is costing the time. `offerSentence` gives
-the user both numbers rather than a verdict.
+**THE THING WORTH KEEPING IS WHY IT LOOKED BLOCKED.** This entry said the
+wiring could not be finished because a fresh slide's id is useless on this host,
+citing `insertSceneIntoSlide`'s own comment, which cited the 2026-08-08 probe
+sheet: `shape-add-fresh-getitem-slide` answers `threw`, so a freshly-added slide
+"does not work, by any route".
 
-**Not done: the wiring.** Attempted and reverted rather than half-shipped, and
-the reason is worth writing down.
+That was true when written and had stopped being true. Over 269 archived rounds
+the answer is `threw` 227 times and `yes` 41 — and **every `threw` is round 253
+or earlier**. From 254 on it is `yes` in 38 of 40.
 
-**What the attempt got right.** The occupancy is ALREADY IN HAND. The insert path
-calls `getSlideShapeBounds()` to place the chart, which returns every shape on
-the target slide via the same `getTargetSlide` an insert uses — so
-`occupied.length` is the count, free, on a read that already happens. The first
-draft added a second host call for it; that is the "adding counting sites moves
-the baseline" mistake this file warns about two sections up, made while quoting
-the warning. Use `occupied`.
+**The flip is OURS, not the host's.** The commit on the boundary is 77f9ca4,
+which stopped the probe HOLDING the id `slides.add()` hands back and made it
+re-read the slide's id positionally once the add had settled. The two are
+different id spaces, not near-misses — `4123571114#123571113` at add time
+against `256#2587447327` a moment later, for the same slide. So the old answer
+was never a fact about `getItem`. It was a fact about a stale id, recorded under
+a question whose name says `getitem`.
 
-`null` from that read means the host would not say. Treat it as UNKNOWN, never as
-empty: a warning that fires because a read failed is worse than one that never
-fires.
+The corrected rule, now in `host-baseline.mjs` and at the call site:
 
-**What stopped it: there is no product path that puts a chart on a NEW slide.**
-The draft wrote `cfg = { ...cfg, newSlide: true }`, and no such option exists —
-invented, and it would have compiled only because `ChartConfig` is loose.
+> A new slide's id is not durable until the slide settles, and is durable
+> afterwards. Re-read it positionally after the add and `slides.getItem(id)`
+> resolves it.
 
-What exists is `InsertOptions.slideId`, so the shape of the fix is: add one
-slide, take its id, insert with it. But `slides.add()` IS LOST BY THIS HOST often
-enough that the deck path carries a whole retry apparatus for it — `addsIssued`,
-`lastAddsLost`, `SLIDE_ADD_RETRIES`. A new exported "add one slide and return its
-id" has to go through that, not around it, or the offer will sometimes put a
-chart nowhere and report success.
+`addSlideForChart` was already built that way — it goes through `addSlides`,
+which does not return until a FRESH context has confirmed the deck grew, then
+reads the id off a positional handle. So the wiring worked, and only the
+documentation said it could not.
 
-**So the remaining work is, in order:**
+**Two lessons, and the second is the expensive one.**
 
-1. Export an add-one-slide-and-name-it from the renderer that reuses the existing
-   add/retry path. This is the only risky part.
-2. In `app.ts`, after `const occupied = await getSlideShapeBounds()`: if
-   `occupied` is non-null and `isSlowInsert(estimateOfficeShapes(scene),
-   occupied.length)`, show the offer and await the choice.
-3. On "own slide", add the slide and pass its id as `InsertOptions.slideId`.
-4. The offer's markup and styling: peach ground, orange border — the SSF
-   "Bemerk" component. It is the one place the orange budget legitimately moves
-   off the tick, because it is a state the user must act on; the two are never
-   both prominent, the tick being at the top of a scrolled pane and this pinned
-   above the action bar.
-5. A test that a slow estimate offers and a fast one does not, and that a `null`
-   occupancy stays silent.
+- A probe question is named for the CALL it makes, and answers about whatever is
+  actually broken. `shape-add-fresh-getitem-slide` spent three weeks reading as
+  a verdict on `getItem` while measuring a stale id, and the fix for the stale
+  id silently rewrote the verdict.
+- **A finding copied into a comment does not get re-measured.** The sheet is
+  regenerated every round; the comment quoting it is not, and it was the comment
+  that stopped this work. Where a comment leans on an archived answer it should
+  say which question, so the next reader can re-run it in one command instead of
+  believing it.
+
+Still open here: making an insert onto a crowded slide actually faster. The
+offer routes around the cost; it does not remove it. See the entry above.
+
+
 ### Text that overlaps text on data the samples do not carry — MEASURED 2026-08-19, not fixed
 
 Superseded 2026-08-28. Its 75-pair figure was measured with a cruder ink rule and was never comparable; re-measuring gave 2,148. See **Text drawn over text** in §3, and `test/overlap-budget.test.ts` for the live per-shape table.

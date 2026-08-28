@@ -1540,26 +1540,34 @@ async function insertSceneIntoSlideInner(
     // the suite asserts grouping or parts on this path, which is how 2016 tests
     // passed over it.
     //
-    // The question that decided this has been ASKED AND ANSWERED, and the risk
-    // it named is now empty:
+    // WHAT THIS COMMENT SAID FOR THREE WEEKS WAS WRONG, and the correction is
+    // the reason the slow-insert offer works at all.
     //
-    // - `getTargetSlide` resolves by `slides.getItem(id)`, and the 2026-08-08
-    //   sheet says that call answers `threw` (GeneralException) for a slide
-    //   added moments earlier and `yes` for a pre-existing one
-    //   (`shape-add-fresh-getitem-slide` and its follow-up partner
-    //   `getitem-durable-slide`). So a fresh slide is not merely a risk here —
-    //   it does not work, by any route.
-    // - NO caller passes a freshly-added slide's id any more. `chartIsVisible`
-    //   was the only one, and it stopped: it does its before-and-after on a
-    //   slide the run added earlier, because rasterising a fresh slide killed
-    //   PowerPoint five rounds running. The demo path does not come through
-    //   here at all — it draws via `drawDemoItem` with its own positional
-    //   thunk — and every other caller passes no id, or a slide the user was
-    //   already editing.
+    // It said: `shape-add-fresh-getitem-slide` answers `threw` on this host, so
+    // a freshly-added slide "does not work, by any route", and no caller passes
+    // one. Both halves are now false. `addSlideForChart` passes exactly such an
+    // id on every accepted slow-insert offer, and the probe answers `yes`.
     //
-    // So the hold stays, and it is no longer a bet: the case it was unsafe for
-    // has no caller. If one is ever added, it must resolve its slide some other
-    // way — `getItem(id)` is not available for a new slide on this host.
+    // The archive says when it changed and why. Over 269 rounds the answer is
+    // `threw` 227 times and `yes` 41 — and every `threw` is round 253 or
+    // earlier. The boundary is 77f9ca4, OUR commit, which stopped the probe
+    // holding the id `slides.add()` hands back and made it re-read the slide's
+    // id positionally after the add settled. The two are different id spaces,
+    // not near-misses: `4123571114#123571113` at add time, `256#2587447327` a
+    // moment later for the same slide. The old answer was never a fact about
+    // `getItem`; it was a fact about a stale id.
+    //
+    // So the rule is: **a new slide's id is not durable until the slide
+    // settles, and is durable afterwards.** `addSlideForChart` is built on that
+    // and nothing else — it goes through `addSlides`, which does not return
+    // until a FRESH context has confirmed the deck grew, then reads the id off
+    // a positional handle. Any future caller that wants a fresh slide must do
+    // the same; passing the add-time id is what fails, and it fails silently,
+    // because `getItem` returns a proxy synchronously and the GeneralException
+    // does not arrive until this draw's first sync.
+    //
+    // The hold below stays for the reason in the paragraph above it — the
+    // per-batch thunk orphans grouping — not for this one.
     const slide = getTargetSlide(context, opts.slideId);
     slide.load("id");
     const getSlide: SlideThunk = () => slide;

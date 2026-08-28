@@ -1116,6 +1116,150 @@ describe("Insert", () => {
   });
 });
 
+/**
+ * THE SLOW-INSERT OFFER, end to end from the pane.
+ *
+ * `insert-cost.ts` is well covered and `addSlideForChart` has its own block in
+ * test/office-render.test.ts — and between the two NOTHING asserted that taking
+ * the offer actually sends the chart to the new slide. Both halves were green
+ * with the wire that joins them untested, which is the shape of gap this file
+ * exists to close.
+ *
+ * The trigger is arithmetic, not a magic number: `batchMs` is flat at 18074ms
+ * past 75 shapes present, so a crowded slide puts ANY chart over the 14s
+ * threshold, and the empty-slide estimate is 3886ms — comfortably under half,
+ * which is what `worthOwnSlide` asks for.
+ */
+describe("the slow-insert offer", () => {
+  beforeEach(bootHostPane);
+
+  /**
+   * A slide holding `n` shapes, enough to price an insert onto it AND to move
+   * it. The first version tiled a narrow column at x<10, which priced the
+   * insert correctly and left `placeChart` returning the origin unmoved — so
+   * the "placement is recomputed" assertion below passed against a mutant that
+   * carried the crowded placement over. These shapes cover the region a chart
+   * lands in, so the two placements are genuinely different numbers.
+   */
+  const crowd = (n: number) =>
+    Array.from({ length: n }, (_, i) => ({
+      left: 40 + (i % 4) * 120,
+      top: 70 + Math.floor(i / 4) * 20,
+      width: 110,
+      height: 18,
+    }));
+
+  /**
+   * Press Insert and let the pane get as far as the offer.
+   *
+   * `settle()` is one macrotask and the offer sits behind an awaited host read,
+   * so a single tick is not reliably enough. Polling for the box to appear says
+   * what the test means — "wait until the user is being asked" — and fails with
+   * a readable message instead of a null-click when the offer never comes.
+   */
+  const untilOffered = async () => {
+    for (let i = 0; i < 20 && $("slow-offer").hidden; i++) await settle();
+    expect($("slow-offer").hidden, "the pane never offered a slide").toBe(false);
+  };
+
+  it("offers, and sends the chart to the new slide when the offer is taken", async () => {
+    host.slideShapes = crowd(80);
+    $("insert").click();
+    await untilOffered();
+    // The sentence quotes BOTH costs. A slogan ("nearly instant") is the thing
+    // `offerSentence` exists to prevent, so assert the shape rather than the text.
+    expect($("slow-offer-text").textContent).toMatch(/80 shapes/);
+    $("slow-offer-own").click();
+    await settle();
+    await settle();
+
+    expect(host.addSlideCalls, "the offer was taken and no slide was added").toBe(1);
+    const at = host.calls.insertScene.at(-1)!;
+    expect(at.slideId, "the chart did not go to the slide that was just added").toBe("own-slide-1");
+    // AND THE PLACEMENT IS RECOMPUTED. `at` was cascaded around 80 shapes on the
+    // crowded slide; carrying it over would drop the chart into a corner of a
+    // blank one, offset from obstacles that are not there.
+    expect({ left: at.left, top: at.top }).toEqual({ left: 60, top: 90 });
+  });
+
+  it("inserts where the user asked when the offer is declined", async () => {
+    host.slideShapes = crowd(80);
+    $("insert").click();
+    await untilOffered();
+    $("slow-offer-here").click();
+    await settle();
+
+    expect(host.addSlideCalls, "declining the offer still bought a slide").toBe(0);
+    const at = host.calls.insertScene.at(-1)!;
+    expect(at.slideId, "declining still redirected the chart").toBeUndefined();
+    // The other half of the recompute assertion above: this crowd really does
+    // move the chart, so `{60, 90}` there is the new slide's placement and not
+    // the origin surviving by accident.
+    expect({ left: at.left, top: at.top }, "the crowd did not displace the chart").not.toEqual({
+      left: 60,
+      top: 90,
+    });
+  });
+
+  /**
+   * The host drops `slides.add()`, so this is a Tuesday, not a defensive branch.
+   * Losing the offer is a nuisance; losing the chart is not acceptable — so the
+   * insert goes ahead on the slide the user picked, and says so.
+   */
+  it("still inserts, on the original slide, when the host drops the added slide", async () => {
+    host.slideShapes = crowd(80);
+    host.addSlideResult = null;
+    $("insert").click();
+    await untilOffered();
+    $("slow-offer-own").click();
+    await settle();
+    await settle();
+
+    expect(host.addSlideCalls).toBe(1);
+    expect(host.calls.insertScene, "the chart was dropped when the slide add failed").toHaveLength(1);
+    expect(host.calls.insertScene[0].slideId, "addressed a slide that was never created").toBeUndefined();
+  });
+
+  /**
+   * SLOW IS NOT THE SAME AS WORTH MOVING, and this is the case that separates
+   * them. An empty slide is the fastest target there is, so however big the
+   * chart, a new slide would be exactly as slow — `isSlowInsert` alone would
+   * fire here and offer something it cannot deliver.
+   */
+  it("stays silent on an empty slide, however slow the chart", async () => {
+    host.slideShapes = [];
+    $("insert").click();
+    await settle();
+    await settle();
+    expect($("slow-offer").hidden, "offered a new slide that would be no faster").toBe(true);
+    expect(host.calls.insertScene).toHaveLength(1);
+  });
+
+  /**
+   * `null` is the host refusing to say, not the slide being empty.
+   *
+   * AN EQUIVALENT MUTANT LIVES HERE, and it is worth recording rather than
+   * chasing. Replacing the `occupied &&` guard with `occupied?.length ?? 0`
+   * — pricing a refused read as an EMPTY slide — leaves every test green, and
+   * no test could kill it: `worthOwnSlide(n, 0)` is false for every n, because
+   * the empty-slide estimate can never be at most half of itself. So the two
+   * readings of `null` produce identical behaviour today.
+   *
+   * The guard stays, and the comment in `app.ts` should be read as intent
+   * rather than as protection: the day the offer's rule stops being a ratio
+   * against the empty-slide cost, "unknown" and "empty" stop agreeing, and this
+   * test starts telling the two apart on its own.
+   */
+  it("stays silent when the host will not say what is on the slide", async () => {
+    host.slideShapes = null;
+    $("insert").click();
+    await settle();
+    await settle();
+    expect($("slow-offer").hidden, "priced a slide the host would not describe").toBe(true);
+    expect(host.calls.insertScene).toHaveLength(1);
+  });
+});
+
 describe("Insert updates in place after loading a chart", () => {
   beforeEach(bootHostPane);
 

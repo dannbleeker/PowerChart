@@ -2068,6 +2068,14 @@ async function runInsert(asNew: boolean) {
    * `occupied === null` means the host would not say. Treated as UNKNOWN rather
    * than empty and left silent: a warning that fires because a read failed is
    * worse than one that never fires.
+   *
+   * That guard is INTENT, not protection, and the mutation check is what said
+   * so. Pricing a refused read as an empty slide instead leaves every test
+   * green and cannot be caught by any — `worthOwnSlide(n, 0)` is false for
+   * every n, since the empty-slide estimate is never at most half of itself, so
+   * "unknown" and "empty" reach the same silence by different routes. It is
+   * kept because the day this rule stops being a ratio against the empty-slide
+   * cost, the two stop agreeing and the difference becomes real.
    */
   let ownSlideId: string | undefined;
   const sceneShapes = estimateOfficeShapes(scene);
