@@ -3000,3 +3000,41 @@ waffle, the treemap and the gantt all do.
     label## / footnote         12 -> 0
     category# / footnote        6 -> 0
     total                     430 -> 394
+
+### The refuted hypothesis, unblocked by the legend fix — DONE 2026-08-28
+
+The entry above records "TESTED AND REFUTED": where a legend already names a
+series, the name at the end of its line could yield to whatever it collides
+with. It was reverted because the premise was false — a combo's legend did not
+contain its lines at all, so the rule dropped a line's only identification, and
+two existing tests said so within a minute.
+
+**Fixing the legend made the premise true.** Re-applied unchanged, the rule now
+does what it was supposed to:
+
+    value-axis / combo-series-label#         26 -> 0
+    combo-series-label# / combo-series-label# 26 -> 11
+    total                                   394 -> 353
+
+The eleven that remain are UPRIGHT, where there is no legend at all — the same
+flag draws the column series' names down the right margin instead — so nothing
+is said twice and every name stays. Yield what is said twice, keep what is said
+once.
+
+**And it gave a point label back.** The sample combo's point-label count went 79
+to 77 when the legend gained a row for the line, and back to 79 now: the
+end-of-line name yields where it used to displace a value. A value is data; a
+name repeated in the legend is not. The trade that test was built on has moved
+orientation — sideways it no longer happens at all, and upright, where there is
+no legend, it still does.
+
+**The ordering is the lesson.** A rule that is right only after another fix looks
+identical to a rule that is wrong, and the only thing that told them apart was
+finding out WHY the first attempt failed instead of accepting that it had.
+
+**One equivalent mutant, recorded.** Reducing the check from "the legend names
+THIS series" to "a legend exists" passes the whole suite, because `legendRow`
+wraps rather than truncating and `horizontalLegendFits` refuses all or none — so
+a drawn legend currently holds every entry. It stays by name anyway: it is the
+honest statement of the rule, and it is exactly what the first attempt needed
+and did not have.

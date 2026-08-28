@@ -318,18 +318,20 @@ describe("a combo with more series than any category can label", () => {
     // THE REGRESSION THAT WOULD MATTER, and it is exact rather than a bound: the
     // peer rule must charge the everyday combo NOTHING.
     //
-    // It was 79 when this was written and is 77 now, and the two lost labels are
-    // not this rule's doing: the combo's legend has since been corrected to name
-    // its LINE as well as its columns, so it takes a row it did not take before
-    // and the plot beneath it is slightly shorter. Re-based rather than loosened
-    // to a bound — an exact number is what makes this test worth having, and the
-    // commit that moves it should say why, as this one does.
+    // 79, then 77, then 79 again — and the round trip is the useful record. It
+    // fell to 77 when the combo's legend was corrected to name its line, which
+    // costs a row and shortens the plot. It came back to 79 when that same
+    // correction let the line's END-OF-LINE name yield instead: said twice now,
+    // it gives way, and the point label it used to displace survives.
+    //
+    // Re-based both times rather than loosened to a bound. An exact number is
+    // what makes this test worth having, and each commit that moves it says why.
     let drawn = 0;
     for (const [w, h] of FRAMES)
       for (const fontSize of [10, 18])
         for (const horizontal of [false, true])
           drawn += textsOf({ ...plain("combo", w, h, fontSize), horizontal } as ChartConfig, /^combo-label-/).length;
-    expect(drawn, "the everyday combo paid for the ten-series case").toBe(77);
+    expect(drawn, "the everyday combo paid for the ten-series case").toBe(79);
   });
 
   it("keeps every mark, whatever happens to the numbers", () => {

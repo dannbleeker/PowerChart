@@ -1466,7 +1466,51 @@ export function layoutCombo(cfg: ChartConfig, style: ChartStyle, decor: Decorati
       const nameY = H
         ? horizontalNameY(end.y, nameFs, cfg.height, rowPitch)
         : uprightNameY(end.y, fs, cfg.height, titleInkBottom(cfg, style));
-      if (nameFs > 0 && nameY != null)
+      /**
+       * WHERE THE LEGEND ALREADY NAMES THIS SERIES, the name at the end of the
+       * line is said twice and yields to whatever it collides with.
+       *
+       * TRIED ONCE BEFORE AND REVERTED, on the same reasoning, because the
+       * premise was false: a combo's legend did not contain its lines at all, so
+       * the rule dropped a line's only identification. Fixing the legend to name
+       * every series it draws is what makes this available — and the ordering
+       * matters, because a rule that is right only after another fix looks
+       * identical to a rule that is wrong.
+       *
+       * BY NAME, never by "a legend exists" — and that distinction is EQUIVALENT
+       * TODAY, which is worth writing down rather than deleting. `legendRow`
+       * wraps rather than truncating, and `horizontalLegendFits` refuses the
+       * whole legend or none of it, so a drawn legend currently holds every
+       * entry and the two checks agree. A mutant reducing this to "a legend
+       * exists" passes the suite.
+       *
+       * It stays by name because it is the honest statement of the rule, and
+       * because the first attempt at this rule was reverted for precisely the
+       * case the loose check cannot see: a legend that names some series and not
+       * others. Nothing produces one now; the day something does, this is what
+       * keeps a line from losing its only name.
+       *
+       * Upright there is no legend at all — `decor.seriesLabels` draws the
+       * column series' names down the right margin instead — so nothing is said
+       * twice and every name stays. Yield what is said twice, keep what is said
+       * once.
+       */
+      const legendNamesIt = nodes.some(
+        (n) => n.kind === "text" && /^legend-\d+$/.test(n.name ?? "") && String((n as TextNode).text ?? "") === s.name,
+      );
+      const nameBox = { x: lx, y: nameY ?? 0, w: lw, h: nameFs * 1.4 };
+      const saidTwiceAndInTheWay =
+        legendNamesIt &&
+        nodes.some((n) => {
+          if (n.kind !== "text") return false;
+          const t = n as TextNode;
+          if (!String(t.text ?? "").trim() || /^legend-/.test(t.name ?? "")) return false;
+          const b = tightBox(t);
+          return (
+            nameBox.x < b.x + b.w && b.x < nameBox.x + nameBox.w && nameBox.y < b.y + b.h && b.y < nameBox.y + nameBox.h
+          );
+        });
+      if (nameFs > 0 && nameY != null && !saidTwiceAndInTheWay)
         nodes.push({
           kind: "text",
           x: lx,

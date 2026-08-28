@@ -683,7 +683,12 @@ describe("a horizontal combo's line name stays on the chart", () => {
             bad.push(`${w}x${h} at ${fontSize}pt: y=${n.y.toFixed(1)}..${(n.y + n.h).toFixed(1)} on a ${h}pt canvas`);
         }
       }
-    expect(seen, "no line names drawn at all, so this proves nothing").toBeGreaterThan(20);
+    // 18 now, not 20-odd: where the legend names the series too, the name at the
+    // end of the line yields to anything it collides with, so three of these are
+    // deliberately not drawn. The floor is here to stop the sweep silently
+    // measuring nothing, not to pin a count — it is lowered with the reason, and
+    // eighteen names on-canvas is still eighteen names checked.
+    expect(seen, "no line names drawn at all, so this proves nothing").toBeGreaterThan(14);
     expect(bad).toEqual([]);
   });
 
@@ -700,22 +705,26 @@ describe("a horizontal combo's line name stays on the chart", () => {
     // happening where the test was looking. A case where the NAME is not drawn
     // proves nothing about a pass that only runs when it is.
     //
-    // MOVED A THIRD TIME, 2026-08-28, and for a new reason: the combo's legend
-    // now names its LINE as well as its columns, so it takes a row it did not
-    // take before and the plot below it is a little shorter. 120x90 at 6pt no
-    // longer draws the name at all, so the pass under test does not run there.
+    // MOVED TWICE MORE ON 2026-08-28, the second time to the OTHER ORIENTATION,
+    // and that is not a frame change but a behaviour change worth stating.
     //
-    // 200x150 at 10pt is the frame now: with `seriesLabels` off the chart keeps
-    // four point labels, with the name on it keeps two. Re-measured rather than
-    // guessed, and asserted as a comparison rather than as constants so the next
-    // move of this frame is the only thing that has to change.
+    // Sideways this trade no longer exists anywhere. The combo's legend now names
+    // its line, so the line's own end-of-line name is said twice — and where it
+    // collides with anything it is the thing that yields. The point label it used
+    // to displace now survives, which is the right way round: a value is data and
+    // a name repeated in the legend is not.
+    //
+    // UPRIGHT there is no legend, so the name is said once, keeps its place, and
+    // the old trade still runs. 300x60 at 14pt is where both exist: with
+    // `seriesLabels` off the chart keeps two point labels, with the name on it
+    // keeps one.
     const at = (decorations?: ChartConfig["decorations"]) =>
       buildChart({
         ...sampleConfig("combo"),
-        width: 200,
-        height: 150,
-        horizontal: true,
-        style: { fontSize: 10 },
+        width: 300,
+        height: 60,
+        horizontal: false,
+        style: { fontSize: 14 },
         ...(decorations ? { decorations } : {}),
       } as ChartConfig).nodes.filter((n): n is TextNode => n.kind === "text" && !!n.name?.startsWith("combo-label-"));
     const labels = at();
