@@ -189,11 +189,10 @@ const BUDGET: Record<string, number> = {
   "value-axis / value-axis-title": 33,
   "total# / value-axis-title": 25,
   "value-axis-title / label#": 24,
-  "combo-series-label# / combo-series-label#": 11,
-  "series-label# / combo-series-label#": 14,
-  "value-axis-title / series-label#": 14,
-  "series-label# / series-label#": 8,
-  "title / series-label#": 8,
+  "combo-series-label# / combo-series-label#": 6,
+  "value-axis-title / series-label#": 15, // 14 before the combo gutter was laid out in one pass; one name moved onto it
+  "series-label# / series-label#": 1,
+  "title / series-label#": 3,
   "value-axis-title / median-label#": 5,
   "label# / label#": 4,
   "header# / label##": 4,
@@ -201,8 +200,6 @@ const BUDGET: Record<string, number> = {
   "tile#-value / tile#-value": 4,
   "title / category#": 3,
   "label## / cagr-label": 2,
-  "title / combo-series-label#": 1,
-  "value-axis-title / combo-series-label#": 1,
 };
 
 /** The whole sweep, once. */

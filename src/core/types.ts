@@ -722,6 +722,20 @@ export interface LayoutAnchors {
   columnValue: number[];
   /** Per category: cumulative stack value after each series (for level arrows). */
   seriesLevels?: number[][];
+  /**
+   * Where each series' right-margin name was ANCHORED — its last segment's
+   * midpoint — before `seriesLabelNodes` spread them apart. Absent when the
+   * chart draws no such names.
+   *
+   * Exposed for the combo, which cannot reconstruct it. A combo's line names and
+   * its column names share one gutter and are emitted by different code at
+   * different times: the columns are spread to fill the gutter before the lines
+   * exist, the lines are added at their own points afterwards, and the global
+   * de-collision pass then inherits ten labels in a strip sized for seven with
+   * only "up" to work with. Laying both out together is the fix, and it needs
+   * the anchors the first pass started from — not the positions it settled on.
+   */
+  seriesLabelAnchors?: (number | null)[];
   /** y coordinate of the zero baseline. */
   baselineY: number;
   /** Plot rectangle. */

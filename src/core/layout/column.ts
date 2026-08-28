@@ -817,6 +817,10 @@ export function layoutColumns(cfg: ChartConfig, style: ChartStyle, decor: Decora
       // `columnTop` and their NUMBER from here, so the arrow sat over a +25% rise
       // and read "+29%".
       columnValue: pct ? posTotals : stacked ? signedTotals : drawnTopValue,
+      // What the right-margin names were ANCHORED to, before the spread moved
+      // them. The combo re-lays this gutter with its own line names added, and
+      // it needs where the columns started, not where they settled.
+      seriesLabelAnchors: lastSegMid as (number | null)[],
       seriesLevels,
       baselineY: y0,
       plot: { x: frame.x, y: frame.y, w: frame.w, h: frame.h },
@@ -1244,6 +1248,8 @@ export function layoutCombo(cfg: ChartConfig, style: ChartStyle, decor: Decorati
     return out;
   })();
 
+  /** Upright line names, collected for one shared spread down the gutter. */
+  const gutterExtras: GutterName[] = [];
   lines.forEach((s, li) => {
     const color = seriesColor(style, cols.length + li, s.color);
     const toY = toYs[li];
@@ -1495,6 +1501,23 @@ export function layoutCombo(cfg: ChartConfig, style: ChartStyle, decor: Decorati
        * twice and every name stays. Yield what is said twice, keep what is said
        * once.
        */
+      /**
+       * UPRIGHT, THIS NAME IS NOT DRAWN HERE AT ALL — it is handed to the gutter
+       * layout below and spread with the column names, in one pass over every
+       * name in the strip. See `gutterExtras`.
+       *
+       * Sideways it stays: there the name sits ON the plot beside the line's last
+       * point, in a row of its own, and shares nothing with the column names.
+       */
+      if (!H) {
+        gutterExtras.push({
+          name: s.scenario ? `${s.name} (${s.scenario})` : s.name,
+          color,
+          y: end.y,
+          nodeName: `combo-series-label-${li}`,
+        });
+        return;
+      }
       const legendNamesIt = nodes.some(
         (n) => n.kind === "text" && /^legend-\d+$/.test(n.name ?? "") && String((n as TextNode).text ?? "") === s.name,
       );
@@ -1534,6 +1557,62 @@ export function layoutCombo(cfg: ChartConfig, style: ChartStyle, decor: Decorati
         });
     }
   });
+  /**
+   * ONE SPREAD OVER THE WHOLE GUTTER, replacing the column-only one.
+   *
+   * `layoutColumns` has already spread its own names down this strip and emitted
+   * them, knowing nothing of the lines. Those nodes are removed and the strip is
+   * laid out again with every name in it — columns from the anchors the base
+   * exposes, lines from the points collected above. The result is a pitch that
+   * accounts for all of them, which is what stops the global de-collision pass
+   * having anything to do, which was the whole intent of the original spread.
+   *
+   * Only when there is something to add. With no upright lines this is skipped
+   * entirely and the base's own nodes stand, so an ordinary column chart is
+   * untouched — and so is a horizontal combo, whose line names sit on the plot.
+   */
+  // NOT WHEN THE SECONDARY AXIS IS IN THIS GUTTER TOO. The spread fills the
+  // strip top to bottom, and the secondary tick numbers occupy the same two
+  // points of x — so on a dual-axis or pareto chart the merged spread crosses
+  // the whole strip and the yield below then deletes it. Measured: 34 overlaps
+  // fixed, 335 tick numbers lost, and a comfortable 480x300 pareto left with
+  // two. That is the wrong way round, so those charts keep the old arrangement
+  // and their 30 pairs; the gutter there holds three families and wants a
+  // design, not a third pass.
+  if (gutterExtras.length && result.anchors.seriesLabelAnchors && !secondary) {
+    for (let i = nodes.length - 1; i >= 0; i--) if (/^series-label-\d+$/.test(nodes[i].name ?? "")) nodes.splice(i, 1);
+    const gutter = seriesLabelNodes(
+      colCfg,
+      style,
+      result.anchors.plot,
+      result.anchors.seriesLabelAnchors,
+      gutterExtras,
+    );
+    nodes.push(...gutter);
+    /**
+     * AND THE SECONDARY STRIP YIELDS AGAIN, because it shares this gutter and
+     * its own rule ran too early to see these names.
+     *
+     * That strip already gives way to whatever was drawn before it — the rule is
+     * a few hundred lines up — but it is emitted BEFORE the lines exist, so it
+     * could only yield to the column names. Moving the line names into the same
+     * strip put fourteen new pairs of tick number on line name: the shape of
+     * trade this file has already made twice, a family fixed and a neighbour
+     * grown.
+     *
+     * Same verdict as before. A tick that cannot be labelled inside the chart
+     * keeps its gridline and loses its number; a line name upright has no legend
+     * behind it and is the only thing naming that series.
+     */
+    const gutterBoxes = gutter.map((n) => tightBox(n as TextNode));
+    for (let i = nodes.length - 1; i >= 0; i--) {
+      const n = nodes[i];
+      if (n.name !== "secondary-axis" || n.kind !== "text") continue;
+      const b = tightBox(n as TextNode);
+      if (gutterBoxes.some((g) => b.x < g.x + g.w && g.x < b.x + b.w && b.y < g.y + g.h && g.y < b.y + b.h))
+        nodes.splice(i, 1);
+    }
+  }
   return result;
 }
 
@@ -1873,23 +1952,59 @@ export function uprightNameY(pointY: number, fs: number, canvasH: number, titleI
   return null;
 }
 
+/** One name in the right-hand gutter, before it is spread. */
+export interface GutterName {
+  name: string;
+  color: string;
+  y: number | null;
+  /** Node name to emit. Omitted for a config's own series — see below. */
+  nodeName?: string;
+}
+
 export function seriesLabelNodes(
   cfg: ChartConfig,
   style: ChartStyle,
   frame: { x: number; y: number; w: number; h: number },
   midYs: (number | null)[],
+  /**
+   * Names that belong in this gutter but are NOT in `cfg.data.series`.
+   *
+   * A combo's lines are the whole of it. They are drawn after the columns and
+   * share this strip of canvas, and until 2026-08-28 they were placed by their
+   * own code afterwards — so this function spread the columns to fill a gutter
+   * it thought it had to itself, and the global de-collision pass then inherited
+   * ten labels in a strip sized for seven with only "up" available. It pushed
+   * four of them 24 points and closed one pitch to 2.8, which is an overlap this
+   * function had deliberately prevented.
+   *
+   * Passing them here is the fix: one spread over every name in the gutter, so
+   * the pitch is honest and de-collision has nothing to do — which is what the
+   * comments below always claimed.
+   */
+  extra: GutterName[] = [],
 ): SceneNode[] {
   const fs = style.fontSize;
   const lineH = fs * 1.35;
   /** Font the labels are actually drawn at — reduced only if they must be spread. */
   let labelFs = fs;
-  const entries = cfg.data.series
+  /**
+   * NAMED BEFORE SORTING, and that is deliberate. A config's own series are
+   * emitted as `series-label-<n>` where n is their position DOWN THE GUTTER, not
+   * their index in the datasheet — which is what this function has always done,
+   * so numbering them here keeps every existing name identical. The extras carry
+   * their own names, so interleaving them cannot renumber the columns.
+   */
+  const own: GutterName[] = cfg.data.series
     .map((s, i) => ({
       name: s.scenario ? `${s.name} (${s.scenario})` : s.name,
       color: seriesColor(style, i, s.color),
       y: midYs[i],
     }))
-    .filter((e): e is { name: string; color: string; y: number } => e.y != null)
+    .filter((e) => e.y != null)
+    .sort((a, b) => (a.y as number) - (b.y as number))
+    .map((e, i) => ({ ...e, nodeName: `series-label-${i}` }));
+  const entries = [...own, ...extra]
+    .filter((e): e is GutterName & { y: number } => e.y != null)
     .sort((a, b) => a.y - b.y);
   // Push overlapping labels apart, then clamp back into the frame.
   for (let i = 1; i < entries.length; i++) {
@@ -1971,7 +2086,7 @@ export function seriesLabelNodes(
   const room = Math.max(1, cfg.width - x);
   let nameFs = labelFs;
   while (nameFs > 5 && entries.some((e) => textWidth(e.name, nameFs) > room)) nameFs -= 0.5;
-  return entries.map((e, i) => ({
+  return entries.map((e) => ({
     kind: "text" as const,
     x,
     y: e.y - lineH / 2,
@@ -1982,6 +2097,7 @@ export function seriesLabelNodes(
     color: style.text,
     align: "left" as const,
     valign: "middle" as const,
-    name: `series-label-${i}`,
+    // Assigned above, before the sort, so an extra cannot renumber a column.
+    name: e.nodeName ?? "series-label",
   }));
 }
