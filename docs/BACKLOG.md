@@ -2823,3 +2823,59 @@ Nothing in that log points at us.
 One number in it is worth keeping: the document channel had issued **87,331
 requests** by the time it fell over. That is what a ten-minute round costs a
 live PowerPoint session, and it is the scale at which this happens.
+
+### `combo-series-label` — TESTED AND REFUTED 2026-08-28
+
+65 pairs across three shapes, and a hypothesis that looked clean enough to
+write: **where a legend already names a series, the name at the end of its line
+is a convenience and can yield to whatever it collides with.** Sideways,
+`decor.seriesLabels` draws both — a legend row across the top and this name
+beside the line's last point — and `seriesLegendLabels` covers every series in
+the datasheet, so the identification is carried twice.
+
+Measured by orientation first, which is what made it look right:
+
+    101 pairs   combo-series-label / combo-series-label   H=true   legend PRESENT
+     97 pairs   series-label / combo-series-label         H=false  no legend
+     84 pairs   value-axis / combo-series-label           H=true   no legend
+     47 pairs   combo-series-label / combo-series-label   H=false  no legend
+
+The biggest bucket had a legend. Implemented, it took `combo-series-label` pairs
+from 23 to 5 in the ratchet — and broke two existing combo tests, which is how
+the flaw surfaced.
+
+**`legendRow` TRUNCATES.** It fits what it can into the width it has and stops.
+A 120x90 horizontal combo at 6pt draws a legend naming "Product" and "Services"
+and never reaches "Margin %" — the line series. The rule dropped that line's own
+name on the strength of a legend entry that does not exist, leaving the series
+with no identification anywhere on the chart.
+
+Narrowing the check from "a legend exists" to "a legend entry with THIS series'
+name exists" made it correct and made it a **no-op**: the overlap count went
+straight back to 467. On every chart in the sweep where these names collide, the
+legend has already truncated them away. The crowded chart is exactly the chart
+whose legend does not fit.
+
+So the premise is false and the change is reverted. What the exercise leaves:
+
+- The counts above, by orientation and by whether a legend is present.
+- A better question than the one I asked, and now a measured one. Across the
+  cartesian kinds at eight frames, seven fonts and both orientations, 223 charts
+  draw a legend and **36 of them draw fewer entries than `seriesLegendLabels`
+  says they should**. Every one is a combo dropping its THIRD series — the line —
+  at small frames and fonts:
+
+      combo 80x60 fs6 H=true    2 of 3
+      combo 120x90 fs6 H=true   2 of 3
+      combo 120x90 fs10 H=true  2 of 3
+      combo 160x120 fs8 H=true  2 of 3
+
+  A separate 96 charts clip the TEXT of at least one entry, which is a different
+  and much milder thing — a clipped name is still a name.
+
+  So the legend does not merely truncate, it truncates the LINE, which is the
+  series least like the others and the one whose on-line name I was proposing to
+  drop. A legend that names two of three series and says nothing about the third
+  is a chart that misleads, and it is worth more than the 65 overlapping pairs.
+  What it needs is a decision of the same kind as `valueAxisTitle`: what a legend
+  does when the row will not hold it — wrap, shrink, or say that it is short.

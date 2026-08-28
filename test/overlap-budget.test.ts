@@ -285,7 +285,13 @@ describe("the text this engine still draws over other text", () => {
   });
 
   it("has not grown in total", () => {
-    // Belt to the per-shape braces, and the number docs/BACKLOG.md quotes.
-    expect(total, "the total overlap count grew").toBeLessThanOrEqual(467);
+    // DERIVED from the table above rather than written down again. A second
+    // number is a second thing to forget: this one was left at 467 while the
+    // shapes below it had already been lowered to 449, so it would have waved
+    // through eighteen new overlaps. The per-shape budgets are the one source of
+    // truth and the honesty test keeps each of them exact, so their sum is the
+    // total — no slack anywhere, by construction.
+    const cap = Object.values(BUDGET).reduce((a, b) => a + b, 0);
+    expect(total, "the total overlap count grew").toBe(cap);
   });
 });
