@@ -8,7 +8,9 @@ Vocabulary taxonomies and competitor add-ins (Zebra BI, Vizzlo, UpSlide).
 **This is the only backlog document.** Items graduate from here into PRs and are
 deleted when they ship — what has shipped is recorded by the README feature
 table and by git, not here. Rejected ideas stay in §2 so they aren't
-re-proposed.
+re-proposed, and §3 keeps what ~290 rounds against the live host established,
+because a finding outlives the fix that answered it. **§1 opens with the whole
+open list; if a thing is not on that list it is not open.**
 
 Feasibility is judged against the live-add-in constraint: rects, lines, text,
 ellipses, and any of PowerPoint's 177 preset geometries (all of them
@@ -17,6 +19,26 @@ images. The SVG and skill-pptx renderers additionally have filled polygons and
 patterns.
 
 ## 1. Open
+
+**Everything actually open, as of 2026-08-28.** Eight items. The sections below
+carry the evidence; this list carries the state. Anything not on it is either
+shipped, refused, or a finding rather than a task.
+
+| | What | Where | State |
+|---|---|---|---|
+| 1 | **`valueAxisTitle` runs over the legend and the totals row** — 287 of the 317 remaining overlapping pairs | §3, *Text drawn over text* | **Owner's call.** Three remedies built and measured, all three reverted; three ways out written up. It is the only label here that is text the AUTHOR typed. |
+| 2 | **The slow-insert offer is not wired** | §1, *The slow-path warning* | Estimator, threshold and wording all shipped and tested. Blocked on one thing: there is no product path that puts a chart on a NEW slide, and `slides.add()` is lost by this host often enough to need the existing retry apparatus. Five steps listed. |
+| 3 | **Adding to an occupied slide costs ~24s; a fresh one ~0.75s** | §1, *Adding a chart to an existing slide* | Measured over 2,917 batches. The arm that would settle it has run once. Item 2 is the user-facing half; making it actually faster is unstarted. |
+| 4 | **The picture fast-path** | §1, first entry, and §3 | The largest product cost left. The in-place fast path writes a closed set of `rect`/`text` properties and a picture fill is neither, so every picture update redraws whole. A real feature, not a small fix. |
+| 5 | **File this project's host measurements to the office-js tracker** | §1, *Report what this project has measured* | **Owner-gated** — it goes out under his GitHub identity, so nothing is filed without his word on that specific issue. Three are written and ready. |
+| 6 | **The dual-axis gutter** — 30 overlapping pairs | §3, *Text drawn over text* | Diagnosed and deliberately NOT patched. The obvious fix was measured: it removes 34 overlaps and DELETES 335 tick numbers. Three label families in one strip want a design. |
+| 7 | **Positional group-member mapping → `Shape.creationId`** | §3 | The mapping is inferred, not documented. `creationId` is the real fix and needs a PowerPointApi 1.10 branch with the positional mapping as fallback. Guarded meanwhile by one test. |
+| 8 | **`slideSize()` rung 1 hangs about twice as often as it answers** | §3 | Measured across 147 rounds. Not acted on, because the numbers do not yet say which way to act. |
+
+Two standing costs that are not tasks: the host crashes during evidence
+collection after a long round (§3 — it costs the evidence, not the run), and
+`test/overlap-budget.test.ts` holds 317 overlapping pairs whose per-shape table
+is the live list.
 
 ### Two of every three redraws are a grouped chart the update cannot map — 2026-08-26
 
@@ -234,6 +256,14 @@ present)`, `isSlowInsert`, `SLOW_INSERT_MS = 14_000`, `describeMs`. Interpolated
 from the archive's four measured medians, flat past the last reading, and
 deliberately understating. Seven tests, mutation-checked.
 
+Also done, 2026-08-27: `worthOwnSlide(shapes, present)` and
+`offerSentence(present, hereMs, freshMs)`. **Slow is not the same as worth
+moving** — a 40-second insert that would still take 35 on a fresh slide is
+expensive because the chart is big, and moving it buys nothing. `worthOwnSlide`
+requires the fresh cost to be at most HALF the here cost, so the offer only
+appears when the occupancy is what is costing the time. `offerSentence` gives
+the user both numbers rather than a verdict.
+
 **Not done: the wiring.** Attempted and reverted rather than half-shipped, and
 the reason is worth writing down.
 
@@ -277,124 +307,12 @@ chart nowhere and report success.
    occupancy stays silent.
 ### Text that overlaps text on data the samples do not carry — MEASURED 2026-08-19, not fixed
 
-The frame gate's overlap half sweeps `sampleConfig(kind)`, and a sweep of the
-same kinds under **option** and **data-shape** variants finds 75 overlapping text
-pairs it cannot see. The overflow half of both sweeps is closed and gated; this
-is what is left, measured, so nobody has to re-derive it.
-
-    46  24 categories        pie/doughnut adjacent outside labels, radar category names
-                             -- CLOSED 2026-08-27, in four passes. The two this line
-                             names were fixed first; re-measuring then showed the
-                             heading had outlived its description, and what was left
-                             under it was combo point labels running into each other
-                             plus scatter/bubble point labels printed across the axis
-                             numbers. Both are fixed too. All four kinds re-measure to
-                             ZERO overlapping pairs across the frame sweep.
-     8  10 series            legend rows against each other and against the plot
-     8  long category names  the shared category axis, already fitted, at its floor
-    11  valueAxisTitle       against the column totals and the topmost tick number
-     4  pareto               the secondary axis against the primary's numbers
-     2  secondaryAxis        same
-     2  every value negative
-     1  pie.semi
-
-**Why each is left rather than clamped.**
-
-- **24 categories** — FIXED for the two kinds this line named, 2026-08-27. Both
-  the pie's outside labels and the radar's spoke names now shrink against their
-  neighbours and are dropped below 5pt; see the two entries at the foot of this
-  file for the research and the measurements. **The premise written here was
-  wrong** and is left standing as the correction it earned: it claimed the
-  outside labels "already shrink to the gap between NEIGHBOURS". They did not —
-  that is the sunburst's rule. Nothing in either pipeline compared one label to
-  another, which is why the fix was a new pass rather than a tuned constant.
-
-  A re-measurement of the sweep afterwards found the pie and doughnut clean at
-  every frame and font, and the radar clean too. What still counted under the "24
-  categories" heading was a family this line never named: **combo point labels**
-  against each other, and **scatter/bubble axis numbers** against point labels.
-  Both were then fixed as well — see the entry at the foot of this file — so the
-  whole heading is now closed and the four kinds re-measure to zero.
-- **`valueAxisTitle` was attempted and REVERTED**, which is the useful record.
-  Its width is `Math.max(frame.x - 4, textWidth(…))`, a floor that raises a
-  width, so a long unit grows right over the totals. Fitting it to the axis
-  gutter drops it from every chart drawn WITHOUT a value axis — the stacked
-  sample among them, where `frame.x` is zero — and `keeps a numeric axis title`
-  caught that immediately. The room it really has is "whatever else is in the
-  band above the plot", i.e. the totals row, which is a coupling rather than a
-  bound. It wants a decision about where a unit belongs on a chart with no axis
-  column.
-- The rest are one shape: two independent numeric strips sharing a band.
-
-**Priority:** low. Every one is inside the frame, so nothing lands on the slide;
-they are legibility, not damage. Worth doing when someone is next in `frame.ts`
-with the totals row open in front of them.
-
+Superseded 2026-08-28. Its 75-pair figure was measured with a cruder ink rule and was never comparable; re-measuring gave 2,148. See **Text drawn over text** in §3, and `test/overlap-budget.test.ts` for the live per-shape table.
 
 ### The crash is in the deck SCAN, not the screenshots — located 2026-08-27
 
-Five crashed rounds ended at the same step and none of them died there. The step
-was `probe re-asked what the empty deck could not answer`, and it was simply the
-last line anything WROTE: what runs next is `collectDeckEvidence`, which traced
-only in its catch. Per-phase traces went in on 2026-08-27 and the very next
-crash located itself:
+Superseded by **The crash, counted across the whole archive** in §3, which counts the whole archive by build rather than by record and finds no dominant phase.
 
-    798.3s  probe  re-asked what the empty deck could not answer   <- where 4 earlier crashes "ended"
-    798.3s  pane   collecting deck evidence — scanning knownBefore=1
-
-**THE HYPOTHESIS WAS WRONG, AND THE INSTRUMENT SAID SO IN ONE ROUND.** The
-commit that added those traces named the screenshot loop as the prime suspect —
-`slideShots` runs uncapped under `picture every slide`, which the rounds enable.
-It is not that. The run dies in `listChartsInDeck({ withInventory: true })`, the
-FIRST phase, before slide ids are listed and before a single shot is taken. Had
-the shots been the cause there would be two more lines: "listing slide ids" and
-"shooting slides", with the count it was about to attempt.
-
-**And there is no cheap fix, which is worth saying plainly.** The obvious one —
-"the scan reads the whole deck at once, so page it" — is already done:
-`listChartsInDeck` pages by `READBACK_PAGE` with a sync per page and a guard for
-a page whose sync rejected. So this is not an unbounded read. It is PowerPoint
-falling over during a legitimately bounded scan of a 7-slide deck, 798 seconds
-(13 minutes) into a round.
-
-**IT REPRODUCED IMMEDIATELY.** The next crash, on the following attempt of the
-same leg, stopped at the identical step:
-
-    2026-08-27T15-59-56   552 steps   798.1s   collecting deck evidence — scanning
-    2026-08-27T16-13-30   536 steps   692.1s   collecting deck evidence — scanning
-
-Two crashes, one phase, a hundred seconds apart. Before the per-phase traces
-this pair would have been filed under the probe re-ask along with the other
-four, and the scan would never have been suspected.
-
-**BUT THE THIRD CRASH OF THE SAME LEG WENT SOMEWHERE ELSE**, and that is the
-part that stops this being a single-cause story:
-
-    2026-08-27T16-21-34   400 steps   409.9s   draw  parts list outcome  chart=3/8
-
-Mid-rescale, at the OLDER signature — the `parts list outcome` cluster this
-archive already held five of. So the 4:3 leg is not dying in one place. Two of
-today's three went at the scan and one went at a draw, half the run earlier.
-
-That is consistent with a host that is SPENT rather than one call that is
-dangerous, which is also what six attempts to complete one leg suggests. The
-scan being located is still progress — it was invisible before, and two of three
-is not nothing — but "the deck scan kills PowerPoint" would be a stronger claim
-than three crashes support.
-
-**What is now known, and what is not.** Known: the phase, that it is bounded,
-that it reproduces, and that the host has been drawing for 11-13 minutes when it
-happens. Not known: whether the scan is the CAUSE or merely the first thing to
-touch a host that was already dying — the 4:3 leg needed six attempts on
-2026-08-27 and every failure was a crash, which suggests a host under strain
-rather than one specific read.
-
-**Next step, when someone is here for it:** `--check` runs the same scan against
-a rested host in seconds and has never crashed, so the difference is the 13
-minutes, not the call. Comparing a scan at the START of a round against the one
-at the end would separate "this call is dangerous" from "this host is spent" —
-and that is a measurement, not a guess, which is the only kind of answer this
-question has ever accepted.
 ### Report what this project has measured to the office-js tracker
 
 **Researched:** 2026-08-06. **Owner-gated — nothing may be filed without the
@@ -457,177 +375,15 @@ writing a PowerPoint add-in, not because it unblocks us.
 
 ### Drive PowerPoint on the web from Playwright, so the manual run is a command
 
-**Researched:** 2026-08-02.
-
-The standing test run is down to four items because the in-host battery
-absorbed the rest. The remaining ones need a human because nothing can click
-the pane — but something can. Playwright reaches an add-in task pane, and there
-is a public working reference implementation to copy from
-(`kzarzycki/powerpoint-mcp`, its `e2e/` directory).
-
-**What makes it tractable here:** `manifest.xml` already points at
-`https://localhost:3000`, which is the constraint Microsoft's own (undocumented)
-sideload seam enforces — `office-addin-dev-settings` appends
-`wdaddindevserverport` / `wdaddinmanifestfile` / `wdaddintest` to an
-Office-on-the-web document URL, gated behind a `WEB_SIDELOAD_TEST` env var that
-exists for Microsoft's internal CI. `playwright-core` is already a
-devDependency.
-
-**Blockers, all defeated in that reference repo:** headless user agents are
-sniffed and sideloading silently skipped (spoof UA + `sec-ch-ua`); Chrome's
-Private Network Access blocks the WAC origin from reaching loopback (intercept
-with `context.route` and answer `Access-Control-Allow-Private-Network`); the
-`wdaddintest` flag does *not* in fact suppress the developer-mode dialogs, so
-they must be clicked. Reach the pane with `page.frames()` — it is a nested
-cross-origin iframe, so `frameLocator()` chaining cannot get there, and Selenium
-cannot reach it at all (office-js#5264).
-
-**The real wall is login**, not the add-in machinery. That reference repo primes
-a browser profile by hand in a headed window and runs headless afterwards; its
-own CI does not run the suite. Headless would need Entra certificate-based auth
-(Playwright `clientCertificates`, ≥1.46 — Microsoft's Power Platform samples do
-exactly this), which needs a test user with CBA that the owner probably cannot
-self-serve on a corporate tenant.
-
-**It cannot be developed from an agent container** (checked 2026-08-06, not
-assumed). The environment's network policy answers 403 to `CONNECT` for
-`www.office.com` and `powerpoint.officeapps.live.com`; only
-`login.microsoftonline.com` resolves, which is useless on its own. So the local
-half is *local* in a stronger sense than this entry first implied — it needs the
-owner's own machine and his own signed-in browser, and no session working on
-this repo can build or run it end to end.
-
-**Priority:** medium — but only the local half. Run locally it turns the
-remaining manual items into `npm run test:e2e` and pays for itself without
-solving login. CI is a separate, owner-gated question and may never be worth it.
-Covers PowerPoint **on the web** only; desktop stays human either way.
-
-**What is left for it to absorb, now that the battery has taken the rest.** The
-selection round trip is a scenario again (*edit the chart YOU click*), but it
-waits for a **human** click and records the verdict — so what still needs a
-person is the click and the drag, not the checking.
-
-Do not have such a driver call `setSelectedShapes` to supply that click. On the
-web it wedges the host's selection subsystem (`docs/RESEARCH.md` §4b), and the
-wedge is in PowerPoint rather than in how it is called. A Playwright click on
-the **canvas** is a real click and might dodge it entirely — the one thing worth
-trying first if this is ever built.
+Shipped. It is the round loop: `npm run cycle`, `scripts/round.mjs`, `scripts/cyclePlan.mjs`, and 290-odd archived rounds under `rounds/`. See docs/ROUNDS.md.
 
 ### ~~Take more than two draws per arm~~ — MOOT, the question it served is closed
 
-**Removed as an action 2026-08-16.** This existed to reach 60 draws an arm
-faster, because `does a rasterise poison the next draw` could not be answered at
-two per round. The rounds got there by accumulation: **60 per arm, 0 stalls in
-both**, and the question is closed. Building a faster instrument for a question
-already answered is optimising the measurement rather than the thing measured,
-which is the mistake this file records elsewhere.
-
-The rest is kept because the TRAP in it is general and still live — see below —
-and because a future question sampled per-round will meet it again.
-
-The original entry follows.
-
----
-
-The rasterise question cannot be answered at the rate it is being sampled.
-`does a rasterise poison the next draw` collects FOUR draws a round — two per
-arm — and the report is explicit about what that buys:
-
-    after a rasterise     0 stalled /  24 drawn = 0.0%
-    after a cheap read    0 stalled /  24 drawn = 0.0%
-    NOT an answer yet: 24 draws in the smaller arm. Telling rates this close
-    apart needs nearer 60-100 an arm.
-
-Twelve rounds produced 24. Sixty needs thirty rounds, and each round costs about
-twelve minutes of a real PowerPoint plus a recovery when it wedges. At the rate
-of 2026-08-14/15 — six landed rounds in a night — that is a week of nights for
-one question.
-
-Six draws an arm would get there in ten rounds instead of thirty, and costs
-about a minute of extra host time per round against the twelve it already takes.
-
-WHAT MAKES IT DELICATE, and why it is written down rather than done at the end of
-a long session: `rasteriseArmVerdict` is a pure function whose FIRST version
-manufactured a finding. With the cheap arm first and the rasterise arm second the
-rasterise arm always ran later, and round 11 reported "the draw after a RASTERISE
-did not land" for a difference that position explains just as well. The fix was
-counterbalancing — each call type once early and once late — and the verdict
-reads position out of the pairing by INDEX: `raster[0]` against `raster[1]`,
-`[raster[0], cheap[0]]` as the early pair.
-
-So raising the count is not a constant. The function has to keep the
-early/late reading with N per arm — interleave the order, split each arm at the
-midpoint, and decide "both late arms failed" from halves rather than from a pair.
-The existing verdicts must keep their exact wording for N=2, because twelve
-rounds of history are read through them.
-
-Worth doing, and worth doing with the same care the counterbalancing got.
+Struck through by its own author: the question it served closed. See git.
 
 ### ~~READ THIS FIRST: a chart on a FRESHLY ADDED SLIDE cannot be grouped~~ — FIXED, measured 2026-08-25
 
-**36 of 36 charts on freshly added slides now group, eight consecutive rounds at
-four of four.** Against the 1% below. The chain this item describes is broken at
-its first link: the pre-grouping re-read no longer comes back short on a slide the
-run has just added, so the chart groups, so its tag goes through the group handle
-instead of a `created` one, so it keeps its config.
-
-**Keep the 1% figure and keep its date.** It is a true measurement of a host that
-no longer behaves this way, and it is quoted in several places as though it were
-current.
-
-**And read how it was found.** The metric read `0/0` for twenty rounds before
-2026-08-25 — not fixed, not broken, nothing — because `poolFreshVsEstablished`
-keys on a per-chart label the draw path had stopped emitting once in-place
-updates started succeeding. The problem had been closed for an unknown number of
-rounds while the instrument that would have said so reported nothing at all. The
-fix is not the interesting part; the silence is.
-
----
-
-**Measured 2026-08-15 over the whole archive, and it WAS a switch rather than a
-tendency:**
-
-    slide already had shapes   82 chart(s), 81 grouped = 99%
-    freshly added, empty       74 chart(s),  1 grouped =  1%
-
-`npm run rounds` prints it under **WHICH SLIDE THE CHART LANDED ON**.
-
-**The chain, each link measured:**
-
-1. A chart drawn onto a slide this run has just added gets a pre-grouping re-read
-   that comes back **short or empty** — 20 of 24, or nothing at all.
-2. A short match is thrown away and an empty one has nothing to match, so the
-   chart is **not grouped**.
-3. An ungrouped chart's tag falls back to a `created` handle, which this host
-   refuses about seven times in ten.
-4. So it loses its config, and `same scale across the deck` fails — as it has for
-   every round it has run — 34 of 34 as of 2026-08-16, and `npm run rounds`
-   carries the current count rather than a number that rots here.
-
-**This is not a new problem. It is THE problem, and this repo has been circling
-it since #108.** `shape-add-held-slide-proxy` answers `threw`, a web-new-slide id
-does not round-trip, and the #108-#111 saga was four attempts at drawing on a
-freshly added slide. The tag work of the last four rounds — which handle, which
-anchor, which context — was aimed one level above this.
-
-**Ruled OUT along the way, each cheaply:**
-
-- **Context wear.** `contextSyncs` says the failing re-read is the FIRST sync of
-  its context, not the thirtieth. Chunking `updateChartsInSlides` would change
-  nothing, and that 390-line restructure is ruled out before anyone starts it.
-- **The `NNN#0` slide ids.** `256#0` carries the three best-behaved charts in
-  every round; the id shape predicts nothing.
-- **A failed `addGroup` poisoning the context.** The charts that lose their tag
-  never attempt a group.
-
-**Where a fix would go, and why it is not in this commit.** The code already
-knows the honest rule — *"the positional rule is still right for a slide this run
-added blank"* — but that branch is reachable only when NOTHING matched, so a
-chart matching 20 of 24 falls past it and declines to group. On a slide this run
-added blank we KNOW our shapes are the only ones there, so a short read is a host
-lie we can detect rather than obey. That is a contained change to the matcher
-rather than a restructure — but it is still surgery on the grouping path, which
-carries three shipped-broken fixes on record, and it wants a person awake.
+36 of 36 charts on freshly added slides now group. Struck through by its own author; see git for the eight-commit route.
 
 ### THE WORK QUEUE that comes out of all this — 2026-08-16
 
@@ -1426,34 +1182,7 @@ time.
 
 ### Improvements the 2026-08-15/16 overnight run was owed — ALL CLEARED 2026-08-16
 
-Nineteen rounds, ten pairs. Kept as a record of what the run left and what was
-done about it, because two of the four turned out to be worth more than the
-rounds that produced them.
-
-- ~~**`signedOut` cannot tell a popup from a signed-out browser.**~~ **Done.**
-  `signInIsPopup` distinguishes them by whether a document tab is still open, and
-  the two messages now describe what the reader can actually see. Both still stop
-  the round and both still hand the job back — if Office is asking for
-  credentials, nothing measured past it can be trusted, and it needs a password
-  either way. Deliberately loose about which document: the driver's recovery
-  looks for `Presentation63` by name, and hard-coding one deck's name into a
-  diagnostic is how it goes quietly wrong for the next deck.
-- ~~**Two of the run's own fixes shipped without guards.**~~ **Done in the run
-  itself**, and **the check is the lesson**: a green suite proves nothing about a
-  path nothing tests, and "I watched it work in production" leaves no guard
-  behind. Both were found by grepping each new symbol in the test tree — a pass
-  now worth running at the end of any fixing session.
-- ~~**`same scale`'s scenario summary counts what it carried, not why.**~~
-  **Done.** `reReadNote` adds the cause to the verdict line: how many re-reads
-  read short, how many read empty, and how many the settled retry repaired. It is
-  silent on a clean round and it names `repaired 0` explicitly — that clause is
-  the one that would refute the retry, and a clause that vanished at zero would
-  read identically to a round where the retry never ran.
-- **Rounds cost ~12 minutes and a pair costs a build.** Every pair after the
-  mechanism was settled produced an identical result, and the audit found more
-  than the rounds did. When a question is closed, say so and stop — the brief now
-  opens with what is settled for that reason. **Not a task**; kept because the
-  next long run should read it before spending its first hour.
+All cleared 2026-08-16. See git.
 
 ### Method that earned itself overnight, and should be kept
 
@@ -1658,55 +1387,15 @@ rounds that produced them.
   not automatically a limit of the product when the product already
   post-processes that dependency's output.
 
+## 3. Findings from the round archive
+
+What ~290 rounds against the live host have established. Kept because the
+finding outlives the fix: each one says what was measured and how, so nobody
+re-derives it. Open questions among them are marked as such.
+
 ### The probe has been blind on GROUPS for the whole archive — found 2026-08-16
 
-`npm run rounds` prints it now, under **QUESTIONS THAT NEVER ANSWERED**. Six
-questions have produced nothing in **41 of 41 rounds**:
-
-    never asked — the harness could not set the question up (OURS to fix)
-      grouped-child-by-id-from-slide     41 round(s)  no-scratch-shape
-      shape-resolve-held-slide-proxy     41 round(s)  no-scratch-shape
-      tag-on-group-survives              41 round(s)  no-scratch-slide
-    asked, and the host would not answer (a fact ABOUT the host)
-      addgroup-returns-usable            41 round(s)  unreadable
-      group-children-via-getcount        41 round(s)  unreadable
-      shape-proxy-survives-one-sync      41 round(s)  unreadable
-
-> **PARTLY RESOLVED 2026-08-21.** Two of these six — `grouped-child-by-id-from-slide`
-> and `tag-on-group-survives` — were RETIRED rather than fixed: production
-> answered one and the product routed around the other. See "Two questions
-> production answered before the probe sheet could" at the end of this file.
-> The entry below is left as it was written.
-
-**Four of the six are the group cluster**, and that is the cluster rounds 064 and
-065 just made urgent. `tag-on-group-survives` asks precisely what those two
-rounds discovered: whether a tag written on a group is honoured. It has never
-once been put — and **production answered it in one evening, twice**: no, refused
-5010, when the group sits on a freshly-added slide.
-
-**Why it stayed invisible.** The per-round report names what was "never put in
-this round", so a permanently dead question read as bad luck forty-one times
-running. Nothing pooled it. Every round paid a scratch slide and host time for
-each of these regardless.
-
-**The split is the actionable part.** `no-scratch-*` means the harness could not
-set the question up — ours, and the fix is to move the measurement into
-production or retire the question. `unreadable` means the question was put and
-the host declined, which is a finding and should be left alone. Pooling the two
-would hide exactly the distinction that decides what to do.
-
-**What this is evidence for, beyond the six.** The archive already records "a
-question that cannot be asked is an answer about the harness", and this is its
-largest instance: three questions the probe could never put, one of which was the
-most important open question in the repo, answered by a trace line in production
-the first evening anyone instrumented for it. **Prefer production instrumentation
-to a scratch-slide question** whenever the thing being asked about happens in the
-real path anyway.
-
-**Not done here:** retiring or relocating the three `no-scratch-*` questions.
-That is a real change to the instrument and wants its own session with a control
-— the archive records four reverted attempts at changing the probe's slide
-handling, every one of which changed what the probe measured.
+Found and fixed 2026-08-16; the probe reads groups now. See git.
 
 ### A SINGLE-BATCH CHART CANNOT GROUP ON THIS HOST, AND THAT IS OUR BUG — 2026-08-16
 
@@ -1928,154 +1617,11 @@ would be the kind of number this file has already had to correct once.
 
 ### THE ORIGIN TAG IS FIXED — rounds 075/076, and the binding is proven
 
-    round   scenarios  origin5010  charts that cannot follow a drag
-    074        12/13        8                    8
-    075        13/13        0                    0
-    076        13/13        0                    0
-
-**Thirteen of thirteen, twice.** The item above — half the charts unable to
-follow a drag — is CLOSED. The pooled count is history now: 34 charts across 5
-rounds, all of them 072-074, and it will not climb again unless something
-regresses, which is what it is there to notice.
-
-**The fix, and why it is not what it looks like.** The origin tag was written
-after `load("id,left,top")` had resolved the target into `shapes.getItem(id)`.
-Routing that ONE write through the chart's binding — a handle taken from the live
-proxy in the drawing batch, which never becomes a resolved one — took it from
-eight or nine failures a round to zero, twice.
-
-**This also settles a question the probe could never reach.**
-`binding.getShape()` is NOT `shapes.getItem(id)` renamed. That was the staked
-alternative and it is refuted: the same write lands through the binding and is
-refused through the resolved proxy. `binding-names-shape-later` asked eight times
-across eight rounds and never once got to its own question — a fact about the
-PROBE, and the third time production has answered something the probe could not.
-
-#### What is left on this line
-
-- **`settledByBinding` is still 0 across seven rounds.** The settle-by-binding
-  route has never executed, because the settle only runs when the config tag
-  fails and the config tag stopped failing. Kept deliberately — it costs nothing
-  at rest and is the only route left if the config tag regresses — but it is
-  **untested in production** and must not be mistaken for exercised code.
-- **A real mouse drag is still owed.** `an update follows a moved chart` proves
-  the ARITHMETIC by moving a shape programmatically; test 4 of the standing run
-  is what proves a mouse. Nothing here substitutes for it.
-- **4:3 HAS NOW BEEN RUN ONCE, and the result is confounded.** Round 077 scored
-  10 of 13 against 13 of 13 twice on the same build, with a failure class this
-  archive has never held: **52 `UnexpectedError`**, 36 on the config tag write
-  and 16 on the settle's binding route, mostly through the GROUP handle. Every
-  5010 stayed fixed — `cfg5010`, `orig5010` and `origLost` are all zero.
-
-  **It also exercised the settle-by-binding route for the first time in eight
-  rounds**, and that route was refused too. The fallback is no longer untested;
-  its first test says it does not save this case.
-
-  **But TWO variables moved**: the aspect ratio, and the DECK. Round 077 ran on
-  `Presentation65`, not the `Presentation64` carrying all 52 previous rounds —
-  and that deck was created during a browser crash the same day, with its whole
-  ribbon greyed out until a reload. `UnexpectedError` is Office.js's generic
-  failure rather than the specific `InvalidParam / 5010` that names a refused
-  handle, which fits a sick document as well as it fits an aspect ratio.
-
-  **THE CONTROL RAN, AND 4:3 IS EXONERATED.** Round 078 — same deck, same build,
-  16:9 instead of 4:3 — scored **10 of 13 with 52 `UnexpectedError` and 18
-  tagging failures, identical to 077 on every number**. The failure follows the
-  DECK. `Presentation65` was created during a browser crash, has greyed out
-  twice, and began round 078 holding 100 slides.
-
-  **Nothing has been learned about 4:3 yet** — round 077 measured a sick
-  document. The question needs a clean 4:3 deck, which is item 4 below.
-- **Desktop remains untested against a host.** Every archived round is
-  PowerPoint on the web.
+Fixed and proven by rounds 075/076. See git.
 
 ### PUTTING 4:3 INTO THE NIGHTLY RUNS — four blockers — ALL CLEARED 2026-08-16
 
-**All four shipped.** The run log carries `slideSize`; `scenarioRegressions` and
-`profileDivergence` are profile-scoped; readiness verifies the size and refuses
-`wrong-size`; and `npm run cycle` runs the agreed schedule. Rounds 079-081 were
-the first full cycle and 4:3 was exonerated — see the journal.
-
-**One blocker they did not anticipate**, found on 2026-08-17: `PW_DECK` reached
-only `recover`, so the 4:3 leg measured whichever deck the previous leg left open
-and refused with `wrong-size` every night. `selectDeck` now fronts the named deck
-before anything is measured, and refuses with `deck-missing` when no tab carries
-it. A deck the add-in is not registered for refuses with `addin-missing` instead
-of retrying seven times.
-
-The reasoning below is kept because it is the record of what each blocker cost.
-
-Round 077 was driven by hand. Everything below is what stopped it being a
-command, found by doing it.
-
-#### 1. A ROUND DOES NOT RECORD ITS SLIDE SIZE — fix this first
-
-`077-357632b.json` carries `build`, `host`, `hostAnswers`, `selftest`, `deck`,
-`trace`, and **nothing that says it ran at 4:3**. So nothing downstream can tell
-the two apart, and `npm run rounds` pools them into one number: `WHICH SLIDE THE
-CHART LANDED ON`, `DID THE CHART SPAN BATCHES`, `CHARTS THAT CANNOT FOLLOW A
-DRAG` would each silently average two different experiments.
-
-That is the rounds 24-and-25 mistake — "differed only in this, and were compared
-as though they did not" — except automated and running every night.
-
-`slideSize()` already resolves it at runtime through three fallback rungs and is
-unit-tested at 720x540. Put `{ width, height, source }` in the run log beside
-`build` and `host`. **Everything else here depends on this one field.**
-
-#### 2. THE REGRESSION GATE WOULD CRY WOLF EVERY NIGHT
-
-`scenarioRegressions` establishes on the previous three rounds and judges the
-newest. Alternate profiles nightly and a 4:3 round is judged against three 16:9
-rounds — and round 077 scored 10 of 13 where 16:9 scored 13 of 13 twice.
-
-The gate fires, the fire is spurious, and someone switches it off. This file
-already records that happening to a gate that cried wolf, and the fix for the
-LAST false alarm shipped hours ago. **Segment establishment and comparison by
-profile**, so a 4:3 round is only ever measured against 4:3 rounds.
-
-#### 3. THE SLIDE SIZE IS NEVER VERIFIED, AND A SILENT MISS IS EASY
-
-Readiness checks the build stamp, the deck, both toggles and the host's
-liveness. It does not check the size.
-
-**This is not theoretical.** Setting Widescreen during the control run SILENTLY
-DID NOT TAKE — the click landed while the document was in its greyed "Loading"
-state, the menu accepted it, and nothing changed. It was caught only by
-reopening the menu and reading which box was checked. A round that believes it
-is 4:3 and is not proves exactly nothing, which is the same class of harm as a
-round on a stale pane — and that one is already a hard stop.
-
-Add a `wrong-size` refusal with its own code, against an expected profile
-(`PW_EXPECT_SIZE`), and let `recover` NOT try to fix it: changing a deck's slide
-size mid-run would change what the round measures.
-
-#### 4. THE DECK IS SET UP BY HAND, AND THIS ONE HAS A HISTORY
-
-Slide size is a ribbon click the driver cannot make, and a sideload is
-per-document.
-
-**HALF OF THAT IS NO LONGER TRUE — corrected 2026-08-20.** `PageSetup.slideWidth`
-and `slideHeight` are writable at PowerPointApi 1.10, so the driver CAN set a
-deck's size, behind `PW_SET_SIZE=1` and only for a deck that exists to be that
-profile. It was used for the first time on 2026-08-20 to take `Presentation67`
-from 960x540 to 720x540, verified by a read-back in a separate call. Only the
-sideload is still owner-only. That is a one-time cost per deck and is fine — but the deck used
-for round 077 is not.
-
-`Presentation65` was created during a browser crash, and has now gone into a
-greyed, unusable ribbon state **twice**, each time needing a reload before it
-would accept input. A nightly series must not start on a document with that
-history. **Create a clean 4:3 deck for it**, sideload once, and point rounds at
-it with `PW_DECK` — which already exists.
-
-#### The order, and why
-
-**1 before everything.** Segmenting (2), verifying (3) and reporting all need a
-round to say what it was. Building any of them first means building on a guess
-about which rounds were which, and the archive has 53 rounds with no size on any
-of them — so the field also needs a documented default of 16:9 for everything
-already filed, stated once, rather than inferred per reader.
+All four blockers cleared 2026-08-16. The 4:3 leg is `cyclePlan`'s third; see docs/ROUNDS.md.
 
 ### THE INSTRUMENTS WERE THE PROBLEM — rounds 082-087, 2026-08-16/17
 
@@ -2155,7 +1701,7 @@ Event 507 four times in a morning, `ERR_NETWORK_IO_SUSPENDED` in the console
 tail. Power settings on AC now prevent it; on battery the display still sleeps at
 four minutes, which on a Modern Standby machine is what triggers it.
 
-## Retire the positional group-member mapping with `Shape.creationId`
+### Retire the positional group-member mapping with `Shape.creationId` — OPEN
 
 The in-place update maps scene nodes to a grouped chart's shapes by POSITION:
 member 0 is the anchor, the rest line up in drawing order. Round 145 showed what
@@ -2181,34 +1727,7 @@ cannot catch a mapping error that preserves the count.
 
 ### Two questions production answered before the probe sheet could — RETIRED 2026-08-21
 
-`grouped-child-by-id-from-slide` and `tag-on-group-survives` are gone from
-`PROBES`, from `FAKE_BASELINE`, from `KNOWN_DIVERGENCES`, from
-`PENDING_QUESTIONS` and from `WHAT_IT_MEANS`. The probe sheet is 31 questions,
-down from 33.
-
-**They never answered once, in the entire archive.**
-
-    rounds carrying a probe sheet: 125
-
-    grouped-child-by-id-from-slide   no-scratch-shape 117, no-scratch-slide  8   = 125/125 starved
-    tag-on-group-survives            no-scratch-slide 122, no-scratch-shape  3   = 125/125 starved
-
-Every one of those 250 attempts spent a scratch slide and host time on a
-question that could not be put, in a run where scratch slides are contended —
-so they were not merely useless, they were starving questions that could still
-pay.
-
-**Why they starved is settled, and it is not lateness.** They sat directly
-under `group-reports-its-children`, which carries `burnsTheSlide: true`. A
-question placed beneath a slide-burner finds the slide gone. The rival theory —
-that they starved for sitting at positions 22 and 23 — is refuted in that
-probe's own comment: round 26 answered #31, the last question of all, while #8,
-#16, #22 and #23 starved, and the positional split came out 55% for questions
-1-8 against 62% for 9-and-later. **Starvation here is a property of the SLOT.**
-Anything moved in under that probe inherits the same fate, which is why the
-answer was never "promote them".
-
-## What actually answered them
+#### What actually answered them
 
 **`tag-on-group-survives` — "Does a tag written on a GROUP read back?" YES, from
 production, over 149 rounds.** It is the mechanism the whole product runs on:
@@ -2231,7 +1750,7 @@ GROUPS for the whole archive": the blindness was real, and the product routed
 around it without the probe ever seeing. **A question worth asking is not the
 same as a question worth waiting for.**
 
-## The branch that tried the other remedy
+#### The branch that tried the other remedy
 
 `claude/ask-the-decisive-probes-early` (`f09041c`, 2026-08-13) proposed moving
 both to positions 5 and 6. It is pushed and preserved, and it was NOT merged,
@@ -2243,14 +1762,14 @@ gate the in-place update — is now false.
 Its diagnosis was still worth keeping, and is recorded above: these questions
 never get put. The conclusion inverted once production answered them.
 
-## What is left open
+#### What is left open
 
 The `no-scratch-*` split in the older entry still stands for the four remaining
 starved questions. Retiring two of the six is not a fix for the harness; it
 removes two questions that could never pay, and gives their slide back to the
 ones that might.
 
-## The slide-size ladder's first rung hangs about twice as often as it answers
+### The slide-size ladder's first rung hangs about twice as often as it answers — OPEN
 
 **Measured 2026-08-23, over all 147 archived rounds. Not acted on, because the
 numbers do not yet say which way to act.**
@@ -2293,19 +1812,7 @@ the archive: it is 44 of 147 overall, and universal only since round 117.
 
 ### The four dependabot advisories — ALL FOUR NOW FIXED, 2026-08-27
 
-**`npm audit` reports 0 vulnerabilities.** `qs` was cleared with an overrides pin
-on 2026-08-27; `image-size` is stubbed, and the reasoning is in
-`vendor/image-size-stub/README.md`. The short version: every published version of
-`image-size` is covered by both advisories (`<=2.0.2`, and 2.0.2 is latest), so
-there was nothing to upgrade to — but NOTHING IMPORTS IT. It appears in
-pptxgenjs`s package.json and nowhere in pptxgenjs`s code, nothing else in the
-tree requires it, and this project never calls `addImage`. Replacing it with a
-stub removes the vulnerable parsers from disk with no call site to break. The
-stub THROWS if anything ever imports it, so the assumption that made this safe
-fails loudly rather than silently returning a wrong dimension.
-
-The original analysis is kept below because the reasoning that got here — and
-the two things it got wrong on the way — is worth more than the conclusion.
+All four fixed 2026-08-27. See `package.json`'s `_overrides_why` and git.
 
 ### The original analysis — 2026-08-26
 
@@ -2448,336 +1955,123 @@ every future round would then carry a pause, which changes what a round measures
 for every claim already resting on the archive. The flag is opt-in for that
 reason.
 
-### 24-category pie labels — RESEARCHED AND FIXED 2026-08-27
+### Text drawn over text — 2,148 to 317, and what is left
 
-Owner: "research and go with your recommendation". The research changed the
-answer, so it is recorded rather than just the outcome.
+**The measurement.** Every kind under 24 option variants and 10 data shapes, at
+eight frame sizes, two fonts and both orientations — about 24,000 charts — with
+overlap measured by the frame gate's own ink rule. It ran for the first time on
+2026-08-27 at **2,148 overlapping pairs** and stands at **317**.
 
-**The premise above was wrong.** This entry said the outside labels "already
-shrink to the gap between NEIGHBOURS (the sunburst rule)". They did not. That
-is the sunburst's rule. A pie's outside label had exactly one fit test — 
-`clipToWidth` against the horizontal distance to the frame edge — which cannot
-see the label two points above it. And pie labels are absent from `MOVABLE` in
-`collide.ts`, so `resolveLabelCollisions` treated them as fixed obstacles that
-never yield. Nothing in the pipeline compared one label to another.
+**It is a gate now, not a script somebody remembers.**
+`test/overlap-budget.test.ts` runs the sweep in eight seconds on every build and
+holds a budget PER SHAPE. Three of its four tests catch a regression; the fourth
+catches a budget left ABOVE the real figure, so improving the engine is supposed
+to fail the file and the numbers get edited down. A shape absent from its table
+is a regression by definition — it is text this engine has never been seen to
+draw over text. **The per-shape table there is the live list; this section does
+not duplicate it.**
 
-**The obvious fix is the wrong one.** Adding `/^label-/` to `MOVABLE` would let
-the de-collider nudge them apart — upward only, which on a ring drags a label
-past its neighbour and leaves it beside the wrong wedge with its leader line
-pointing at it. `collide.ts` documents that exact failure for cartesian charts
-and it is worse here, because a pie label carries a leader.
+The fixes themselves are in git, with a commit each explaining what the defect
+was and what the fix cost. What is worth keeping here is what remains, and what
+the exercise taught.
 
-**So: shrink-then-drop against the neighbour gap**, which is the order this
-layout already takes for the whole ring, for inside labels, and that the funnel
-and butterfly take before it. Each outside label gets the vertical distance to
-the nearest label ON THE SAME SIDE as its budget; it shrinks to fit and is
-dropped below the existing 5pt floor. Nothing moves, so nothing can end up
-mislabelled. The narrowest slices lose their labels first, which are the labels
-worth least, and every wedge is still drawn — a dropped label loses a name, not
-a number.
+---
 
-Measured on a 24-category pie at 480x300:
+**STILL OPEN, AND IT IS THE OWNER'S CALL: `valueAxisTitle`, 287 of the 317.**
 
-    before   24 labels drawn   7 overlapping pairs
-    after    21 labels drawn   0 overlapping pairs
+Four collision shapes, and they are not one problem. Two were this label's own
+`y` clamped into the title and onto the topmost tick — fixed. The other two are
+the WIDTH, and they are the question:
 
-A five-slice pie is untouched, which is the regression that would have mattered:
-paying for the crowded case out of the everyday one.
+    value-axis-title / legend#    ~100
+    value-axis-title / total#      ~43
 
-**Not chosen, and why.** Auto-collapsing the tail into "Other" is what Excel's
-bar-of-pie does and this product already has it as `pie.breakout` — but it is
-user-supplied on purpose. Doing it automatically restructures the chart the user
-asked for and changes what it means; dropping a crowded label does not.
+Its width is `Math.max(frame.x - 4, textWidth(…))` — a floor that RAISES a width
+— so a long unit grows right across the totals row and the legend. Fitting it to
+the axis gutter was tried in 2026-08-19 and reverted: `frame.x` is the value
+axis's own column and a chart drawn WITHOUT a value axis has none, so the fit
+dropped the unit from ordinary charts.
 
-### 24-category radar names — FIXED 2026-08-27
+**Three remedies were implemented and measured on 2026-08-28. All three were
+reverted, and the numbers are why:**
 
-The other half of the line above, found by re-measuring the sweep after the pie
-was fixed rather than by trusting what the table said. Of the "24 categories"
-overlaps that remained, six pairs were radar spoke names; the rest were a
-different family (combo data labels, scatter/bubble axis numbers against point
-labels) that the table had never named.
+    drop on box overlap     100 of 352 units survive — seven charts in ten lose
+                            the unit, most to collisions only the empty part of
+                            an over-wide box was having
+    drop on ink overlap     249 of 352 — both clamp shapes go to zero, but a
+                            clustered chart at 480x300 in 18pt loses its unit,
+                            and that is a size people present at
+    move below the title    keeps more, and lands it on the tick numbers — the
+                            collision it was moved away from
 
-**Why the existing bound missed it.** A radar already sized its perimeter names
-by the CHORD between two spokes — the room a name has ALONG the ring. Near the
-top and the bottom of the web the ring runs horizontally, two adjacent names sit
-almost side by side, and what limits them there is their WIDTH. The chord never
-looked at width, so `category-9` was drawn over `category-10`.
+**Why it cannot be settled the way everything else was.** Every other remedy in
+this engine drops or shrinks a label the layout generated. This one is TEXT THE
+AUTHOR TYPED. Dropping a tick number costs a reading the gridline still carries;
+dropping `valueAxisTitle` deletes something a person wrote and cannot see is
+gone. The band above the plot holds the chart title, the unit and the topmost
+tick number, and there is not always room for three.
 
-**Same remedy as the pie**, for the same reason and in the same order: shrink
-each name against its neighbours, drop it below the 5pt floor, and move nothing.
-On a web this matters more than anywhere else — the chart IS the mapping from
-name to spoke, so a name nudged onto the neighbouring axis does not look untidy,
-it lies.
+**The decision, and three ways out:**
 
-Measured across the frame sweep's eight sizes at both sweep fonts:
+- Put the unit at the END of the axis rather than above it — Excel's rotated
+  axis title, without the rotation.
+- Fold it into the tick numbers themselves: `€m` on the top tick only.
+- Accept it as the one label allowed to displace the plot, which is the gutter
+  idea the 2026-08-19 attempt reverted.
 
-    before   288 names drawn   96 overlapping pairs
-    after    236 names drawn    0 overlapping pairs
+---
 
-A five-spoke web draws exactly what it drew before, 35 names across the same
-sweep — not 80, because a small web drops its whole perimeter ring long before
-any of this (`ringFits`).
+**DIAGNOSED AND DELIBERATELY NOT PATCHED: the dual-axis gutter, 30 pairs.**
 
-**Two things the mutation pass changed.**
+A combo's column names, its line names and its secondary-axis tick numbers all
+occupy the same two points of x. Laying the first two out in one pass fixed the
+ordinary combo (see `seriesLabelNodes`' `extra` parameter), and doing the same
+where the secondary axis is present is worse, not better: measured, it fixed 34
+overlaps and DELETED 335 tick numbers, leaving a comfortable 480x300 pareto with
+two of them. So that case keeps its 30 pairs.
 
-- The check had to measure overlap by AREA, not by extent on both axes. Asking
-  for more than a point of intersection in x AND in y let a sliver a third of a
-  point wide and eight tall pass as clear, and four such pairs survived the whole
-  rule. Area is also what the frame gate measures by — a layout that fits itself
-  by a different rule than the one it is checked against always leaves a residue.
-- An all-pairs comparison was written first, on the worry that a wide name near
-  the top reaches past its neighbour. A search over 3,024 combinations (spoke
-  counts 8-60, name lengths 1-40, eight frames, six fonts) found not one overlap
-  the two-neighbour check missed, so the general version was dropped along with
-  the spoke-count cap its quadratic needed. Yielding to the neighbour already
-  costs enough size to clear everything past it.
+Three families in one strip wants a design — a gutter that is allocated once,
+with each family's claim on it stated — not a third pass over the same nodes.
 
-### Combo point labels and scatter axis numbers — FIXED 2026-08-27
+---
 
-The rest of the "24 categories" family, and the two halves needed different
-remedies. Measured over the frame sweep's eight sizes at both sweep fonts, by the
-frame gate's own ink rule:
+**FIVE INSTANCES OF ONE DEFECT, worth naming because it will recur.** A strip is
+fitted to the room it has, and a CLAMP a few lines below — there to keep a label
+on the canvas — moves it back toward its neighbour and takes the room away
+again. Found in the secondary value axis, the scatter's x tick numbers, the
+gantt's date strip, the value-axis title, and the gauge's slice labels. The
+symptom is labels that are SIZED correctly and still touch, beside a
+`Math.max(0, …)` or `Math.min(width - w, …)` on the label's own x or y.
 
-    combo     225 overlapping pairs -> 0     301 point labels drawn -> 156
-    scatter    72 overlapping pairs -> 0     266 point labels -> 265
-    bubble     68 overlapping pairs -> 0     265 point labels -> 267
+Three remedies, in order of preference: one shift for the WHOLE strip so every
+gap is preserved; pay in SIZE, shrinking until the clamped layout clears; or
+test the fit on the CLAMPED position rather than the raw one.
 
-**Combo: the pie's rule again.** Upright, a point label is centred on its mark
-and its only fits were VERTICAL — the band between the title and the mark — plus
-a horizontal clamp to the plot's edge. Neither can see the label one category
-across. The room a label really has is the CATEGORY PITCH, shared with whichever
-neighbour is closer, and the pair clears when their half-widths together fit the
-gap between the marks. Shrink to that, drop below the shared 5pt floor, move
-nothing. Sideways is untouched: there the labels sit beside their marks, one per
-row, and the row pitch already bounds them.
+**And its sibling: a fit that measures something ADJACENT to what is drawn.**
+The gauge's total measured unbold and drawn bold. The gantt's nudge measured at
+`fs * 0.9` and drawn at `headFs`. A test measuring node boxes where the gate
+measures ink. A label's `y` read as its ink when it is the box top and the ink
+sits lower inside it — that one was mine, and the post-condition I wrote against
+it never fired once, which is how it was caught.
 
-At 480x300 and 18pt the effect is visible in one number: twenty-four labels
-asking for 18pt on a plot with 17.5pt of pitch, all twenty-four still drawn, at
-14.8. The everyday six-category combo does not merely survive — it draws four
-MORE labels across the sweep, because smaller labels collide with the column
-totals less often and the drop pass that runs after takes fewer.
+**THE BLIND SPOT IS THE LESSON ABOVE ALL OF THEM.**
+`test/frame-fit.test.ts` sweeps every kind at eight frames and seven fonts and
+allows no overlap at all. It was green for the nine days that this entire family
+sat in the option and data-shape variants it does not sweep. A gate is only as
+wide as its sweep, and a green one is a statement about its sweep rather than
+about the product.
 
-**Scatter and bubble: a verdict this engine had already reached and never
-carried out.** The placer that positions point labels is given a band a line and
-a half taller than the plot, and that strip is where the x tick numbers live.
-The comment recording that decision says why: confining the band to the plot
-drops 56 of 301 point labels on a chart as comfortable as 480x300, and "a point's
-label is DATA and a tick number is chrome, so the chrome yields."
-
-**It did not yield.** Both were drawn, through each other — the one overlap the
-frame gate allows by name. So the tick numbers a point label lands on are now
-dropped, and the gate's exception is gone with them.
-
-Dropping alone was too expensive: a 200x150 scatter at 18pt kept 2 of its 10 tick
-numbers. So the placement runs TWICE — once with the tick numbers as obstacles,
-then again for whatever could not be placed, with the ticks not counted. Nothing
-is refused a position it would have had, and 341 of 423 tick numbers survive
-rather than 310. Per chart it is starker: that 200x150 keeps 5 rather than 2, and
-a 120x90 keeps 10 rather than 5. The comfortable sizes — 480x300, 960x540 — lose
-nothing at all, before or after.
-
-The one honest cost: the two-pass placement puts labels in different SLOTS, so a
-later label can find its spot taken, or find one freed. Across the sweep at seven
-fonts that is 266 point labels becoming 265 on a scatter, and 265 becoming 267 on
-a bubble. Two either way out of five hundred.
-
-**Two mutants that survived, and what they taught.** A version reading `c - 1`
-instead of the nearest DRAWN neighbour passed every test twice over. Skip exactly
-one category and it computes the same answer by accident — it halves the gap and
-drops the absent neighbour's width, and the two errors cancel exactly. With two
-categories skipped they no longer cancel, and the assertion has to be on the
-RATIO (three pitches against one) rather than on "larger", because "larger" is
-true of the wrong answer as well.
-
-### The secondary value axis had no fit at all — FIXED 2026-08-28
-
-Found by re-measuring the option and data-shape variant sweep with the frame
-gate's OWN ink rule, after the "24 categories" family closed. The measurement
-that had stood in this file — 75 overlapping pairs — was taken with a cruder
-rule and was not comparable to anything. The real total was 2,148, and it was
-concentrated:
-
-    pareto          1060      secondary-axis / secondary-axis   617
-    valueAxisTitle   292      category# / secondary-axis        320
-    secondaryAxis    258      combo-label / combo-label         137
-    10 series        200      value-axis-title / legend         104
-    pie.semi         120      x-axis / x-axis                    84
-
-`pareto` and `secondaryAxis` are ONE defect. Every combo, every pareto and every
-dual-axis column draws the same strip — five nice ticks, each label placed at its
-own tick and none measured against the next — and on a short plot they were
-simply drawn through each other. 44% of every text overlap the engine had left.
-
-**The fix was already written, four hundred lines away.** `gapScale` lived
-inside `layoutScatter`, doing exactly this for the scatter's own two axes. It
-moved to `frame.ts` as `tickGapScale` and the secondary axis calls it. The
-scatter's output is unchanged, which the frame gate checks.
-
-**The clamp then undid the fit, and that was the second half.** Sideways the
-labels are spaced along x, so the per-label clamp that keeps one on the canvas
-closes the gap the fit had just opened: a horizontal pareto at 80x60 was fitted
-to a 19.8pt gap, clamped into 14.8, and its numbers touched anyway. One shift
-for the whole strip keeps every gap as measured; a strip that cannot be brought
-onto the canvas whole is dropped rather than crushed. Upright needs none of this
-— every label there shares one x, so the clamp already moves the strip as a block.
-
-    2,148 overlapping pairs -> 1,193
-
-**A test that asserted nothing, caught by mutation.** The WIDTH-versus-HEIGHT
-rule was first checked by building a horizontal chart with ten-digit numbers and
-looking for shrinkage. Numbers that wide make the strip wider than the canvas, so
-it is dropped outright and the assertion ran against an empty list — passing
-against the correct code AND against a mutant that measured the wrong dimension.
-The property is now checked on `tickGapScale` directly, where the two `want`
-functions can be compared against the same ticks.
-
-**What is left, in order.** `valueAxisTitle` (292, and this file records an
-earlier attempt at it that was reverted for a good reason), `10 series` legend
-rows (200), `pie.semi` gauge labels (120), and a residue of `combo-label` pairs
-(137) that survive under other options and want their own look.
-
-### The strips that had a fit and spent it — FIXED 2026-08-28
-
-Three more, and two of them share one mistake: a strip is fitted to the room it
-has, and then a CLAMP that keeps a label on the canvas moves it back toward its
-neighbour and takes the room away again. The fit was right and looked right; the
-clamp undid it a few lines later.
-
-    2,148 overlapping pairs -> 1,032 (secondary axis) -> under 800
-
-**The scatter's x tick numbers, 84 pairs.** `gapScale` guarantees the spacing can
-carry the widest label; the nudge below spends it. The label on the axis's origin
-is centred on its tick, so half of it hangs into the y axis's gutter and it is
-moved right by exactly the overhang — right being toward its neighbour. The
-secondary axis took the other remedy (one shift for the whole strip, which keeps
-every gap); that is not available here because only the FIRST label moves and
-shifting all of them would push the last one off the canvas. So this strip pays
-in SIZE: shrink until the nudged layout clears, drop the numbers if it cannot.
-Three tick numbers lost in 731 across the sweep.
-
-**A combo's series labelling over each other, 137 pairs.** `neighbourFs` bounds a
-line's labels against the ones beside it in the SAME series; nothing compared
-them across series. Ten line series draw ten numbers per category — sideways
-along one row, upright stacked above one mark. Sideways only the right-hand
-neighbour matters and only the label's own width, because every label starts at
-its mark and runs rightward. Upright they share the category's x and what must
-fit is a line height. 209 labels become 95; the everyday combo keeps all 79.
-
-**The gauge, 104 pairs, and it had never had any of this.** `layoutGauge` leaves
-`layoutPie` on its first line, so none of the pie's label work reached it: its
-slice labels crowded exactly as the pie's outside labels used to, 46 pairs. The
-other 58 were labels printed through the big centre total, which its own note
-said could not happen — "the centre is empty by construction so there is nothing
-for it to land on". Half right. Not true of the BOX, which is clamped into the
-chart and on a short gauge is carried down into the labels' band; and not true of
-the TEXT, drawn at `fs * 1.7` inside a box `r * 2` wide, so on a 160x120 gauge a
-30.6pt number sat in a 40pt box and reached 22pt off its left side. The total is
-now fitted to the arc, and the labels yield to it. 128 labels become 88, all
-three collisions to zero.
-
-**Two things the mutation pass caught, both the same kind.** The gauge's fit
-measured the total UNBOLD while the node draws it bold, and came out 2% short —
-enough to leave a 40.8pt number in a 40pt box. And the neighbour divisor was
-copied from the pie's 1.25 when a gauge label's box is `lf * 1.5` tall, which
-left exactly the pairs it was meant to separate touching by the difference. Both
-are the same error: measuring something adjacent to what is drawn.
-
-### The secondary strip yields to the chart it was added to — FIXED 2026-08-28
-
-The rest of the `secondary-axis` family, and it was one cause with many faces:
-184 pairs, spread thin over every kind that can carry an overlay. Sideways the
-strip sits above the plot at `plot.y - fs * 1.5`, clamped by `Math.max(0, …)`,
-so a chart whose chrome has squeezed the plot to the ceiling pins the whole
-strip onto the TITLE. Upright it sits two points right of the plot, where a
-narrow chart keeps its category names, its primary value axis, its legend and
-its series names. No gutter is reserved for it anywhere — its own note says so,
-and that is the whole of it.
-
-**Reserving a gutter is the other option and it is worse:** it would shrink the
-plot on every dual-axis chart, including the roomy ones with nothing to fix. So
-the strip gives way. It is the add-on; the base chart's axis, category names and
-legend were placed first and describe the bars. This is the same answer its own
-note already gives for the title — a tick that cannot be labelled inside the
-chart keeps its gridline and loses its number.
-
-    1,560 tick numbers -> 1,237, and every remaining collision to zero
-
-### `valueAxisTitle` — SHARPENED, NOT FIXED, and this is why
-
-Two hours were spent trying and the change is reverted. What it produced is a
-better statement of the question, which is worth more than another clamp.
-
-The note in `frame.ts` splits into FOUR shapes, and they are not one problem:
-
-    value-axis-title / legend#      104   the WIDTH question — still open
-    value-axis-title / total#        57   the WIDTH question — still open
-    title / value-axis-title         41   this label's own y, clamped to 0
-    value-axis / value-axis-title    33   it sits where the topmost tick is
-
-The last two look like the clamp defect fixed three times elsewhere today, and
-they are — but the remedy that works everywhere else does not work here, and the
-reason is worth writing down. **This label is the author's own words.** Dropping
-a tick number costs a reading that the gridline still carries; dropping
-`valueAxisTitle` deletes something a person typed and cannot see is gone.
-
-Three attempts, each measured over the frame sweep (352 units drawn as it
-stands):
-
-- **Drop on box overlap** — 100 of 352 survive. Seven charts in ten lose the
-  unit, most of them to collisions that only the empty part of an over-wide box
-  was having (the width is `max(gutter, text)`).
-- **Drop on ink overlap** — 249 of 352. Both clamp shapes go to zero, but a
-  clustered chart at 480x300 in 18pt loses its unit, and that is a size people
-  present at.
-- **Move below the title instead of dropping** — keeps more, and pushes the
-  label onto the tick numbers, which is the collision it was moved away from.
-
-The band above the plot holds the chart title, then the unit, then the topmost
-tick number, then the plot, and there is not always room for three. **That is
-the decision, and it is the same one the original note named**: where does a
-unit belong when the band cannot hold it? Options worth a moment's thought:
-put it at the END of the axis rather than above it (Excel's rotated axis title,
-without the rotation); fold it into the tick numbers themselves ("€m" on the top
-tick only); or accept it as the one label allowed to displace the plot, which is
-the gutter idea the earlier attempt reverted.
-
-Not guessing at that at two in the morning. The measurement is here so whoever
-takes it does not start from scratch.
-
-### The overlap sweep is a gate now — 2026-08-28
-
-`test/overlap-budget.test.ts`. The variant sweep that found all of this is no
-longer something somebody has to remember to run: it is in the ordinary suite,
-takes eight seconds, and every remaining overlap is named and capped.
-
-    2,148 overlapping pairs (2026-08-27)  ->  537 (2026-08-28)
-
-**Per SHAPE, not as one total**, because a total hides a trade — one family
-fixed while another grows — and because a shape absent from the table is a
-regression by definition: it is text this engine has never been seen to draw
-over text. Three of the four tests catch a regression; the fourth catches a
-budget left ABOVE the real figure, so improving the engine fails the file and
-the numbers get edited down. A ceiling nobody lowers has stopped ratcheting.
-
-What remains, in families:
-
-    value-axis-title (six shapes)   270   the open decision, above
-    timeline / timeline              36   gantt date row against itself
-    size-legend-label                34   the bubble's size key against itself
-    combo-series-label               52   line names, against the axis and each other
-    everything else                 145   sixteen shapes, none over 18
-
-The blind spot is worth naming for its own sake: `frame-fit.test.ts` sweeps
-every kind at eight frames and seven fonts, and it was green for the nine days
-the "24 categories" family sat in the option and data-shape variants it does not
-sweep. A gate is only as wide as its sweep.
+A related caution, learned the same way: the figure that stood in this file from
+2026-08-19 — "75 overlapping pairs" — was measured with a cruder ink rule and
+was never comparable to anything. Re-measuring gave 2,148. A number in prose
+decays; the sweep is four lines of script and the archive is on disk, so re-run
+it rather than quote it.
 
 ### The crash, counted across the whole archive — 2026-08-28
 
-The entry above is right that this is not a single-cause story, and the archive
-now says so with numbers rather than with one contrary round. Twenty-two crash
-records over fourteen distinct builds, taking the LAST step each one wrote and
-counting each phase once per build so a bad night cannot vote twice:
+Twenty-four crash records over fourteen distinct builds, taking the LAST step
+each one wrote and counting each phase once per build so one bad night cannot
+vote three times:
 
     4 build(s)   draw  — parts list outcome
     4 build(s)   pane  — collecting deck evidence — scanning
@@ -2786,321 +2080,25 @@ counting each phase once per build so a bad night cannot vote twice:
     2 build(s)   probe — re-asked what the empty deck could not answer
     1 build each update / group / probe answered / probe second pass
 
-(24 records over 15 builds. This table was written at 22 records over 14 and
-said the scan was second at three builds; round 290 crashed at the scan an hour
-later and tied it. A number in prose decays — the counting script is four lines
-and the archive is on disk, so re-run it rather than quote this.)
-
-**Counting records rather than builds would have said `parts list outcome` five
+**Counting RECORDS rather than builds would have said `parts list outcome` five
 times to the scan's four** — and three of those five are the same build on the
-same day, 77fc64f on 2026-08-24. One build that crashed three times is one piece
-of evidence, not three, and the difference decides which phase looks dominant.
+same day. One build that crashed three times is one piece of evidence, not
+three, and the difference decides which phase looks dominant.
 
-So: no phase dominates. The deck scan and the parts-list outcome are the two
-largest and are level. The per-phase traces did their job — before them, six of
+So no phase dominates. The per-phase traces did their job — before them, six of
 these would have been filed under the probe re-ask — and what they show is a
-host that falls over in several different places late in a long round, not one
-broken call.
+host that falls over in several places late in a long round, not one broken
+call.
 
-**A fourth scan crash landed tonight**, on d7987a6, after all fourteen scenarios
-had already passed at 624s:
-
-    626.8s  probe  re-asked what the empty deck could not answer
-    626.8s  pane   collecting deck evidence — scanning  knownBefore=1
-
-Worth noting for what it says about severity: the scenarios pass and the round
-archives 14/14. This crash costs the EVIDENCE COLLECTION after the run, not the
-run. That is why it has been survivable for a month, and it is also why it has
-never been urgent enough to fix.
-
-**And the host says the channel was healthy.** `crashes/2026-08-28T01-51-11.md`
-is PowerPoint's own account of the 524s crash in round 290: the document channel
+**The host says the channel was healthy.** `crashes/2026-08-28T01-51-11.md` is
+PowerPoint's own account of the 524s crash in round 290: the document channel
 answered `200` on every one of its last twelve `GetUpdates` calls, and every
-console error in the window belongs to Microsoft's own infrastructure —
-safelinks, telemetry, a 403 and a 500 from services this add-in never calls.
-Nothing in that log points at us.
+console error in the window belongs to Microsoft's own infrastructure. Nothing
+in it points at us. One number worth keeping: **87,331 document-channel requests**
+by the time it fell over. That is what a ten-minute round costs a live
+PowerPoint session, and it is the scale at which this happens.
 
-One number in it is worth keeping: the document channel had issued **87,331
-requests** by the time it fell over. That is what a ten-minute round costs a
-live PowerPoint session, and it is the scale at which this happens.
-
-### `combo-series-label` — TESTED AND REFUTED 2026-08-28
-
-65 pairs across three shapes, and a hypothesis that looked clean enough to
-write: **where a legend already names a series, the name at the end of its line
-is a convenience and can yield to whatever it collides with.** Sideways,
-`decor.seriesLabels` draws both — a legend row across the top and this name
-beside the line's last point — and `seriesLegendLabels` covers every series in
-the datasheet, so the identification is carried twice.
-
-Measured by orientation first, which is what made it look right:
-
-    101 pairs   combo-series-label / combo-series-label   H=true   legend PRESENT
-     97 pairs   series-label / combo-series-label         H=false  no legend
-     84 pairs   value-axis / combo-series-label           H=true   no legend
-     47 pairs   combo-series-label / combo-series-label   H=false  no legend
-
-The biggest bucket had a legend. Implemented, it took `combo-series-label` pairs
-from 23 to 5 in the ratchet — and broke two existing combo tests, which is how
-the flaw surfaced.
-
-**`legendRow` TRUNCATES.** It fits what it can into the width it has and stops.
-A 120x90 horizontal combo at 6pt draws a legend naming "Product" and "Services"
-and never reaches "Margin %" — the line series. The rule dropped that line's own
-name on the strength of a legend entry that does not exist, leaving the series
-with no identification anywhere on the chart.
-
-Narrowing the check from "a legend exists" to "a legend entry with THIS series'
-name exists" made it correct and made it a **no-op**: the overlap count went
-straight back to 467. On every chart in the sweep where these names collide, the
-legend has already truncated them away. The crowded chart is exactly the chart
-whose legend does not fit.
-
-So the premise is false and the change is reverted. What the exercise leaves:
-
-- The counts above, by orientation and by whether a legend is present.
-- A better question than the one I asked, and now a measured one. Across the
-  cartesian kinds at eight frames, seven fonts and both orientations, 223 charts
-  draw a legend and **36 of them draw fewer entries than `seriesLegendLabels`
-  says they should**. Every one is a combo dropping its THIRD series — the line —
-  at small frames and fonts:
-
-      combo 80x60 fs6 H=true    2 of 3
-      combo 120x90 fs6 H=true   2 of 3
-      combo 120x90 fs10 H=true  2 of 3
-      combo 160x120 fs8 H=true  2 of 3
-
-  A separate 96 charts clip the TEXT of at least one entry, which is a different
-  and much milder thing — a clipped name is still a name.
-
-  So the legend does not merely truncate, it truncates the LINE, which is the
-  series least like the others and the one whose on-line name I was proposing to
-  drop. A legend that names two of three series and says nothing about the third
-  is a chart that misleads, and it is worth more than the 65 overlapping pairs.
-  What it needs is a decision of the same kind as `valueAxisTitle`: what a legend
-  does when the row will not hold it — wrap, shrink, or say that it is short.
-
-### A combo's legend never named its line — FIXED 2026-08-28
-
-Found by chasing the wrong explanation to the bottom. The entry above blamed
-`legendRow` for truncating; it does not truncate, it wraps. Tracing one chart
-node by node showed `legendRow` emitting all three entries — the third on a
-second row — and the final scene holding two.
-
-**The cause is structural.** `layoutCombo` hands its column series to
-`layoutColumns` in a config it builds itself (`colCfg`), with the line series
-removed, because those are drawn afterwards by the combo. The legend is drawn
-from that same config. So a combo's legend named its columns and never its
-lines, at every size — not only crowded ones.
-
-It was survivable because the line carries its own name at the end of the line,
-and it stopped being survivable exactly where that name could not be drawn: a
-120x90 horizontal combo at 6pt drew "Product" and "Services" and nothing at all
-for "Margin %".
-
-**The fix keeps the reservation and the draw in step**, which is the coupling
-this codebase's own comments say has been broken twice. `Decorations.legendAlso`
-carries the extra series, and `legendLabelsFor(cfg, decor)` is the one list that
-the fit predicate, the reserved band and the drawn row all read. `decor` is used
-rather than the config because it is the only thing threaded to all three.
-
-Measured over the sample combo at eight frames, seven fonts, both orientations —
-112 charts:
-
-    legend names the line     0 -> 28
-    no legend at all         76 -> 80
-    no series named at all   21 -> 25
-
-**The four that lost their legend are the trade, and it is the right way round.**
-They are thumbnails — 80x60 through 200x150 at large fonts — where a third entry
-tips `horizontalLegendFits`, whose whole job is to refuse a legend that has eaten
-the plot. What they had before was a legend naming two of three series with
-nothing to say a third existed. That is worse than none.
-
-**It costs two point labels and three overlapping pairs.** The legend takes a row
-it did not take before, so the plot beneath it is slightly shorter: the sample
-combo draws 77 point labels across the frame sweep where it drew 79, and
-`combo-series-label` pairs went 23 to 26 while two other families fell. Total
-467 to 464. A series named nowhere is worse than two names touching.
-
-**Four mutants, and one of them found a hole in the test written for it.** The
-coupling has two halves — the predicate that decides a legend fits, and the band
-the frame reserves — and a test at 480x300 catches neither, because three entries
-fit on one row there and reserving for two or three comes to the same. It takes a
-WRAPPING legend (160x120) to see the reservation, and a chart on the fit boundary
-(120x90 at 10pt) to see the predicate.
-
-### Two labels drawn outside the boxes they were given — FIXED 2026-08-28
-
-**A gantt's task names were never clipped.** Every other label in this engine
-that is handed a box goes through `clipToWidth`; this one read `acts[c]` raw.
-`catW` is capped at 32% of the chart and scaled down again when the gutters
-together want more than 80% of it, so a long task name is routinely wider than
-its box — measured, a box of 32 points holding 86 points of ink. Left-aligned,
-the name ran out of the gutter, across the plot, and over the numbers inside the
-bars. 18 pairs in the sweep, and those numbers are what a gantt is for.
-
-**Clipping it exposed a second defect the overflow had been hiding.** The gutter
-reserves `longest name + 10` and then draws each row into `catW - 6 - indent*10`
-— so every INDENTED row gets a box ten points narrower than the reservation
-allowed for. With `gantt.lanes`, which indents every task under a lane header,
-that is every task on the chart: a 560x280 plan reserved 53 points for
-"Handover" and drew it into 37. Invisible while the name simply overflowed; four
-existing tests went red the moment it was clipped. Two defects that cancelled in
-appearance and compounded in fact. The reservation now measures each name at its
-own indent.
-
-The owner and remark gutters are clipped too. They produce no overlap in the
-sweep — the sample's owner names are short — but they are the same construction
-and the same latent bug.
-
-**And a gauge's slice labels were clamped into the title.** `Math.max(0, …)` on a
-label whose anchor is above the arc's peak, which on a short gauge is the title's
-band. The fourth time this engine has clamped a label to y=0 and found the title
-already there; the previous three were the secondary axis, the scatter's x strip
-and the value-axis title. Moved to clear the title's ink rather than dropped —
-the leader line is already drawn and still points at the wedge.
-
-    category# / bar-label#   18 -> 0
-    title / label#           16 -> 0
-    total                   464 -> 430
-
-### A colour legend on its own title, and a butterfly with no room for its source line — FIXED 2026-08-28
-
-Three more, and two of the three are patterns this file has now named five and
-two times respectively.
-
-**The heatmap's colour scale was clamped to y=0** — `Math.max(0, …)` on a legend
-whose band is computed from a plot that a squeezed frame has pushed to the
-ceiling. A 300x60 heatmap at 18pt drew its colour scale across its own name. The
-FIFTH clamp-to-zero-onto-the-title in this engine: the others were the secondary
-axis, the scatter's x strip, the value-axis title and the gauge's slice labels.
-Floored at the title's ink instead; `legendClearOfGrid` still does the other
-half, dropping the legend where the floor pushes it above the grid.
-
-**The diverging "0" tick was drawn wherever zero fell**, including hard against
-the min or max label — the tick is placed proportionally, so a nearly-all-
-negative range puts it on the max. Both ends are placed first and are worth
-more: they say what the colours MEAN, where the zero tick only says where the
-middle is, and a diverging scale shows that in its own neutral band anyway.
-Measured against the ends' INK, not their boxes — each end gets half the strip
-and uses as much as its number needs, so a box test would refuse the tick on
-almost every chart.
-
-**A butterfly reserved no room for its footnote.** `footnoteNode` is added
-centrally, so a butterfly with one drew it and gave it nothing: the bottom rows'
-names and values were laid over the source line. It is the one cartesian kind
-that builds its own plot and does not subtract `footnoteH` — the funnel, the
-waffle, the treemap and the gantt all do.
-
-    legend-min / legend-zero   10 -> 0
-    legend-max / legend-zero    4 -> 0
-    title / legend-min          2 -> 0
-    title / legend-max          2 -> 0
-    label## / footnote         12 -> 0
-    category# / footnote        6 -> 0
-    total                     430 -> 394
-
-### The refuted hypothesis, unblocked by the legend fix — DONE 2026-08-28
-
-The entry above records "TESTED AND REFUTED": where a legend already names a
-series, the name at the end of its line could yield to whatever it collides
-with. It was reverted because the premise was false — a combo's legend did not
-contain its lines at all, so the rule dropped a line's only identification, and
-two existing tests said so within a minute.
-
-**Fixing the legend made the premise true.** Re-applied unchanged, the rule now
-does what it was supposed to:
-
-    value-axis / combo-series-label#         26 -> 0
-    combo-series-label# / combo-series-label# 26 -> 11
-    total                                   394 -> 353
-
-The eleven that remain are UPRIGHT, where there is no legend at all — the same
-flag draws the column series' names down the right margin instead — so nothing
-is said twice and every name stays. Yield what is said twice, keep what is said
-once.
-
-**And it gave a point label back.** The sample combo's point-label count went 79
-to 77 when the legend gained a row for the line, and back to 79 now: the
-end-of-line name yields where it used to displace a value. A value is data; a
-name repeated in the legend is not. The trade that test was built on has moved
-orientation — sideways it no longer happens at all, and upright, where there is
-no legend, it still does.
-
-**The ordering is the lesson.** A rule that is right only after another fix looks
-identical to a rule that is wrong, and the only thing that told them apart was
-finding out WHY the first attempt failed instead of accepting that it had.
-
-**One equivalent mutant, recorded.** Reducing the check from "the legend names
-THIS series" to "a legend exists" passes the whole suite, because `legendRow`
-wraps rather than truncating and `horizontalLegendFits` refuses all or none — so
-a drawn legend currently holds every entry. It stays by name anyway: it is the
-honest statement of the rule, and it is exactly what the first attempt needed
-and did not have.
-
-### `series-label` in a combo's gutter — DIAGNOSED, NOT FIXED 2026-08-28
-
-The last sizeable shape in the tail, 30 pairs across three names, and every one
-of them is the same chart: a TEN-SERIES COMBO, UPRIGHT. Worth writing down
-because the diagnosis took a decisive experiment and one wrong turn.
-
-**`seriesLabelNodes` places them correctly.** Instrumented, it spreads the seven
-column names down the gutter at 22.0, 29.2, 36.4 … 65.3 — an even 7.2pt pitch,
-shrunk to 5.8pt so nothing overlaps, which is exactly what its own comment says
-it does "so the de-collision pass has nothing to do".
-
-**`resolveLabelCollisions` then undoes it.** Disabling that pass and rebuilding
-the same chart gives the even spread back; with it on, four of the seven are
-pushed up by about 24 points and the pitch becomes 7.2, 7.3, 7.2, **2.8**, 36.1,
-7.2 — one pair closer than a line of text, which is the overlap.
-
-**The cause is the gutter holding two families.** A combo's column names
-(`series-label-`) and its line names (`combo-series-label-`) share one rank in
-`MOVABLE` and one strip of canvas, and they are placed by different code at
-different times: `seriesLabelNodes` spreads the columns to fill the gutter
-before the lines exist, and the lines are then added at their own points. The
-de-collider inherits ten labels in a gutter sized for seven and can only push
-UP.
-
-**THE FIX IS THE SAME SHAPE AS THE LEGEND'S and is a design change, not a
-patch:** the two families have to be laid out together, so the spread accounts
-for every name in the gutter. That needs the lines' anchor positions, which are
-not known until after `layoutColumns` has run — the ordering problem the legend
-fix solved with `decor.legendAlso`, and the same trick will not work here
-because these positions are computed, not declared. Left alone deliberately
-rather than patched in the de-collider, which already carries three separate
-scars from being patched.
-
-**AND ONE WRONG TURN, KEPT because it is the night's own lesson.** The first
-reading of this was "a label is pushed clean off the canvas" — `series-label-1`
-comes out at y = -2.5. It is not off the canvas: `y` is the BOX top, the node is
-`valign: "middle"` in a box a good deal taller than its text, and the ink sits
-at 0.6. The de-collider's guard, which tests the INK, held exactly as designed. A
-post-condition written against the misreading never fired once, which is how it
-was caught. Box versus ink is the same confusion this file has recorded three
-times in other people's code tonight; it is easier to make than it looks.
-
-### The butterfly's headers, and where the tail stands — 2026-08-28
-
-`header# / footnote`: the band the series headers are fitted into is
-`cfg.height - titleH` and does not subtract the footnote, the same omission the
-plot had two commits ago. On an 80x60 butterfly at 18pt the two series names and
-the source line were laid over each other. Fixed the same way. 4 -> 0.
-
-**The tail, after a night of it:**
-
-    353 total  ->  349
-    valueAxisTitle          286   waits on the owner's decision
-    series-label in a
-      combo's gutter         30   diagnosed above; needs a design change
-    everything else          33   nine shapes, none above 11
-
-The `valueAxisTitle` group is now 82% of every text overlap this engine has, and
-the second-largest is one diagnosed, deliberately-unpatched family. What is left
-after those two is thirty-three pairs across nine shapes, several of which need
-option combinations the quick probes do not reproduce and which will each want
-their own sweep to place.
-
-This is the point where the sweep stops paying for itself per hour. It began at
-2,148.
+**Severity, stated plainly:** the scenarios pass and the round archives 14/14.
+This costs the EVIDENCE COLLECTION after a run, not the run. That is why it has
+been survivable for a month and why it has never been urgent — and it is also
+what stopped the 4:3 leg on 2026-08-28.
