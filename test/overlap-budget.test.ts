@@ -183,14 +183,14 @@ const DATA_SHAPES: Record<string, (c: any) => any> = {
  * number all three.
  */
 const BUDGET: Record<string, number> = {
-  "value-axis-title / legend#": 104,
+  "value-axis-title / legend#": 100,
   "value-axis-title / total#": 43,
   "title / value-axis-title": 41,
   "value-axis / value-axis-title": 33,
-  "value-axis / combo-series-label#": 28,
+  "value-axis / combo-series-label#": 26,
   "total# / value-axis-title": 25,
   "value-axis-title / label#": 24,
-  "combo-series-label# / combo-series-label#": 23,
+  "combo-series-label# / combo-series-label#": 26,
   "category# / bar-label#": 18,
   "title / label#": 16,
   "series-label# / combo-series-label#": 14,

@@ -674,6 +674,27 @@ export function seriesLegendLabels(cfg: ChartConfig): string[] {
 }
 
 /**
+ * Every label the legend must carry — the config's own series, plus any the
+ * layout has told us about through `decor.legendAlso`.
+ *
+ * ONE FUNCTION, because three places need this list and they must agree: the
+ * predicate that decides whether a legend fits, the band the frame reserves for
+ * it, and the row that draws it. `seriesLegendLabels` was called directly by all
+ * three, which was correct while nothing was ever missing from `cfg.data.series`
+ * — and a combo's line series always is. See `Decorations.legendAlso`.
+ *
+ * The single-series short-circuit lives in `seriesLegendLabels` and is deliberately
+ * NOT repeated here: a one-column combo with one line is two series between them
+ * and wants a legend naming both, which is exactly the case that would be lost
+ * by asking `cfg.data.series.length <= 1` after the split.
+ */
+export function legendLabelsFor(cfg: ChartConfig, decor: Decorations): string[] {
+  const extra = (decor.legendAlso ?? []).map((e) => e.label);
+  if (!extra.length) return seriesLegendLabels(cfg);
+  return [...cfg.data.series.map((s) => (s.scenario ? `${s.name} (${s.scenario})` : s.name)), ...extra];
+}
+
+/**
  * Compute the plot rectangle by reserving margins for the enabled decorations
  * (title, totals row, category labels, value axis, right-hand series labels).
  */
@@ -725,7 +746,7 @@ export function computeFrame(
  */
 export function horizontalLegendFits(cfg: ChartConfig, style: ChartStyle, decor: Decorations): boolean {
   const fs = style.fontSize;
-  const labels = decor.seriesLabels ? seriesLegendLabels(cfg) : [];
+  const labels = decor.seriesLabels ? legendLabelsFor(cfg, decor) : [];
   if (!labels.length) return true;
   const catW = decor.categoryAxis
     ? Math.min(cfg.width * 0.3, Math.max(0, ...cfg.data.categories.map((c) => textWidth(c, fs))) + 8)
@@ -752,7 +773,7 @@ export function computeFrameHorizontal(cfg: ChartConfig, style: ChartStyle, deco
   // The walk runs at the legend's own x0 (frame.x === catW) and maxX
   // (cfg.width - 4), so this reservation and legendRow agree on the row count. A
   // one-row legend keeps the old fs*1.6+4 exactly, so snapshots stay identical.
-  const legendLabels = decor.seriesLabels && horizontalLegendFits(cfg, style, decor) ? seriesLegendLabels(cfg) : [];
+  const legendLabels = decor.seriesLabels && horizontalLegendFits(cfg, style, decor) ? legendLabelsFor(cfg, decor) : [];
   const legendRows = legendLabels.length ? legendRowCount(legendLabels, fs, catW, cfg.width - 4) : 0;
   const legendH = legendRows > 0 ? legendRows * (fs * 1.6) + 4 : fs * 0.6;
   const valueAxisH = decor.valueAxis ? fs * 1.6 : 4;

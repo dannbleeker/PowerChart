@@ -700,16 +700,22 @@ describe("a horizontal combo's line name stays on the chart", () => {
     // happening where the test was looking. A case where the NAME is not drawn
     // proves nothing about a pass that only runs when it is.
     //
-    // 120x90 at 6pt is a frame where both exist and the trade is real, and it
-    // is checked rather than assumed: with `seriesLabels` off the same chart
-    // keeps three point labels, with the name on it keeps two.
+    // MOVED A THIRD TIME, 2026-08-28, and for a new reason: the combo's legend
+    // now names its LINE as well as its columns, so it takes a row it did not
+    // take before and the plot below it is a little shorter. 120x90 at 6pt no
+    // longer draws the name at all, so the pass under test does not run there.
+    //
+    // 200x150 at 10pt is the frame now: with `seriesLabels` off the chart keeps
+    // four point labels, with the name on it keeps two. Re-measured rather than
+    // guessed, and asserted as a comparison rather than as constants so the next
+    // move of this frame is the only thing that has to change.
     const at = (decorations?: ChartConfig["decorations"]) =>
       buildChart({
         ...sampleConfig("combo"),
-        width: 120,
-        height: 90,
+        width: 200,
+        height: 150,
         horizontal: true,
-        style: { fontSize: 6 },
+        style: { fontSize: 10 },
         ...(decorations ? { decorations } : {}),
       } as ChartConfig).nodes.filter((n): n is TextNode => n.kind === "text" && !!n.name?.startsWith("combo-label-"));
     const labels = at();
@@ -727,5 +733,122 @@ describe("a horizontal combo's line name stays on the chart", () => {
       horizontal: true,
     } as ChartConfig).nodes.filter((n): n is TextNode => n.kind === "text" && !!n.name?.startsWith("combo-label-"));
     expect(labels.length).toBe(4);
+  });
+});
+
+/**
+ * A combo's legend names its LINE, and always should have.
+ *
+ * `layoutCombo` hands its column series to `layoutColumns` in a config it builds
+ * itself, with the lines removed — they are drawn afterwards, by the combo. The
+ * legend is drawn from that same config, so a combo's legend named its columns
+ * and never its lines. At every size, not only crowded ones.
+ *
+ * That was survivable while the line carried its own name at the end of the
+ * line, and it stopped being survivable exactly where that name could not be
+ * drawn: a 120x90 horizontal combo at 6pt drew "Product" and "Services" and
+ * nothing at all for "Margin %". A series with no name anywhere on the chart is
+ * not a cosmetic problem.
+ *
+ * Measured over the sample combo at eight frames, seven fonts, both
+ * orientations — 112 charts:
+ *
+ *     legend names the line     0 -> 28
+ *     no legend at all         76 -> 80
+ *     no series named at all   21 -> 25
+ *
+ * The four that lost their legend are the trade, and it is the right way round.
+ * They are thumbnails — 80x60 through 200x150 at large fonts — where the third
+ * entry tips `horizontalLegendFits`, whose whole job is to refuse a legend that
+ * has eaten the plot. What they had before was a legend naming two of three
+ * series with nothing to say a third existed, which is worse than none.
+ */
+describe("a combo's legend names every series it draws", () => {
+  const legendOf = (w: number, h: number, fontSize: number, horizontal: boolean) =>
+    buildChart({
+      ...sampleConfig("combo"),
+      width: w,
+      height: h,
+      horizontal,
+      style: { fontSize },
+    } as ChartConfig)
+      .nodes.filter((n): n is TextNode => n.kind === "text" && /^legend-\d+$/.test(n.name ?? ""))
+      .map((n) => n.text);
+
+  it("names the line wherever it names the columns", () => {
+    for (const [w, h] of [
+      [200, 150],
+      [480, 300],
+      [960, 540],
+    ]) {
+      const legend = legendOf(w, h, 10, true);
+      expect(legend.length, `${w}x${h}: no legend at all`).toBeGreaterThan(0);
+      expect(
+        legend.some((t) => t.startsWith("Margin")),
+        `${w}x${h}: the legend omits the line — ${legend}`,
+      ).toBe(true);
+    }
+  });
+
+  it("names all three, not two of three", () => {
+    // The specific shape of the bug: a legend that stops short says nothing
+    // about what it left out, so the reader cannot know to look.
+    const legend = legendOf(480, 300, 10, true);
+    expect(legend).toEqual(["Product", "Services", "Margin %"]);
+  });
+
+  it("reserves the room it is about to take", () => {
+    // The coupling this file's own comments say has been written twice: the
+    // predicate that decides a legend fits and the row that draws it must count
+    // the same entries. Both go through `legendLabelsFor` now. If they drifted,
+    // the legend would be drawn into a band reserved for one row fewer and land
+    // on the plot — so this asserts the legend's last row clears the plot top.
+    // 160x120 at 10pt, where the three entries WRAP to two rows. At 480x300 they
+    // fit on one, so reserving for two entries and reserving for three come to
+    // the same number of rows and the test cannot tell them apart — it passed
+    // against a mutant that had the reservation counting two while the row drew
+    // three. A wrapping legend is the only place the coupling is visible.
+    const nodes = buildChart({
+      ...sampleConfig("combo"),
+      width: 160,
+      height: 120,
+      horizontal: true,
+      style: { fontSize: 10 },
+    } as ChartConfig).nodes;
+    const legend = nodes.filter((n): n is TextNode => n.kind === "text" && /^legend-\d+$/.test(n.name ?? ""));
+    const bars = nodes.filter((n) => /^seg-/.test(n.name ?? ""));
+    expect(legend.length, "no legend to check").toBeGreaterThan(0);
+    expect(bars.length, "no bars to check against").toBeGreaterThan(0);
+    const legendBottom = Math.max(...legend.map((l) => l.y + l.h));
+    const barTop = Math.min(...bars.map((b) => (b as unknown as { y: number }).y));
+    expect(legendBottom, "the legend is drawn over the plot it was not reserved room beside").toBeLessThanOrEqual(
+      barTop + 1,
+    );
+  });
+});
+
+describe("the legend's fit predicate counts what the row will draw", () => {
+  it("refuses a legend it has no room for, counting the line", () => {
+    // THE OTHER HALF OF THE COUPLING, and the half a mutant walked through
+    // first. `horizontalLegendFits` decides whether there is room; `legendRow`
+    // decides what to draw. Both must count the same entries or the predicate
+    // approves a legend smaller than the one that arrives.
+    //
+    // 120x90 at 10pt is where it shows: two entries fit and three do not, so a
+    // predicate still counting two says yes and the row then draws three into a
+    // chart the predicate would have refused. The right answer is no legend —
+    // `horizontalLegendFits` exists to refuse one that has eaten the plot, and
+    // at this size it has.
+    const legend = buildChart({
+      ...sampleConfig("combo"),
+      width: 120,
+      height: 90,
+      horizontal: true,
+      style: { fontSize: 10 },
+    } as ChartConfig).nodes.filter((n): n is TextNode => n.kind === "text" && /^legend-\d+$/.test(n.name ?? ""));
+    expect(
+      legend.map((l) => l.text),
+      "a legend was drawn on a chart with no room for it",
+    ).toEqual([]);
   });
 });

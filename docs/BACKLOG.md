@@ -2879,3 +2879,53 @@ So the premise is false and the change is reverted. What the exercise leaves:
   is a chart that misleads, and it is worth more than the 65 overlapping pairs.
   What it needs is a decision of the same kind as `valueAxisTitle`: what a legend
   does when the row will not hold it — wrap, shrink, or say that it is short.
+
+### A combo's legend never named its line — FIXED 2026-08-28
+
+Found by chasing the wrong explanation to the bottom. The entry above blamed
+`legendRow` for truncating; it does not truncate, it wraps. Tracing one chart
+node by node showed `legendRow` emitting all three entries — the third on a
+second row — and the final scene holding two.
+
+**The cause is structural.** `layoutCombo` hands its column series to
+`layoutColumns` in a config it builds itself (`colCfg`), with the line series
+removed, because those are drawn afterwards by the combo. The legend is drawn
+from that same config. So a combo's legend named its columns and never its
+lines, at every size — not only crowded ones.
+
+It was survivable because the line carries its own name at the end of the line,
+and it stopped being survivable exactly where that name could not be drawn: a
+120x90 horizontal combo at 6pt drew "Product" and "Services" and nothing at all
+for "Margin %".
+
+**The fix keeps the reservation and the draw in step**, which is the coupling
+this codebase's own comments say has been broken twice. `Decorations.legendAlso`
+carries the extra series, and `legendLabelsFor(cfg, decor)` is the one list that
+the fit predicate, the reserved band and the drawn row all read. `decor` is used
+rather than the config because it is the only thing threaded to all three.
+
+Measured over the sample combo at eight frames, seven fonts, both orientations —
+112 charts:
+
+    legend names the line     0 -> 28
+    no legend at all         76 -> 80
+    no series named at all   21 -> 25
+
+**The four that lost their legend are the trade, and it is the right way round.**
+They are thumbnails — 80x60 through 200x150 at large fonts — where a third entry
+tips `horizontalLegendFits`, whose whole job is to refuse a legend that has eaten
+the plot. What they had before was a legend naming two of three series with
+nothing to say a third existed. That is worse than none.
+
+**It costs two point labels and three overlapping pairs.** The legend takes a row
+it did not take before, so the plot beneath it is slightly shorter: the sample
+combo draws 77 point labels across the frame sweep where it drew 79, and
+`combo-series-label` pairs went 23 to 26 while two other families fell. Total
+467 to 464. A series named nowhere is worse than two names touching.
+
+**Four mutants, and one of them found a hole in the test written for it.** The
+coupling has two halves — the predicate that decides a legend fits, and the band
+the frame reserves — and a test at 480x300 catches neither, because three entries
+fit on one row there and reserving for two or three comes to the same. It takes a
+WRAPPING legend (160x120) to see the reservation, and a chart on the fit boundary
+(120x90 at 10pt) to see the predicate.

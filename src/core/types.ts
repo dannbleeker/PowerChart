@@ -134,6 +134,26 @@ export interface WaterfallOptions {
 
 /** think-cell style decorations, all computed from layout anchors. */
 export interface Decorations {
+  /**
+   * Series the legend must name that are NOT in `cfg.data.series` — set by the
+   * layout, never by a caller.
+   *
+   * A combo hands its column series to `layoutColumns` in a config it builds
+   * itself (`colCfg`), with the LINE series taken out, because those are drawn
+   * by the combo afterwards. The legend is drawn from that same config, so a
+   * combo's legend named its columns and never its lines — at every size, not
+   * only crowded ones. On a horizontal combo small enough that the line's own
+   * name will not fit either, the series was left with no name anywhere on the
+   * chart: 120x90 at 6pt drew "Product" and "Services" and nothing for
+   * "Margin %".
+   *
+   * It goes on `Decorations` rather than on the config because `decor` is the
+   * one thing threaded to BOTH the reservation (`horizontalLegendFits`, and the
+   * band `computeFrameHorizontal` keeps) and the draw (`horizontalChrome` into
+   * `legendRow`). Gating one without the other is the bug this file's own
+   * comments say has been written twice.
+   */
+  legendAlso?: { label: string; color: string; stroke?: string; strokeWidth?: number }[];
   /** Value label inside each segment (hidden automatically when it doesn't fit). */
   segmentLabels: boolean;
   /** Series labels to the right of the last category (think-cell placement). */

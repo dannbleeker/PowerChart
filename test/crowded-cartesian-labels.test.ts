@@ -315,15 +315,21 @@ describe("a combo with more series than any category can label", () => {
   });
 
   it("charges the everyday combo nothing at all", () => {
-    // THE REGRESSION THAT WOULD MATTER, and it is exact rather than a bound:
-    // the sample combo draws 79 point labels across this sweep, before this rule
-    // and after it. Not "about the same" — the same.
+    // THE REGRESSION THAT WOULD MATTER, and it is exact rather than a bound: the
+    // peer rule must charge the everyday combo NOTHING.
+    //
+    // It was 79 when this was written and is 77 now, and the two lost labels are
+    // not this rule's doing: the combo's legend has since been corrected to name
+    // its LINE as well as its columns, so it takes a row it did not take before
+    // and the plot beneath it is slightly shorter. Re-based rather than loosened
+    // to a bound — an exact number is what makes this test worth having, and the
+    // commit that moves it should say why, as this one does.
     let drawn = 0;
     for (const [w, h] of FRAMES)
       for (const fontSize of [10, 18])
         for (const horizontal of [false, true])
           drawn += textsOf({ ...plain("combo", w, h, fontSize), horizontal } as ChartConfig, /^combo-label-/).length;
-    expect(drawn, "the everyday combo paid for the ten-series case").toBe(79);
+    expect(drawn, "the everyday combo paid for the ten-series case").toBe(77);
   });
 
   it("keeps every mark, whatever happens to the numbers", () => {

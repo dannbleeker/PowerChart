@@ -15,6 +15,7 @@ import {
   computeFrameHorizontal,
   legendWrapWalk,
   seriesLegendLabels,
+  legendLabelsFor,
   logFloor,
   titleHeight,
   valueScale,
@@ -959,14 +960,36 @@ export function layoutCombo(cfg: ChartConfig, style: ChartStyle, decor: Decorati
                   max: niceTicks(0, Math.max(stackMax, lineMax, 1)).pop(),
                 },
   };
+  /**
+   * The lines, declared to the legend the column layout is about to draw.
+   *
+   * `colCfg` has them removed — they are drawn here, afterwards — and the legend
+   * is built from `colCfg`, so a combo's legend named its columns and never its
+   * lines. At every size, not only crowded ones. Where the line's own end-of-line
+   * name also could not be drawn (a 120x90 horizontal combo at 6pt), the series
+   * had no name anywhere on the chart.
+   *
+   * Coloured the way the line itself is: `seriesColor(style, cols.length + li)`
+   * is exactly what the overlay below paints with, so the chip is a miniature of
+   * the line rather than a second opinion about it.
+   */
+  const decorWithLines: Decorations = {
+    ...decor,
+    legendAlso: decor.seriesLabels
+      ? lines.map((s, li) => ({
+          label: s.scenario ? `${s.name} (${s.scenario})` : s.name,
+          color: seriesColor(style, cols.length + li, s.color),
+        }))
+      : undefined,
+  };
   const result =
     columnsKind === "waterfall"
-      ? layoutWaterfall(colCfg, style, decor)
+      ? layoutWaterfall(colCfg, style, decorWithLines)
       : columnsKind === "mekko"
-        ? layoutMekko(colCfg, style, decor)
+        ? layoutMekko(colCfg, style, decorWithLines)
         : columnsKind === "area"
-          ? layoutLine(colCfg, style, decor)
-          : layoutColumns(colCfg, style, decor);
+          ? layoutLine(colCfg, style, decorWithLines)
+          : layoutColumns(colCfg, style, decorWithLines);
   const { anchors, nodes } = result;
   // Horizontal (bar) base: the value axis runs left-to-right, and `categoryX`
   // holds each category's Y centre. The overlay is the same line drawn against
@@ -1598,8 +1621,17 @@ export function horizontalChrome(
   }
   // Gated by the SAME predicate the reservation uses — see `horizontalLegendFits`.
   // Gating one without the other is the bug this repo has now written twice.
-  if (decor.seriesLabels && cfg.data.series.length > 1 && horizontalLegendFits(cfg, style, decor)) {
-    nodes.push(...legendRow(cfg, style, frame.x, (cfg.title ? fs * 1.6 + 6 : 0) + 2, { maxX: cfg.width - 4 }));
+  // `legendLabelsFor`, not `cfg.data.series.length`, because a combo's lines are
+  // not in this config at all — see `Decorations.legendAlso`. A one-column combo
+  // with one line has a single series HERE and two on the chart, and the old
+  // count sent it away with no legend for either.
+  if (decor.seriesLabels && legendLabelsFor(cfg, decor).length > 1 && horizontalLegendFits(cfg, style, decor)) {
+    nodes.push(
+      ...legendRow(cfg, style, frame.x, (cfg.title ? fs * 1.6 + 6 : 0) + 2, {
+        maxX: cfg.width - 4,
+        entries: legendEntriesFor(cfg, style, decor),
+      }),
+    );
   }
   return nodes;
 }
@@ -1626,6 +1658,37 @@ export interface LegendEntry {
  * opts it is byte-identical to the old single-row version (maxX defaults to no
  * wrap).
  */
+/**
+ * The legend's entries: this config's own series, then anything the layout has
+ * added through `decor.legendAlso`.
+ *
+ * Shares `legendLabelsFor`'s list so the row drawn here and the band reserved
+ * for it cannot disagree about how many entries there are.
+ */
+export function legendEntriesFor(cfg: ChartConfig, style: ChartStyle, decor: Decorations): LegendEntry[] {
+  const own: LegendEntry[] = seriesLegendLabels(cfg).map((label, si) => {
+    const paint = markPaint(style, seriesColor(style, si, cfg.data.series[si].color), cfg.data.series[si]);
+    return { label, color: paint.fill, stroke: paint.stroke, strokeWidth: paint.strokeWidth, pattern: paint.pattern };
+  });
+  // `seriesLegendLabels` answers EMPTY for a single series, which is right when
+  // that is the whole chart and wrong when a combo has taken the others out —
+  // one column and one line is a two-series chart, and both want naming.
+  const base =
+    own.length === 0 && (decor.legendAlso?.length ?? 0) > 0
+      ? cfg.data.series.map((s, si) => {
+          const paint = markPaint(style, seriesColor(style, si, s.color), s);
+          return {
+            label: s.scenario ? `${s.name} (${s.scenario})` : s.name,
+            color: paint.fill,
+            stroke: paint.stroke,
+            strokeWidth: paint.strokeWidth,
+            pattern: paint.pattern,
+          };
+        })
+      : own;
+  return [...base, ...(decor.legendAlso ?? [])].map((e, i) => ({ ...e, name: `legend-${i}` }));
+}
+
 export function legendRow(
   cfg: ChartConfig,
   style: ChartStyle,
