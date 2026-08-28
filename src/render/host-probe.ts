@@ -1146,6 +1146,12 @@ const PROBES: Probe[] = [
   },
   {
     id: "binding-names-shape-later",
+    // RESAMPLED SINCE 2026-08-29, and this one is worth its slide. The idea was
+    // retired on the strength of `commit-threw` — the host rejecting the batch
+    // that carries a binding. Over the 25 rounds to 2026-08-28 that face appears
+    // ONCE, against `yes` 15 times and `silent` 8. The evidence that closed the
+    // last untried way out of the id refusals has weakened, so keep asking.
+    resample: true,
     // Burns the slide, found the same way the first two were — by the question
     // BELOW it never being answered. `shape-resolve-held-slide-proxy` at the
     // next slot starved on 4 of 4 attempts in round 23 and 4 of 4 in round 26,
@@ -1300,7 +1306,6 @@ const PROBES: Probe[] = [
   },
   {
     id: "shape-resolve-held-slide-proxy",
-    resample: true,
     question: "Can a shape be RESOLVED (not added) through a slide proxy resolved a sync ago?",
     // The half of the held-handle rule nobody has asked about. It has never
     // once been answered — 133 rounds, 133 `no-scratch-shape` — and the reason
@@ -1642,6 +1647,12 @@ const PROBES: Probe[] = [
     question: "Is a shape proxy still usable one sync after it was created?",
     // office-js#2903 — the stale-proxy bug the whole `targetRef` design exists
     // for. If a host keeps proxies alive, a lot of re-fetching here is waste.
+    //
+    // RESAMPLED SINCE 2026-08-29: it is a coin, not the flat refusal this
+    // project described. `threw` 18 of the 25 rounds to 2026-08-28 and `yes` 7 —
+    // and the entry that read it as settled was comparing against a fixture that
+    // happened to carry `threw`. See UNSTABLE_ANSWERS.
+    resample: true,
     ask: async (ctx) => {
       const [shape] = await scratchShapes(ctx, [{ left: 10, top: 10, width: 20, height: 20 }]);
       await ctx.sync(); // a second round trip: this is what ages the proxy
@@ -2105,7 +2116,6 @@ const PROBES: Probe[] = [
   },
   {
     id: "collection-read-poisons-the-creation-handle",
-    resample: true,
     question: "After re-reading the slide's shapes, does the handle that CREATED a shape still take a tag?",
     // THE QUESTION THAT DECIDES THE ORDERING FIX, and the reason that fix is not
     // in this commit.
@@ -2158,7 +2168,6 @@ const PROBES: Probe[] = [
   },
   {
     id: "does-a-failed-group-poison-the-tag",
-    resample: true,
     question: "After addGroup is refused, can a tag still be written in that same context?",
     // THE HYPOTHESIS ROUND 043 PRODUCED, and it may retire the whole ordering
     // effort — which is why it is asked before another line of that effort is
@@ -2264,7 +2273,6 @@ const PROBES: Probe[] = [
   },
   {
     id: "which-end-a-short-read-drops",
-    resample: true,
     question: "When a shape collection reads short, which end of it survives?",
     // ASKED FOR AN ORDERING FIX THAT HAS SINCE BEEN REVERTED, AND KEPT ANYWAY.
     //
@@ -2817,7 +2825,6 @@ const PROBES: Probe[] = [
   },
   {
     id: "creationid-on-fresh-shape",
-    resample: true,
     question: "Does a shape this run just added report a creationId, or null?",
     /**
      * THE FIRST OF THREE, and the one that decides whether the other two are
@@ -2901,7 +2908,6 @@ const PROBES: Probe[] = [
   },
   {
     id: "creationid-survives-a-sync",
-    resample: true,
     question: "Does a shape's creationId still read the same a sync later, when its id may not?",
     /**
      * THE PROPERTY THE PRODUCT ACTUALLY NEEDS. `shape.id` is the thing that goes
@@ -2940,7 +2946,6 @@ const PROBES: Probe[] = [
   },
   {
     id: "creationid-survives-grouping",
-    resample: true,
     question: "Does a shape keep its creationId after it is absorbed into a group?",
     /**
      * THE STEP THE DEFECT DIES OR SURVIVES ON.
@@ -4243,6 +4248,32 @@ export const PROBE_IDS: readonly string[] = [...PROBES.flatMap(withFollows), SCR
  * Derived from the marks rather than listed again, for the same reason
  * `NO_SLIDE_NEEDED_IDS` is: a hand-kept copy is a copy that will one day be
  * edited wrong in the quiet direction.
+ *
+ * SEVEN MARKS CAME OFF ON 2026-08-29, and the reason is worth keeping because
+ * it is a cost this list quietly carried. Every id here is a scarce scratch
+ * slide spent under pressure, and these seven were spending it on questions the
+ * host had settled:
+ *
+ *     shape-resolve-held-slide-proxy              yes             24 of 24
+ *     collection-read-poisons-the-creation-handle refused         25 of 25
+ *     does-a-failed-group-poison-the-tag          tags-gone       25 of 25
+ *     which-end-a-short-read-drops                all             25 of 25
+ *     creationid-on-fresh-shape                   absent          25 of 25
+ *     creationid-survives-a-sync                  no-creation-id  25 of 25
+ *     creationid-survives-grouping                no-creation-id  25 of 25
+ *
+ * They were marked because they sat in `PENDING_QUESTIONS`, and they sat there
+ * because the committed fixture predated them — a 2026-08-12 capture still in
+ * place on 2026-08-28. So the probe re-asked seven settled questions on every
+ * pressured run for a fortnight, to keep a table current that nothing was
+ * making current. The invariant in `test/host-probe.test.ts` was doing its job
+ * perfectly; it keeps this list equal to those tables, and the tables were
+ * wrong.
+ *
+ * The lesson for whoever adds the next mark: this list is downstream of the
+ * FIXTURE. Swap the fixture when a newer sheet answers at least as much
+ * (`scripts/host-history.mjs --fixture` counts it for you) and the marks
+ * correct themselves.
  */
 export const RESAMPLE_IDS: readonly string[] = PROBES.flatMap(flatten)
   .filter((p) => p.resample)

@@ -120,23 +120,69 @@ export const KNOWN_DIVERGENCES = {
     'generate a lot of proxy objects... a noticeable performance benefit when using large numbers of proxy objects"), so this ' +
     "closes that idea on evidence rather than leaving it as an omission in the draw path. Do not re-propose it. The fake keeps " +
     "the method because `untrack` is best-effort everywhere this repo calls it and a host that has it is a real host.",
-  "binding-names-shape-later":
-    "RETIRED AS AN IDEA, 2026-08-12 (`957aca0`), and the fake is left saying `yes` deliberately. The question was " +
-    "whether `settleAndTagChart` could be handed a shape handle that never goes through `ShapeCollection.getItem(id)` — " +
-    "every 5010 this host throws is at that call. A binding is made from the live Shape proxy inside the batch that " +
-    "created it, so it needs neither an id round trip nor a collection read. The host answers `commit-threw`: the batch " +
-    "carrying the binding is REJECTED (`ErrorPointer`), and it counts as an answer rather than as background noise " +
-    "because the probe's control arm committed the same batch WITHOUT a binding seconds earlier and it landed. Twelve " +
-    "attempts across nine rounds never reached the commit; this one did, twice in three passes. " +
-    "The fake keeps `yes` because there is NO CALLER to protect — nothing in this repo makes a binding, and modelling " +
-    "a batch-poisoning API would be " +
-    "fiction with no caller to protect. What the divergence is FOR is the direction it points: the fake is the " +
-    "optimistic one here, so anybody who reaches for bindings as the way out of the id refusals will find this entry " +
-    "before they find out from a deck.",
   "load-isnullobject-populates":
     "The fake models the host `queueNullCheck` was written for, where loading the flag by name populates nothing. PowerPoint on the web does populate it. Both hosts are real; the workaround is harmless on this one rather than necessary.",
-  "shape-proxy-survives-one-sync":
-    "office-js#2903. The fake keeps proxies alive on its happy path so that ordinary tests read as tests rather than as stale-proxy exercises; `applyWebProfile` is where the refusal lives. The web host refuses them, and says so here.",
+  // ---------------------------------------------------------------------------
+  // THE NINE BELOW ARRIVED TOGETHER, ON 2026-08-29, WITH THE FIXTURE SWAP.
+  //
+  // Not nine new host behaviours. Nine that this gate has never been able to
+  // see: the fixture it compared against was captured 2026-08-12 and answered
+  // 31 questions, while every round since round ~254 answers 39. All nine sat
+  // in `PENDING_QUESTIONS` as "the sheet predates this question" while the host
+  // answered them, consistently, for twenty-five rounds and more.
+  //
+  // Each note carries the tally over the 25 rounds to 2026-08-28, because one
+  // sheet is one sample and several of these are coins. Where the count is not
+  // unanimous the question is ALSO in `UNSTABLE_ANSWERS`, and the rule there
+  // holds: do not build on either face.
+  // ---------------------------------------------------------------------------
+  "tags-on-fresh-shape":
+    "The fake's happy path writes a tag on a shape it has just made. THIS HOST WILL NOT: `threw`, 25 of 25 rounds to " +
+    "2026-08-28, with no second face anywhere in that window. It is the sharpest of the nine — unanimous, and about the " +
+    "mechanism the whole product identifies charts by. It does not contradict `tag-the-creation-proxy-a-sync-later` " +
+    "(`yes`, 25 of 25): a tag lands on that proxy A SYNC LATER and not in the batch that made the shape, which is " +
+    "precisely the order `settleAndTagChart` already uses. So the product is on the right side of this and the fake is " +
+    "not. Kept as a divergence rather than modelled, because a fake that refused fresh-shape tags would make several " +
+    "hundred ordinary tests read as tag-timing exercises.",
+  "scratch-slides-returned":
+    "The fake's happy path gives every scratch slide back. This host gives SOME back: 25 of 25 rounds say `some`, with " +
+    "no other face. That is the id-namespace finding seen from the clean-up end — a slide taken by id and returned by " +
+    "position is not always the same slide to this host — and 77f9ca4 is the commit that stopped the probe paying for " +
+    "the difference. The probe already sweeps by position for exactly this, so `some` is survivable; it is declared " +
+    "because the fake being the tidy one is the direction that misleads.",
+  "collection-read-poisons-the-creation-handle":
+    "The fake's happy path answers `yes` — its collection read leaves the creation handle usable — and says so from a " +
+    "SCRATCH slide, where the shape has no other handle onto it. Production's does, which was always the real question. " +
+    "This host answers `refused`, 25 of 25. So the answer is in and it is the pessimistic one: reading a slide's shape " +
+    "collection costs you the handles you were holding. Every batching decision in `renderShapesChunked` is on the right " +
+    "side of that already.",
+  "does-a-failed-group-poison-the-tag":
+    "The fake models the host this code was written against, where a refused group leaves the context usable and the tag written afterwards lands. This " +
+    "host answers `tags-gone`, 25 of 25 — a failed `addGroup` takes the tag with it. That is what `settleAndTagChart` " +
+    "exists for and why it opens a FRESH context rather than continuing in the one that just failed. Declared rather " +
+    "than modelled: the fake's version is what makes an ordinary grouping test about grouping.",
+  "picture-then-shape-read":
+    "office-js#5022. The fake's happy path reads a shape collection after a picture insert; this host mostly will not. " +
+    "`unreadable` 21 of 25, `yes` 4 — A COIN, and its `UNSTABLE_ANSWERS` entry is the one to read before acting. One " +
+    "pass in five is not permission: `drawDemoItem` performs exactly this sequence, so a `yes` would read as licence to " +
+    "stop guarding it.",
+  "shape-add-held-slide-proxy":
+    "The fake's happy path refuses a held slide proxy consistently, which is what makes its pair with `-again` a readable test. This " +
+    "host is a COIN and has flipped the pair's direction: `yes` 21 of 25, `threw` 4. Its partner answers `threw` 24 of " +
+    "25 in the same rounds, so the two now disagree ROUTINELY rather than exceptionally — which is itself the finding, " +
+    "and the reason both stay in `UNSTABLE_ANSWERS`. Do not build on either face.",
+  "how-many-collection-reads-a-context-survives":
+    "The fake's happy path answers every read and reports `survives-12`. This host answers `short-at-1` 23 of 25 — the " +
+    "FIRST collection read in a context already comes back short — with `survives-12` twice. The pessimistic reading is " +
+    "the one the product is built on, and the two `survives-12` rounds are what `UNSTABLE_ANSWERS` is for.",
+  "how-many-syncs-a-creation-handle-survives":
+    "The fake's happy path keeps a creation handle alive for eight syncs. This host answers `refused-after-1` 23 of 25, " +
+    "`survives-8` twice. One sync is the budget, and `renderShapesChunked` spends it that way. The two optimistic " +
+    "rounds are recorded rather than averaged away.",
+  "tag-through-refetched-shape":
+    "The fake's happy path re-fetches a shape by id and tags it. This host answers `no-id` 23 of 25 — the re-fetch has " +
+    "no id to tag through — with `yes` twice. It is the same 5010 refusal every other id route meets, seen from the tag " +
+    "side, and it is why the config tag is written on the GROUP rather than on a re-fetched member.",
   "shapes-items-count-honest":
     "The fake's happy path answers a shape collection honestly, and `faults.hollowReads` is where the refusal lives. RE-ASKED AND ANSWERED 2026-08-08: `short-0`, items=0, with `getcount-populates-same-sync` answering `yes, value=8` in the same run. Same host, same minute: the count is right and the list is empty. That is the sharpest form this bug has taken, and it is what `slideShapeNames`' corroboration check exists to catch. The earlier WITHDRAWN note (the `items`-undefined answer being about the handle, not the collection) is settled by the partner below.",
   "tags-add-same-key-twice":
@@ -149,10 +195,6 @@ export const KNOWN_DIVERGENCES = {
     "The fake's happy path counts a group's children; the web host's refusal lives in a named fault rather than the default. ANSWERED 2026-08-08: `unreadable`. Read with `group-reports-its-children` above — both ways into a group's children are refused on this host. Also carried in UNSTABLE_ANSWERS, because it has been asked once and once is a sample.",
   "group-of-existing-shape-readable":
     "The fake's happy path names a group it has just made, so the later-batch question can be put at all. This host would not: `no-group-id`. That is an answer and not a setup failure — a host that will not name a fresh group cannot be asked about resolving one from the deck afterwards, and the fact belongs in the sheet. It also means `countGroupChildrenPage`, which swallows failures per shape, produces no error and no measurement here.",
-  "shape-add-fresh-getitem-slide":
-    "The fake models the host AS IT NOW ANSWERS, and the fixture beside this gate captured it before it did — so this divergence is against an artefact, not against PowerPoint. THE ANSWER FLIPPED AT ROUND 254 AND THE FLIP WAS OURS. Over 269 archived rounds: `threw` 227, `yes` 41, `silent` once — and every `threw` is round 253 or earlier, against `yes` in 38 of the 40 rounds since. The commit on the boundary is 77f9ca4, which stopped the probe HOLDING the id `slides.add()` hands back and made it re-read the slide's id positionally once the add had settled. Those are different id spaces, not near-misses: `4123571114#123571113` at add time against `256#2587447327` a moment later, same slide. So the old reading was never about `getItem`. Corrected statement, now also at `insertSceneIntoSlide`: **a freshly-added slide's id is not durable until the slide settles; re-read it positionally afterwards and `slides.getItem(id)` resolves it.** This is what the slow-insert offer runs on. The 2026-08-08 conclusion — that the by-id form applied to a NEW slide simply fails — is RETIRED. Its partner `getitem-durable-slide` answering `yes` stands and always did. Replacing the fixture with a post-254 capture would retire this entry outright.",
-  "shapes-items-via-positional-slide":
-    "The fake's happy path answers a shape collection honestly whichever handle names the slide. ANSWERED 2026-08-08: `short-0`, the same as its by-id partner in the same run. That is what the partner was added to decide, and it decides it — the parent handle was never the problem, the COLLECTION is. Every readback in `powerpoint.ts` is therefore no better for being renamed positionally.",
 };
 
 /**
@@ -182,6 +224,61 @@ export const KNOWN_DIVERGENCES = {
  * several runs agreeing, not one.
  */
 export const UNSTABLE_ANSWERS = {
+  // ---------------------------------------------------------------------------
+  // THE SEVEN BELOW WERE ADDED 2026-08-29 FROM THE ARCHIVE, NOT FROM A SHEET.
+  //
+  // `scripts/host-history.mjs` exists because entries here go stale silently
+  // when they are written from whatever rounds the author had open. These seven
+  // were written the way that tool tells you to: one pass over the 25 rounds to
+  // 2026-08-28, in round-time order, counting faces. Re-run it before editing
+  // any of them —
+  //
+  //     node scripts/host-history.mjs --fixture rounds/2*.json
+  //
+  // Five of the seven had never been in this table because they were sitting in
+  // `PENDING_QUESTIONS` as "the sheet predates this question", which they had
+  // stopped being some hundred rounds earlier. See that table's note.
+  // ---------------------------------------------------------------------------
+  "how-many-collection-reads-a-context-survives":
+    "A COIN, and the cheap face is the common one: `short-at-1` 23 of the 25 rounds to 2026-08-28, `survives-12` twice. " +
+    "The first collection read in a context usually comes back short, which is what every readback in `powerpoint.ts` is " +
+    "written for. The danger is the other face: `survives-12` says a context can be trusted for a dozen reads, and two " +
+    "rounds in twenty-five is not a licence to batch on that assumption.",
+  "how-many-syncs-a-creation-handle-survives":
+    "A COIN: `refused-after-1` 23 of 25, `survives-8` twice. One sync is the budget `renderShapesChunked` spends, and it " +
+    "is the right one. Same warning as its neighbour above — the optimistic face is the one that would licence holding " +
+    "handles across a whole chart, and it has appeared twice.",
+  "tag-through-refetched-shape":
+    "A COIN, heavily weighted: `no-id` 23 of 25, `yes` twice. The re-fetch usually has no id to tag through, which is the " +
+    "5010 refusal every other id route meets. The two `yes` rounds are why the config tag is still written on the GROUP " +
+    "rather than on a re-fetched member: a route that works one round in twelve is not a route.",
+  "shapes-by-index-vs-items":
+    "THREE FACES over 25 rounds — `index-unreadable` 15, `both-answer` 9, `no-count` 1. The interesting one is " +
+    "`both-answer`, because it says the collection answered BOTH ways in that round, and it is common enough (better " +
+    "than one round in three) that a sheet catching it looks like good news about the host. It is not: the modal answer " +
+    "is that the index route answers where the list does not, which is what `shapes-by-index` in `powerpoint.ts` is for.",
+  "shape-proxy-survives-one-sync":
+    "office-js#2903, and A COIN rather than the flat refusal this project has described: `threw` 18 of 25, `yes` 7. " +
+    "Moved here from `KNOWN_DIVERGENCES` on 2026-08-29, where it had read as a settled refusal — the fixture happened to " +
+    "carry `threw`, and nothing compared it against the archive. Seven rounds in twenty-five say a proxy DOES survive a " +
+    "sync here. Neither face may be built on, and the pessimistic one is what the draw path already assumes.",
+  // `group-of-existing-shape-readable` was considered here and deliberately left
+  // out: `threw` 20 of 25 and `no-group-id` 5, but BOTH faces are refusals and
+  // the conclusion is identical either way, so a scarce scratch slide spent
+  // re-asking it buys nothing. This table's membership costs probe slides — it
+  // is what `RESAMPLE_IDS` is derived from — so a question only belongs here
+  // when its faces would lead to DIFFERENT decisions. Its divergence entry
+  // carries the two-face detail.
+  "binding-names-shape-later":
+    "REOPENED 2026-08-29, AND THIS IS THE ONE TO READ TWICE. The entry that stood in `KNOWN_DIVERGENCES` said the host " +
+    "answers `commit-threw` — the batch carrying a binding is REJECTED — and that PowerPointApi 1.8 bindings were " +
+    "therefore retired as an idea. Over the 25 rounds to 2026-08-28 the tally is `yes` 15, `silent` 8, `unreadable` 1, " +
+    "`commit-threw` 1. So the rejection is the RARE face now, and the common one is that the binding works.\n" +
+    "That does not make bindings a route — `silent` in a third of rounds is its own problem, and one commit-threw is " +
+    "still a commit-threw — but it does retire the flat 'cannot be asked on this host' this project has been carrying, " +
+    "including in docs/BACKLOG.md §2. It is the last untried way out of the id refusals and the evidence against it has " +
+    "weakened. Nothing in the repo makes a binding, so there is no caller at risk either way; what changed is whether " +
+    "the idea deserves another look, and it does.",
   "picture-then-shape-read":
     "office-js#5022's question — can a shape collection be read after a picture insert — and a COIN, seen flipping inside one " +
     "round on 2026-08-12 (`1789749`): `yes` on pass 1 while the host was in slide-trouble, then `unreadable` on passes 2 and 3 " +
@@ -343,168 +440,41 @@ export const UNSTABLE_ANSWERS = {
  * on a stale entry too, so the list shrinks the moment a newer sheet arrives.
  *
  * Every entry here is a reason to ask the owner for a probe run.
+ *
+ * EMPTY SINCE 2026-08-29, and it emptied all at once. The fixture had been the
+ * 2026-08-12 capture, which answers 31 questions; every round since ~254
+ * answers 39. So all ELEVEN entries had been answered — several of them for
+ * more than a hundred rounds — while this table went on calling them unasked
+ * and the probe went on spending scarce scratch slides re-asking them.
+ *
+ * That is the failure this table was built to prevent, arriving through the
+ * one door it does not watch: it shrinks when a newer sheet lands, and nothing
+ * made a newer sheet land. **The list is only as current as the fixture.**
+ *
+ * What the eleven turned out to say, over the 25 rounds to 2026-08-28:
+ *
+ *     AGREE WITH THE FAKE — no declaration needed
+ *       shapes-by-index-vs-items            both-answer (a coin; see UNSTABLE)
+ *       creationid-on-fresh-shape           absent          25 of 25
+ *       creationid-survives-a-sync          no-creation-id  25 of 25
+ *       creationid-survives-grouping        no-creation-id  25 of 25
+ *       which-end-a-short-read-drops        all             25 of 25
+ *       shape-resolve-held-slide-proxy      yes             24 of 24
+ *
+ *     CONTRADICT THE FAKE — now declared in KNOWN_DIVERGENCES, with tallies
+ *       how-many-collection-reads-a-context-survives   short-at-1      23 of 25
+ *       does-a-failed-group-poison-the-tag             tags-gone       25 of 25
+ *       collection-read-poisons-the-creation-handle    refused         25 of 25
+ *       how-many-syncs-a-creation-handle-survives      refused-after-1 23 of 25
+ *       tag-through-refetched-shape                    no-id           23 of 25
+ *
+ * The three `creationid` answers are the load-bearing ones and they close a
+ * design: this host reports PowerPointApi **1.10** in `requirementSets` and
+ * does not populate `Shape.creationId` on any of the three questions, on any of
+ * 25 rounds. Retiring the positional group-member mapping in favour of creation
+ * ids is therefore not available here, and is not a matter of gating on 1.10.
  */
-export const PENDING_QUESTIONS = {
-  "shapes-by-index-vs-items":
-    "**ANSWERED, ROUND 184: `no-count` — getCount did not populate, so the premise is gone.** The probe was built " +
-    "on `getcount-populates-same-sync` answering `yes` 158 of 158 — and THAT PROBE MEASURES " +
-    "`ctx.slides.getCount()` on the DECK, carrying `noSlideNeeded: true` and the comment 'No slide of ours " +
-    "involved'. It says nothing about `slide.shapes.getCount()`, which is what an index walk would need. A FOURTH " +
-    "scope error, caught by the probe before it could become a design: `shapes.getCount()` does not populate " +
-    "either, the walk has no length to walk, and the index lead is closed. Kept on `resample` to see whether it " +
-    "ever answers differently. Original rationale follows. " +
-    "Added 2026-08-23. CORRECTED THE SAME DAY, and the correction is the useful part. It was written claiming " +
-    "'the shape collection will not honestly report freshly added shapes', citing `shapes-items-count-honest` at " +
-    "`unreadable` 142 / `short-0` 16 of 158. **That is the PROBE's answer, measured on a SCRATCH slide, and " +
-    "production disagrees with it 2,135 times**: charts grouped by id-match 2135, by created 49, re-read named NONE " +
-    "97 — a 4.3% failure share. The scratch slide is strictly worse at collection reads than a real one, which this " +
-    "repo already documents, so a probe answer about collection reads cannot be quoted as a production fact. " +
-    "THE REAL QUESTION IS NARROWER AND BETTER: the read usually works and fails about 1 chart in 23, roughly one " +
-    "round in four, and when it fails everything downstream fails with it. So this asks whether an INDEX walk " +
-    "survives the 4% where `items` does not — not whether it can replace a read that never works. From the " +
-    "failures follow the " +
-    "re-read that matches nothing, the positional guess at a stale listing, the addGroup throw on another chart's " +
-    "shapes, and the parts list that has never once been written (0 across 872 charts). Every workaround tried " +
-    "DOWNSTREAM has cost more than it bought: the tag-anchor move (reverted after five rounds), loading ids earlier " +
-    "(implicated in `from: created`, 235 tagging failures), and the ungroupedFallback fast path (shipped 2026-08-23, " +
-    "measured INERT in round 181). BUT THE HOST IS NOT UNIFORMLY DEAF: on the same sheets, " +
-    "`getcount-populates-same-sync` answers `yes` 158 of 158 while `items` never does, and `getitemat-past-end` " +
-    "throws 158 of 158 — the correct answer to a wrong question, which proves getItemAt is CALLABLE. So can the " +
-    "collection be walked by INDEX where it will not be read as a LIST? `index-beats-items` means the root is " +
-    "addressable rather than only worked around. `index-unreadable` closes the last cheap idea and is worth as " +
-    "much — this project has spent four rounds on a downstream fix a probe would have refused.",
-  "creationid-on-fresh-shape":
-    "**ANSWERED, ROUND 184: `absent` — the property is not on the shape at all.** `Shape.creationId` DOES NOT " +
-    "EXIST on this host's shapes, though the host advertises requirement set 1.10, which is where it is " +
-    "documented. Its two siblings answered `no-creation-id` on the same sheet, `before=[absent,absent]`. The whole " +
-    "creationId route is closed: there is nothing to record at draw time, nothing to match on, and nothing to " +
-    "migrate to. **This is what the probe was for.** Had the migration been built on the backlog's phrase 'a " +
-    "durable per-shape identifier' — which cited no source — it would have been built on a property that is not " +
-    "there. Three probes, one round, question settled. Kept on `resample` for now because one round is one round " +
-    "and this archive's noise floor is real; retire them once the answer repeats. Original rationale follows. " +
-    "Added 2026-08-23, and CORRECTED the same day. It was added believing `shape.id` was volatile on this host and " +
-    "that creationId would fix the live defect. THE IDS ARE STABLE: round 179's chart reported `mine [35..41]` and " +
-    "those seven ids sit in that round's own end-of-round deck inventory under their real names (title, category-0, " +
-    "seg-0-0, baseline); 228 in-place updates across 30 rounds resolved 4,992 tag-stored ids written in an earlier " +
-    "context; addGroup keyed on id grouped 2,108 charts against 36 throws. What is stale is the LISTING — the " +
-    "re-read returned `[27..33]`, the previous chart's shapes — and the host has said so every round: " +
-    "`shapes-items-count-honest` is `unreadable` 140 / `short-0` 16 across 156 rounds and " +
-    "`tag-through-refetched-shape` is `no-id` 149 of 149. The shape collection has NEVER honestly reported freshly " +
-    "added shapes. So creationId cannot fix the grouping chain: matching on it against the same stale listing " +
-    "matches zero, and there is no `getItemByCreationId` — getItem, getItemOrNullObject and addGroup all take ids " +
-    'only, so it can label a shape but never address one. KEPT ANYWAY for the separate BACKLOG item, "Retire the ' +
-    'positional group-member mapping", which is about node-to-shape ordering INSIDE a group and is untouched by ' +
-    "the above; and because the contract is worth knowing before anyone reaches for it again. " +
-    "WHAT THE DOCUMENTATION ACTUALLY SAYS, checked 2026-08-23, " +
-    'in full: `readonly creationId: string | null` and "Gets the creation ID of the shape. Returns null if the ' +
-    'shape has no creation ID." That is everything — nothing about when it is assigned, nothing about surviving a ' +
-    "save or a session, and an explicit null for shapes that have none. THIS REPO'S OWN BACKLOG calls it \"a durable " +
-    'per-shape identifier" and cites no source; that word is an inference from the NAME. So it is measured before ' +
-    "a migration is built on it. `null` or `absent` here kills the plan on this host, which is worth one probe slot " +
-    "to learn rather than a migration to discover.",
-  "creationid-survives-a-sync":
-    "Added 2026-08-23. The property the product actually needs, not the one the name promises. `shape.id` is what " +
-    "goes stale — `shape-proxy-survives-one-sync` has answered `unreadable` in 133 of 133 rounds, and the rule " +
-    '"only an id crosses a sync, never a handle" exists because of it. This asks whether creationId is any better ' +
-    "across the SAME boundary. `changed` and the migration buys nothing; `stable` while `id` moves and it is exactly " +
-    "the identifier the grouping path has been missing. The shape is re-fetched by POSITION rather than by id, " +
-    "because fetching by id would make the answer depend on the thing under test.",
-  "creationid-survives-grouping":
-    "Added 2026-08-23, and it is the step the defect dies or survives on. Grouping is precisely where identity is " +
-    "lost today: round 179 recorded the positional guess taking `[27..33]` while the chart had drawn `[35..41]` — " +
-    "zero overlap, another chart's shapes, already absorbed into a group. If creationId survives being grouped the " +
-    "re-read can match on it and the guess never runs. If it does not, the migration still fixes the in-place " +
-    'positional mapping (worth having on its own — see BACKLOG, "Retire the positional group-member mapping") but ' +
-    "NOT the defect that is costing charts, and the two must not be conflated in whatever is built next.",
-  "how-many-collection-reads-a-context-survives":
-    "ANSWERED AND UNANSWERABLE, round 049: `unreadable-at-1`, three samples, stable — the scratch slide would not " +
-    "enumerate its collection even ONCE, so there was never a baseline to degrade from. It is the THIRD question to " +
-    "die on the same harness limit, after `shapes-items-count-honest` and `which-end-a-short-read-drops`, and " +
-    "together they are a finding about the HARNESS rather than the host: the scratch slide is strictly worse at " +
-    "collection reads than a real one, whose collection enumerates fine for the first three charts of a deck update. " +
-    "COLLECTION QUESTIONS CANNOT BE ASKED FROM A PROBE ON THIS HOST — they have to be instrumented in the production " +
-    "path, which is what `contextSyncs` on the re-read traces now does. Keep the question for a host that lists " +
-    "scratch shapes; expect nothing from it here. Original rationale follows. " +
-    "Added 2026-08-15, and it decides the strongest lead this project has. `same scale across the deck` has failed " +
-    "seventeen rounds running and its per-chart trace is a decay curve, identical in rounds 043-046: charts 1-3 " +
-    "re-read all 24 shapes and group, chart 4 matches 20 of 24 and is thrown away, chart 5 gets NOTHING back, charts " +
-    "6-8 are never attempted. Grouping is what saves a config (64 grouped 1 lost; 62 ungrouped 41 lost), so the " +
-    "re-read going short IS the failure — one level above the tag handle four rounds and a renderer change went into. " +
-    "The suspect is our own perf work: updateChartsInSlides was deliberately made ONE context, four syncs, flat in N, " +
-    "and this host appears to degrade as a context is used; #112 already made the opposite call for the demo deck. " +
-    "ASKED RATHER THAN FIXED because the fix is a 390-line restructure of the live update path and this project has " +
-    "three shipped-broken fixes on record from changing that path on a theory. A small fixed number says chunk the " +
-    "update at that boundary; `survives-12` says the context is not the limit and a fresh one would not help.",
-  "does-a-failed-group-poison-the-tag":
-    "Added 2026-08-15 from round 043, and it may retire the whole ordering effort. The tag anchor was moved onto a " +
-    "handle nothing resolves, and 043 then scored exactly what 042 scored — cfg-tag-5010 six times, `origin tag lost` " +
-    "zero times. If the handle were the lever, both numbers should have moved. What sits between the draw and the tag " +
-    "in production is a grouping attempt, refused 5010 five times in that same round; a failed sync poisons its own " +
-    "context, which this project already works around elsewhere, and `no chart's tag could be queued` firing five " +
-    "times is a CONTEXT-level symptom — the queue refused before any handle was exercised. " +
-    "`tag-the-creation-proxy-a-sync-later: yes` is the control: same handle, same age, no grouping attempt between. " +
-    "`refused-after-group` means the context is the lever and the anchor move was aimed one level too low; `yes` " +
-    "means the tag failure needs another explanation; `no-refusal` means the host grouped and the question was never " +
-    "put. ROUND 044 ANSWERED `no-refusal` and that is why the question ages its handles now: the first version " +
-    "grouped two shapes from the same batch, which this host is perfectly happy to do — it refuses PRODUCTION's " +
-    "groups, whose members and slide handle are several syncs old by the time addGroup is called. " +
-    "READ IT WITH THE CONTROL OR NOT AT ALL: ageing the handles means `refused-after-group` could equally be the age " +
-    "rule refusing the write, which is exactly what it means under the `strictTags` fake. " +
-    "`tag-the-creation-proxy-a-sync-later: yes` on the real host is what excludes age and leaves the group implicated.",
-  "which-end-a-short-read-drops":
-    "Added 2026-08-15 to price a trade that has since been un-taken, and kept because the question is about the HOST " +
-    "rather than about the change that prompted it. The config tag briefly landed on the LAST shape drawn — the one " +
-    "handle no load() resolves, and so the only one this host was expected to accept a tag through (tagAnchorIndex). " +
-    "That move measured no effect across five rounds and four builds and was reverted on 2026-08-16; the anchor is " +
-    "created[0] again. The cost it would have carried is that a deck scan reading the collection SHORT may not reach " +
-    "the last shape, and a chart it cannot see is one Same Scale cannot rescale. The head anchor is safe from that — " +
-    "but only if a short read drops from the tail, and nobody knows whether it does. The fake truncates the tail, " +
-    "which is a modelling choice rather than evidence, and this host answers `shapes-items-count-honest: short-0`, " +
-    "returning nothing at all and so saying nothing about which end. Asked by POSITION rather than by id, because " +
-    "every question here that needs an id off a scratch shape spends its life answering no-scratch-shape. " +
-    "`keeps-head` makes the trade real and worth mitigating; `keeps-tail` makes it free; `none` says it does not " +
-    "arise on this host and the fake is the only place it bites. " +
-    "ROUNDS 043 AND 044 BOTH ANSWERED `unreadable` — 'the collection would not list its items' — and that is very " +
-    "probably the permanent answer rather than a miss: `shapes-items-count-honest` answers `unreadable` on the same " +
-    "sheet, with `items` undefined rather than short. THE TRADE IS THEREFORE MOOT ON THIS HOST, and that is the " +
-    "finding: a read that returns NO list cannot drop one end rather than the other, so where the anchor sits in the " +
-    "collection cannot decide whether a scan sees it. The question stays because a host that lists items would answer " +
-    "it in one round and the cost is one scratch slide, but nothing should wait on it.",
-  "collection-read-poisons-the-creation-handle":
-    "Added 2026-08-15, and it is the question the ordering fix is now blocked on — the fix was BUILT that day and the " +
-    "Office.js fake refused it. `survives-8` says a creation handle keeps taking tag writes for at least eight syncs, and " +
-    "`tag-through-refetched-shape: no-id` says there is no id to re-fetch one by, so the fix looked settled: make the tag " +
-    "anchor a shape the draw loop never `load()`s and the write goes through. Production does one thing neither probe " +
-    "does — `groupAndTagAll` re-reads the whole slide's shape collection before grouping, because grouping needs fresh " +
-    "handles — and in the fake that read marks the shape resolved for EVERY handle onto it, creation handle included, so " +
-    "holding the anchor's own load back changes nothing and the write is refused anyway. Whether the real host works " +
-    "that way is unknown. Office.js gives each proxy its own object path, and the fake itself takes that view everywhere " +
-    "else: a fresh handle gets its own `syncCreated` and its own tag writer, sharing only the shape's state. " +
-    "`loadedProps` is handle state modelled as shape state, which is either a bug in the fake or the one place it is " +
-    "right. `yes` means the collection read is innocent, the fake is wrong, and the ordering fix works — build it. " +
-    "`refused` means no arrangement of loads saves the drawing context's write while grouping needs a re-read, and the " +
-    "fix has to be a second tag key or nothing.",
-  "how-many-syncs-a-creation-handle-survives":
-    "Added 2026-08-15 after round 037 carried the new `from` field and answered the question it was built for: EVERY tag " +
-    "failure in that round went through a `created` handle — seven batch-level and four per-chart, not one `refreshed` " +
-    "or `by-id`. So swapping the tag target changes nothing and the ordering is what has to change. Four of those " +
-    "failures were also a different fault from the 5010: `Cannot read properties of undefined (reading 'add')`, i.e. " +
-    "`.tags` GONE rather than refused. `tags-on-fresh-shape` asks in the creating batch and answers yes every round; " +
-    "`tag-the-creation-proxy-a-sync-later` asks one sync later and also answers yes. Production's handles are older " +
-    "than either — the renderer chunks a chart across batches — so this asks HOW LONG one lasts. The answer is the " +
-    "budget an ordering fix gets built against, and guessing it is what would make that change a gamble. The fake " +
-    "answers `survives-8` because nothing in it ages a handle this way; a real number below 8 is the finding.",
-  "tag-through-refetched-shape":
-    "Added 2026-08-14 after rounds 29 and 30 failed `same scale across the deck` identically: `InvalidParam passed to " +
-    "GetItem(id)` (5010) at `writing the chart's config tag`, charts left with no config, the scenario stopping on the " +
-    "second consecutive loss. That is the exact path `finishCharts` takes — write the tag through " +
-    "`shapes.getItemOrNullObject(id)` with an id read off a shape created a sync earlier. `tags-on-fresh-shape` already " +
-    "says the fresh shape's own `.tags` works, every round, so the id round trip is the untested half. A question rather " +
-    "than a rewrite ON PURPOSE: this path has a history of changes reverted on a theory. `threw` means stop re-fetching " +
-    "and tag the creation proxy; `yes` means the 5010 comes from somewhere else and a rewrite would have been wasted.",
-  "shape-resolve-held-slide-proxy":
-    "Added after the fixture's build. It decides whether `deleteShapesById`, `setShapeSelection` and the selection path are bugs or merely untidy: all three resolve a slide, sync, then reach through that same handle for a shape. The write form of this is known to fail; the read form has never been asked, and the fake's windowed handle does not gate it either way.",
-};
+export const PENDING_QUESTIONS = {};
 
 /**
  * What each divergence would MEAN, so the report says something actionable
