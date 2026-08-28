@@ -148,7 +148,11 @@ export function layoutButterfly(cfg: ChartConfig, style: ChartStyle, decor: Deco
       // and the tilemap's legend take.
       const half = Math.max(0, x1 - x0);
       const name = entry?.s.name ?? "";
-      const band = Math.max(0, Math.min(headerH, cfg.height - titleH));
+      // AND THE FOOTNOTE, for the same reason the plot subtracts it: this band is
+      // what is left of the chart above the bars, and a footnote is drawn at the
+      // foot whether or not anything reserved room for it. On an 80x60 butterfly
+      // at 18pt the two names and the source line were laid over each other.
+      const band = Math.max(0, Math.min(headerH, cfg.height - titleH - footnoteH(cfg, style, decor)));
       let hf = bandFontSize(fs, band, 1.6);
       if (!hf) return;
       while (hf > 5 && textWidth(name, hf) > half - 2) hf -= 0.5;

@@ -199,7 +199,6 @@ const BUDGET: Record<string, number> = {
   "header# / label##": 4,
   "title / row#": 4,
   "tile#-value / tile#-value": 4,
-  "header# / footnote": 4,
   "title / category#": 3,
   "label## / cagr-label": 2,
   "title / combo-series-label#": 1,

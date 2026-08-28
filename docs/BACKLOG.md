@@ -3038,3 +3038,69 @@ wraps rather than truncating and `horizontalLegendFits` refuses all or none — 
 a drawn legend currently holds every entry. It stays by name anyway: it is the
 honest statement of the rule, and it is exactly what the first attempt needed
 and did not have.
+
+### `series-label` in a combo's gutter — DIAGNOSED, NOT FIXED 2026-08-28
+
+The last sizeable shape in the tail, 30 pairs across three names, and every one
+of them is the same chart: a TEN-SERIES COMBO, UPRIGHT. Worth writing down
+because the diagnosis took a decisive experiment and one wrong turn.
+
+**`seriesLabelNodes` places them correctly.** Instrumented, it spreads the seven
+column names down the gutter at 22.0, 29.2, 36.4 … 65.3 — an even 7.2pt pitch,
+shrunk to 5.8pt so nothing overlaps, which is exactly what its own comment says
+it does "so the de-collision pass has nothing to do".
+
+**`resolveLabelCollisions` then undoes it.** Disabling that pass and rebuilding
+the same chart gives the even spread back; with it on, four of the seven are
+pushed up by about 24 points and the pitch becomes 7.2, 7.3, 7.2, **2.8**, 36.1,
+7.2 — one pair closer than a line of text, which is the overlap.
+
+**The cause is the gutter holding two families.** A combo's column names
+(`series-label-`) and its line names (`combo-series-label-`) share one rank in
+`MOVABLE` and one strip of canvas, and they are placed by different code at
+different times: `seriesLabelNodes` spreads the columns to fill the gutter
+before the lines exist, and the lines are then added at their own points. The
+de-collider inherits ten labels in a gutter sized for seven and can only push
+UP.
+
+**THE FIX IS THE SAME SHAPE AS THE LEGEND'S and is a design change, not a
+patch:** the two families have to be laid out together, so the spread accounts
+for every name in the gutter. That needs the lines' anchor positions, which are
+not known until after `layoutColumns` has run — the ordering problem the legend
+fix solved with `decor.legendAlso`, and the same trick will not work here
+because these positions are computed, not declared. Left alone deliberately
+rather than patched in the de-collider, which already carries three separate
+scars from being patched.
+
+**AND ONE WRONG TURN, KEPT because it is the night's own lesson.** The first
+reading of this was "a label is pushed clean off the canvas" — `series-label-1`
+comes out at y = -2.5. It is not off the canvas: `y` is the BOX top, the node is
+`valign: "middle"` in a box a good deal taller than its text, and the ink sits
+at 0.6. The de-collider's guard, which tests the INK, held exactly as designed. A
+post-condition written against the misreading never fired once, which is how it
+was caught. Box versus ink is the same confusion this file has recorded three
+times in other people's code tonight; it is easier to make than it looks.
+
+### The butterfly's headers, and where the tail stands — 2026-08-28
+
+`header# / footnote`: the band the series headers are fitted into is
+`cfg.height - titleH` and does not subtract the footnote, the same omission the
+plot had two commits ago. On an 80x60 butterfly at 18pt the two series names and
+the source line were laid over each other. Fixed the same way. 4 -> 0.
+
+**The tail, after a night of it:**
+
+    353 total  ->  349
+    valueAxisTitle          286   waits on the owner's decision
+    series-label in a
+      combo's gutter         30   diagnosed above; needs a design change
+    everything else          33   nine shapes, none above 11
+
+The `valueAxisTitle` group is now 82% of every text overlap this engine has, and
+the second-largest is one diagnosed, deliberately-unpatched family. What is left
+after those two is thirty-three pairs across nine shapes, several of which need
+option combinations the quick probes do not reproduce and which will each want
+their own sweep to place.
+
+This is the point where the sweep stops paying for itself per hour. It began at
+2,148.
