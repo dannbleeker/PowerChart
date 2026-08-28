@@ -7525,6 +7525,30 @@ export async function slideSize(opts: { refresh?: boolean } = {}): Promise<Slide
   if (!opts.refresh && cachedSlideSize && AUTHORITATIVE_SIZE_SOURCES.has(cachedSlideSize.source))
     return cachedSlideSize;
 
+  // HOW LONG EACH RUNG TOOK, because the archive can count these and cannot
+  // time them.
+  //
+  // The sweep of 2026-08-29 over 270 rounds found something sharper than the
+  // "hangs about twice as often as it answers" this was filed under:
+  //
+  //     rounds that hang on rung 1 and then record pageSetup        82
+  //     rounds that hang on rung 1 and then record exportedSlide    75
+  //     rounds that record a size without hanging on rung 1          0
+  //
+  // Every round that reads a slide size times out on rung 1 first — 157 of 157,
+  // always the full 4000ms — and rung 1 still supplies the final answer in 82 of
+  // them. So the four seconds is universal rather than occasional, and the rung
+  // paying it is also the rung that wins half the time. Neither "lower the
+  // bound" nor "drop the rung" follows from that.
+  //
+  // What decides it is the one number nobody has: how long a SUCCESSFUL rung-1
+  // read takes. Under 4000ms and the timeout is being paid by a different call
+  // than the one that answers, so the bound can come down for free. Over it, and
+  // the bound is what makes those 82 answers possible and lowering it would
+  // trade them for exports. One field, and the next round says which.
+  const rungStarted = Date.now();
+  const took = () => Date.now() - rungStarted;
+
   // Rung 1 — the direct read.
   if (supports("1.10")) {
     try {
@@ -7545,7 +7569,7 @@ export async function slideSize(opts: { refresh?: boolean } = {}): Promise<Slide
       );
       if (Number.isFinite(got.width) && Number.isFinite(got.height) && got.width > 0 && got.height > 0) {
         cachedSlideSize = { ...got, source: "pageSetup" };
-        trace("host", "slide size read", { ...cachedSlideSize });
+        trace("host", "slide size read", { ...cachedSlideSize, ms: took() });
         return cachedSlideSize;
       }
     } catch {
@@ -7565,7 +7589,7 @@ export async function slideSize(opts: { refresh?: boolean } = {}): Promise<Slide
       const got = base64 ? await slideSizeFromPptxBase64(base64) : null;
       if (got) {
         cachedSlideSize = got;
-        trace("host", "slide size read", { ...cachedSlideSize });
+        trace("host", "slide size read", { ...cachedSlideSize, ms: took() });
         return cachedSlideSize;
       }
     } catch {
@@ -7585,11 +7609,11 @@ export async function slideSize(opts: { refresh?: boolean } = {}): Promise<Slide
   const fromFile = await slideSizeFromDocumentFile();
   if (fromFile) {
     cachedSlideSize = { ...fromFile, source: "documentFile" };
-    trace("host", "slide size read", { ...cachedSlideSize });
+    trace("host", "slide size read", { ...cachedSlideSize, ms: took() });
     return cachedSlideSize;
   }
 
-  trace("host", "slide size unavailable — assuming 16:9", { ...ASSUMED_SLIDE_SIZE });
+  trace("host", "slide size unavailable — assuming 16:9", { ...ASSUMED_SLIDE_SIZE, ms: took() });
   cachedSlideSize = ASSUMED_SLIDE_SIZE;
   return cachedSlideSize;
 }

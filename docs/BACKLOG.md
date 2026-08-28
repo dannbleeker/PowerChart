@@ -31,9 +31,9 @@ shipped, refused, or a finding rather than a task.
 | 3 | **Adding to an occupied slide costs ~24s; a fresh one ~0.75s** | §1, *Adding a chart to an existing slide* | Measured over 2,917 batches. The arm that would settle it has run once. Item 2 is the user-facing half; making it actually faster is unstarted. |
 | 4 | **The picture fast-path** | §1, first entry, and §3 | The largest product cost left. The in-place fast path writes a closed set of `rect`/`text` properties and a picture fill is neither, so every picture update redraws whole. A real feature, not a small fix. |
 | 5 | **File this project's host measurements to the office-js tracker** | §1, *Report what this project has measured* | **Owner-gated** — it goes out under his GitHub identity, so nothing is filed without his word on that specific issue. Three are written and ready. |
-| 6 | **The dual-axis gutter** — 30 overlapping pairs | §3, *Text drawn over text* | Diagnosed and deliberately NOT patched. The obvious fix was measured: it removes 34 overlaps and DELETES 335 tick numbers. Three label families in one strip want a design. |
+| 6 | **The dual-axis gutter** — 30 overlapping pairs | §3, *Text drawn over text* | Diagnosed, and the design is now written (2026-08-29): place the ANCHORED family first and fit the movable one around it, rather than merging both and letting the ticks yield. Not implemented — it changes label placement on every combo chart, so it wants the sweep, the ratchet and a round. Two numbers decide it: pairs, and tick numbers drawn. |
 | 7 | ~~**Positional group-member mapping → `Shape.creationId`**~~ | §3 | **CLOSED 2026-08-29 — the host refuses it.** This host reports PowerPointApi **1.10** and does not populate `Shape.creationId`: `absent` / `no-creation-id` on all three probe questions, 25 of 25 rounds. So it was never a matter of gating on 1.10. The positional mapping stays, still inferred, still guarded by the node-0 anchor test — which is now the permanent answer rather than a stopgap. |
-| 8 | **`slideSize()` rung 1 hangs about twice as often as it answers** | §3 | Measured across 147 rounds. Not acted on, because the numbers do not yet say which way to act. |
+| 8 | **`slideSize()` rung 1 times out in EVERY round that reads a size** | §3 | Re-measured 2026-08-29 over 270 rounds: 157 of 157, always the full 4000ms — not "about twice as often as it answers". Rung 1 still supplies the answer in 82 of them. `ms` is now traced on all four rungs, so the next rounds say whether the bound can come down. |
 
 Two standing costs that are not tasks: the host crashes during evidence
 collection after a long round (§3 — it costs the evidence, not the run), and
@@ -1798,10 +1798,48 @@ starved questions. Retiring two of the six is not a fix for the harness; it
 removes two questions that could never pay, and gives their slide back to the
 ones that might.
 
-### The slide-size ladder's first rung hangs about twice as often as it answers — OPEN
+### The slide-size ladder's first rung hangs about twice as often as it answers — RE-MEASURED, AND IT IS WORSE THAN THAT
 
-**Measured 2026-08-23, over all 147 archived rounds. Not acted on, because the
-numbers do not yet say which way to act.**
+**RE-MEASURED 2026-08-29 over 270 rounds, and the headline below is wrong in
+the direction that matters. It is not "about twice as often as it answers".
+Every round that reads a slide size times out on rung 1 first:**
+
+    rounds that hang on rung 1, then record pageSetup        82
+    rounds that hang on rung 1, then record exportedSlide    75
+    rounds that record a size WITHOUT hanging on rung 1       0
+    rounds that hang and never get a size                     0
+
+**157 of 157, always the full 4000ms — one hang per round, never two.** The four
+seconds is universal, not occasional. And rung 1 is not the loser it reads as:
+it supplies the final answer in 82 of those 157, more often than rung 2 does.
+
+The 2026-08-23 figures below (22 · 22 · 44) were the same questions asked with
+a pattern that matched a fraction of the archive. Both counts were low and the
+ratio between them survived, which is what made them look reliable.
+
+**So neither obvious action follows.** "Lower the bound" now saves four seconds
+in EVERY round rather than a third of them — a much better prize — but rung 1
+is also the rung that wins half the time, and a lower bound might buy the time
+by giving those 82 answers away to an export whose cost is still unmeasured.
+
+**What decides it is one number nobody has: how long a SUCCESSFUL rung-1 read
+takes.** Under 4000ms and the timeout is being paid by a different call than the
+one that answers, so the bound comes down for free. Over it, and the bound is
+exactly what makes those 82 answers possible.
+
+`slideSize()` now traces `ms` on all four rungs (2026-08-29), so the next rounds
+answer it. Four tests, four mutants — three killed by the runner and the fourth
+confirmed by hand after the runner failed to apply it.
+
+One defect found writing those tests, worth recording because it is this
+project's recurring one: the rung-3 assertion used `traceLog().entries.find`,
+and that log accumulates across the file, so it read a line an EARLIER test had
+written and passed against a deliberately broken rung. Measuring something
+adjacent to what you meant to measure — the same shape as the gauge total
+measured unbold and drawn bold. It searches from a captured index now.
+
+**Original entry, 2026-08-23, kept because the reasoning about WHY not to act
+blindly is still right:**
 
 `slideSize()` rung 1 reads `presentation.pageSetup` directly, bounded by
 `SELECTION_TIMEOUT_MS` (4000ms). Across the archive:
@@ -2061,6 +2099,52 @@ two of them. So that case keeps its 30 pairs.
 
 Three families in one strip wants a design — a gutter that is allocated once,
 with each family's claim on it stated — not a third pass over the same nodes.
+
+**THE DESIGN, written 2026-08-29. Not implemented: it changes how labels are
+placed on every combo chart, so it wants the sweep, the ratchet and a round,
+not a late-night patch.**
+
+The failed attempt shared the band by YIELD — merge everything, then let the
+secondary strip drop whatever lands on a name. That is why it deleted 335 tick
+numbers: `seriesLabelNodes` spreads names over the WHOLE band from the title's
+bottom to the frame's bottom whenever they collide, so after the merge there is
+almost nowhere a tick can land that is not on a name.
+
+The asymmetry the fix should turn on is not importance, it is **whether a label
+may move at all**:
+
+- A secondary tick's `y` is DETERMINED — it is that value's position on the
+  secondary scale. Move it and it is a lie. There are typically four to six.
+- A series name's `y` is a PREFERENCE — the last segment's midpoint — and
+  `seriesLabelNodes` already overrides it freely: it pushes names apart by
+  `lineH`, clamps the overflow, spreads them evenly over the band when the gap
+  cannot be honoured, shrinks to fit, and drops them all past `MIN_LABEL_FS *
+  1.25`.
+
+So the anchored family should be placed FIRST and become geometry, and the
+movable family should be fitted around it. Today it is exactly backwards: the
+ticks are emitted first and then yield to whatever was already drawn, while the
+names spread as though the strip were theirs alone.
+
+**The change, concretely.** Give `seriesLabelNodes` a fourth input — the y
+intervals the secondary strip has claimed — and have the spread place names in
+the gaps between them rather than across the band. Everything else it does
+already applies: too little room and it shrinks, too little for that and it
+drops, which is the answer this engine gives everywhere else a reservation
+cannot be paid for. No new pass, no new yield rule, and the secondary strip
+stops needing one at all.
+
+**What it costs, stated in advance so the measurement is honest.** Names lose
+band, so charts with many series in a dual-axis combo will shrink or drop names
+that are drawn today. That is the trade this file has already made twice, and
+it is the right way round only if the count moves: the 30 pairs should go to
+roughly zero without the 335 tick numbers being spent. Anything else and the
+answer is that a dual-axis combo with many series has no room for both, which
+is a legitimate finding and should be recorded rather than forced.
+
+**Order of work:** intervals in first with the parameter unused and the sweep
+re-run to prove it is inert; then the spread; then re-measure. Two numbers
+decide it — pairs, and tick numbers drawn.
 
 ---
 

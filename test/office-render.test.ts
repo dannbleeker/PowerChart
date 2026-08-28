@@ -4590,6 +4590,44 @@ describe("reading the presentation's slide size", () => {
     expect(size).toEqual({ width: 960, height: 540, source: "assumed" });
   });
 
+  /**
+   * The ladder must SAY how long it took, on whichever rung answers.
+   *
+   * The archive can count these traces and cannot time them, and that is the
+   * whole reason the slide-size rung sat open. Over 270 rounds, every round
+   * that reads a size times out on rung 1 first — 157 of 157, always the full
+   * 4000ms — and rung 1 still supplies the answer in 82 of them. Whether the
+   * bound can come down turns entirely on how long a SUCCESSFUL read takes,
+   * and no trace carried it.
+   *
+   * Asserted on every rung, not just the first: the comparison the next sweep
+   * makes is rung 1 against rung 2, so a duration on one of them measures
+   * nothing.
+   */
+  it("says how long the read took, on whichever rung answers", async () => {
+    const ladder: [string, () => void][] = [
+      ["pageSetup", () => installHost([makeSlide("s1")])],
+      ["exportedSlide", () => installHost([makeSlide("s1")], [], undefined, (v) => v !== "1.10")],
+      ["assumed", () => installHost([makeSlide("s1")], [], undefined, () => false)],
+    ];
+    for (const [rung, install] of ladder) {
+      _resetSlideSizeCache();
+      install();
+      setTracing(true);
+      try {
+        const size = await slideSize();
+        expect(size.source, `the ${rung} case did not reach its rung`).toBe(rung);
+        const line = traceLog().entries.find((e) => /^slide size (read|unavailable)/.test(e.message));
+        expect(line, `${rung} answered without tracing anything`).toBeTruthy();
+        const ms = (line!.data as { ms?: unknown }).ms;
+        expect(typeof ms, `${rung} traced no duration — the archive cannot time this rung`).toBe("number");
+        expect(ms as number, `${rung} traced a negative duration`).toBeGreaterThanOrEqual(0);
+      } finally {
+        setTracing(false);
+      }
+    }
+  });
+
   it("caches the answer, and re-reads on request", async () => {
     installHost([makeSlide("s1")]);
     expect((await slideSize()).width).toBe(960);
@@ -4716,7 +4754,28 @@ describe("reading the presentation's slide size", () => {
       },
       FileType: { Compressed: "compressed" },
     });
-    const size = await slideSize();
+    setTracing(true);
+    // THE INDEX BEFORE, and the search starts from it. `traceLog()` accumulates
+    // across this file, so `find` returned the FIRST "slide size read" in the
+    // run — a line another test wrote, with a duration this rung never traced.
+    // The assertion passed against a deliberately broken rung 3 because of it,
+    // which is how it was caught: three of four mutants died and this one would
+    // not, however the trace site was mutated.
+    const before = traceLog().entries.length;
+    let size;
+    try {
+      size = await slideSize();
+      // The fourth rung's duration, asserted HERE rather than in the block
+      // above, because reaching this rung costs a two-slice zip and a stubbed
+      // Common API and this test already builds both.
+      const line = traceLog()
+        .entries.slice(before)
+        .find((e) => e.message === "slide size read");
+      expect(line, "the deepest rung answered without tracing at all").toBeTruthy();
+      expect(typeof (line!.data as { ms?: unknown }).ms, "the deepest rung traced no duration").toBe("number");
+    } finally {
+      setTracing(false);
+    }
     expect(size).toEqual({ width: 720, height: 540, source: "documentFile" });
     // The handle MUST be released: a leaked one holds the host's copy of the
     // document alive and can block later getFileAsync calls outright.
