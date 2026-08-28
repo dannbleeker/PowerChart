@@ -32,13 +32,22 @@ shipped, refused, or a finding rather than a task.
 | 4 | **The picture fast-path** | §1, first entry, and §3 | The largest product cost left. The in-place fast path writes a closed set of `rect`/`text` properties and a picture fill is neither, so every picture update redraws whole. A real feature, not a small fix. |
 | 5 | **File this project's host measurements to the office-js tracker** | §1, *Report what this project has measured* | **Owner-gated** — it goes out under his GitHub identity, so nothing is filed without his word on that specific issue. Three are written and ready. |
 | 6 | **The dual-axis gutter** — 30 overlapping pairs | §3, *Text drawn over text* | Diagnosed and deliberately NOT patched. The obvious fix was measured: it removes 34 overlaps and DELETES 335 tick numbers. Three label families in one strip want a design. |
-| 7 | **Positional group-member mapping → `Shape.creationId`** | §3 | The mapping is inferred, not documented. `creationId` is the real fix and needs a PowerPointApi 1.10 branch with the positional mapping as fallback. Guarded meanwhile by one test. |
+| 7 | ~~**Positional group-member mapping → `Shape.creationId`**~~ | §3 | **CLOSED 2026-08-29 — the host refuses it.** This host reports PowerPointApi **1.10** and does not populate `Shape.creationId`: `absent` / `no-creation-id` on all three probe questions, 25 of 25 rounds. So it was never a matter of gating on 1.10. The positional mapping stays, still inferred, still guarded by the node-0 anchor test — which is now the permanent answer rather than a stopgap. |
 | 8 | **`slideSize()` rung 1 hangs about twice as often as it answers** | §3 | Measured across 147 rounds. Not acted on, because the numbers do not yet say which way to act. |
 
 Two standing costs that are not tasks: the host crashes during evidence
 collection after a long round (§3 — it costs the evidence, not the run), and
 `test/overlap-budget.test.ts` holds 317 overlapping pairs whose per-shape table
 is the live list.
+
+**Newly reopened, 2026-08-29: PowerPointApi 1.8 bindings.** §2 retires them as
+"unanswerable on this host", on the strength of the host rejecting the batch
+that carries a binding. Over the 25 rounds to 2026-08-28 that face appears
+ONCE, against `yes` 15 times and `silent` 8. It is the last untried way out of
+the id refusals and the evidence that closed it has weakened. Not put on the
+list above because nothing has been designed — the `silent` third is its own
+problem — but it is no longer refuted, and `binding-names-shape-later` is back
+on the probe's resample shortlist so the next rounds keep counting.
 
 ### Two of every three redraws are a grouped chart the update cannot map — 2026-08-26
 
@@ -1700,7 +1709,28 @@ Event 507 four times in a morning, `ERR_NETWORK_IO_SUSPENDED` in the console
 tail. Power settings on AC now prevent it; on battery the display still sleeps at
 four minutes, which on a Modern Standby machine is what triggers it.
 
-### Retire the positional group-member mapping with `Shape.creationId` — OPEN
+### Retire the positional group-member mapping with `Shape.creationId` — CLOSED 2026-08-29, REFUSED BY THE HOST
+
+**The remedy does not exist here.** This host reports PowerPointApi **1.10** in
+`requirementSets` and does not populate `Shape.creationId`. All three probe
+questions say so, unanimously, over the 25 rounds to 2026-08-28:
+
+    creationid-on-fresh-shape       absent          25 of 25
+    creationid-survives-a-sync      no-creation-id  25 of 25
+    creationid-survives-grouping    no-creation-id  25 of 25
+
+So the blocker recorded below — "the paths that reach this code are gated at
+1.8, so it needs a 1.10 branch" — was never the blocker. A 1.10 branch would
+compile, ship, and find nothing to read. The positional mapping stays, and the
+test asserting the TARGET of a node-0 write is its permanent guard rather than
+a stopgap.
+
+Worth noting how this stayed open: the three answers had been on every sheet
+for months, and the questions sat in `PENDING_QUESTIONS` marked "the committed
+sheet predates this question" because the fixture beside the gate was a
+2026-08-12 capture. The probe was even spending a scarce scratch slide
+re-asking each of them. The analysis below is kept because the reasoning about
+what the mapping rests on is still true.
 
 The in-place update maps scene nodes to a grouped chart's shapes by POSITION:
 member 0 is the anchor, the rest line up in drawing order. Round 145 showed what
