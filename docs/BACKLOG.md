@@ -2780,19 +2780,24 @@ records over fourteen distinct builds, taking the LAST step each one wrote and
 counting each phase once per build so a bad night cannot vote twice:
 
     4 build(s)   draw  — parts list outcome
-    3 build(s)   pane  — collecting deck evidence — scanning
+    4 build(s)   pane  — collecting deck evidence — scanning
     2 build(s)   probe — asking
     2 build(s)   draw  — batch issued
     2 build(s)   probe — re-asked what the empty deck could not answer
     1 build each update / group / probe answered / probe second pass
+
+(24 records over 15 builds. This table was written at 22 records over 14 and
+said the scan was second at three builds; round 290 crashed at the scan an hour
+later and tied it. A number in prose decays — the counting script is four lines
+and the archive is on disk, so re-run it rather than quote this.)
 
 **Counting records rather than builds would have said `parts list outcome` five
 times to the scan's four** — and three of those five are the same build on the
 same day, 77fc64f on 2026-08-24. One build that crashed three times is one piece
 of evidence, not three, and the difference decides which phase looks dominant.
 
-So: no phase dominates. The deck scan is one of at least two real signatures and
-is not the largest. The per-phase traces did their job — before them, six of
+So: no phase dominates. The deck scan and the parts-list outcome are the two
+largest and are level. The per-phase traces did their job — before them, six of
 these would have been filed under the probe re-ask — and what they show is a
 host that falls over in several different places late in a long round, not one
 broken call.
@@ -2807,3 +2812,14 @@ Worth noting for what it says about severity: the scenarios pass and the round
 archives 14/14. This crash costs the EVIDENCE COLLECTION after the run, not the
 run. That is why it has been survivable for a month, and it is also why it has
 never been urgent enough to fix.
+
+**And the host says the channel was healthy.** `crashes/2026-08-28T01-51-11.md`
+is PowerPoint's own account of the 524s crash in round 290: the document channel
+answered `200` on every one of its last twelve `GetUpdates` calls, and every
+console error in the window belongs to Microsoft's own infrastructure —
+safelinks, telemetry, a 403 and a 500 from services this add-in never calls.
+Nothing in that log points at us.
+
+One number in it is worth keeping: the document channel had issued **87,331
+requests** by the time it fell over. That is what a ten-minute round costs a
+live PowerPoint session, and it is the scale at which this happens.
