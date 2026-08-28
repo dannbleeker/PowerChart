@@ -1,5 +1,5 @@
 import type { ChartConfig, ChartStyle, Decorations, LayoutAnchors, Series } from "../types";
-import { contrastInk, textWidth, type SceneNode } from "../scene";
+import { contrastInk, textWidth, type SceneNode, type TextNode } from "../scene";
 import { clipToWidth } from "../elements";
 import { formatNumber, niceTicks, resolveFormat, segmentLabel, axisTickLabel } from "../format";
 import { seriesColor } from "../style";
@@ -33,6 +33,7 @@ import { layoutMekko } from "./mekko";
 import { layoutLine } from "./line";
 import { columnNegativeTotal, columnPositiveTotal, columnSignedTotal } from "./totals";
 import { maxOf, minOf } from "../agg";
+import { tightBox } from "../collide";
 
 /**
  * The nearest drawn category before / after `c`, or -1.
@@ -1053,6 +1054,35 @@ export function layoutCombo(cfg: ChartConfig, style: ChartStyle, decor: Decorati
      * moves the strip as a block already.
      */
     const boxW = fs * 3.4 * tickScale2;
+    /**
+     * THE STRIP YIELDS TO WHATEVER IS ALREADY THERE.
+     *
+     * No gutter is reserved for it — the note at the push below says so — and
+     * that is the whole of this family of collisions. Sideways it sits above the
+     * plot at `plot.y - fs * 1.5`, clamped by `Math.max(0, …)`, so a chart whose
+     * chrome has squeezed the plot to the ceiling pins the whole strip onto the
+     * TITLE. Upright it sits two points right of the plot, where a narrow chart
+     * has the category names, the primary value axis, the legend and the series
+     * names. 184 pairs across the variant sweep, spread thin over every kind
+     * that can carry an overlay.
+     *
+     * Reserving a gutter was the other option and it is the worse one: it would
+     * shrink the plot on every dual-axis chart, including the roomy ones that
+     * have no collision to fix.
+     *
+     * So the secondary strip is the one that gives way. It is the add-on — the
+     * base chart's own axis, its category names and its legend were placed
+     * first and describe the bars — and this is the same answer its own note
+     * already gives for the title: a tick that cannot be labelled inside the
+     * chart keeps its gridline and loses its number.
+     *
+     * Tested against `nodes` as it stands right now, which is exactly the base
+     * chart plus the title. Anything drawn AFTER this point is the overlay's
+     * own, and those are fitted against each other by the rules above.
+     */
+    const placedText = nodes.filter((n): n is TextNode => n.kind === "text" && !!String(n.text).trim()).map(tightBox);
+    const landsOnSomething = (x: number, y: number, w: number, h: number) =>
+      placedText.some((b) => x < b.x + b.w && b.x < x + w && y < b.y + b.h && b.y < y + h);
     const stripShift = (() => {
       if (!H || tickScale2 <= 0) return 0;
       const lefts = ticks2.map((t) => lineToY(t) - fs * 1.7 * tickScale2);
@@ -1077,6 +1107,12 @@ export function layoutCombo(cfg: ChartConfig, style: ChartStyle, decor: Decorati
       // tick that cannot be labelled inside the chart keeps its gridline and
       // loses its number.
       if (!H && printsOnTitle(cfg, style, q - fs * 0.7)) continue;
+      // And not on anything the base chart already drew — see `landsOnSomething`.
+      const tx = H
+        ? q - fs * 1.7 * tickScale2 + stripShift
+        : Math.max(0, Math.min(plot.x + plot.w + 2, cfg.width - boxW));
+      const ty = H ? Math.max(0, plot.y - fs * 1.5 * tickScale2) : q - fs * 0.7 * tickScale2;
+      if (landsOnSomething(tx, ty, boxW, fs * 1.4 * tickScale2)) continue;
       nodes.push({
         kind: "text",
         // No gutter is reserved for this strip, so on a column chart whose plot
@@ -1088,8 +1124,8 @@ export function layoutCombo(cfg: ChartConfig, style: ChartStyle, decor: Decorati
         // Sideways the correction is `stripShift`, applied to every label alike;
         // clamping them one at a time is what closed the gaps. Upright they all
         // share one x, so the clamp there already moves the strip as a block.
-        x: H ? q - fs * 1.7 * tickScale2 + stripShift : Math.max(0, Math.min(plot.x + plot.w + 2, cfg.width - boxW)),
-        y: H ? Math.max(0, plot.y - fs * 1.5 * tickScale2) : q - fs * 0.7 * tickScale2,
+        x: tx,
+        y: ty,
         w: boxW,
         h: fs * 1.4 * tickScale2,
         text: formatNumber(t, fmt2),

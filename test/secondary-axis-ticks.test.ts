@@ -197,7 +197,7 @@ describe("the secondary value axis fits its own numbers", () => {
     // 19.8pt gap, clamped into 14.8, and its numbers touched anyway.
     const src = readFileSync("src/core/layout/column.ts", "utf8");
     expect(src, "the per-label clamp is back on the sideways strip").toMatch(
-      /x: H \? q - fs \* 1\.7 \* tickScale2 \+ stripShift/,
+      /const tx = H\s*\? q - fs \* 1\.7 \* tickScale2 \+ stripShift/,
     );
     // And a strip too wide to bring onto the canvas whole is dropped, not
     // crushed — the same answer the fit gives when the ticks will not fit.
@@ -216,5 +216,57 @@ describe("the secondary value axis fits its own numbers", () => {
     const gaps = centres.slice(1).map((c, i) => c - centres[i]);
     for (const g of gaps)
       expect(g, `gaps are uneven (${gaps.map((x) => x.toFixed(1)).join(", ")})`).toBeCloseTo(gaps[0], 4);
+  });
+
+  it("gives way to whatever the base chart already drew", () => {
+    // NO GUTTER IS RESERVED for this strip — its own note says so — and that is
+    // the whole of the remaining family. Sideways it sits above the plot at
+    // `plot.y - fs * 1.5`, clamped to y=0, so a chart whose chrome has squeezed
+    // the plot to the ceiling pins the strip onto the TITLE. Upright it sits two
+    // points right of the plot, where a narrow chart keeps its category names,
+    // its primary value axis, its legend and its series names. 184 pairs across
+    // the sweep, spread thin over every kind that can carry an overlay.
+    //
+    // Reserving a gutter is the other option and it is worse: it would shrink
+    // the plot on every dual-axis chart, including the roomy ones with nothing
+    // to fix. So the add-on yields to the chart it was added to.
+    const bad: string[] = [];
+    for (const [oname, opt] of RAISERS)
+      for (const { kind } of CHART_KINDS)
+        for (const [w, h] of FRAMES)
+          for (const fs of [10, 18])
+            for (const horizontal of [false, true]) {
+              let all: TextNode[];
+              try {
+                all = textsOf(withOption(kind, opt, w, h, fs, horizontal), /./);
+              } catch {
+                continue;
+              }
+              const ticks = all.filter((t) => t.name === "secondary-axis");
+              const others = all.filter((t) => t.name !== "secondary-axis");
+              for (const t of ticks)
+                for (const o of others)
+                  if (collides(t, o)) bad.push(`${oname} ${kind} ${w}x${h} fs=${fs} H=${horizontal}: on ${o.name}`);
+            }
+    expect([...new Set(bad)].slice(0, 8), "the secondary strip is printed over the base chart").toEqual([]);
+  });
+
+  it("keeps most of the strip while doing it", () => {
+    // The yield must not empty the axis. Measured across the same sweep: 1,560
+    // tick numbers become 1,237. A fifth of them go, all of them ones that were
+    // being drawn through something else.
+    let drawn = 0;
+    for (const [, opt] of RAISERS)
+      for (const { kind } of CHART_KINDS)
+        for (const [w, h] of FRAMES)
+          for (const fs of [10, 18])
+            for (const horizontal of [false, true]) {
+              try {
+                drawn += textsOf(withOption(kind, opt, w, h, fs, horizontal), /^secondary-axis$/).length;
+              } catch {
+                /* a kind that refuses this option contributes nothing */
+              }
+            }
+    expect(drawn, "the yield rule emptied the secondary axis").toBeGreaterThan(1000);
   });
 });

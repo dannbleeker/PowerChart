@@ -2681,3 +2681,65 @@ enough to leave a 40.8pt number in a 40pt box. And the neighbour divisor was
 copied from the pie's 1.25 when a gauge label's box is `lf * 1.5` tall, which
 left exactly the pairs it was meant to separate touching by the difference. Both
 are the same error: measuring something adjacent to what is drawn.
+
+### The secondary strip yields to the chart it was added to — FIXED 2026-08-28
+
+The rest of the `secondary-axis` family, and it was one cause with many faces:
+184 pairs, spread thin over every kind that can carry an overlay. Sideways the
+strip sits above the plot at `plot.y - fs * 1.5`, clamped by `Math.max(0, …)`,
+so a chart whose chrome has squeezed the plot to the ceiling pins the whole
+strip onto the TITLE. Upright it sits two points right of the plot, where a
+narrow chart keeps its category names, its primary value axis, its legend and
+its series names. No gutter is reserved for it anywhere — its own note says so,
+and that is the whole of it.
+
+**Reserving a gutter is the other option and it is worse:** it would shrink the
+plot on every dual-axis chart, including the roomy ones with nothing to fix. So
+the strip gives way. It is the add-on; the base chart's axis, category names and
+legend were placed first and describe the bars. This is the same answer its own
+note already gives for the title — a tick that cannot be labelled inside the
+chart keeps its gridline and loses its number.
+
+    1,560 tick numbers -> 1,237, and every remaining collision to zero
+
+### `valueAxisTitle` — SHARPENED, NOT FIXED, and this is why
+
+Two hours were spent trying and the change is reverted. What it produced is a
+better statement of the question, which is worth more than another clamp.
+
+The note in `frame.ts` splits into FOUR shapes, and they are not one problem:
+
+    value-axis-title / legend#      104   the WIDTH question — still open
+    value-axis-title / total#        57   the WIDTH question — still open
+    title / value-axis-title         41   this label's own y, clamped to 0
+    value-axis / value-axis-title    33   it sits where the topmost tick is
+
+The last two look like the clamp defect fixed three times elsewhere today, and
+they are — but the remedy that works everywhere else does not work here, and the
+reason is worth writing down. **This label is the author's own words.** Dropping
+a tick number costs a reading that the gridline still carries; dropping
+`valueAxisTitle` deletes something a person typed and cannot see is gone.
+
+Three attempts, each measured over the frame sweep (352 units drawn as it
+stands):
+
+- **Drop on box overlap** — 100 of 352 survive. Seven charts in ten lose the
+  unit, most of them to collisions that only the empty part of an over-wide box
+  was having (the width is `max(gutter, text)`).
+- **Drop on ink overlap** — 249 of 352. Both clamp shapes go to zero, but a
+  clustered chart at 480x300 in 18pt loses its unit, and that is a size people
+  present at.
+- **Move below the title instead of dropping** — keeps more, and pushes the
+  label onto the tick numbers, which is the collision it was moved away from.
+
+The band above the plot holds the chart title, then the unit, then the topmost
+tick number, then the plot, and there is not always room for three. **That is
+the decision, and it is the same one the original note named**: where does a
+unit belong when the band cannot hold it? Options worth a moment's thought:
+put it at the END of the axis rather than above it (Excel's rotated axis title,
+without the rotation); fold it into the tick numbers themselves ("€m" on the top
+tick only); or accept it as the one label allowed to displace the plot, which is
+the gutter idea the earlier attempt reverted.
+
+Not guessing at that at two in the morning. The measurement is here so whoever
+takes it does not start from scratch.
