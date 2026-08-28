@@ -48,6 +48,13 @@ export const NOT_COVERED = [
   "build:manifest -- --check",
   "skill",
   "verify-deck / validate-ooxml on examples/showcase.pptx",
+  // NAMED SEPARATELY from verify-deck, because it is a different question and
+  // missing it cost a red CI on 2026-08-28. verify-deck asks whether the
+  // committed deck is SOUND; this asks whether it is CURRENT — CI rebuilds it
+  // and diffs the slide parts against the committed file. Any layout change
+  // rewrites it, so any layout change has to `npm run showcase` and commit the
+  // result. A green local gate says nothing about it.
+  "`npm run showcase` — CI fails if examples/showcase.pptx is stale after a layout change",
   "the Playwright e2e job",
 ];
 
