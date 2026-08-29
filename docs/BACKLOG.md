@@ -33,7 +33,7 @@ shipped, refused, or a finding rather than a task.
 | 5 | **File this project's host measurements to the office-js tracker** | §1, *Report what this project has measured* | **Owner-gated** — it goes out under his GitHub identity, so nothing is filed without his word on that specific issue. Three are written and ready. |
 | 6 | ~~**The dual-axis gutter**~~ — 14 pairs, and the remedy costs 1,394 axis readings | §3, *Text drawn over text* | **MEASURED AND DECLINED 2026-08-29.** Not "30 pairs": 14, of 1,327, and none of them a tick number. Applying the merge to the secondary case fixes 8 and DELETES 1,394 secondary tick numbers — 174 readings lost per pair gained, where the original decision recorded about ten. The trade got seventeen times worse as the rest of the engine improved. The design is written and stays written; on these numbers nobody should build it. |
 | 7 | ~~**Positional group-member mapping → `Shape.creationId`**~~ | §3 | **CLOSED 2026-08-29 — the host refuses it.** This host reports PowerPointApi **1.10** and does not populate `Shape.creationId`: `absent` / `no-creation-id` on all three probe questions, 25 of 25 rounds. So it was never a matter of gating on 1.10. The positional mapping stays, still inferred, still guarded by the node-0 anchor test — which is now the permanent answer rather than a stopgap. |
-| 8 | **`slideSize()` rung 1 times out in EVERY round that reads a size** | §3 | Re-measured 2026-08-29 over 270 rounds: 157 of 157, always the full 4000ms — not "about twice as often as it answers". **And now timed**: a SUCCESSFUL rung-1 read costs 246–270ms (rounds 297–299), so the stall and the answer are different calls and the bound is not buying the answer. **Round 300 then broke the "157 of 157" entirely** — no stall, 138ms, on a round that followed a crash recovery and a full tab reload. If the four seconds is a cold host rather than the call, the remedy is a warm-up, not a lower bound. One sample; look for a second before acting. |
+| 8 | **`slideSize()` rung 1 times out in EVERY round that reads a size** | §3 | Re-measured 2026-08-29 over 270 rounds: 157 of 157, always the full 4000ms — not "about twice as often as it answers". **And now timed**: a SUCCESSFUL rung-1 read costs 246–270ms (rounds 297–299), so the stall and the answer are different calls and the bound is not buying the answer. **Round 300 then broke the "157 of 157" entirely** — no stall, 138ms, on a round that followed a crash recovery and a full tab reload; round 301, on a tab left idle 35 minutes, stalled again. **And 301 measured rung 2 at ~280ms**, which is what this was blocked on — the export costs what the read costs, so a 500ms bound would take a stalled run from 4,280ms to under 800. No longer blocked on a measurement; only on choosing between a lower bound and a warm-up. |
 
 Two standing costs that are not tasks: the host crashes during evidence
 collection after a long round (§3 — it costs the evidence, not the run), and
@@ -1890,9 +1890,34 @@ That is one round and it is offered as one round. But it points the remedy
 somewhere different from "lower the bound": if the four seconds is the first
 call meeting a cold host, then a shorter bound simply reaches rung 2 sooner on
 exactly the runs that are already unwell, and the thing worth measuring is
-whether a cheap warm-up call before the ladder removes it entirely. Look for a
-second stall-free round before believing any of this — the alternative
-explanation, that 300 was simply lucky, is not excluded by one sample.
+whether a cheap warm-up call before the ladder removes it entirely.
+
+**ROUND 301 SUPPLIES THE MISSING NUMBER, and it unblocks the decision.** It is
+the first round in the archive to show both halves in ONE call:
+
+    301   STALL afterMs=4000   READ source=exportedSlide ms=4280
+
+`ms` counts from `slideSize()`'s entry and the bound is 4000, so **rung 2's
+export cost about 280ms** — the same as a successful rung-1 read (246-270ms).
+That was the one thing this entry said it was blocked on: "nothing has measured
+what the export costs".
+
+It is measured now, and it is cheap. **So the bound can come down and the
+fallback is nearly free.** At a 500ms bound a cold host would spend 500 on rung
+1 and ~280 on rung 2 — under 800ms against today's 4,280, a saving of about
+three and a half seconds, with the same answer at the end of it. The worry that
+made this wait ("a lower bound might trade those 82 answers for an export whose
+cost nobody knows") is retired: the export costs what the read costs.
+
+301 also supports the cold-host reading. Its tab had been reloaded 35 minutes
+earlier and then sat idle, and the stall came back — where round 300, running
+seconds after a reload, had none. Two rounds, opposite conditions, opposite
+results. Still two rounds.
+
+**What remains before changing the number:** decide between the two remedies
+rather than doing both blindly. Lowering the bound saves ~3.5s on every stalled
+run; a warm-up call might remove the stall altogether and save the rung-2 hop as
+well. They are not exclusive, and neither is now blocked on a measurement.
 
 One defect found writing those tests, worth recording because it is this
 project's recurring one: the rung-3 assertion used `traceLog().entries.find`,
