@@ -699,6 +699,36 @@ function buildMultiples(rawCfg: ChartConfig): Scene | null {
   const footH = cfg.footnote ? fs * 1.3 : 0;
   const panelW = (cfg.width - gap * (cols - 1)) / cols;
   const panelH = (cfg.height - titleH - footH - gap * (rows - 1)) / rows;
+  /**
+   * A GRID THAT CANNOT EXIST IS NOT DRAWN, and the alternative was worse than
+   * "a bit cramped".
+   *
+   * The subtraction above goes NEGATIVE easily: ten series in two columns is
+   * five rows, and on a 300x60 chart with a title and four 10-point gaps it
+   * comes out at −0.4. Handing that on as a panel's `height` looks harmless
+   * because something downstream will surely clamp it — and something does.
+   * `normalizeConfig` calls `clampDim`, which treats any size `<= 0` as a
+   * malformed config and substitutes `DEFAULT_SIZE.height`, 300. So each panel
+   * was laid out as a FULL 300-POINT CHART and the composition stacked ten of
+   * them 9.6 points apart inside a box 60 points tall: 129 of the scene's 139
+   * text nodes below the bottom of the chart, and 2,683 overlapping text pairs
+   * in the sweep.
+   *
+   * Proof it was that and not a squeezed panel: a standalone 155x300 chart and
+   * one of these panels both place `category-0` at y = 285.0, to the point.
+   *
+   * `clampDim` is right and stays as it is — `width: NaN` really does arrive
+   * from pasted configs and shape tags written in other decks, and repairing it
+   * beats a stack trace in a headless render. What was wrong is that an
+   * INTERNAL arithmetic error reached a repair meant for external input, which
+   * turned "this cannot be drawn" into a plausible-looking wrong answer.
+   *
+   * `> 0` and no more. Every positive size passes `clampDim` untouched, so this
+   * cannot alter a chart that renders today; it only refuses the case that was
+   * being silently rewritten. Declining the grid renders the chart whole, which
+   * is what this engine does with every other reservation it cannot pay for.
+   */
+  if (!(panelW > 0) || !(panelH > 0)) return null;
 
   const panelCfg = (s: (typeof dataSeries)[number], si: number): ChartConfig => ({
     ...cfg,

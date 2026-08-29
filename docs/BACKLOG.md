@@ -37,14 +37,18 @@ shipped, refused, or a finding rather than a task.
 
 Two standing costs that are not tasks: the host crashes during evidence
 collection after a long round (§3 — it costs the evidence, not the run), and
-`test/overlap-budget.test.ts` holds **4,010** overlapping pairs whose per-shape
-table is the live list. That figure replaced 537 on 2026-08-29 because the
-SWEEP widened, not because the engine changed — it now crosses option variants
-with data shapes, which it never did. Do not compare it with any earlier number.
+`test/overlap-budget.test.ts` holds **1,327** overlapping pairs whose per-shape
+table is the live list. Three figures in one day, and only the last step was the
+engine: **537** was the uncrossed sweep, **4,010** the same engine measured by a
+sweep that finally crossed option variants with data shapes, and **1,327** what
+was left once `buildMultiples` stopped building grids with no room. Do not
+compare any of them with an earlier number without naming the sweep.
 
-**Newly open, 2026-08-29: small multiples do not thin their labels.** 2,683 of
-the 4,010 are panel-on-panel text, every one of them invisible until the sweep
-crossed `multiples` with dense data. Measured, cause untested, unfixed — see §3.
+**Found and fixed 2026-08-29: `buildMultiples` built grids with no room.** A
+panel height of −0.4 was handed on, `clampDim` rewrote it to
+`DEFAULT_SIZE.height`, and ten full 300-point charts were stacked 9.6 points
+apart inside a box 60 points tall. 2,683 of the sweep's pairs; all of them gone,
+total now **1,327**. Awaiting a round, because it is a rendering change — see §3.
 
 **Newly open, 2026-08-29: `duplicateSlot` judges a window it cannot fill.** The
 scenario sizes its reconcile from a slide count this host reports LATE, so a
@@ -2077,21 +2081,50 @@ All of it is one frame, and these labels are not merely touching. On a 300x60
 chart with ten series in two columns, `p0-category-0` is drawn at **y = 307 on a
 chart 60 points tall**, on top of the next row's names at 316.
 
-The arithmetic says why. Ten series in two columns is five rows, and
+**A DEFENSIVE CLAMP TURNS AN IMPOSSIBLE GRID INTO A PLAUSIBLE WRONG ANSWER**,
+and that is the whole finding. It took two wrong explanations to get here, both
+written from arithmetic rather than measurement; the third is measured end to
+end.
+
+Ten series in two columns is five rows, and
 
     panelH = (cfg.height − titleH − footH − gap × (rows − 1)) / rows
+           = (60 − 22 − 0 − 40) / 5
+           = −0.4
 
-at 60 points high, with a title and four 10-point gaps, leaves **zero or less
-per panel**. `buildMultiples` builds them anyway. Every fit downstream floors at
-`MIN_PLOT_SIDE`, so each panel's plot is taller than its panel, the category
-strip is placed below the plot, and the stack marches off the chart.
+`buildMultiples` builds the grid anyway and hands each panel `height: −0.4`.
+Then `normalizeConfig` runs, and `clampDim` says:
 
-So it is not a labelling defect at all. It is a grid built at a size that cannot
-exist, and the labels are only where it shows. Everywhere else this engine
-refuses what it cannot pay for; `buildMultiples` has no such check. The guard
-that covers the single-chart version (`catInk <= cfg.height`) does not save it,
-because a panel is built in its own coordinates and offset into place afterwards
-— the guard passes inside the panel, and the composition puts it off the chart.
+    if (typeof v !== "number" || !Number.isFinite(v) || v <= 0) return fallback;
+
+**−0.4 is `<= 0`, so the panel is given `DEFAULT_SIZE.height`, 300.** Every
+panel is therefore laid out as a full 300-point chart, and the composition
+places those at a 9.6-point pitch — ten 300-point charts stacked 9.6 points
+apart inside a box 60 points tall. 129 of the scene's 139 text nodes end up
+below the bottom of the chart.
+
+Measured rather than reasoned, and this is the number that settles it:
+
+    a standalone 155x300 chart puts category-0 at   y = 285.0
+    the panel puts category-0 at, in its own frame  y = 285.0
+
+Identical. The panel is not a squeezed panel; it is a full-size chart wearing a
+panel's offset.
+
+`clampDim` is not at fault and should not be changed. It exists because
+`width: NaN` arrives from pasted configs, saved templates and shape tags written
+in other decks, and repairing that beats a stack trace in a headless render. The
+fault is that an INTERNAL arithmetic error reached it. A repair meant for
+malformed input from outside absorbed a computation that should never have been
+attempted, and converted "this grid cannot exist" into "here are ten charts on
+top of each other" — a loud failure made quiet.
+
+So the fix belongs in `buildMultiples`: check that a panel has a usable height
+BEFORE building the grid, and if it has not, do what this engine does everywhere
+else with a reservation it cannot pay for — decline it, and render the chart
+whole. This is the house pattern named in the memory *a fit and a clamp fight,
+and the clamp wins*, in its most expensive form yet: here the clamp does not
+merely undo the fit, it manufactures a chart nobody asked for.
 
 The counts below stand as measured; only the explanation changed. Crossed with
 twenty-four categories or ten series:
@@ -2103,9 +2136,34 @@ twenty-four categories or ten series:
     261  p#-label## / p#-label##
     198  p#-total# / p#-total#
 
-Only `p#-category#` has been traced to its cause; the other five are the same
-grid seen through different labels, and that is an inference rather than a
-measurement. Trace one more before assuming they all move together.
+**Every family traced, 2026-08-29 — it is one defect, not six.** The
+inference above ("the same grid seen through different labels") was checked
+rather than left standing. Over all twenty-three `p#-` shapes:
+
+    shape                          within  across  off-chart  frames
+    p#-category# / p#-category#         0     910        910  300x60
+    p#-value-axis / p#-value-axis       0     420        420  300x60, 80x60
+    p#-title / p#-title                 0     408        312  300x60, 80x60
+    p#-label# / p#-label#               0     252        252  300x60, 80x60
+    p#-total# / p#-total#               0     140        140  80x60, 300x60
+    …and eighteen more, all the same shape
+
+Three things hold across every one of them. **`within` is zero** — no two
+labels in the same panel ever collide. **`off-chart` equals the overlap count**,
+family by family: essentially every pair involves a label drawn outside the
+chart's own bounds. And **only two frames appear at all**, 300x60 and 80x60,
+the two shortest in the sweep. That is the signature of the grid, seen twenty-
+three ways.
+
+(Those counts are from a `multiples 2 columns` × four-data-shape probe, so they
+do not match the ratchet's totals line for line — it crosses six options. The
+structure is what is being claimed, not the arithmetic.)
+
+**One shape is NOT the grid, and it is the interesting leftover.**
+`p#-total# / p#-cagr-label` is the only family with a within-panel count (9 of
+26) and the only one that appears at **480x300 and 960x540** — ordinary sizes.
+That one is a real label collision at a size somebody would present, and it
+will still be there after the grid is fixed.
 
 **The lesson, and it is the same one twice in a night.** The first explanation
 here was written from a count and read plausibly — this engine really does thin
@@ -2114,11 +2172,30 @@ which cost minutes, to find that the true answer was in a different file
 entirely and an order of magnitude worse than the story. A count tells you where
 to look and never why.
 
-**Not fixed tonight, deliberately.** It is a layout change across every kind
-that supports multiples, and it wants the sweep, the ratchet and a round rather
-than a 2am patch. What is done is that it can no longer hide: the budget holds
-all 2,683, so the first one that goes away has to be edited down and the first
-new one fails the build.
+**FIXED the same night, once it was diagnosed rather than guessed.** The whole
+2,683 goes to zero — every one of the twenty-three `p#-` shapes — and the
+sweep's total falls from 4,010 to **1,327**. The change is one line in
+`buildMultiples`:
+
+    if (!(panelW > 0) || !(panelH > 0)) return null;
+
+`> 0` and no more, deliberately. Every positive size passes `clampDim`
+untouched, so this cannot alter a chart that renders today; it refuses only the
+case that was being silently rewritten. Declining the grid renders the chart
+whole, which is what this engine does with every other reservation it cannot
+pay for — and the test asserts BOTH halves, because declining must not cost the
+user their chart.
+
+Two mutants, both dead, and the second is the point: removing the guard fails
+the test, and so does weakening `> 0` to `>= 0`. That second one survived the
+first version of the test, because the case it used has `panelH = −0.4` and
+fails both operators. `clampDim`'s own test is `v <= 0`, so **exactly zero** is
+rewritten too — there is now a case pinning it (four series, two columns, height
+10, no title → `panelH = (10 − 10) / 2`).
+
+This was written up as "not fixed tonight, it wants the sweep, the ratchet and a
+round". It got the sweep and the ratchet; the round is what it still owes, and
+it is a RENDERING change, so it must not be called done until one has run.
 
 **Still not crossed**, so nobody has to re-derive it: every option outside
 `CROSS_OPTIONS` against every data shape, and any product of three or more.

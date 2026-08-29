@@ -85,6 +85,74 @@ describe("small multiples", () => {
     expect(p1.x).toBeGreaterThan(p0.x);
   });
 
+  /**
+   * A GRID WHOSE PANELS HAVE NO HEIGHT IS NOT DRAWN.
+   *
+   * Ten series in two columns is five rows, and on a 300x60 chart with a title
+   * and four 10-point gaps `panelH` comes out at −0.4. Passing that on looked
+   * harmless because something downstream would surely clamp it, and something
+   * did: `clampDim` treats any size `<= 0` as a malformed config and
+   * substitutes `DEFAULT_SIZE.height`. So every panel was laid out as a full
+   * 300-point chart and ten of them were stacked 9.6 points apart inside a box
+   * 60 points tall — 129 of the scene's 139 text nodes below the bottom of the
+   * chart, and 2,683 overlapping text pairs in `overlap-budget.test.ts`.
+   *
+   * The assertions are the two halves of the rule: the grid is declined, AND
+   * the chart still renders. Declining must not cost the user their chart.
+   */
+  it("declines a grid whose panels have no height, and renders the chart whole", () => {
+    const tiny: ChartConfig = {
+      ...cfg,
+      width: 300,
+      height: 60,
+      multiples: { columns: 2 },
+      data: {
+        categories: ["Q1", "Q2"],
+        series: Array.from({ length: 10 }, (_, i) => ({ name: `Series ${i + 1}`, values: [10 + i, 20 + i] })),
+      },
+    };
+    const scene = buildChart(tiny);
+    expect(
+      scene.nodes.filter((n) => /^p\d+-/.test(n.name ?? "")),
+      "built a panel grid whose panels have no height",
+    ).toHaveLength(0);
+    // And it is a chart, not an empty scene: declining the grid falls back to
+    // the ordinary render rather than dropping the whole thing.
+    expect(scene.nodes.length, "declined the grid and drew nothing at all").toBeGreaterThan(0);
+    // NOTHING BELOW THE CHART, which is the symptom that started this. A count
+    // of panels alone would pass against a fix that merely renamed them.
+    const below = scene.nodes.filter((n) => n.kind === "text" && n.y > tiny.height!);
+    expect(below, "text was drawn below the bottom of the chart").toHaveLength(0);
+  });
+
+  /**
+   * EXACTLY ZERO, which is where the operator earns its keep.
+   *
+   * `clampDim`'s test is `v <= 0`, so a panel height of exactly 0 is rewritten
+   * to `DEFAULT_SIZE.height` just as −0.4 is. Written because the case above
+   * did NOT pin this: mutating the guard from `> 0` to `>= 0` left it green,
+   * since −0.4 fails both. Four series in two columns is two rows, and with no
+   * title and one 10-point gap a height of 10 gives `panelH = (10 − 10) / 2`.
+   */
+  it("declines a grid whose panels are exactly zero high", () => {
+    const zero: ChartConfig = {
+      ...cfg,
+      title: undefined,
+      width: 300,
+      height: 10,
+      multiples: { columns: 2 },
+      data: {
+        categories: ["Q1", "Q2"],
+        series: Array.from({ length: 4 }, (_, i) => ({ name: `S${i + 1}`, values: [10 + i, 20 + i] })),
+      },
+    };
+    const scene = buildChart(zero);
+    expect(
+      scene.nodes.filter((n) => /^p\d+-/.test(n.name ?? "")),
+      "a zero-height panel grid was built",
+    ).toHaveLength(0);
+  });
+
   it("panels share one value scale: equal values → equal bar heights", () => {
     // North Q1 = South Q2 = 100 → same height in different panels.
     const north = s.nodes.find((n) => n.name === "p0-seg-0-0") as RectNode;

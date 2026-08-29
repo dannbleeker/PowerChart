@@ -31,6 +31,17 @@ import { textWidth, type SceneNode, type TextNode } from "../src/core/scene";
  * is not comparable with one after it. `CROSS_OPTIONS` below says what is
  * crossed and, more usefully, what still is not.
  *
+ * THEN THE 2,683 WENT AWAY IN ONE LINE, the same day. Every `p#-` shape is now
+ * zero and the total is 1,327. `buildMultiples` was handing panels a NEGATIVE
+ * height and `clampDim` was rewriting it to `DEFAULT_SIZE.height` — so each
+ * panel laid out as a full 300-point chart and ten of them stacked 9.6 points
+ * apart in a 60-point box. It now declines a grid whose panels have no room.
+ * See `buildMultiples` for the proof and docs/BACKLOG.md for the shape of it.
+ *
+ * That is the sequence this file is for, in one day: a widened sweep made a
+ * family visible, the family turned out to be one defect, and the defect was
+ * arithmetic rather than layout.
+ *
  * WHEN A NUMBER HERE GOES DOWN, EDIT IT DOWN. The budget is a ceiling, not a
  * target, and one left above the real figure is a ratchet that has stopped
  * ratcheting — the next regression hides under the slack. There is a test below
@@ -185,61 +196,35 @@ const DATA_SHAPES: Record<string, (c: any) => any> = {
 };
 
 /**
- * What each remaining shape is allowed, as of 2026-08-29. Total 4,010.
+ * What each remaining shape is allowed, as of 2026-08-29. Total 1,327.
  *
- * **THE JUMP FROM 537 TO 4,010 IS NOT A REGRESSION. It is the sweep widening.**
- * Nothing about the engine changed; on 2026-08-29 this file started crossing
- * option variants with data shapes (see `CROSS_OPTIONS`), and every pair below
- * that was not there before had been drawn by this engine all along, in a
- * configuration nobody had built. Read the count as coverage, not as damage —
- * and never compare a number here against one measured before that date without
- * saying which sweep produced it. The 2026-08-19 figure of "75 pairs" was
- * mis-compared exactly that way once already.
+ * **NONE OF THESE THREE NUMBERS MEANS ANYTHING WITHOUT ITS SWEEP.** 537 was the
+ * uncrossed sweep; 4,010 was the same engine measured by the crossed one; 1,327
+ * is the crossed sweep after `buildMultiples` stopped building grids whose
+ * panels have no height. Only the last step was a change to the engine. Never
+ * compare a figure here with one from before 2026-08-29 without saying which
+ * sweep produced it — the 2026-08-19 "75 pairs" was mis-compared exactly that
+ * way once already.
  *
  * A `#` stands in for any run of digits, so `label-3 / label-4` and `label-9 /
  * label-10` are one shape. What each family is, and why the ones left are still
  * here, is in `docs/BACKLOG.md`.
  *
- * The 4,010 is two families and a tail:
+ * The 1,327 is one family and a tail:
  *
- *     2,683   `p#-*` — SMALL MULTIPLES, all of it new on 2026-08-29
  *     1,058   `value-axis-title` — the owner's open decision
  *       269   everything else
  *
- * The small-multiples family is the discovery, and it is NOT a labelling defect
- * — that was the first guess and a diagnostic refuted it. The category axis
- * thins correctly, and zero of the 910 `p#-category#` pairs are two names in
- * the same panel. All 910 come from ONE frame, 300x60, where ten series in two
- * columns is five rows and
- *
- *     panelH = (height − titleH − footH − gap × (rows − 1)) / rows
- *
- * leaves nothing per panel. `buildMultiples` builds the grid anyway, every fit
- * below floors at `MIN_PLOT_SIDE`, and a panel's category strip ends up at
- * y = 307 on a chart 60 points tall. The labels are only where it shows.
- * Measured, diagnosed, not yet fixed — see docs/BACKLOG.md.
+ * The `p#-*` family that appeared here at 2,683 is GONE, and its story is worth
+ * the four lines. It was not a labelling defect — that was the first guess and
+ * a diagnostic refuted it; the category axis thins correctly and not one of the
+ * 910 `p#-category#` pairs was two names in the same panel. It was arithmetic:
+ * ten series in two columns is five rows, `panelH` came out at −0.4, and
+ * `clampDim` rewrote that to `DEFAULT_SIZE.height` because it treats `<= 0` as
+ * a malformed config. Ten full 300-point charts, stacked 9.6 points apart, in a
+ * box 60 points tall. `buildMultiples` declines such a grid now.
  */
 const BUDGET: Record<string, number> = {
-  // Small multiples, crossed with dense data. New on 2026-08-29 and unfixed.
-  "p#-category# / p#-category#": 910,
-  "p#-title / p#-title": 408,
-  "p#-value-axis / p#-value-axis": 378,
-  "p#-label# / p#-label#": 292,
-  "p#-label## / p#-label##": 261,
-  "p#-total# / p#-total#": 198,
-  "p#-tick# / p#-category#": 48,
-  "p#-label## / p#-total#": 34,
-  "p#-cagr-label / p#-total#": 28,
-  "p#-total# / p#-cagr-label": 21,
-  "p#-value-axis / p#-title": 20,
-  "p#-cagr-label / p#-title": 19,
-  "p#-total# / p#-label##": 18,
-  "p#-tick# / p#-tick#": 16,
-  "p#-value-axis / p#-category#": 12,
-  "p#-cagr-label / p#-cagr-label": 8,
-  "p#-category# / p#-title": 6,
-  "p#-category# / p#-tick#": 4,
-  "p#-label# / p#-title": 2,
   // The `value-axis-title` group — one open decision, not a pile of defects.
   "value-axis-title / legend#": 394,
   "title / value-axis-title": 205,
