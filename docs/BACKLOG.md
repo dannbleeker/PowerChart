@@ -28,8 +28,8 @@ shipped, refused, or a finding rather than a task.
 |---|---|---|---|
 | 1 | **`valueAxisTitle` runs over the legend and the totals row** — **1,058 of the 1,327** remaining pairs, and now the whole of what is left bar a 269-pair tail | §3, *Text drawn over text* | **Owner's call.** Three remedies built and measured, all three reverted; three ways out written up. It is the only label here that is text the AUTHOR typed. (Was "287 of 317" — a figure from the uncrossed sweep, not comparable. See the note on the three totals.) |
 | 2 | ~~**The slow-insert offer is not wired**~~ | §1, *The slow-insert offer* | **SHIPPED 2026-08-29.** All five steps, five pane tests, four mutants dead. The blocker this row named was a stale finding: a fresh slide's id IS usable once the slide settles, and the probe answer flipped at round 254 because of our own commit. Kept in §1 for the lesson, not the task. |
-| 3 | **Adding to an occupied slide costs ~24s; a fresh one ~0.75s** | §1, *Adding a chart to an existing slide* | Measured over 2,917 batches. The arm that would settle it has run once. Item 2 is the user-facing half; making it actually faster is unstarted. |
-| 4 | **The picture fast-path** | §1, first entry, and §3 | The largest product cost left. The in-place fast path writes a closed set of `rect`/`text` properties and a picture fill is neither, so every picture update redraws whole. A real feature, not a small fix. |
+| 3 | **Adding to an occupied slide costs ~24s; a fresh one ~0.75s** | §1, *Adding a chart to an existing slide* | Measured over 2,917 batches. Item 2 (shipped) is the user-facing half. **A fourth option is now costed, 2026-08-29**: draw the chart as ONE picture — ~43s becomes rasterise 705ms plus a single-shape insert, a 7–20× saving, and every part of the mechanism already ships. **Still the owner's call**, and a bigger one than the offer: it changes what the user RECEIVES, not just what they are told. |
+| 4 | **The picture fast-path** — and the cost it was filed under has moved | §1, *The largest product cost was in the FAST path* | **Partly done 2026-08-29, and the premise corrected.** Redraws are 14.5% and exactly 2 a round; the cost was inside the fast path, which took a median of 15.7s because it wrote every property of every changed node. It now writes only what differs — `same scale across the deck` 146–156s → **103s**, below the IQR of 275 rounds. The picture feature itself is untouched and still real: a picture cannot be diffed against a scene, so those ~29 redraws a round are correct. |
 | 5 | **File this project's host measurements to the office-js tracker** | §1, *Report what this project has measured* | **Owner-gated** — it goes out under his GitHub identity, so nothing is filed without his word on that specific issue. Three are written and ready. |
 | 6 | ~~**The dual-axis gutter**~~ — 14 pairs, and the remedy costs 1,394 axis readings | §3, *Text drawn over text* | **MEASURED AND DECLINED 2026-08-29.** Not "30 pairs": 14, of 1,327, and none of them a tick number. Applying the merge to the secondary case fixes 8 and DELETES 1,394 secondary tick numbers — 174 readings lost per pair gained, where the original decision recorded about ten. The trade got seventeen times worse as the rest of the engine improved. The design is written and stays written; on these numbers nobody should build it. |
 | 7 | ~~**Positional group-member mapping → `Shape.creationId`**~~ | §3 | **CLOSED 2026-08-29 — the host refuses it.** This host reports PowerPointApi **1.10** and does not populate `Shape.creationId`: `absent` / `no-creation-id` on all three probe questions, 25 of 25 rounds. So it was never a matter of gating on 1.10. The positional mapping stays, still inferred, still guarded by the node-0 anchor test — which is now the permanent answer rather than a stopgap. |
@@ -67,6 +67,68 @@ the id refusals and the evidence that closed it has weakened. Not put on the
 list above because nothing has been designed — the `silent` third is its own
 problem — but it is no longer refuted, and `binding-names-shape-later` is back
 on the probe's resample shortlist so the next rounds keep counting.
+
+### The largest product cost was in the FAST path, not the redraws — 2026-08-29
+
+**Looking for the picture feature below, I measured the redraws and found they
+had stopped being the cost.** Over the last 30 rounds:
+
+    in-place 341 · redrawn 58 = 14.5% redrawn   (was 20.9%)
+    29  this update draws a picture          — legitimate, cannot be diffed
+    29  no parts list and no group members   — the addressable half
+
+Exactly two redraws per round, every round. But the same query printed the
+number nobody had looked at:
+
+    in-place update ms: n=341 median 15,661 · max 59,000
+
+**The fast path was taking sixteen seconds.** `same scale across the deck` runs
+entirely through it and costs 166s, 39% of the battery, which is what "the
+largest product cost" was actually made of.
+
+**What it was spending it on.** `applyNodeInPlace` wrote every property of every
+changed node unconditionally. Counted by a recording proxy, a whole text node is
+exactly **20 statements** and a rect **7** — 20 being the figure `powerpoint.ts`
+already quoted from the host's own statement list, which is how the count is
+known to be measuring the right thing. So a retitle, the single edit this path
+exists for, sent twenty statements to change one string.
+
+`planSceneUpdate` holds BOTH scenes and therefore already knew which of the
+twenty were stale. It just never said. It now returns `parts` beside `changed`
+— box, fill, line, text, font, align — and the applier writes only those.
+
+**Three measurements, all agreeing.** Statements first:
+
+    retitle                 20 ->   2   (90% fewer)
+    recolour               152 ->  44   (71% fewer)
+    rescale, same scale    272 -> 180   (34% fewer)
+
+Then per-update milliseconds on the live host, like-for-like by node count,
+against the five preceding builds:
+
+    changed=1     ~2,100-2,500ms  ->   1,117ms
+    changed=9    ~11,100-12,100ms ->   4,825ms
+    changed=18   ~15,700-16,600ms ->  12,042ms
+
+Then the scenario itself:
+
+    299 4275306  147s      302 aa459dd  156s
+    301 e0b82ef  146s      303 81ab4a4  103s
+
+**103s against a pooled median of 166s and an IQR of 151-211s over 275 rounds**
+— below the whole interquartile range of the archive.
+
+Time falls by less than statements do, consistently, and that is the expected
+shape: `syncMs` shows a fixed floor of roughly a second on every sync, so a
+retitle that sends a tenth of the statements still pays two syncs.
+
+**One round for the scenario figure**, n=12 for the per-update figures. Three
+independent size classes all moved the same way by a lot, and the baseline is
+eight builds deep, but it is one round and should be read as one.
+
+**What is left of the original entry** is the picture feature, and it is
+unchanged by any of this: a picture cannot be diffed against a scene, so those
+29 redraws a round are correct and the fast path cannot take them. See below.
 
 ### Two of every three redraws are a grouped chart the update cannot map — 2026-08-26
 
@@ -259,6 +321,34 @@ should be changed unilaterally: the cost is the host's, the mitigation
 (`leastLoadedChart`) is correctly scoped to the self-test, which picks a chart
 arbitrarily and so should pick wisely. A user picks the chart they mean, so
 there is no choice for the product to make on their behalf.
+
+**A FOURTH OPTION, COSTED 2026-08-29: draw it as ONE PICTURE.** The three below
+all decide what to SAY about the cost. This one removes most of it, and it is
+the only route that can — the cost is per shape drawn, so the way out is to draw
+fewer shapes, and a chart can be one.
+
+Re-derived from `batch issued`'s own `prevBatchMs` and `onSlide`, over the whole
+archive rather than the 169 rounds above:
+
+    shapes already on the slide      median ten-shape batch
+      1-20        n=2,405                    5,013ms
+      21-50       n=  904                   13,971ms
+      51-100      n=  241                   16,579ms
+
+    rasterising one slide            n=2,093    705ms
+
+So a 24-node chart onto a crowded slide is three batches at ~14.3s — **about
+43 seconds** — against a rasterise of 705ms plus a single-shape insert. Even
+pessimistically that is under ten seconds, so the saving is roughly **7x to
+20x**, and every part of the mechanism already ships: `pictureBase64`, the
+auto-picture fallback for a host that has failed to draw shapes, and the
+`explode a degraded picture` scenario that turns one back into native shapes.
+
+**It stays the owner's call, and it is a bigger call than the offer was.** A
+picture is not a chart PowerPoint can edit — no nudging a bar, no restyling
+through the ribbon — and the add-in's own explode path is the only way back.
+That is a change to what the user RECEIVES, where the three options below only
+change what they are TOLD. Costed here so the decision is informed; not taken.
 
 The options are all product calls: say nothing; show progress honestly on the
 slow path; or offer "put this on its own slide" when the target is already
