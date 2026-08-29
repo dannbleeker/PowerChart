@@ -5550,6 +5550,12 @@ describe("updating only what changed", () => {
  * So the source is the check. Crude by design, and it fails with the NAME of
  * whichever property was forgotten — which is exactly what a reader adding a
  * line to `addText` needs to be told.
+ *
+ * WHAT IT CANNOT SEE, since 2026-08-29: the applier's writes are now GATED on
+ * which property groups the diff says changed, and a source scan cannot tell a
+ * gated write from an unreachable one. This file still answers "is the line
+ * present"; `test/in-place-writes.test.ts` answers "does it fire, and only when
+ * it should" by counting what a real call sends. Neither replaces the other.
  */
 describe("the in-place applier and the adders it mirrors", () => {
   const source = readFileSync("src/render/powerpoint.ts", "utf8");
@@ -5568,7 +5574,10 @@ describe("the in-place applier and the adders it mirrors", () => {
     for (const m of text.matchAll(/\b\w+\.([A-Za-z]+)\.clear\(\)/g)) found.add(`${m[1]}:cleared`);
     return found;
   };
-  const applier = writes(body(/\nfunction applyNodeInPlace\(/));
+  // `(?:export )?` because the applier is exported for `in-place-writes.test.ts`
+  // to count what it sends. The end pattern below already allowed for it; the
+  // start did not, and the whole suite failed to LOAD rather than to assert.
+  const applier = writes(body(/\n(?:export )?function applyNodeInPlace\(/));
   const rectCase = writes(body(/\nfunction addNode\(/).split('case "line"')[0]);
   const textAdder = writes(body(/\nfunction addText\(/));
 

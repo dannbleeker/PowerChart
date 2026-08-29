@@ -15,7 +15,7 @@ import { polar, arrowheadBox, wedgeFanSteps, wedgeFanChord, symbolPreset, dashKi
 import { estimateOfficeShapes } from "../core/scene";
 import { buildChart } from "../core/chart";
 import type { ChartConfig } from "../core/types";
-import { planSceneUpdate, sceneFingerprint, worthUpdating } from "../core/scene-diff";
+import { planSceneUpdate, sceneFingerprint, worthUpdating, type NodeChange } from "../core/scene-diff";
 import { toHex6, alphaOf, isNamedColor } from "../core/color";
 import type { PolygonNode, Scene, SceneNode, TextNode, WedgeNode } from "../core/scene";
 import { NOT_COMPLETE_NAME, planReconcile } from "../core/reconcile";
@@ -11138,8 +11138,8 @@ async function tryInPlaceUpdate(
     // point, which is the same reason the whole attempt is made before the
     // delete rather than after it.
     for (let i = 0; i < plan.changed.length; i += IN_PLACE_WRITES_PER_SYNC) {
-      for (const n of plan.changed.slice(i, i + IN_PLACE_WRITES_PER_SYNC))
-        applyNodeInPlace(shapes[n], it.scene.nodes[n], dx, dy, opts);
+      for (let k = i; k < Math.min(i + IN_PLACE_WRITES_PER_SYNC, plan.changed.length); k++)
+        applyNodeInPlace(shapes[plan.changed[k]], it.scene.nodes[plan.changed[k]], dx, dy, opts, plan.parts[k]);
       syncsHere++;
       {
         const at = Date.now();
@@ -11259,67 +11259,117 @@ function frameOrigin(opts: InsertOptions): { dx: number; dy: number } {
  * Queues only. The caller owns the sync, so a whole chart's changed shapes go
  * out in one batch and a refusal takes the fallback rather than half a chart.
  */
-function applyNodeInPlace(shape: PowerPoint.Shape, n: SceneNode, dx: number, dy: number, opts: InsertOptions): void {
+/**
+ * Write a changed node onto the shape already drawing it.
+ *
+ * `parts` names the property groups that actually differ; omit it and every
+ * property is written, which is what this did unconditionally until
+ * 2026-08-29 and is still the right answer for any caller without a diff.
+ *
+ * WHY IT MATTERS. The host's own statement list puts ONE text node at roughly
+ * twenty statements. A retitle changes one string and was sending all twenty;
+ * `same scale across the deck` moves eighteen nodes of twenty-four and was
+ * sending some three hundred and sixty statements to change seventy-two
+ * numbers. `planSceneUpdate` holds both scenes and therefore already knows
+ * which of the twenty are stale — this just stops sending the rest.
+ *
+ * The frame constants (`wordWrap`, `autoSizeSetting`, the four margins) ride
+ * with `box` rather than having a group of their own. Nothing in a scene can
+ * change them, so a group keyed on them would never fire — but they are what
+ * make a text box's geometry mean what the layout intended, so a node whose
+ * geometry moves rewrites them and a pure retitle does not.
+ */
+export function applyNodeInPlace(
+  shape: PowerPoint.Shape,
+  n: SceneNode,
+  dx: number,
+  dy: number,
+  opts: InsertOptions,
+  parts?: readonly NodeChange[],
+): void {
+  const wants = (g: NodeChange) => !parts || parts.includes(g);
   if (n.kind === "rect") {
-    shape.left = dx + n.x;
-    shape.top = dy + n.y;
-    shape.width = Math.max(0.2, n.w);
-    shape.height = Math.max(0.2, n.h);
-    if (n.fill === "none") shape.fill.clear();
-    else solidFill(shape.fill, n.fill);
-    if (n.stroke && (n.strokeWidth ?? 0) > 0) {
-      strokeColor(shape.lineFormat, n.stroke);
-      shape.lineFormat.weight = n.strokeWidth ?? 1;
-    } else {
-      shape.lineFormat.visible = false;
+    if (wants("box")) {
+      shape.left = dx + n.x;
+      shape.top = dy + n.y;
+      shape.width = Math.max(0.2, n.w);
+      shape.height = Math.max(0.2, n.h);
     }
+    if (wants("fill")) {
+      if (n.fill === "none") shape.fill.clear();
+      else solidFill(shape.fill, n.fill);
+    }
+    if (wants("line")) {
+      if (n.stroke && (n.strokeWidth ?? 0) > 0) {
+        strokeColor(shape.lineFormat, n.stroke);
+        shape.lineFormat.weight = n.strokeWidth ?? 1;
+      } else {
+        shape.lineFormat.visible = false;
+      }
+    }
+    // The name every time, and it is one statement against the eight above. It
+    // is how the NEXT update finds this shape at all, so a run that skipped it
+    // would save nothing measurable and could cost the chart its mapping.
     if (n.name) shape.name = n.name;
     return;
   }
   if (n.kind !== "text") return;
-  shape.left = dx + n.x;
-  shape.top = dy + n.y;
-  shape.width = Math.max(4, n.w);
-  shape.height = Math.max(4, n.h);
-  shape.fill.clear();
-  shape.lineFormat.visible = false;
+  if (wants("box")) {
+    shape.left = dx + n.x;
+    shape.top = dy + n.y;
+    shape.width = Math.max(4, n.w);
+    shape.height = Math.max(4, n.h);
+    shape.fill.clear();
+    shape.lineFormat.visible = false;
+  }
   const tf = shape.textFrame;
   // The string itself. `addTextBox` takes it as an argument, so this is the one
   // write with no counterpart in the adder's body — and it is the whole point
   // of the fast path: a retitle changes one node, and this is the line that
   // applies it.
-  tf.textRange.text = n.text;
-  try {
-    tf.wordWrap = false;
-    tf.autoSizeSetting = PowerPoint.ShapeAutoSize.autoSizeNone;
-    tf.leftMargin = 0;
-    tf.rightMargin = 0;
-    tf.topMargin = 0;
-    tf.bottomMargin = 0;
-    tf.verticalAlignment =
-      n.valign === "top"
-        ? PowerPoint.TextVerticalAlignment.top
-        : n.valign === "bottom"
-          ? PowerPoint.TextVerticalAlignment.bottom
-          : PowerPoint.TextVerticalAlignment.middle;
-  } catch {
-    /* margin/alignment properties unavailable on this host */
+  if (wants("text")) tf.textRange.text = n.text;
+  // `verticalAlignment` sits in this try with the frame constants because they
+  // share a host, not because they share a cause — so it is written when
+  // EITHER its own group or the geometry changed, and the constants ride along.
+  if (wants("box") || wants("align")) {
+    try {
+      tf.wordWrap = false;
+      tf.autoSizeSetting = PowerPoint.ShapeAutoSize.autoSizeNone;
+      tf.leftMargin = 0;
+      tf.rightMargin = 0;
+      tf.topMargin = 0;
+      tf.bottomMargin = 0;
+      tf.verticalAlignment =
+        n.valign === "top"
+          ? PowerPoint.TextVerticalAlignment.top
+          : n.valign === "bottom"
+            ? PowerPoint.TextVerticalAlignment.bottom
+            : PowerPoint.TextVerticalAlignment.middle;
+    } catch {
+      /* margin/alignment properties unavailable on this host */
+    }
   }
-  const font = tf.textRange.font;
-  font.size = officeFontPt(n.fontSize);
-  font.color = officeHex(n.color);
-  font.bold = !!n.bold;
-  font.name = n.fontFamily ?? opts.fontFamily ?? DEFAULT_FONT;
-  try {
-    tf.textRange.paragraphFormat.horizontalAlignment =
-      n.align === "left"
-        ? PowerPoint.ParagraphHorizontalAlignment.left
-        : n.align === "right"
-          ? PowerPoint.ParagraphHorizontalAlignment.right
-          : PowerPoint.ParagraphHorizontalAlignment.center;
-  } catch {
-    /* paragraph alignment unavailable */
+  if (wants("font")) {
+    const font = tf.textRange.font;
+    font.size = officeFontPt(n.fontSize);
+    font.color = officeHex(n.color);
+    font.bold = !!n.bold;
+    font.name = n.fontFamily ?? opts.fontFamily ?? DEFAULT_FONT;
   }
+  if (wants("align")) {
+    try {
+      tf.textRange.paragraphFormat.horizontalAlignment =
+        n.align === "left"
+          ? PowerPoint.ParagraphHorizontalAlignment.left
+          : n.align === "right"
+            ? PowerPoint.ParagraphHorizontalAlignment.right
+            : PowerPoint.ParagraphHorizontalAlignment.center;
+    } catch {
+      /* paragraph alignment unavailable */
+    }
+  }
+  // As on the rect branch: one statement, and it is how the next update finds
+  // this shape.
   if (n.name) shape.name = n.name;
 }
 

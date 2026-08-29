@@ -8,10 +8,14 @@ import {
   UPDATE_SHARE_LIMIT,
   worthUpdating,
 } from "../src/core/scene-diff";
-import type { Scene, SceneNode } from "../src/core/scene";
+import type { RectNode, Scene, SceneNode, TextNode } from "../src/core/scene";
 import type { ChartConfig } from "../src/core/types";
 
-const rect = (name: string, x = 0, fill = "#123456"): SceneNode => ({
+// Typed as the concrete node, not the union: several tests below build a
+// variant by spreading one of these and overriding a field, and a union cannot
+// be narrowed by a spread — TypeScript reads `{...text("t"), fontSize: 14}` as a
+// RectNode with a stray `fontSize`.
+const rect = (name: string, x = 0, fill = "#123456"): RectNode => ({
   kind: "rect",
   x,
   y: 0,
@@ -20,7 +24,7 @@ const rect = (name: string, x = 0, fill = "#123456"): SceneNode => ({
   fill,
   name,
 });
-const text = (name: string, s = "hello"): SceneNode => ({
+const text = (name: string, s = "hello"): TextNode => ({
   kind: "text",
   x: 0,
   y: 0,
@@ -59,7 +63,7 @@ describe("what a redraw would have been for", () => {
     // write the new config tag and touch no shapes at all.
     const cfg = { ...sampleConfig("clustered"), ...DEFAULT_SIZE } as ChartConfig;
     const plan = planSceneUpdate(buildChart(cfg), buildChart(structuredClone(cfg)));
-    expect(plan).toEqual({ changed: [] });
+    expect(plan).toEqual({ changed: [], parts: [] });
   });
 });
 
@@ -124,7 +128,9 @@ describe("when an in-place update must not be attempted", () => {
       name: "slice-0",
     };
     const plan = planSceneUpdate(scene([wedge, text("title")]), scene([wedge, text("title", "new")]));
-    expect(plan).toEqual({ changed: [1] });
+    // Only the STRING differs, so only the string is named — the wedge is
+    // untouched and the text box keeps its geometry, font and alignment.
+    expect(plan).toEqual({ changed: [1], parts: [["text"]] });
   });
 
   it("refuses a changed node that carries no name", () => {
@@ -231,5 +237,84 @@ describe("whether a plan is worth taking", () => {
     // So this edit takes the fast path again, and the round says whether the
     // crash was per-SYNC size (fixed) or per-CONTEXT accumulation (not).
     expect(take(buildChart({ ...cfg, scale: { max: 105 } })), "a full rescale was still declined").toBe(true);
+  });
+});
+
+/**
+ * WHICH properties changed, not merely which nodes.
+ *
+ * `applyNodeInPlace` wrote every property of every changed node
+ * unconditionally, and the host's own statement list puts one text node at
+ * roughly twenty statements. A retitle changes one string and was sending all
+ * twenty; `same scale across the deck` moves eighteen nodes of twenty-four and
+ * was sending some three hundred and sixty statements to change seventy-two
+ * numbers.
+ *
+ * The diff holds both scenes and is the only place that knows which of the
+ * twenty are stale, so it now says. These tests pin what it says, because a
+ * `parts` that under-reports writes a chart with stale values on the slide and
+ * reports success — the same silent-wrong-answer class as the picture refusal.
+ */
+describe("which properties of a changed node actually differ", () => {
+  const partsFor = (a: SceneNode, b: SceneNode) => planSceneUpdate(scene([a]), scene([b]))?.parts[0];
+
+  it("names only the string for a retitle", () => {
+    expect(partsFor(text("title"), text("title", "new"))).toEqual(["text"]);
+  });
+
+  it("names only the box when a bar is rescaled", () => {
+    const a = rect("seg-0-0");
+    const b = { ...rect("seg-0-0"), y: 4, h: 6 };
+    expect(partsFor(a, b)).toEqual(["box"]);
+  });
+
+  it("names only the fill when a series is recoloured", () => {
+    expect(partsFor(rect("seg-0-0"), rect("seg-0-0", 0, "#abcdef"))).toEqual(["fill"]);
+  });
+
+  it("names the box and the string when a label both moves and changes", () => {
+    const a = text("label-0");
+    const b = { ...text("label-0", "42"), y: 9 };
+    expect(partsFor(a, b)).toEqual(["box", "text"]);
+  });
+
+  it("separates font from alignment", () => {
+    expect(partsFor(text("title"), { ...text("title"), fontSize: 14 })).toEqual(["font"]);
+    expect(partsFor(text("title"), { ...text("title"), align: "left" })).toEqual(["align"]);
+    expect(partsFor(text("title"), { ...text("title"), bold: true })).toEqual(["font"]);
+  });
+
+  it("names the line when only the stroke changes", () => {
+    const a = { ...rect("seg-0-0"), stroke: "#000000", strokeWidth: 1 };
+    const b = { ...rect("seg-0-0"), stroke: "#ff0000", strokeWidth: 1 };
+    expect(partsFor(a, b)).toEqual(["line"]);
+  });
+
+  /**
+   * A NODE THAT DIFFERS BY JSON AND NAMES NO GROUP IS A REDRAW.
+   *
+   * This is the guard that keeps the optimisation honest as the scene type
+   * grows. Add a field to `SceneNode` that the applier cannot write and
+   * `changedGroups` returns nothing for it — at which point writing "only what
+   * changed" would write NOTHING and report success, leaving the old value on
+   * the slide. Refusing the plan sends it down the redraw path instead, which
+   * is slower and correct.
+   *
+   * `opacity` stands in for that future field: it is not in `SceneNode`, so it
+   * is cast in exactly as a stray property from a config would arrive.
+   */
+  it("refuses the whole plan when a node changed in a way no group covers", () => {
+    const a = rect("seg-0-0");
+    const b = { ...rect("seg-0-0"), opacity: 0.5 } as unknown as SceneNode;
+    expect(planSceneUpdate(scene([a]), scene([b])), "wrote a change no group can apply").toBeNull();
+  });
+
+  /** Every changed node gets a list, and the two arrays stay in step. */
+  it("keeps parts aligned with changed, index for index", () => {
+    const before = scene([rect("seg-0-0"), text("title"), rect("seg-0-1")]);
+    const after = scene([rect("seg-0-0"), text("title", "new"), rect("seg-0-1", 0, "#abcdef")]);
+    const plan = planSceneUpdate(before, after)!;
+    expect(plan.changed).toEqual([1, 2]);
+    expect(plan.parts).toEqual([["text"], ["fill"]]);
   });
 });

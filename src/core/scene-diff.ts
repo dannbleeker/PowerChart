@@ -88,9 +88,44 @@ export function sceneFingerprint(scene: Scene): string {
 }
 
 /** Which shapes an in-place update would have to write to. */
+/**
+ * The groups of shape properties an in-place write can set independently.
+ *
+ * These mirror `applyNodeInPlace`'s own structure so the two can be read
+ * side by side, which is the same reason `UPDATABLE` is a closed set: an
+ * applier that writes something this diff cannot describe would silently write
+ * stale values.
+ *
+ *     box    left, top, width, height   (and, for text, the frame constants
+ *                                        that only matter when geometry moves)
+ *     fill   the interior               (rect only)
+ *     line   the outline                (rect only)
+ *     text   the string itself
+ *     font   size, colour, bold, family (text only)
+ *     align  horizontal and vertical    (text only)
+ */
+export type NodeChange = "box" | "fill" | "line" | "text" | "font" | "align";
+
 export interface SceneUpdatePlan {
   /** Indices into `next.nodes`, ascending. Empty means nothing changed at all. */
   changed: number[];
+  /**
+   * For each entry of `changed`, in the same order, which groups actually
+   * differ.
+   *
+   * WHY THIS EXISTS. `applyNodeInPlace` wrote every property of a changed node
+   * unconditionally — the host's own statement list put ONE text node at
+   * roughly twenty statements (left, top, width, height, fill, fill.clear,
+   * lineFormat, textFrame, textRange, text, wordWrap, four font properties,
+   * paragraphFormat, name, tags). A retitle changes one string and was sending
+   * twenty; a rescale moves eighteen bars and was sending some three hundred
+   * and sixty statements to change seventy-two numbers.
+   *
+   * The diff already holds both scenes, so it already knows which of those
+   * twenty are stale. Saying so costs nothing here and is the only place the
+   * answer exists.
+   */
+  parts: NodeChange[][];
 }
 
 /**
@@ -121,6 +156,7 @@ export function planSceneUpdate(prev: Scene, next: Scene): SceneUpdatePlan | nul
   if (prev.width !== next.width || prev.height !== next.height) return null;
   if (prev.nodes.length !== next.nodes.length) return null;
   const changed: number[] = [];
+  const parts: NodeChange[][] = [];
   for (let i = 0; i < next.nodes.length; i++) {
     const a = prev.nodes[i];
     const b = next.nodes[i];
@@ -133,9 +169,48 @@ export function planSceneUpdate(prev: Scene, next: Scene): SceneUpdatePlan | nul
     if (!isUpdatableKind(b.kind)) return null;
     // A changed node has to be nameable to be written to.
     if (!b.name) return null;
+    const groups = changedGroups(a, b);
+    // A node that differs by JSON but names no group is a node whose change is
+    // in a field the applier cannot write. Refusing the whole plan is the same
+    // answer this function gives to every other "less than obvious" case, and
+    // it is what keeps `parts` honest: an empty list would be read as "write
+    // nothing" and would silently drop the edit.
+    if (!groups.length) return null;
     changed.push(i);
+    parts.push(groups);
   }
-  return { changed };
+  return { changed, parts };
+}
+
+/**
+ * Which property groups differ between two versions of one node.
+ *
+ * Every field either belongs to a group or is compared by `planSceneUpdate`
+ * before this is reached (`kind`, `name`). The `default` on the exhaustiveness
+ * check below is what makes a NEW node field fail loudly: add `n.opacity` to a
+ * rect and this returns no group for a node the differ says changed, which
+ * `planSceneUpdate` turns into a redraw rather than a silent stale write.
+ */
+function changedGroups(a: SceneNode, b: SceneNode): NodeChange[] {
+  const out: NodeChange[] = [];
+  const box = (x: SceneNode, y: SceneNode) =>
+    (x as { x: number }).x !== (y as { x: number }).x ||
+    (x as { y: number }).y !== (y as { y: number }).y ||
+    (x as { w: number }).w !== (y as { w: number }).w ||
+    (x as { h: number }).h !== (y as { h: number }).h;
+  if (box(a, b)) out.push("box");
+  if (b.kind === "rect" && a.kind === "rect") {
+    if (a.fill !== b.fill) out.push("fill");
+    if (a.stroke !== b.stroke || (a.strokeWidth ?? 0) !== (b.strokeWidth ?? 0)) out.push("line");
+    return out;
+  }
+  if (b.kind === "text" && a.kind === "text") {
+    if (a.text !== b.text) out.push("text");
+    if (a.fontSize !== b.fontSize || a.color !== b.color || !!a.bold !== !!b.bold || a.fontFamily !== b.fontFamily)
+      out.push("font");
+    if (a.align !== b.align || a.valign !== b.valign) out.push("align");
+  }
+  return out;
 }
 
 /**
@@ -240,7 +315,11 @@ export function planSceneUpdate(prev: Scene, next: Scene): SceneUpdatePlan | nul
  */
 export const UPDATE_SHARE_LIMIT = 0.8;
 
-export function worthUpdating(plan: SceneUpdatePlan, total: number): boolean {
+// `Pick`, not the whole plan: this is a judgement about how MANY nodes changed
+// and it has never read anything else. Taking the full type made every caller
+// that only has a count — the tests, and any future cost model — construct a
+// `parts` it does not look at.
+export function worthUpdating(plan: Pick<SceneUpdatePlan, "changed">, total: number): boolean {
   if (!total) return false;
   return plan.changed.length / total <= UPDATE_SHARE_LIMIT;
 }
