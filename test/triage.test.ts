@@ -2133,6 +2133,34 @@ describe("a scenario that passes on a smaller population than it usually runs", 
     const rounds = [round("a", 8), round("b", 8), round("c", 8), round("d", 4, false)];
     expect(poolScenarioPopulations(rounds)[0]).toMatchObject({ now: 4, usual: 8, ok: false });
   });
+
+  it("says nothing when THIS round carried no count, however small the last one that did", () => {
+    /**
+     * Rounds 306, 307 and 308, on 2026-08-29. Each printed
+     *
+     *     insert onto a slide that already has content — 7 this round,
+     *     usually 16 over 9 prior round(s)
+     *
+     * on a round whose verdict for that scenario carried no "N of M" at all.
+     * The 7 was round 282's, twenty-four rounds and four builds earlier: `hist`
+     * holds only the rounds that COUNTED, so its last entry is the newest round
+     * that counted and not the round being judged.
+     *
+     * Permanent rather than a blip — 282 is the newest counting round and stays
+     * so — which is what makes it a guard rather than a note. A warning that
+     * fires every round and names the wrong round teaches the reader to skip
+     * the line that exists to make them stop.
+     */
+    const quiet = {
+      build: "e",
+      selftest: [{ name: "same scale across the deck", ok: true, detail: "all charts carry the shared scale" }],
+    };
+    const rounds = [round("a", 8), round("b", 8), round("c", 8), round("d", 6), quiet];
+    expect(poolScenarioPopulations(rounds), "reported an older round's count as this round's").toEqual([]);
+    // And the round that DID shrink is still reported when it IS the one being
+    // judged — the guard must not swallow the finding it was built around.
+    expect(poolScenarioPopulations(rounds.slice(0, -1))[0]).toMatchObject({ now: 6, usual: 8 });
+  });
 });
 
 describe("grouping, which no scenario verdict reports", () => {

@@ -875,7 +875,11 @@ function stampDate(log, buildOf) {
  */
 export function poolScenarioPopulations(logs) {
   const seen = new Map();
-  for (const log of logs) {
+  // THE INDEX, NOT JUST THE VALUE — see the `now.at` guard below. Without it
+  // there is nothing to distinguish "the round being judged counted 7" from
+  // "some round counted 7, once, a month ago".
+  const lastIndex = logs.length - 1;
+  logs.forEach((log, at) => {
     const st = log?.selftest ?? [];
     for (const s of Object.keys(st).map((k) => st[k])) {
       if (!s?.name) continue;
@@ -883,9 +887,9 @@ export function poolScenarioPopulations(logs) {
       const m = /\b(\d+) of (\d+)\b/.exec(String(s.detail ?? ""));
       if (!m) continue;
       if (!seen.has(s.name)) seen.set(s.name, []);
-      seen.get(s.name).push({ build: String(log.build ?? ""), of: Number(m[2]), ok: Boolean(s.ok) });
+      seen.get(s.name).push({ build: String(log.build ?? ""), of: Number(m[2]), ok: Boolean(s.ok), at });
     }
-  }
+  });
   const shrunk = [];
   for (const [name, hist] of seen) {
     // THREE PRIORS MINIMUM, because "usually" needs more than one observation.
@@ -896,6 +900,36 @@ export function poolScenarioPopulations(logs) {
     // floor — one build run twice scoring 1 and 5 — is the reason to say so.
     if (hist.length < MIN_PRIORS_FOR_A_BASELINE + 1) continue;
     const now = hist[hist.length - 1];
+    /**
+     * "THIS ROUND" HAS TO BE THIS ROUND, and for three rounds it was not.
+     *
+     * `hist` holds only the rounds that CARRIED a count, so its last entry is
+     * the newest round that counted — which is not the round being judged when
+     * the newest round carried none. Rounds 306, 307 and 308 each printed
+     *
+     *     insert onto a slide that already has content — 7 this round,
+     *     usually 16 over 9 prior round(s)
+     *
+     * where the 7 is ROUND 282's, twenty-four rounds and four builds earlier,
+     * and this round had counted nothing at all.
+     *
+     * It is permanent, not a blip: 282 is the newest round with a count and
+     * always will be, so the line fires on every future round with the same
+     * stale number. A warning that cries every round and names the wrong round
+     * is worse than no warning — it teaches the reader to skip the line that
+     * exists to make them stop and read.
+     *
+     * Worth knowing WHY that scenario went quiet, because it also condemns the
+     * baseline: only 10 of 285 archived rounds ever carried a count for it, and
+     * every one of them is a failure mode — "the host stopped answering during
+     * this scenario", "the deck scan could not see the whole deck". The count
+     * appears when the scenario does NOT do its job. So `usually 16` was never
+     * the healthy population; it was the shape of an abort.
+     *
+     * If this round did not count, there is no ratio of this round's to warn
+     * about. Say nothing.
+     */
+    if (now.at !== lastIndex) continue;
     const priors = hist.slice(0, -1).map((h) => h.of);
     // The population it has USUALLY had. Not the mean: a single small round
     // would drag the bar down and hide the next one.

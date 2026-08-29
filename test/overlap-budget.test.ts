@@ -372,7 +372,6 @@ describe("the text this engine still draws over other text", () => {
    */
   if (process.env.DUMP_BUDGET) {
     const lines = [...byShape.entries()].sort((a, b) => b[1] - a[1]).map(([k, v]) => `  "${k}": ${v},`);
-    // eslint-disable-next-line no-console
     console.log(`TOTAL ${total}\n${lines.join("\n")}`);
   }
 
