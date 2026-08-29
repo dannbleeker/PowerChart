@@ -55,6 +55,43 @@ import { textWidth, type SceneNode, type TextNode } from "../src/core/scene";
  * moves a label whether or not the destination is free — which the CAGR
  * caption's own note already said, about the same move.
  *
+ * THEN 1,014 BECAME 785: the unit YIELDS to the title instead of moving. Not a
+ * clamp, a drop, on the 22 charts of 176 where its ink would land in the title's
+ * — all of them 80x60 and 300x60 at 18pt, where the engine already drops the
+ * category names, the axis strip and the legend ("Chrome yields to the title",
+ * docs/MANUAL.md). The unit was the last thing in that band still printing over
+ * the title. 154 of 176 units survive, 100% at 480x300 and above.
+ *
+ * ================================================================
+ * READ THIS BEFORE QUOTING ANY NUMBER IN THIS FILE AT A DECISION.
+ * ================================================================
+ *
+ * **This sweep measures an input the option does not support, and the resulting
+ * figure has now driven three decisions, two of them wrongly.**
+ *
+ * `OPTIONS.valueAxisTitle` is `"Revenue in millions of euro"`. The option is
+ * documented as `€m`; the two uses in the 123-chart shipped deck are `€m` and
+ * `$m (log)`. Run the identical sweep with `€m` and:
+ *
+ *     total                    785  ->  206
+ *     value-axis-title family  687  ->  118
+ *     value-axis-title/legend# 308  ->   12
+ *
+ * So about two-thirds of the largest family in this file — and a quarter of its
+ * headline total — is one test string. What it cost: the floor above was refused
+ * on the long string's numbers (1,156, worse) when on `€m` the same change is a
+ * net WIN (437 -> 346); and `title / value-axis-title`, 205 pairs, turned out to
+ * come entirely from ONE frame, 300x60, rather than from the label's width.
+ *
+ * The stress string stays — it found the missing clip, which was a real bug, and
+ * a gate that only tests kind inputs is not a gate. But the number it produces is
+ * a STRESS figure and must be named as one. Do not carry it into a product
+ * decision without re-running at the documented input first; the two answer
+ * different questions and they have disagreed every time it mattered.
+ *
+ * Same shape as this file's own founding lesson one level up: a gate is only as
+ * wide as its sweep. A gate is also only as true as its inputs.
+ *
  * WHEN A NUMBER HERE GOES DOWN, EDIT IT DOWN. The budget is a ceiling, not a
  * target, and one left above the real figure is a ratchet that has stopped
  * ratcheting — the next regression hides under the slack. There is a test below
@@ -254,14 +291,23 @@ const DATA_SHAPES: Record<string, (c: any) => any> = {
  * else is what made that one look trustworthy.
  */
 const BUDGET: Record<string, number> = {
-  // The  group — one open decision, not a pile of defects.
+  /**
+   * The `value-axis-title` group, 687 of the 785 — and READ THE NOTE ABOVE
+   * BEFORE ACTING ON THIS NUMBER. It is measured with a twenty-seven-character
+   * sentence in an option documented as a short unit ("e.g. `€m`"), and with the
+   * same sweep run at `€m` the group is 118. Roughly two-thirds of what follows
+   * is the test string, not the engine.
+   *
+   * `title / value-axis-title` was 205 of this and is now absent: the unit yields
+   * to the title rather than printing through it. It was the only member of the
+   * group no width remedy could touch.
+   */
   "value-axis-title / legend#": 308,
-  "title / value-axis-title": 205,
   "value-axis / value-axis-title": 158,
-  "value-axis-title / total#": 111,
+  "value-axis-title / total#": 95,
   "total# / value-axis-title": 93,
-  "value-axis-title / label#": 33,
-  "value-axis-title / median-label#": 8,
+  "value-axis-title / label#": 27,
+  "value-axis-title / median-label#": 6,
   // The tail.
   "combo-series-label# / combo-series-label#": 33,
   "label# / label#": 22,

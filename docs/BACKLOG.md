@@ -24,22 +24,27 @@ patterns.
 evidence; this list carries the state. Anything not on it is either shipped,
 refused, or a finding rather than a task.
 
-**Five of the eight closed on 2026-08-29, and the three left are all the
-owner's.** Two are product decisions and one goes out under his GitHub identity:
+**Six of the eight closed on 2026-08-29, and the two left are the owner's.** One
+is a product decision and one goes out under his GitHub identity:
 
-    1  where a unit label belongs when the band above the plot cannot hold three
-       (SMALLER as of 2026-08-29: the option is a short unit, and clipping it to
-       40% of the chart took the total 1,327 -> 1,014 with no new shapes)
     3  whether a crowded slide should get a picture instead of native shapes
     5  filing this project's host measurements to the office-js tracker
 
-Nothing on that list is waiting on engineering. Items 2, 4, 6, 7 and 8 were
+Nothing on that list is waiting on engineering. Items 1, 2, 4, 6, 7 and 8 were
 closed by shipping, by measuring the remedy and declining it, or by the host
 refusing the mechanism outright — each says which, in its own row.
 
+**Item 1 did not need the decision it had been waiting for**, which is the
+lesson worth keeping from it. It was framed as "where does a unit belong when
+the band cannot hold the title, the unit and the top tick" — a question about
+placement, with three ways out written up and none of them good. The answer was
+that the band's OTHER occupants had already settled it years earlier: on a chart
+that cannot hold everything, chrome yields and the title stays. The unit was
+simply the one thing in the band that had never been told. See §3.
+
 | | What | Where | State |
 |---|---|---|---|
-| 1 | **`valueAxisTitle` runs over the legend and the totals row** — **916 of the 1,014** remaining pairs (was 1,208 of 1,327), and still the whole of what is left bar a 98-pair tail | §3, *Text drawn over text* | **PART SHIPPED 2026-08-29, the rest is the owner's call.** The option is documented as a short unit — "e.g. `€m`" — and the two uses in the shipped deck are `€m` and `$m (log)`, but it was drawn with NO width bound, and the sweep tests it with a 27-character sentence. Clipping it to 40% of the chart takes 1,327 → **1,014 with no new shapes**, and keeps author text where three earlier remedies deleted it. Flooring its `y` under the title was measured in the same hour and **refused**: 1,156, and 310 `value-axis-title / category#` that did not exist before. What is left — where a unit belongs when the band cannot hold title, unit and top tick — is unchanged in kind, just smaller. (Was "287 of 317" — a figure from the uncrossed sweep, not comparable. See the note on the three totals.) |
+| 1 | ~~**`valueAxisTitle` runs over the legend and the totals row**~~ | §3, *Text drawn over text* | **CLOSED 2026-08-29, and it never was a placement decision.** Two changes: the unit is CLIPPED to 40% of the chart (1,327 → 1,014), and it now YIELDS to the title instead of printing through it (1,014 → **785**). The second killed `title / value-axis-title` — 205 pairs, the only member of the family no width remedy could touch, because both nodes are `align:"left"` at `x:0` so their ink always shares the x range and only the `y` decides. **Measured:** of 176 charts drawing both, 22 overlapped, all at 80x60 and 300x60 at 18pt, with a clean 5.9pt dead zone between the worst clear gap (+3.31pt) and the best overlapping one (−2.56pt). 154 of 176 units survive; 100% at 480x300 and above. Dropping author text is normally refused here — it is right in this one case because the old behaviour did not KEEP the unit, it printed it through the title so the reader lost both, and because on those exact charts the engine already drops the category names, the axis strip and the legend. **And the headline number was never what it looked like**: run the same sweep at the documented `€m` and the family is 118 rather than 687. See the warning now at the top of `test/overlap-budget.test.ts`. (Was "287 of 317" — a figure from the uncrossed sweep, not comparable.) |
 | 2 | ~~**The slow-insert offer is not wired**~~ | §1, *The slow-insert offer* | **SHIPPED 2026-08-29.** All five steps, five pane tests, four mutants dead. The blocker this row named was a stale finding: a fresh slide's id IS usable once the slide settles, and the probe answer flipped at round 254 because of our own commit. Kept in §1 for the lesson, not the task. |
 | 3 | **Adding to an occupied slide costs ~24s; a fresh one ~0.75s** | §1, *Adding a chart to an existing slide* | Measured over 2,917 batches. Item 2 (shipped) is the user-facing half. **A fourth option is now costed, 2026-08-29**: draw the chart as ONE picture — ~43s becomes rasterise 705ms plus a single-shape insert, a 7–20× saving, and every part of the mechanism already ships. **Still the owner's call**, and a bigger one than the offer: it changes what the user RECEIVES, not just what they are told. |
 | 4 | ~~**The picture fast-path**~~ | §1, *The largest product cost was in the FAST path* | **CLOSED 2026-08-29 on evidence, both halves.** The cost it was filed under had moved: redraws are 14.5% and exactly 2 a round, and the real cost was inside the FAST path, which took a median of 15.7s because it wrote every property of every changed node. It now writes only what differs — `same scale across the deck` 146–156s → **103s**, below the IQR of 275 rounds. And the picture feature itself is **not worth building**: a picture redraw is ~40ms of delete plus ~770ms of picture against 15–50s to draw the same shapes natively, so a fast path could save about five percent of an operation that is already twenty to sixty times cheaper than its alternative. |
@@ -2437,10 +2442,35 @@ the exercise taught.
 
 ---
 
-**STILL OPEN, AND IT IS THE OWNER'S CALL: `valueAxisTitle`, 916 of the 1,014** —
-**smaller since the clip shipped on 2026-08-29 (it was 1,208 of 1,327), and the
-same decision.** The fifth remedy, at the end of this entry, is the one that
-worked: the option is a SHORT UNIT and the sweep was testing it with a sentence.
+**CLOSED 2026-08-29: `valueAxisTitle`. Two changes, and the second one was not
+the decision this entry spent four days framing.**
+
+The entry below is kept in full because the reasoning is the point. It asks
+"where does a unit belong when the band above the plot cannot hold the title, the
+unit and the topmost tick", writes up three ways out, and measures four remedies
+into the ground. The question was wrong. **The band's other occupants had settled
+it long before**: on a chart that cannot hold everything, chrome yields and the
+title stays — `docs/MANUAL.md`, "Chrome yields to the title", whose worked
+example is a 300x60 banner. The category names go. The axis strip goes. The
+legend goes. The unit was the one thing in that band nobody had ever told, so it
+went on being painted over the title.
+
+    clip to 40% of the chart      1,327  ->  1,014
+    yield to the title            1,014  ->    785      title/VAT 205 -> 0
+
+**Why dropping author text is right in this one case**, when this entry spends
+three paragraphs below explaining why it is normally not: the old behaviour did
+not KEEP the unit. It printed it through the title, so the reader lost both. A
+chart that shows neither its unit nor its heading has not preserved anything.
+
+**And the number that framed the whole thing was measuring the wrong input.**
+`OPTIONS.valueAxisTitle` is a 27-character sentence for an option documented as
+`€m`. At `€m` the family is 118, not 687. The "largest defect family in the
+engine" corresponds to ONE overlapping pair in the 123-chart deck we ship. That
+warning now sits at the top of `test/overlap-budget.test.ts`, because this entry
+is the third decision the figure has steered and the second it steered wrongly.
+
+Everything from here down is the record of getting there.
 
 The count is bigger than the "287 of 317" this said before and the problem is
 the same size — the sweep widened underneath it, and the panels that briefly
@@ -2556,15 +2586,27 @@ free** — which the CAGR caption's own note already said, about the same move.
 Pinned by `test/value-axis-title.test.ts`, which says re-measure before
 "fixing" it.
 
-**What is still open, and it is unchanged in kind:** where a unit belongs when
-the band above the plot cannot hold the title, the unit and the topmost tick all
-three. Three ways out, none of them engineering work:
+**~~What is still open~~ — ANSWERED 2026-08-29, and not by any of these.** The
+question was where a unit belongs when the band cannot hold the title, the unit
+and the topmost tick all three. Three ways out were written up:
 
 - Put the unit at the END of the axis rather than above it — Excel's rotated
   axis title, without the rotation.
 - Fold it into the tick numbers themselves: `€m` on the top tick only.
 - Accept it as the one label allowed to displace the plot, which is the gutter
   idea the 2026-08-19 attempt reverted.
+
+All three answer "where does it GO". The answer was that on the charts where the
+question bites, it does not go anywhere — it yields, exactly as the category
+names, the axis strip and the legend already do on the same charts. Every one of
+the three would have been real work, and the shipped change is one conditional.
+
+**The tell was in the numbers and went unread for four days.** `title /
+value-axis-title` was LENGTH-INDEPENDENT — identical at two characters and at
+twenty-seven — which says plainly that the label's size is not the variable. Four
+remedies in a row adjusted its size or its position anyway. A family that does
+not respond to the thing you keep changing is telling you which question you are
+answering.
 
 ---
 

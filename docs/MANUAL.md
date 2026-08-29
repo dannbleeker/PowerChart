@@ -290,7 +290,8 @@ count of how many of its options are currently on.
   axis: "€m", "%", "$m (log)". It shares the narrow band above the plot with
   the chart title and the topmost tick, so it is drawn at no more than 40% of
   the chart's width and anything longer is clipped. Put the explanation in the
-  title or the footnote; this is a unit, not a subtitle.
+  title or the footnote; this is a unit, not a subtitle. On a chart too short to
+  hold both it yields to the title — see *Chrome yields to the title* below.
 - **Labels**: decimals / suffix ("€m") / locale (1.234,5 for de-DE), and
   **label content** — any combination of value, %, series, category.
 - **Footnote / source** — every good chart cites its source; renders
@@ -492,6 +493,14 @@ colour key is dropped and the title stays: it is the one label that says what
 the reader is looking at. A 300x60 banner at 24pt therefore shows its title and
 its bars, and no category names — give it more height, or a smaller font, and
 they come back.
+
+The **unit label** now follows the same rule, and until 2026-08-29 it was the one
+thing in that band that did not: on a chart with no room for both it was drawn
+straight through the title, so the reader lost the title as well as the unit.
+It is dropped only where its text would land in the title's — measured, that is
+80x60 and 300x60 at 18pt and nothing else, with every chart at 480x300 and above
+keeping its unit at every font size. As with the category names: more height, or
+a smaller font, and it comes back.
 
 **Marks stay inside the chart too.** A marker is drawn *around* its position, so
 a bubble at the very edge of the plot would put half its circle outside the

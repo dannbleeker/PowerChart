@@ -21,8 +21,8 @@ runs on every build so the number can only go down.
 change to the engine**, so none of them should be read against another without
 saying which sweep produced it: 2,148 → 467 was the fixes below; 467 → 4,010 was
 the sweep itself widening to cross options with data shapes, which it had never
-done; and 4,010 → 1,327 was the small-multiples bug in the next entry. A fourth,
-1,327 → **1,014**, is the unit label:
+done; and 4,010 → 1,327 was the small-multiples bug in the next entry. A fourth
+and fifth, 1,327 → 1,014 → **785**, are the unit label:
 
 - **The value-axis unit label is clipped** to at most 40% of the chart's width.
   It is a unit — "€m", "%", "$m (log)" — and it was drawn with no width bound at
@@ -30,6 +30,13 @@ done; and 4,010 → 1,327 was the small-multiples bug in the next entry. A fourt
   unit is untouched; a long one is truncated with its start kept, the way
   category and gantt names already are. Put the explanation in the title or the
   footnote.
+- **And it yields to the chart title** instead of being drawn through it. On a
+  chart too short to carry both, the unit used to overprint the title and you
+  lost the reading of both. It now steps aside on exactly the charts where that
+  would happen — measured, that is a 300x60 banner at 18pt and nothing anyone
+  presents at; every chart 480x300 and larger keeps its unit at every font size.
+  This is the same rule the category names, the axis strip and the legend have
+  always followed: on a chart that cannot hold everything, the title stays.
 
 What that looked like on a real chart:
 

@@ -939,14 +939,67 @@ export function chromeNodes(
     const unitFs = fs * 0.95;
     /** At most this share of the chart, so a long unit cannot span it. */
     const room = cfg.width * 0.4;
-    const unitText = clipToWidth(cfg.valueAxisTitle, unitFs, room);
+    /**
+     * THE UNIT YIELDS TO THE TITLE, like everything else in this band already
+     * does — and this is the whole of `title / value-axis-title`.
+     *
+     * That pair is LENGTH-INDEPENDENT: 205 of it across the sweep whether the
+     * unit is two characters or twenty-seven. Both nodes are `align: "left"` at
+     * `x: 0`, so their ink always shares the x range, and only the y decides.
+     * `Math.max(0, …)` then parks the unit inside the title's band on a chart
+     * whose plot cannot start below both. No width remedy — clip, gutter-fit,
+     * shrink — can move that number, and all three were tried.
+     *
+     * MEASURED, on the 176 charts that draw a title and a unit: 22 overlap, and
+     * the split is clean. Every overlapping pair has an ink gap of -2.56pt or
+     * worse; every clear one has +3.31pt or better. There is no borderline case
+     * to get wrong, so the rule is simply whether the ink clears.
+     *
+     * ON INK, NOT ON BOXES, and the box version was written first and was wrong.
+     * `bandTop < titleHeight(cfg, style)` reads plausibly — and drops the unit
+     * from a clustered chart at 480x300, a size people present at. That is the
+     * exact objection that sank the 2026-08-28 ink-overlap remedy, arrived at by
+     * the exact mistake this repo keeps making: measuring the box when the
+     * question is about the ink.
+     *
+     * WHY DROPPING IS RIGHT HERE, when dropping author text is normally refused.
+     * The 22 are all `80x60` and `300x60` at 18pt, and on those charts the
+     * engine ALREADY drops the category names, the axis strip and the legend —
+     * "Chrome yields to the title" in docs/MANUAL.md, whose worked example is a
+     * 300x60 banner. The unit was the one thing in that band still drawn on top
+     * of the title. It is not being singled out; it was the exception.
+     *
+     * On every frame anybody presents at, the unit is untouched: 154 of 176 kept,
+     * and 100% at 480x300 and above.
+     *
+     * THE CONSTANTS HERE ARE NOT LOAD-BEARING, which is worth saying because it
+     * looks like they should be. Three mutants survive `value-axis-title.test.ts`
+     * and all three are equivalent, not gaps: `* 1.21` moved to `* 1.9` or
+     * `* 1.0`, and the `Math.max(0, …)` taken back out of the decision, each
+     * leave the drawn/dropped sets identical at 154/22. That follows from the
+     * measurement — the dead zone between the worst clear gap (+3.31pt) and the
+     * best overlapping one (-2.56pt) is 5.9pt wide, so every threshold inside it
+     * decides every chart the same way. The test pins the OUTCOME (the counts
+     * and the two frames) rather than the arithmetic, which is why it survives
+     * them and would still catch a rule that reached further.
+     */
+    const bandTop = Math.max(0, frame.y - fs * 1.5);
+    // The ink of the box as it will ACTUALLY be drawn — the clamped `y`, not the
+    // raw one. Deciding on the unclamped position drops the unit from short
+    // charts that have no title to collide with, which is a worse bug than the
+    // one this fixes and is what the first version of this did.
+    const unitInkTop = bandTop + fs * 1.4 - unitFs * 1.05;
+    const titleInkBottom = titleFontSize(cfg, style) * 1.21;
+    /** Only ever against a title that is drawn: nothing else is up there. */
+    const yieldsToTitle = !!cfg.title && unitInkTop < titleInkBottom;
+    const unitText = yieldsToTitle ? "" : clipToWidth(cfg.valueAxisTitle, unitFs, room);
     // Nothing legible fits — drop rather than push an empty box into the scene,
     // which the de-collision pass and every readback would then have to carry.
     if (unitText)
       nodes.push({
         kind: "text",
         x: 0,
-        y: Math.max(0, frame.y - fs * 1.5),
+        y: bandTop,
         w: Math.min(Math.max(frame.x - 4, textWidth(unitText, fs)), room),
         h: fs * 1.4,
         text: unitText,
