@@ -2063,10 +2063,38 @@ from before it is not comparable with one after — the same trap as the
     1,058   `value-axis-title` — the open decision below, unchanged in kind
       269   everything else, including three new shapes
 
-**THE FIND: small multiples do not thin their labels when the data gets dense.**
-Panels lay out at a fraction of the frame. With the sample's data they are
-fine — `multiples 2 columns` has been swept alone since the start and produced
-no `p#-` shape at all. Crossed with twenty-four categories or ten series:
+**THE FIND — AND THE FIRST ANSWER WAS WRONG, so read the correction first.**
+This entry said, from the count alone, that "small multiples do not thin their
+labels when the data gets dense". Tested on 2026-08-29 and refuted. The category
+axis thins perfectly well — `catFs` shrinks until every name fits its slot and
+`clipToWidth` clips what no floor can fit — and **zero** of the 910 overlaps are
+between two names in the SAME panel:
+
+    panel category-name overlaps:  WITHIN a panel 0 · ACROSS panels 910
+    by frame:                      300x60  910   (every other frame: none)
+
+All of it is one frame, and these labels are not merely touching. On a 300x60
+chart with ten series in two columns, `p0-category-0` is drawn at **y = 307 on a
+chart 60 points tall**, on top of the next row's names at 316.
+
+The arithmetic says why. Ten series in two columns is five rows, and
+
+    panelH = (cfg.height − titleH − footH − gap × (rows − 1)) / rows
+
+at 60 points high, with a title and four 10-point gaps, leaves **zero or less
+per panel**. `buildMultiples` builds them anyway. Every fit downstream floors at
+`MIN_PLOT_SIDE`, so each panel's plot is taller than its panel, the category
+strip is placed below the plot, and the stack marches off the chart.
+
+So it is not a labelling defect at all. It is a grid built at a size that cannot
+exist, and the labels are only where it shows. Everywhere else this engine
+refuses what it cannot pay for; `buildMultiples` has no such check. The guard
+that covers the single-chart version (`catInk <= cfg.height`) does not save it,
+because a panel is built in its own coordinates and offset into place afterwards
+— the guard passes inside the panel, and the composition puts it off the chart.
+
+The counts below stand as measured; only the explanation changed. Crossed with
+twenty-four categories or ten series:
 
     910  p#-category# / p#-category#
     408  p#-title / p#-title
@@ -2075,12 +2103,16 @@ no `p#-` shape at all. Crossed with twenty-four categories or ten series:
     261  p#-label## / p#-label##
     198  p#-total# / p#-total#
 
-Everywhere else this engine drops or shrinks a label it cannot fit —
-`seriesLabelNodes` spreads, shrinks and finally drops; the radar's ticks, the
-pie's outside labels and the sunburst's ring all do the same. Inside a panel it
-appears not to: the panel gets its share of the frame and lays out as though it
-had the whole of it. That is one hypothesis and it is worth exactly what an
-untested hypothesis is worth — the number is measured, the cause is not.
+Only `p#-category#` has been traced to its cause; the other five are the same
+grid seen through different labels, and that is an inference rather than a
+measurement. Trace one more before assuming they all move together.
+
+**The lesson, and it is the same one twice in a night.** The first explanation
+here was written from a count and read plausibly — this engine really does thin
+labels everywhere else, so "not inside a panel" fitted. It took one diagnostic,
+which cost minutes, to find that the true answer was in a different file
+entirely and an order of magnitude worse than the story. A count tells you where
+to look and never why.
 
 **Not fixed tonight, deliberately.** It is a layout change across every kind
 that supports multiples, and it wants the sweep, the ratchet and a round rather

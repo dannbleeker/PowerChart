@@ -206,14 +206,18 @@ const DATA_SHAPES: Record<string, (c: any) => any> = {
  *     1,058   `value-axis-title` — the owner's open decision
  *       269   everything else
  *
- * The small-multiples family is the discovery. Panels lay out at a fraction of
- * the frame, and with the sample's data they are fine — `multiples 2 columns`
- * has been swept on its own since the start and produced no `p#-` shape at all.
- * Crossed with twenty-four categories or ten series they are not: 910 pairs of
- * panel category name on panel category name, 408 of panel title on panel
- * title. The engine drops and shrinks labels that will not fit everywhere else
- * (`seriesLabelNodes`, the radar's ticks, the pie's outside labels); inside a
- * panel it appears not to. Measured, not yet fixed — see docs/BACKLOG.md.
+ * The small-multiples family is the discovery, and it is NOT a labelling defect
+ * — that was the first guess and a diagnostic refuted it. The category axis
+ * thins correctly, and zero of the 910 `p#-category#` pairs are two names in
+ * the same panel. All 910 come from ONE frame, 300x60, where ten series in two
+ * columns is five rows and
+ *
+ *     panelH = (height − titleH − footH − gap × (rows − 1)) / rows
+ *
+ * leaves nothing per panel. `buildMultiples` builds the grid anyway, every fit
+ * below floors at `MIN_PLOT_SIDE`, and a panel's category strip ends up at
+ * y = 307 on a chart 60 points tall. The labels are only where it shows.
+ * Measured, diagnosed, not yet fixed — see docs/BACKLOG.md.
  */
 const BUDGET: Record<string, number> = {
   // Small multiples, crossed with dense data. New on 2026-08-29 and unfixed.
