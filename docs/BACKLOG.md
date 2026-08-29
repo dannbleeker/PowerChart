@@ -2780,10 +2780,51 @@ evidence collection — where the archive as a whole looked scattered.
 Worth one more build's worth of records before anyone acts on it. Four of five
 is a pattern; it is not yet the answer to "why nine minutes".
 
-So no phase dominates. The per-phase traces did their job — before them, six of
-these would have been filed under the probe re-ask — and what they show is a
-host that falls over in several places late in a long round, not one broken
-call.
+### FOUR MORE BUILDS ARRIVED, AND THE SCAN WINS — 2026-08-29
+
+The entry above asked for one more build. That evening supplied four, and they
+are unanimous. Counted the same way — one vote per build, so a bad night cannot
+vote six times:
+
+    e9222a8   4 of 4 crashes   pane — collecting deck evidence — scanning
+    3495fb8   5 of 5           same
+    557b10e   1 of 1           same
+    4275306   4 of 6           same (the other two: one probe, one selftest)
+
+**That is 9 builds on the scan against 4 on `draw`** — 14 of the day's 17
+records, in a band of 441-572s. The sentence below ("no phase dominates") was
+true of fifteen builds and is not true of nineteen. `collectDeckEvidence`'s own
+comment blamed `slideShots`, the screenshot loop, as "the prime suspect"; the
+per-phase tracing it added in the same breath has now acquitted it. Every one of
+these died in `listChartsInDeck({ withInventory: true })`, the FIRST phase,
+before a single screenshot was attempted.
+
+**And what it costs is not the round — it is the FILING of the round.** Every
+verdict is in before that scan. 33 of 49 crash records hold a complete
+fourteen-scenario result, over 13 builds; on 2026-08-29 one 4:3 leg produced a
+full result five times, 14/14 in four of them, and archived none of the five.
+The pane now assembles and banks its run log BEFORE the scan, and
+`scripts/salvage-crashed.mjs` recovered 22 of the historical ones into
+`rounds-salvaged/` — all 22 of them 4:3, taking that arm from 26 rounds to 48.
+
+**A rate nobody had tracked**, and it is a reason to watch rather than a finding.
+Crashes per archived round, by day:
+
+    08-24  0.14      08-27  0.75
+    08-25  0.12      08-28  1.33
+    08-26  0.23      08-29  1.24
+
+Roughly tenfold, breaking on 08-27. The cause is unknown and the denominator is
+sensitive: a leg that burns seven attempts contributes seven crashes and zero
+rounds, so a single bad leg moves the ratio a long way. Round duration is not it
+— 12 scenarios/364s then, 14/390s now. What else changed that day is the domain
+move and v0.4.0. Nobody should conclude anything from this yet; it is here so the
+next reading has something to be compared against.
+
+So — of the sentence that follows — no phase dominated across FIFTEEN builds.
+The per-phase traces did their job — before them, six of these would have been
+filed under the probe re-ask — and what they showed then was a host that falls
+over in several places late in a long round, not one broken call.
 
 **The host says the channel was healthy.** `crashes/2026-08-28T01-51-11.md` is
 PowerPoint's own account of the 524s crash in round 290: the document channel

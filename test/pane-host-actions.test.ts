@@ -182,6 +182,25 @@ const host = vi.hoisted(() => ({
    * with the protection removed.
    */
   deckScanThrows: false,
+  /**
+   * THE SCAN THAT NEVER ANSWERS — what a host CRASH looks like, and a different
+   * fault from the one above.
+   *
+   * `collectDeckEvidence` catches, so a scan that RAISES was always survivable.
+   * A scan that never settles is not: the `await` in front of it never returns,
+   * so everything after it — assembling the run log, enabling its button —
+   * never runs at all. That is how 33 of 49 crash records came to hold all
+   * fourteen verdicts while no round was ever filed from any of them.
+   *
+   * COUNTED, not a plain flag, because `withInventory` scans happen during the
+   * scenarios too — a blunt flag hangs the first one and stops the round before
+   * it has any verdicts to lose, which tests the opposite of what is meant. The
+   * test discovers the number a clean round makes rather than hard-coding it,
+   * so adding a scenario that scans cannot quietly disarm this.
+   */
+  deckInventoryScans: 0,
+  /** Hang on the Nth `withInventory` scan; null never hangs. */
+  deckScanHangsOnScan: null as number | null,
   deckSlideIdCalls: 0,
   /** Slides the round is modelled as having added, seen by the second id read. */
   roundAddsSlides: ["probe-a", "probe-b"] as string[],
@@ -359,6 +378,11 @@ vi.mock("../src/render/powerpoint", () => ({
     },
   ),
   listChartsInDeck: vi.fn(async (opts: { withInventory?: boolean } = {}) => {
+    if (opts.withInventory) {
+      host.deckInventoryScans++;
+      if (host.deckScanHangsOnScan !== null && host.deckInventoryScans >= host.deckScanHangsOnScan)
+        return new Promise(() => {});
+    }
     if (host.deckScanThrows) throw new Error("the host refused to describe the deck");
     return {
       charts: host.deckCharts,
@@ -567,6 +591,8 @@ async function bootHostPane(opts?: { deckStyle?: Record<string, unknown> | null 
   host.deckSlideIds = undefined;
   host.canRaster = true;
   host.deckScanThrows = false;
+  host.deckInventoryScans = 0;
+  host.deckScanHangsOnScan = null;
   host.deletedSlides = [];
   host.selectionDropped = [];
   host.deckSlideIdCalls = 0;
@@ -2385,6 +2411,58 @@ describe("demo-insert one-shot deck insert", () => {
     const bundle = await dl.lastJson();
     expect(bundle.selftest?.length, "lost the verdicts because the deck would not answer").toBeGreaterThan(0);
     expect(bundle.hostAnswers?.answers?.length).toBeGreaterThan(0);
+    dl.restore();
+  });
+
+  it("banks the round before the deck scan, so a host that dies in it loses nothing", async () => {
+    /**
+     * THE CRASH, MODELLED PROPERLY. The test above arms a scan that RAISES, and
+     * `collectDeckEvidence` catches — so that path was always survivable and
+     * proved nothing about a crash. A crashing host does not raise, it stops
+     * answering: the `await` never returns and every line after it is dead.
+     *
+     * The cost, measured on 2026-08-29: 33 of 49 records in `crashes/` hold all
+     * fourteen verdicts and not one became a round. One 4:3 leg produced a full
+     * result five times that evening — 14/14 four of them — and archived none,
+     * because the host died in the scan every time, between 441s and 572s.
+     *
+     * So the log is assembled and its button enabled BEFORE the scan, and the
+     * header is written to the crash log, which survives the tab reload that
+     * recovery performs. `slideSize()` stays on this side of the scan too: it is
+     * a host call, and after the crash there is no host to ask.
+     */
+    // One clean round first, to learn how many inventory scans a round makes.
+    // The last of them is the evidence collector's, and hard-coding that number
+    // is how this test would rot the day a scenario starts scanning.
+    const clean = captureDownloads();
+    $("demo-round").click();
+    await settle();
+    const perRound = host.deckInventoryScans;
+    expect(perRound, "no inventory scan ran at all — the fixture cannot arm the fault").toBeGreaterThan(0);
+    clean.restore();
+
+    // Now hang the SECOND round's last scan: its verdicts are all in by then.
+    host.deckScanHangsOnScan = perRound * 2;
+    const dl = captureDownloads();
+    $("demo-round").click();
+    await settle();
+
+    // The button is what the driver presses; before this change it was never
+    // reached, so `collectRound` found nothing to download and filed a crash.
+    expect(
+      ($("demo-log") as HTMLButtonElement).disabled,
+      "the round's log was never offered — a crash in the scan still loses it",
+    ).toBe(false);
+    $("demo-log").click();
+    const log = await dl.lastJson();
+    expect(log.selftest?.length, "the verdicts did not survive a scan that never answered").toBeGreaterThan(0);
+    expect(log.hostAnswers?.answers?.length, "the probe sheet did not survive").toBeGreaterThan(0);
+    // Read while the host was still alive to answer. Without it a salvaged round
+    // cannot say which profile it ran at, and this archive pools two.
+    expect(log.slideSize, "the round cannot say what profile it ran at").toBeTruthy();
+    // No deck, and it must not pretend otherwise — a guessed inventory would be
+    // worse than none, because everything downstream reads it as measured.
+    expect(log.deck, "invented deck evidence the scan never returned").toBeUndefined();
     dl.restore();
   });
 

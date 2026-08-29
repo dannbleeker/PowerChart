@@ -509,6 +509,56 @@ describe("talking to the browser at all", () => {
     expect(RECOVERABLE_STOPS.has("wrong-size"), "recovery must never set the slide size").toBe(false);
   });
 
+  it("does not judge a size it read off the wrong deck", () => {
+    /**
+     * THE TWO STOPS ABOVE MET, AND THE FATAL ONE WON.
+     *
+     * When the wanted deck is not fronted, `size` is the size of whatever other
+     * document IS — so the size check refused `wrong-size` about a deck the
+     * round was never going to run against. `deck-missing` is recoverable and
+     * `wrong-size` deliberately is not, so the bogus companion turned a stop the
+     * driver clears itself into one that ends the night.
+     *
+     * It bites the NORMAL sequence, which is why a single cycle never saw it:
+     * leg 3 runs at 4:3 and leaves that deck in front, so the next cycle's leg 1
+     * wants the 16:9 deck and measures the 4:3 one still sitting there. A full
+     * cycle died this way on 2026-08-27 and again on 2026-08-29 — the second
+     * time after the reorder above had already improved the MESSAGE, which is
+     * what made it look fixed.
+     */
+    const away = readiness({
+      ...READY,
+      wantDeck: "Presentation64",
+      deckFronted: false,
+      size: "4:3",
+      expectSize: "16:9",
+    });
+    expect(away.codes, "named the deck, which is the useful half").toContain("deck-missing");
+    expect(away.codes, "judged the size of a deck it was not going to run against").not.toContain("wrong-size");
+    // The point of the whole fix: every code left is one recovery can clear, so
+    // the driver retries instead of ending the night.
+    expect(
+      away.codes.every((c: string) => RECOVERABLE_STOPS.has(c)),
+      `a stop the driver cannot clear survived: ${away.codes.join(", ")}`,
+    ).toBe(true);
+
+    // AND THE REAL REFUSAL MUST SURVIVE. With the right deck in front at the
+    // wrong size, the owner really has set the profile wrong, and filing a round
+    // under it is worse than not running one.
+    const here = readiness({
+      ...READY,
+      wantDeck: "Presentation64",
+      deckFronted: true,
+      size: "4:3",
+      expectSize: "16:9",
+    });
+    expect(here.codes, "the refusal this check exists for was softened away").toContain("wrong-size");
+    // Unchanged where no deck was named: whichever document is in front IS the
+    // one being judged, so its size is the right size to judge.
+    const anyDeck = readiness({ ...READY, size: "4:3", expectSize: "16:9" });
+    expect(anyDeck.codes).toContain("wrong-size");
+  });
+
   it("never reads `find`'s miss message as a hit", async () => {
     // THE WORST POLARITY A BUG CAN HAVE, and it caught me twice on 2026-08-20.
     // `playwright-cli find` answers a miss with:

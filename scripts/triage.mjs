@@ -875,10 +875,9 @@ function stampDate(log, buildOf) {
  */
 export function poolScenarioPopulations(logs) {
   const seen = new Map();
-  // THE INDEX, NOT JUST THE VALUE — see the `now.at` guard below. Without it
+  // THE INDEX, NOT JUST THE VALUE — see `isTheRoundBeingJudged`. Without it
   // there is nothing to distinguish "the round being judged counted 7" from
   // "some round counted 7, once, a month ago".
-  const lastIndex = logs.length - 1;
   logs.forEach((log, at) => {
     const st = log?.selftest ?? [];
     for (const s of Object.keys(st).map((k) => st[k])) {
@@ -929,7 +928,7 @@ export function poolScenarioPopulations(logs) {
      * If this round did not count, there is no ratio of this round's to warn
      * about. Say nothing.
      */
-    if (now.at !== lastIndex) continue;
+    if (!isTheRoundBeingJudged(now.at, logs)) continue;
     const priors = hist.slice(0, -1).map((h) => h.of);
     // The population it has USUALLY had. Not the mean: a single small round
     // would drag the bar down and hide the next one.
@@ -975,11 +974,34 @@ export function poolScenarioPopulations(logs) {
  */
 const MIN_PRIORS_FOR_A_BASELINE = 3;
 
+/**
+ * DID THE ROUND BEING JUDGED ACTUALLY CONTRIBUTE, or is `now` an older one?
+ *
+ * Three emitters here build a history by walking `logs` and SKIPPING the rounds
+ * that carry nothing to measure, then take the last entry as "this round". That
+ * is only true while the newest round contributed. When it did not, the last
+ * entry is the newest round that DID — which can be any distance back.
+ *
+ * Found on 2026-08-29 in `poolScenarioPopulations`, which told three consecutive
+ * rounds `insert onto a slide that already has content — 7 this round, usually
+ * 16` where the 7 belonged to round 282, twenty-four rounds and four builds
+ * earlier, and none of the three had counted anything at all. It was permanent
+ * rather than a blip: 282 was the newest round with a count and would have
+ * stayed so, so the line would have fired for ever with the same stale number.
+ *
+ * Each site records the index it came from and asks this before reporting. The
+ * honest answer when the newest round contributed nothing is silence: there is
+ * no figure OF THIS ROUND to compare against its own history.
+ */
+function isTheRoundBeingJudged(at, logs) {
+  return at === (logs?.length ?? 0) - 1;
+}
+
 export function poolGroupingOutcome(logs) {
   const per = [];
-  for (const log of logs) {
+  logs.forEach((log, at) => {
     const entries = log?.trace?.entries;
-    if (!Array.isArray(entries)) continue;
+    if (!Array.isArray(entries)) return;
     let grouped = 0;
     let refused = 0;
     // THE THIRD OUTCOME, and it was dropped from the numerator AND the
@@ -1006,12 +1028,16 @@ export function poolGroupingOutcome(logs) {
       else if (/^not grouping/.test(m)) refused += 1;
       else if (m === "grouping the chart's shapes" && e.data?.error) threw += 1;
     }
-    if (!grouped && !refused && !threw) continue;
+    if (!grouped && !refused && !threw) return;
     const deck = (log?.deck?.inventory ?? []).map((sl) => sl.count ?? sl.shapes?.length ?? 0);
-    per.push({ build: String(log.build ?? "").split(" ")[0], grouped, refused, threw, deck });
-  }
+    per.push({ build: String(log.build ?? "").split(" ")[0], grouped, refused, threw, deck, at });
+  });
   if (!per.length) return null;
   const now = per[per.length - 1];
+  // The stale-`now` guard — see `isTheRoundBeingJudged`. This one prints the
+  // headline grouping figure of every gate run, and the deck line beside it, so
+  // a stale `now` here describes another round's deck as this round's.
+  if (!isTheRoundBeingJudged(now.at, logs)) return null;
   const priors = per.slice(0, -1);
   // THREE PRIORS MINIMUM — the same rule `poolScenarioPopulations` needed, and
   // the same defect it had. A median of one observation is not a "usually", and
@@ -2302,9 +2328,13 @@ export const RECENT_IN_A_ROW = 8;
 
 export function poolFallbackRates(logs) {
   const per = [];
-  for (const log of logs ?? []) {
+  // The index of the newest log that CONTRIBUTED, kept beside `per` rather than
+  // inside it: these entries are keyed by signal name and downstream code walks
+  // their keys, so an `at` field would read as a signal called "at".
+  let lastAt = -1;
+  (logs ?? []).forEach((log, at) => {
     const entries = log?.trace?.entries;
-    if (!Array.isArray(entries)) continue;
+    if (!Array.isArray(entries)) return;
     const c = {};
     for (const key of Object.keys(FALLBACK_SIGNALS)) c[key] = 0;
     for (const e of entries) {
@@ -2312,8 +2342,13 @@ export function poolFallbackRates(logs) {
       if (m in c) c[m]++;
     }
     per.push(c);
-  }
+    lastAt = at;
+  });
   if (per.length < MIN_PRIORS_FOR_A_BASELINE + 1) return [];
+  // The stale-`now` guard — see `isTheRoundBeingJudged`. A round with no trace
+  // at all is skipped above, and this said "now" about the newest round that
+  // HAD one.
+  if (!isTheRoundBeingJudged(lastAt, logs)) return [];
   const now = per[per.length - 1];
   const priors = per.slice(0, -1);
   // DRIFT, NOT JUST TODAY. Comparing this round against the median of ALL

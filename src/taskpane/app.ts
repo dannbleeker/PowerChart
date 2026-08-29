@@ -3396,10 +3396,21 @@ async function collectDeckEvidence(idsBefore: string[] | undefined): Promise<Run
     // about to be read, and a value captured when the pane loaded would be the
     // one from before the owner ticked it.
     const shotAll = ($("demo-shot-all") as HTMLInputElement | null)?.checked ?? false;
-    // THE EXPENSIVE ONE, and the prime suspect for those four crashes: it
-    // renders an image per new slide. Traced with the COUNT it is about to
-    // attempt, so the next crash says how many it was asked for rather than
-    // leaving the number to be inferred from the deck.
+    // THE EXPENSIVE ONE — it renders an image per new slide — and it WAS the
+    // prime suspect for those four crashes. It is not the culprit, and the
+    // per-phase tracing added above is what settled it. Over 2026-08-29's four
+    // builds, counted one vote per build the way this archive counts crashes:
+    //
+    //     e9222a8   4 of 4 crashes        557b10e   1 of 1
+    //     3495fb8   5 of 5                4275306   4 of 6
+    //
+    // every one died at `scanning`, the FIRST phase, before this line was ever
+    // reached. That takes the scan to 9 builds against 4 for everything else.
+    // The suspect is `listChartsInDeck({ withInventory: true })` above.
+    //
+    // Still traced with the COUNT it is about to attempt: it remains the
+    // expensive call, and a crash that DOES land here should say how many it was
+    // asked for rather than leave the number to be inferred from the deck.
     trace("pane", "collecting deck evidence — shooting slides", {
       slides: newSlides.length,
       max: shotAll ? MAX_SHOTS_ALL : MAX_SHOTS,
@@ -4140,12 +4151,37 @@ function wireInsert() {
         } else if (plan.skipped.length) {
           trace("probe", "left questions deferred — no chart this host would name", { deferred: plan.skipped });
         }
-        // Gathered after the scenarios, before the file is written: this is the
-        // upload that used to be the owner's job — save the deck, screenshot the
-        // pane, attach both. It is a best-effort tail, so a host too far gone to
-        // describe its own deck still gets the verdicts out.
-        note("Collecting what landed on the slides…", "busy");
-        const deck = await collectDeckEvidence(idsBefore);
+        /**
+         * ASSEMBLED BEFORE THE STEP THAT KILLS THE HOST, and this ordering is
+         * the whole point.
+         *
+         * `collectDeckEvidence` used to run FIRST and this object was built from
+         * its result. Every verdict was already in by then — that function's own
+         * docstring says so — but if the host died inside it, `lastRunLog` was
+         * never assigned, `demo-log` was never enabled, and a complete round
+         * evaporated. The driver found nothing to download and filed a crash.
+         *
+         * That is not rare and it is not cheap. **33 of 49 crash records in
+         * `crashes/` hold all fourteen verdicts**, over 13 builds — about a tenth
+         * of this archive again, thrown away for want of a deck scan. On
+         * 2026-08-29 one 4:3 leg produced a full fourteen-scenario result FIVE
+         * times, 14/14 four of them, and archived none.
+         *
+         * And the scan is where it dies: per-phase tracing puts 9 builds on
+         * `collecting deck evidence — scanning` against 4 on everything else,
+         * in a band of 441-572s.
+         *
+         * IT WORKS BECAUSE THE PANE OUTLIVES THE HOST. A crash takes Office.js
+         * down, not this iframe — `keepCrashedRun` presses "Download the crashed
+         * run" after exactly this crash and gets a file every time. Saving is
+         * Blob and DOM, no host call, so a button enabled here still answers.
+         *
+         * `slideSize()` is a host call and stays on this side of the scan, where
+         * the host is still alive to answer it.
+         *
+         * Same lesson as "SAVE FIRST, then end the record" below, one step
+         * earlier in the same sequence.
+         */
         lastRunLog = {
           build: buildStamp,
           host,
@@ -4164,10 +4200,42 @@ function wireInsert() {
           runs: [],
           hostAnswers: sheet,
           selftest: results,
-          ...(deck ? { deck } : {}),
           ...(tracing() ? { trace: traceLog(traceFrom) } : {}),
         };
         ($("demo-log") as HTMLButtonElement).disabled = false;
+        /**
+         * AND PERSISTED, because enabling the button is not enough on its own.
+         *
+         * `lastRunLog` is a variable. Recovery RELOADS the tab after a crash, so
+         * anything held only in memory is gone before the driver could press
+         * anything — which is why the ordering above needs a durable partner.
+         *
+         * The crash log is that partner and it is already proven: every verdict
+         * reaches `crashes/*.json` through `recordCrashFinding`, and all 49
+         * records exist because the pane answered a button press AFTER the host
+         * died. This adds the four fields a salvage needs that the verdicts do
+         * not already carry, so a crashed run becomes a complete round rather
+         * than a pile of verdicts missing their header.
+         *
+         * Deliberately NOT the whole log: `selftest` is already here one key per
+         * scenario and the trace is the bulk of the record, so copying either
+         * would double the file to say nothing new.
+         */
+        recordCrashFinding("runLogHead", {
+          build: lastRunLog.build,
+          host: lastRunLog.host,
+          slideSize: lastRunLog.slideSize,
+          runs: lastRunLog.runs,
+        });
+        // Gathered after the scenarios, before the file is written: this is the
+        // upload that used to be the owner's job — save the deck, screenshot the
+        // pane, attach both. It is a best-effort tail, so a host too far gone to
+        // describe its own deck still gets the verdicts out.
+        note("Collecting what landed on the slides…", "busy");
+        const deck = await collectDeckEvidence(idsBefore);
+        // Re-taken rather than merged: the trace above stops before the scan, so
+        // a log kept at this point would describe a round that never scanned.
+        if (deck) lastRunLog = { ...lastRunLog, deck, ...(tracing() ? { trace: traceLog(traceFrom) } : {}) };
         // Only what THIS round added, and only what it could name. The button
         // stays disabled when the id diff came back empty, because a cleanup
         // with nothing to work from is one that would have to guess which

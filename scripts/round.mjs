@@ -471,7 +471,25 @@ export function readiness({
   // THE SIZE THE DECK ACTUALLY IS, when a profile was asked for. Only when both
   // are known: a host that would not answer has said nothing, and refusing on no
   // evidence is what `reachable` exists to prevent.
-  if (expectSize && size && size !== expectSize)
+  //
+  // AND ONLY WHEN IT IS THE RIGHT DECK'S SIZE, which is the half the comment
+  // above only half fixed. Reordering the two checks improved the MESSAGE and
+  // left the refusal firing: when the wanted deck is not fronted, `size` is the
+  // size of whatever other document is, so this refuses `wrong-size` about a
+  // deck this round was never going to run against.
+  //
+  // That is fatal rather than cosmetic. `deck-missing` is in `RECOVERABLE_STOPS`
+  // and `recover` knows how to open a deck; `wrong-size` is deliberately NOT,
+  // because setting a size changes what a round measures rather than restoring
+  // it. So the bogus companion turns a stop the driver can clear into one it
+  // cannot, and the whole night ends.
+  //
+  // It cost a full cycle on 2026-08-27 and again on 2026-08-29, and it bites the
+  // NORMAL sequence: leg 3 runs at 4:3 and leaves that deck fronted, so the next
+  // cycle's leg 1 wants the 16:9 deck and measures the 4:3 one that is still in
+  // front. A single cycle never sees it. On 2026-08-29 the fix by hand was to
+  // open the deck — which is exactly what recovery would have done unasked.
+  if (expectSize && size && (!wantDeck || deckFronted) && size !== expectSize)
     refuse(
       "wrong-size",
       `the deck is ${size} and this round was asked for ${expectSize} — rerun with \`PW_SET_SIZE=1\` to have ` +

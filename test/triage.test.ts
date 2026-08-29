@@ -1276,6 +1276,17 @@ describe("triage — logs that are not inserts", () => {
     const after = stepped.find((r: { key: string }) => r.key === "not updating in place — redrawing instead")!;
     expect(after.recent, "the last rounds in order, not summarised").toEqual([12, 12, 12, 2, 2, 2, 2, 2]);
     expect(after.median, "the median still cannot see the step — that is the point").toBe(12);
+
+    // THE STALE-`now` GUARD, third site. A round with no trace at all is skipped
+    // when the history is built, and `now` was then the newest round that HAD
+    // one — the defect found in `poolScenarioPopulations` on 2026-08-29, where
+    // three consecutive rounds were told `7 this round` about round 282's seven.
+    // A traceless round is the ordinary case here: `verbose` off produces one.
+    const traceless = { build: "z" };
+    expect(
+      poolFallbackRates([...Array(8).fill(round(12)), ...Array(5).fill(round(2)), traceless]),
+      "reported an older round's fallback counts as this round's",
+    ).toEqual([]);
   });
 
   it("counts pair position without letting ties vote", () => {
@@ -2193,6 +2204,32 @@ describe("grouping, which no scenario verdict reports", () => {
     // baseline flags LESS, and this line is a reason to read, not a verdict.
     expect(out).toMatchObject({ now: { grouped: 15, refused: 4 }, refusedMedian: 2, rounds: 3 });
     expect(out?.now.deck, "the deck is printed as corroboration, not derived from").toEqual([0, 4, 2, 17, 24, 24, 24]);
+  });
+
+  it("says nothing when the round being judged did no grouping of its own", () => {
+    /**
+     * The same stale-`now` defect found in `poolScenarioPopulations` on
+     * 2026-08-29 — a `continue` that filters the population, then `now` taken as
+     * the last survivor. Here it is worse placed: this is the headline grouping
+     * figure of every gate run, and the deck line printed beside it, so a stale
+     * `now` describes ANOTHER ROUND'S DECK as this round's.
+     *
+     * A round that grouped nothing is not hypothetical — it is what an in-place
+     * update produces, and `attempts per round` halving at round 153 is recorded
+     * two comments above as exactly that.
+     */
+    const quiet = { build: "e", trace: { entries: [{ message: "nothing to group here", data: {} }] } };
+    const rounds = [
+      round("a", 20, 2, [1, 1, 1]),
+      round("a", 20, 0, [1, 1, 1]),
+      round("a", 20, 2, [1, 1, 1]),
+      round("a", 15, 4, [0, 4, 2, 17, 24, 24, 24]),
+      quiet,
+    ];
+    expect(poolGroupingOutcome(rounds), "reported an older round's grouping and deck as this round's").toBeNull();
+    // And the finding this instrument exists for still fires when the round
+    // being judged IS the one that grouped.
+    expect(poolGroupingOutcome(rounds.slice(0, -1))).toMatchObject({ now: { grouped: 15, refused: 4 } });
   });
 
   it("separates a positional guess that picked its own shapes from one that picked another chart's", async () => {
