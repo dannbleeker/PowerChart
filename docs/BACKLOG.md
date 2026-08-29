@@ -31,9 +31,9 @@ shipped, refused, or a finding rather than a task.
 | 3 | **Adding to an occupied slide costs ~24s; a fresh one ~0.75s** | §1, *Adding a chart to an existing slide* | Measured over 2,917 batches. The arm that would settle it has run once. Item 2 is the user-facing half; making it actually faster is unstarted. |
 | 4 | **The picture fast-path** | §1, first entry, and §3 | The largest product cost left. The in-place fast path writes a closed set of `rect`/`text` properties and a picture fill is neither, so every picture update redraws whole. A real feature, not a small fix. |
 | 5 | **File this project's host measurements to the office-js tracker** | §1, *Report what this project has measured* | **Owner-gated** — it goes out under his GitHub identity, so nothing is filed without his word on that specific issue. Three are written and ready. |
-| 6 | **The dual-axis gutter** — cost NOT currently measured | §3, *Text drawn over text* | Diagnosed, and the design is now written (2026-08-29): place the ANCHORED family first and fit the movable one around it, rather than merging both and letting the ticks yield. **The "30 pairs" this row used to claim is not in evidence:** the crossed sweep produces no `secondary-axis` shape at all, so the ratchet cannot see this family and the figure came from a measurement nobody can now reproduce. Measure it before implementing — that is step zero, ahead of the design. |
+| 6 | ~~**The dual-axis gutter**~~ — 14 pairs, and the remedy costs 1,394 axis readings | §3, *Text drawn over text* | **MEASURED AND DECLINED 2026-08-29.** Not "30 pairs": 14, of 1,327, and none of them a tick number. Applying the merge to the secondary case fixes 8 and DELETES 1,394 secondary tick numbers — 174 readings lost per pair gained, where the original decision recorded about ten. The trade got seventeen times worse as the rest of the engine improved. The design is written and stays written; on these numbers nobody should build it. |
 | 7 | ~~**Positional group-member mapping → `Shape.creationId`**~~ | §3 | **CLOSED 2026-08-29 — the host refuses it.** This host reports PowerPointApi **1.10** and does not populate `Shape.creationId`: `absent` / `no-creation-id` on all three probe questions, 25 of 25 rounds. So it was never a matter of gating on 1.10. The positional mapping stays, still inferred, still guarded by the node-0 anchor test — which is now the permanent answer rather than a stopgap. |
-| 8 | **`slideSize()` rung 1 times out in EVERY round that reads a size** | §3 | Re-measured 2026-08-29 over 270 rounds: 157 of 157, always the full 4000ms — not "about twice as often as it answers". **And now timed**: a SUCCESSFUL rung-1 read costs 246–270ms (rounds 297–299), so the stall and the answer are different calls and the bound is not buying the answer. It can come down — 1000ms keeps a 4× margin and returns ~3s per round. Blocked only on measuring what rung 2's export costs, so the new number is chosen rather than guessed. |
+| 8 | **`slideSize()` rung 1 times out in EVERY round that reads a size** | §3 | Re-measured 2026-08-29 over 270 rounds: 157 of 157, always the full 4000ms — not "about twice as often as it answers". **And now timed**: a SUCCESSFUL rung-1 read costs 246–270ms (rounds 297–299), so the stall and the answer are different calls and the bound is not buying the answer. **Round 300 then broke the "157 of 157" entirely** — no stall, 138ms, on a round that followed a crash recovery and a full tab reload. If the four seconds is a cold host rather than the call, the remedy is a warm-up, not a lower bound. One sample; look for a second before acting. |
 
 Two standing costs that are not tasks: the host crashes during evidence
 collection after a long round (§3 — it costs the evidence, not the run), and
@@ -1875,6 +1875,25 @@ read cheaper than the bound? yes, by 15x) and not enough to pick the new bound
 from. Every round from 47db58a on carries the field, so the sample grows on its
 own; re-read before choosing.
 
+**AND ROUND 300 CONTRADICTS THE "157 OF 157" ABOVE, which is the most useful
+thing here.** It carries no stall at all and a rung-1 read of **138ms** — the
+first round in the archive to read a slide size without paying the four seconds
+first.
+
+What was different is not the code, which is the same build as 298 and 299. It
+is that round 300 ran immediately after a crash recovery: PowerPoint's own
+Refresh, a full tab reload, and a pane reopened seconds before. **So the stall
+looks like a property of a host that has been sitting, not of the call.** A
+freshly loaded document answers `pageSetup` first time, in 138ms.
+
+That is one round and it is offered as one round. But it points the remedy
+somewhere different from "lower the bound": if the four seconds is the first
+call meeting a cold host, then a shorter bound simply reaches rung 2 sooner on
+exactly the runs that are already unwell, and the thing worth measuring is
+whether a cheap warm-up call before the ladder removes it entirely. Look for a
+second stall-free round before believing any of this — the alternative
+explanation, that 300 was simply lucky, is not excluded by one sample.
+
 One defect found writing those tests, worth recording because it is this
 project's recurring one: the rung-3 assertion used `traceLog().entries.find`,
 and that log accumulates across the file, so it read a line an EARLIER test had
@@ -2293,18 +2312,31 @@ tick number, and there is not always room for three.
 
 **DIAGNOSED AND DELIBERATELY NOT PATCHED: the dual-axis gutter.**
 
-**First, a correction: the "30 pairs" below is not in evidence.** The crossed
-sweep of 2026-08-29 produces **no `secondary-axis` shape at all** — the ratchet's
-table has never held one — and a focused probe of the `secondaryAxis` and
-`pareto` variants across every kind, frame, font and orientation finds two
-overlapping pairs in total, neither of them a tick number. So whatever measured
-30 is not something this repo can now reproduce, and it is not the sweep.
+**MEASURED PROPERLY 2026-08-29, and the answer is: leave it alone.** The "30
+pairs" below is not what this costs, and the trade for fixing it is far worse
+than when the decision was taken. Both numbers, over every kind, frame, font and
+orientation, with `secondaryAxis` and with `pareto`, across four data shapes:
 
-That does not refute the DIAGNOSIS, which came from reading the code and from a
-patch whose effects were measured directly (34 overlaps fixed, 335 tick numbers
-deleted — those numbers are real and are quoted below). It refutes the SIZE.
-Step zero is therefore to measure the family, not to implement the design: a fix
-whose before-figure nobody can reproduce cannot be shown to have worked.
+                              scoping kept    merge applied to secondary too
+    gutter overlaps                     14                                 6
+    secondary ticks DRAWN            4,864                             3,470
+
+**Eight overlaps fixed for 1,394 tick numbers deleted.** That is 174 readings
+lost per pair gained. The entry below records the same trade at 34 fixed for 335
+deleted — about ten — so the ratio has got seventeen times worse as the rest of
+the engine improved, and the original decision to scope the merge off is not
+merely still right, it is far more clearly right than when it was made.
+
+The remaining family is 14 pairs of **1,327**, or one percent, and **not one of
+them is a tick number** — they are `title / series-label#` (8),
+`combo-series-label#` on itself (5) and `series-label#` on itself (1). Zero
+overlapping pairs anywhere in the sweep involve a `secondary-axis` label, out of
+4,864 of them drawn across 2,228 charts.
+
+So this is no longer a design waiting to be built. It is eight overlapping pairs
+whose obvious remedy costs 1,394 axis readings, and the design below stays
+written for the day somebody wants those eight badly enough to pay for a real
+allocator. Nobody should, on these numbers.
 
 A combo's column names, its line names and its secondary-axis tick numbers all
 occupy the same two points of x. Laying the first two out in one pass fixed the
