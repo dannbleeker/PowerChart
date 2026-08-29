@@ -26,14 +26,14 @@ shipped, refused, or a finding rather than a task.
 
 | | What | Where | State |
 |---|---|---|---|
-| 1 | **`valueAxisTitle` runs over the legend and the totals row** — 287 of the 317 remaining overlapping pairs | §3, *Text drawn over text* | **Owner's call.** Three remedies built and measured, all three reverted; three ways out written up. It is the only label here that is text the AUTHOR typed. |
+| 1 | **`valueAxisTitle` runs over the legend and the totals row** — **1,058 of the 1,327** remaining pairs, and now the whole of what is left bar a 269-pair tail | §3, *Text drawn over text* | **Owner's call.** Three remedies built and measured, all three reverted; three ways out written up. It is the only label here that is text the AUTHOR typed. (Was "287 of 317" — a figure from the uncrossed sweep, not comparable. See the note on the three totals.) |
 | 2 | ~~**The slow-insert offer is not wired**~~ | §1, *The slow-insert offer* | **SHIPPED 2026-08-29.** All five steps, five pane tests, four mutants dead. The blocker this row named was a stale finding: a fresh slide's id IS usable once the slide settles, and the probe answer flipped at round 254 because of our own commit. Kept in §1 for the lesson, not the task. |
 | 3 | **Adding to an occupied slide costs ~24s; a fresh one ~0.75s** | §1, *Adding a chart to an existing slide* | Measured over 2,917 batches. The arm that would settle it has run once. Item 2 is the user-facing half; making it actually faster is unstarted. |
 | 4 | **The picture fast-path** | §1, first entry, and §3 | The largest product cost left. The in-place fast path writes a closed set of `rect`/`text` properties and a picture fill is neither, so every picture update redraws whole. A real feature, not a small fix. |
 | 5 | **File this project's host measurements to the office-js tracker** | §1, *Report what this project has measured* | **Owner-gated** — it goes out under his GitHub identity, so nothing is filed without his word on that specific issue. Three are written and ready. |
-| 6 | **The dual-axis gutter** — 30 overlapping pairs | §3, *Text drawn over text* | Diagnosed, and the design is now written (2026-08-29): place the ANCHORED family first and fit the movable one around it, rather than merging both and letting the ticks yield. Not implemented — it changes label placement on every combo chart, so it wants the sweep, the ratchet and a round. Two numbers decide it: pairs, and tick numbers drawn. |
+| 6 | **The dual-axis gutter** — cost NOT currently measured | §3, *Text drawn over text* | Diagnosed, and the design is now written (2026-08-29): place the ANCHORED family first and fit the movable one around it, rather than merging both and letting the ticks yield. **The "30 pairs" this row used to claim is not in evidence:** the crossed sweep produces no `secondary-axis` shape at all, so the ratchet cannot see this family and the figure came from a measurement nobody can now reproduce. Measure it before implementing — that is step zero, ahead of the design. |
 | 7 | ~~**Positional group-member mapping → `Shape.creationId`**~~ | §3 | **CLOSED 2026-08-29 — the host refuses it.** This host reports PowerPointApi **1.10** and does not populate `Shape.creationId`: `absent` / `no-creation-id` on all three probe questions, 25 of 25 rounds. So it was never a matter of gating on 1.10. The positional mapping stays, still inferred, still guarded by the node-0 anchor test — which is now the permanent answer rather than a stopgap. |
-| 8 | **`slideSize()` rung 1 times out in EVERY round that reads a size** | §3 | Re-measured 2026-08-29 over 270 rounds: 157 of 157, always the full 4000ms — not "about twice as often as it answers". Rung 1 still supplies the answer in 82 of them. `ms` is now traced on all four rungs, so the next rounds say whether the bound can come down. |
+| 8 | **`slideSize()` rung 1 times out in EVERY round that reads a size** | §3 | Re-measured 2026-08-29 over 270 rounds: 157 of 157, always the full 4000ms — not "about twice as often as it answers". **And now timed**: a SUCCESSFUL rung-1 read costs 246–270ms (rounds 297–299), so the stall and the answer are different calls and the bound is not buying the answer. It can come down — 1000ms keeps a 4× margin and returns ~3s per round. Blocked only on measuring what rung 2's export costs, so the new number is chosen rather than guessed. |
 
 Two standing costs that are not tasks: the host crashes during evidence
 collection after a long round (§3 — it costs the evidence, not the run), and
@@ -1849,6 +1849,32 @@ exactly what makes those 82 answers possible.
 answer it. Four tests, four mutants — three killed by the runner and the fourth
 confirmed by hand after the runner failed to apply it.
 
+**ANSWERED THE SAME NIGHT, rounds 297-299 — and it is the cheap answer.**
+
+    297   STALL afterMs=4000   READ pageSetup ms=270
+    298   STALL afterMs=4000   READ pageSetup ms=246
+    299   STALL afterMs=4000   READ pageSetup ms=263
+
+A successful rung-1 read costs **246-270ms**, against a stall of a flat 4000.
+`ms` is counted from `slideSize()`'s own entry, so a read that traced 270 cannot
+be the call that waited 4000 — **the stall and the answer are different calls**,
+and the second one succeeds cheaply without the first's bound helping it at all.
+The 4000ms is not buying those 82 answers. It is being paid by a first call the
+host is not yet ready for, and a later call gets the same answer in a quarter of
+a second.
+
+So the bound can come down, and by a lot: 1000ms leaves a **4x margin** over
+every successful read yet observed and returns ~3 seconds per round. What it
+must not do is come down to where the export on rung 2 starts winning races it
+used to lose, since nothing has measured what THAT costs — the reason this was
+not simply lowered in the first place, and still the reason to measure rung 2
+before choosing the number.
+
+**Three samples.** Enough to answer the question that was asked (is a successful
+read cheaper than the bound? yes, by 15x) and not enough to pick the new bound
+from. Every round from 47db58a on carries the field, so the sample grows on its
+own; re-read before choosing.
+
 One defect found writing those tests, worth recording because it is this
 project's recurring one: the rung-3 assertion used `traceLog().entries.find`,
 and that log accumulates across the file, so it read a line an EARLIER test had
@@ -2216,7 +2242,12 @@ the exercise taught.
 
 ---
 
-**STILL OPEN, AND IT IS THE OWNER'S CALL: `valueAxisTitle`, 287 of the 317.**
+**STILL OPEN, AND IT IS THE OWNER'S CALL: `valueAxisTitle`, 1,058 of the 1,327.**
+
+The count is bigger than the "287 of 317" this said before and the problem is
+the same size — the sweep widened underneath it, and the panels that briefly
+outnumbered it have been fixed. It is now the whole of what remains bar a
+269-pair tail, which makes it the only overlap decision left worth the name.
 
 Four collision shapes, and they are not one problem. Two were this label's own
 `y` clamped into the title and onto the topmost tick — fixed. The other two are
@@ -2260,7 +2291,20 @@ tick number, and there is not always room for three.
 
 ---
 
-**DIAGNOSED AND DELIBERATELY NOT PATCHED: the dual-axis gutter, 30 pairs.**
+**DIAGNOSED AND DELIBERATELY NOT PATCHED: the dual-axis gutter.**
+
+**First, a correction: the "30 pairs" below is not in evidence.** The crossed
+sweep of 2026-08-29 produces **no `secondary-axis` shape at all** — the ratchet's
+table has never held one — and a focused probe of the `secondaryAxis` and
+`pareto` variants across every kind, frame, font and orientation finds two
+overlapping pairs in total, neither of them a tick number. So whatever measured
+30 is not something this repo can now reproduce, and it is not the sweep.
+
+That does not refute the DIAGNOSIS, which came from reading the code and from a
+patch whose effects were measured directly (34 overlaps fixed, 335 tick numbers
+deleted — those numbers are real and are quoted below). It refutes the SIZE.
+Step zero is therefore to measure the family, not to implement the design: a fix
+whose before-figure nobody can reproduce cannot be shown to have worked.
 
 A combo's column names, its line names and its secondary-axis tick numbers all
 occupy the same two points of x. Laying the first two out in one pass fixed the
@@ -2424,6 +2468,26 @@ vote three times:
 times to the scan's four** — and three of those five are the same build on the
 same day. One build that crashed three times is one piece of evidence, not
 three, and the difference decides which phase looks dominant.
+
+**2026-08-29 adds one build, and it breaks the tie toward the scan.** Build
+`4275306` crashed five times in thirty-six minutes on the 4:3 leg, and four of
+the five ended at the SAME step:
+
+    01-49   513.4s   pane  — collecting deck evidence — scanning
+    02-00   533.5s   pane  — collecting deck evidence — scanning
+    02-10   523.6s   pane  — collecting deck evidence — scanning
+    02-21   538.9s   pane  — collecting deck evidence — scanning
+    02-25   160.8s   probe — did not re-acquire, the slide resolved
+
+By the rule above that is **one** build, taking the scan to 5 against draw's 4 —
+a lead, not a verdict, on fifteen builds. What is new is not the count but the
+**consistency**: four crashes on one build, one phase, and all four between 513
+and 539 seconds. Round 290's 524s crash sits inside that band too. So this
+failure has a time signature — roughly nine minutes into a round, during deck
+evidence collection — where the archive as a whole looked scattered.
+
+Worth one more build's worth of records before anyone acts on it. Four of five
+is a pattern; it is not yet the answer to "why nine minutes".
 
 So no phase dominates. The per-phase traces did their job — before them, six of
 these would have been filed under the probe re-ask — and what they show is a
