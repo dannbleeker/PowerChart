@@ -42,6 +42,19 @@ import { textWidth, type SceneNode, type TextNode } from "../src/core/scene";
  * family visible, the family turned out to be one defect, and the defect was
  * arithmetic rather than layout.
  *
+ * THEN 1,327 BECAME 1,014, by clipping the unit label. `valueAxisTitle` is
+ * documented as a SHORT unit — "e.g. `€m`" — and the sweep tests it with a
+ * twenty-seven-character sentence, so most of the largest family here was the
+ * cost of a string the option does not support. Clipping it to a share of the
+ * chart keeps the author's text where it fits and truncates where it cannot,
+ * which is what this engine already does to gantt and category names.
+ *
+ * Flooring its `y` at the title's ink was measured in the same hour and
+ * REFUSED: it takes `title / value-axis-title` to zero and pays 310 new
+ * `value-axis-title / category#` for it, for a worse total of 1,156. A clamp
+ * moves a label whether or not the destination is free — which the CAGR
+ * caption's own note already said, about the same move.
+ *
  * WHEN A NUMBER HERE GOES DOWN, EDIT IT DOWN. The budget is a ceiling, not a
  * target, and one left above the real figure is a ratchet that has stopped
  * ratcheting — the next regression hides under the slack. There is a test below
@@ -241,28 +254,27 @@ const DATA_SHAPES: Record<string, (c: any) => any> = {
  * else is what made that one look trustworthy.
  */
 const BUDGET: Record<string, number> = {
-  // The `value-axis-title` group — one open decision, not a pile of defects.
-  "value-axis-title / legend#": 394,
+  // The  group — one open decision, not a pile of defects.
+  "value-axis-title / legend#": 308,
   "title / value-axis-title": 205,
-  "value-axis-title / total#": 182,
-  "value-axis / value-axis-title": 163,
-  "total# / value-axis-title": 116,
-  "value-axis-title / label#": 73,
-  "value-axis-title / series-label#": 55,
-  "value-axis-title / median-label#": 20,
+  "value-axis / value-axis-title": 158,
+  "value-axis-title / total#": 111,
+  "total# / value-axis-title": 93,
+  "value-axis-title / label#": 33,
+  "value-axis-title / median-label#": 8,
   // The tail.
   "combo-series-label# / combo-series-label#": 33,
-  "title / series-label#": 28,
   "label# / label#": 22,
-  "title / total#": 8, // new 2026-08-29: a total row under a long title, crossed
-  "series-label# / series-label#": 7,
+  "title / series-label#": 10,
+  "title / total#": 8,
+  "series-label# / series-label#": 4,
   "header# / label##": 4,
   "title / row#": 4,
   "tile#-value / tile#-value": 4,
   "title / category#": 3,
   "label## / cagr-label": 2,
-  "total# / title": 2, // new 2026-08-29
-  "legend# / footnote": 2, // new 2026-08-29: a footnote under a wrapped legend
+  "total# / title": 2,
+  "legend# / footnote": 2,
 };
 
 /**

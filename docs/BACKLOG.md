@@ -28,6 +28,8 @@ refused, or a finding rather than a task.
 owner's.** Two are product decisions and one goes out under his GitHub identity:
 
     1  where a unit label belongs when the band above the plot cannot hold three
+       (SMALLER as of 2026-08-29: the option is a short unit, and clipping it to
+       40% of the chart took the total 1,327 -> 1,014 with no new shapes)
     3  whether a crowded slide should get a picture instead of native shapes
     5  filing this project's host measurements to the office-js tracker
 
@@ -37,7 +39,7 @@ refusing the mechanism outright — each says which, in its own row.
 
 | | What | Where | State |
 |---|---|---|---|
-| 1 | **`valueAxisTitle` runs over the legend and the totals row** — **1,208 of the 1,327** remaining pairs, and now the whole of what is left bar a 269-pair tail | §3, *Text drawn over text* | **Owner's call.** Three remedies built and measured, all three reverted; three ways out written up. It is the only label here that is text the AUTHOR typed. (Was "287 of 317" — a figure from the uncrossed sweep, not comparable. See the note on the three totals.) |
+| 1 | **`valueAxisTitle` runs over the legend and the totals row** — **916 of the 1,014** remaining pairs (was 1,208 of 1,327), and still the whole of what is left bar a 98-pair tail | §3, *Text drawn over text* | **PART SHIPPED 2026-08-29, the rest is the owner's call.** The option is documented as a short unit — "e.g. `€m`" — and the two uses in the shipped deck are `€m` and `$m (log)`, but it was drawn with NO width bound, and the sweep tests it with a 27-character sentence. Clipping it to 40% of the chart takes 1,327 → **1,014 with no new shapes**, and keeps author text where three earlier remedies deleted it. Flooring its `y` under the title was measured in the same hour and **refused**: 1,156, and 310 `value-axis-title / category#` that did not exist before. What is left — where a unit belongs when the band cannot hold title, unit and top tick — is unchanged in kind, just smaller. (Was "287 of 317" — a figure from the uncrossed sweep, not comparable. See the note on the three totals.) |
 | 2 | ~~**The slow-insert offer is not wired**~~ | §1, *The slow-insert offer* | **SHIPPED 2026-08-29.** All five steps, five pane tests, four mutants dead. The blocker this row named was a stale finding: a fresh slide's id IS usable once the slide settles, and the probe answer flipped at round 254 because of our own commit. Kept in §1 for the lesson, not the task. |
 | 3 | **Adding to an occupied slide costs ~24s; a fresh one ~0.75s** | §1, *Adding a chart to an existing slide* | Measured over 2,917 batches. Item 2 (shipped) is the user-facing half. **A fourth option is now costed, 2026-08-29**: draw the chart as ONE picture — ~43s becomes rasterise 705ms plus a single-shape insert, a 7–20× saving, and every part of the mechanism already ships. **Still the owner's call**, and a bigger one than the offer: it changes what the user RECEIVES, not just what they are told. |
 | 4 | ~~**The picture fast-path**~~ | §1, *The largest product cost was in the FAST path* | **CLOSED 2026-08-29 on evidence, both halves.** The cost it was filed under had moved: redraws are 14.5% and exactly 2 a round, and the real cost was inside the FAST path, which took a median of 15.7s because it wrote every property of every changed node. It now writes only what differs — `same scale across the deck` 146–156s → **103s**, below the IQR of 275 rounds. And the picture feature itself is **not worth building**: a picture redraw is ~40ms of delete plus ~770ms of picture against 15–50s to draw the same shapes natively, so a fast path could save about five percent of an operation that is already twenty to sixty times cheaper than its alternative. |
@@ -2435,7 +2437,10 @@ the exercise taught.
 
 ---
 
-**STILL OPEN, AND IT IS THE OWNER'S CALL: `valueAxisTitle`, 1,208 of the 1,327.**
+**STILL OPEN, AND IT IS THE OWNER'S CALL: `valueAxisTitle`, 916 of the 1,014** —
+**smaller since the clip shipped on 2026-08-29 (it was 1,208 of 1,327), and the
+same decision.** The fifth remedy, at the end of this entry, is the one that
+worked: the option is a SHORT UNIT and the sweep was testing it with a sentence.
 
 The count is bigger than the "287 of 317" this said before and the problem is
 the same size — the sweep widened underneath it, and the panels that briefly
@@ -2512,7 +2517,48 @@ no bound available here that is not a coupling to something drawn later. It is a
 decision about WHERE A UNIT BELONGS, and the three ways out below are still the
 three ways out.
 
-**The decision, and three ways out:**
+**A FIFTH WAY SHIPPED ON 2026-08-29, and it is the one that worked: clip the
+unit, because the option is a unit and not a subtitle.**
+
+The four remedies above all argue about WHERE to put a long unit. None of them
+asked whether a long unit is a thing this option supports. It is not.
+`ChartConfig.valueAxisTitle` is documented as "units label shown at the top of
+the value axis (e.g. `€m`)", the pane's input is 56px wide with the placeholder
+`e.g. €m`, and the two uses in the 123-chart shipped deck are `€m` and
+`$m (log)`. The sweep tests it with **"Revenue in millions of euro, restated"** —
+twenty-seven characters. Most of the largest overlap family in this engine was
+the cost of a string the feature does not offer.
+
+So: `clipToWidth` at 40% of the chart's width. Measured on the ratchet, not on a
+scratch harness:
+
+    total across the sweep      1,327  ->  1,014      and no new shapes
+    value-axis-title family     1,208  ->    916
+    the tail                      119  ->     98      (unchanged in kind)
+
+It keeps author text where the three 2026-08-28 remedies deleted it — `€m` is
+untouched, a sentence is truncated with the start kept — and truncating what
+does not fit is what this engine already does to gantt and category names.
+
+**AND THE OTHER HALF OF THE SAME RECOMMENDATION WAS REFUSED BY THE
+MEASUREMENT.** Flooring the unit's `y` at the title's ink — `title /
+value-axis-title` is 205 and length-INDEPENDENT, which is exactly the clamp
+signature this file has recorded five times — was written and swept in the same
+hour:
+
+    clip alone                1,014, no new shapes
+    clip + floor at the ink   1,156, and `value-axis-title / category#` at 310,
+                              a family that did not exist before
+
+The floor buys the title collisions by moving the unit into the category names
+on short charts. **A clamp moves a label whether or not the destination is
+free** — which the CAGR caption's own note already said, about the same move.
+Pinned by `test/value-axis-title.test.ts`, which says re-measure before
+"fixing" it.
+
+**What is still open, and it is unchanged in kind:** where a unit belongs when
+the band above the plot cannot hold the title, the unit and the topmost tick all
+three. Three ways out, none of them engineering work:
 
 - Put the unit at the END of the axis rather than above it — Excel's rotated
   axis title, without the rotation.
@@ -2539,7 +2585,8 @@ deleted — about ten — so the ratio has got seventeen times worse as the rest
 the engine improved, and the original decision to scope the merge off is not
 merely still right, it is far more clearly right than when it was made.
 
-The remaining family is 14 pairs of **1,327**, or one percent, and **not one of
+The remaining family is 14 pairs of **1,014** (it was 1,327 before the unit-label
+clip, which touches nothing here), or 1.4 percent, and **not one of
 them is a tick number** — they are `title / series-label#` (8),
 `combo-series-label#` on itself (5) and `series-label#` on itself (1). Zero
 overlapping pairs anywhere in the sweep involve a `secondary-axis` label, out of

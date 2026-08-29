@@ -21,7 +21,15 @@ runs on every build so the number can only go down.
 change to the engine**, so none of them should be read against another without
 saying which sweep produced it: 2,148 → 467 was the fixes below; 467 → 4,010 was
 the sweep itself widening to cross options with data shapes, which it had never
-done; and 4,010 → 1,327 was the small-multiples bug in the next entry.
+done; and 4,010 → 1,327 was the small-multiples bug in the next entry. A fourth,
+1,327 → **1,014**, is the unit label:
+
+- **The value-axis unit label is clipped** to at most 40% of the chart's width.
+  It is a unit — "€m", "%", "$m (log)" — and it was drawn with no width bound at
+  all, so a long one ran clear across the totals row and the legend. A short
+  unit is untouched; a long one is truncated with its start kept, the way
+  category and gantt names already are. Put the explanation in the title or the
+  footnote.
 
 What that looked like on a real chart:
 

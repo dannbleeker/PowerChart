@@ -888,34 +888,74 @@ export function chromeNodes(
     }
   }
   if (cfg.valueAxisTitle) {
-    // MEASURED AND LEFT ALONE, 2026-08-19. This label overlaps other text on
-    // eleven kind/frame pairs at an ordinary 200x150 — the column totals on a
-    // mekko and a combo, the topmost tick number on a line and an area — because
-    // its width is `Math.max(frame.x - 4, textWidth(…))`, a floor that RAISES a
-    // width, and its y is clamped at 0, which on a chart whose plot starts high
-    // is where the first tick is.
-    //
-    // Fitting it to the axis gutter was tried and REVERTED: `frame.x` is the
-    // value axis's own column, and a chart drawn without a value axis (the
-    // stacked sample among them) has no gutter at all — so the fit dropped the
-    // axis title from ordinary charts, which `keeps a numeric axis title` caught
-    // immediately. The room this label really has is "up to whatever else is in
-    // the band above the plot", and that is the totals row, which is a coupling
-    // rather than a bound. It wants a decision about where a unit belongs on a
-    // chart that has no axis column, not another clamp. See `docs/BACKLOG.md`.
-    nodes.push({
-      kind: "text",
-      x: 0,
-      y: Math.max(0, frame.y - fs * 1.5),
-      w: Math.max(frame.x - 4, textWidth(cfg.valueAxisTitle, fs)),
-      h: fs * 1.4,
-      text: cfg.valueAxisTitle,
-      fontSize: fs * 0.95,
-      color: style.mutedText,
-      align: "left",
-      valign: "bottom",
-      name: "value-axis-title",
-    });
+    /**
+     * A SHORT UNIT AT THE TOP OF THE VALUE AXIS, which is what this option is
+     * and what it says it is — `ChartConfig.valueAxisTitle` is documented as
+     * "units label shown at the top of the value axis (e.g. `€m`)", and the two
+     * uses in the shipped showcase are `€m` and `$m (log)`.
+     *
+     * That mattered, because the family this label produced was measured with a
+     * twenty-seven-character sentence and the count tracks LENGTH:
+     *
+     *     €m                             75 pairs
+     *     $m (log)                      189
+     *     EUR millions                  224
+     *     Revenue in millions of euro   286
+     *
+     * SO THE WIDTH IS CLIPPED rather than allowed to span the chart. Clipping
+     * is what this engine already does to gantt task names and category names,
+     * and it is the one remedy that keeps AUTHOR TEXT: `€m` is untouched by it,
+     * where the three remedies tried on 2026-08-28 all DELETED the unit. A share
+     * of the chart rather than the axis column, because a chart drawn without a
+     * value axis has no column at all — which is exactly what sank the
+     * 2026-08-19 attempt to fit this to `frame.x`. Measured across the variant
+     * sweep: **1,327 overlapping pairs to 1,014**, and no shape that was not
+     * already there.
+     *
+     * AND THE `y` IS LEFT ALONE, which is the part worth reading. `title` is 205
+     * of the family and is length-INDEPENDENT — identical for two characters and
+     * for twenty-seven — because `Math.max(0, …)` parks the unit in the title's
+     * band on any chart whose plot starts high. That looks exactly like the
+     * clamp bug this engine has recorded five times, and flooring it at the
+     * title's ink was written, measured, and REFUSED:
+     *
+     *     clip alone                1,014 pairs, no new shapes
+     *     clip + floor at the ink   1,156 pairs, and TWO new families —
+     *                               `value-axis-title / category#` at 310
+     *
+     * The floor takes the title collisions to zero and buys them by moving the
+     * unit down into the category names on short charts. The CAGR caption's own
+     * note two files over says the same thing about the same move: "a clamp
+     * moves a label whether or not the destination is free". A clamp that has a
+     * free destination is a fix; this one does not.
+     *
+     * WHAT THIS DOES NOT DO is decide where a unit belongs on a crowded chart.
+     * The 205 on the title stay, and the rest is the unit against the topmost
+     * tick and the totals row — genuinely contested space. The three relocations
+     * in `docs/BACKLOG.md` — end of the axis, folded into the top tick, its own
+     * gutter — all redesign every chart to accommodate long text this option
+     * does not support, and none of them is bought by this change.
+     */
+    const unitFs = fs * 0.95;
+    /** At most this share of the chart, so a long unit cannot span it. */
+    const room = cfg.width * 0.4;
+    const unitText = clipToWidth(cfg.valueAxisTitle, unitFs, room);
+    // Nothing legible fits — drop rather than push an empty box into the scene,
+    // which the de-collision pass and every readback would then have to carry.
+    if (unitText)
+      nodes.push({
+        kind: "text",
+        x: 0,
+        y: Math.max(0, frame.y - fs * 1.5),
+        w: Math.min(Math.max(frame.x - 4, textWidth(unitText, fs)), room),
+        h: fs * 1.4,
+        text: unitText,
+        fontSize: unitFs,
+        color: style.mutedText,
+        align: "left",
+        valign: "bottom",
+        name: "value-axis-title",
+      });
   }
   const catY = frame.y + frame.h + varianceBandHeight(cfg, decor, style) + 3;
   // The whole strip or none of it: these names share one y, so a chart short

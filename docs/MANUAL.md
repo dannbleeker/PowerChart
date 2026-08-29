@@ -286,6 +286,11 @@ count of how many of its options are currently on.
 - **Segment order**: sheet / reversed / ascending / descending.
 - **Axis scale** min/max pinning and **Axis break** (compresses an
   out-of-scale range, clearly marked).
+- **Unit label** (`valueAxisTitle`) — a *short* unit at the top of the value
+  axis: "€m", "%", "$m (log)". It shares the narrow band above the plot with
+  the chart title and the topmost tick, so it is drawn at no more than 40% of
+  the chart's width and anything longer is clipped. Put the explanation in the
+  title or the footnote; this is a unit, not a subtitle.
 - **Labels**: decimals / suffix ("€m") / locale (1.234,5 for de-DE), and
   **label content** — any combination of value, %, series, category.
 - **Footnote / source** — every good chart cites its source; renders
