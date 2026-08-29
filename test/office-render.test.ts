@@ -60,6 +60,7 @@ import {
   isStopped,
   slideSize,
   _resetSlideSizeCache,
+  _setSlideSizeTimeoutForTest,
   _setReReadRetryDelayForTest,
 } from "../src/render/powerpoint";
 
@@ -4582,6 +4583,60 @@ describe("reading the presentation's slide size", () => {
     expect(size).toEqual({ width: 720, height: 540, source: "exportedSlide" });
   });
 
+  /**
+   * RUNG 1 IS BOUNDED BY ITS OWN BUDGET, not by the selection one it borrowed.
+   *
+   * It timed out in 162 of the 163 archived rounds that read a slide size,
+   * always for the full four seconds, and timing the rungs showed the bound was
+   * not buying the answer: a SUCCESSFUL rung-1 read costs 246-504ms and rung 2's
+   * export ~280ms, so the stall and the answer are different calls.
+   *
+   * The bound therefore came down — but into a constant of its own, because
+   * `SELECTION_TIMEOUT_MS` also bounds five real selection and view calls that
+   * nothing here has measured. This test is what makes that separation real
+   * rather than a comment: it sets the two budgets far apart and checks which
+   * one the ladder actually obeys, so wiring the call back to the selection
+   * budget fails rather than passing quietly.
+   *
+   * The host is 1.10-but-not-1.8 on purpose. Rung 1 needs 1.10 and rung 2 needs
+   * 1.8, so this leaves rung 1 as the ONLY sync in the path — a global wedge
+   * then isolates it, and the ladder still returns (via the assumed floor)
+   * instead of hanging on a rung this test is not about.
+   */
+  it("bounds rung 1 by the slide-size budget, not the selection one", async () => {
+    const elapsed = async (): Promise<number> => {
+      _resetSlideSizeCache();
+      installHost([makeSlide("s1")], [], undefined, (v) => v === "1.10");
+      faults.wedgeAfterSyncs = 0;
+      const at = Date.now();
+      try {
+        const size = await slideSize({ refresh: true });
+        // It must still ANSWER — the floor is the point of a ladder.
+        expect(size.source, "a wedged rung 1 did not fall through to the floor").toBe("assumed");
+      } finally {
+        faults.wedgeAfterSyncs = null;
+      }
+      return Date.now() - at;
+    };
+
+    _setSelectionTimeoutForTest(600);
+    _setSlideSizeTimeoutForTest(30);
+    try {
+      const short = await elapsed();
+      _setSelectionTimeoutForTest(30);
+      _setSlideSizeTimeoutForTest(600);
+      const long = await elapsed();
+      // Wired to the selection budget these two would come out the same way
+      // round. The gap is the assertion.
+      expect(short, `rung 1 took ${short}ms on a 30ms slide-size budget`).toBeLessThan(400);
+      expect(long, `rung 1 took ${long}ms on a 600ms slide-size budget`).toBeGreaterThanOrEqual(500);
+    } finally {
+      _setSelectionTimeoutForTest(4_000);
+      _setSlideSizeTimeoutForTest(1_500);
+      _resetSlideSizeCache();
+    }
+  });
+
   it("assumes 16:9 — and says so — when no rung can answer", async () => {
     // The floor. A wrong-but-LABELLED width degrades placement to what it did
     // before; throwing here would take down an insert over a layout hint.
@@ -5261,6 +5316,31 @@ describe("updating only what changed", () => {
     expect(liveIds(slide).length, `the slide still holds ${before} shapes, so no picture was drawn`).toBeLessThan(
       before,
     );
+
+    /**
+     * AND BOTH HALVES OF THE REDRAW ARE TIMED, which decides whether the
+     * picture fast-path is a feature worth building.
+     *
+     * ~29 updates a round take this path. A fast path could at best reuse one
+     * existing shape as the picture host, saving one create and one delete out
+     * of ~25 operations — so whether it is worth 8% or 80% turns on what the
+     * DELETE costs against the draw, and neither was timed. `batch issued`
+     * covers the shape-by-shape draw and reported a picture as `1 of 1` with no
+     * elapsed time at all.
+     */
+    const del = traceLog().entries.find((e) => e.message === "deleted the chart being replaced");
+    expect(del, "a redraw's delete is still untimed").toBeTruthy();
+    expect(typeof (del!.data as { ms?: unknown }).ms, "the delete traced no duration").toBe("number");
+    // `removed` is what the host confirmed and took, and reading the ms without
+    // it averages a one-shape delete together with a twenty-four-shape one.
+    expect(typeof (del!.data as { removed?: unknown }).removed, "the delete did not say how many went").toBe("number");
+
+    const pic = traceLog().entries.find((e) => e.message === "drew the chart as one picture");
+    expect(pic, "the picture insert is still untimed").toBeTruthy();
+    expect(typeof (pic!.data as { ms?: unknown }).ms, "the picture insert traced no duration").toBe("number");
+    // What the picture stands in FOR: the comparison is against the same chart
+    // drawn shape by shape, and the node count is what sets that price.
+    expect((pic!.data as { nodes?: number }).nodes, "the picture did not say what it replaced").toBeGreaterThan(1);
   });
 
   it("writes one shape for a retitle and leaves the other 23 alone", async () => {

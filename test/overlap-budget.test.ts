@@ -223,6 +223,15 @@ const DATA_SHAPES: Record<string, (c: any) => any> = {
  * `clampDim` rewrote that to `DEFAULT_SIZE.height` because it treats `<= 0` as
  * a malformed config. Ten full 300-point charts, stacked 9.6 points apart, in a
  * box 60 points tall. `buildMultiples` declines such a grid now.
+ *
+ * ALL TWENTY-THREE went, including `p#-total# / p#-cagr-label`, which a probe
+ * had singled out as "not the grid" — the only family with a within-panel count
+ * and the only one at ordinary sizes. The probe and this table were not
+ * measuring the same charts: it built its `10 series` shape from scratch where
+ * `DATA_SHAPES` spreads the sample's own series and keeps their colours and
+ * roles. A diagnostic written beside a gate has to reuse the gate's variant
+ * table, or its numbers answer a different question — and agreeing everywhere
+ * else is what made that one look trustworthy.
  */
 const BUDGET: Record<string, number> = {
   // The `value-axis-title` group — one open decision, not a pile of defects.

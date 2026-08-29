@@ -81,6 +81,53 @@ export const faults = {
    */
   duplicateCustomXmlPart: false,
   swallowAdds: 0,
+  /**
+   * Report the deck SHORT by this many slides, for the next
+   * `slideCountShortReads` resolutions of `getCount`.
+   *
+   * The fake already reports `getCount` one sync behind, which a real host does
+   * and which `committedCount` models. Round 297 was worse, and this pair
+   * reproduces it: two inserts of two slides each, the first reporting
+   * `landed: 0` for slides that did land, and `slideCount()` still answering
+   * **5 when the deck held 7**. A caller sizing a range from that examined two
+   * slides of four and drew a confident conclusion from the wrong population.
+   *
+   * A CEILING, not a subtraction, and it took two wrong shapes to get here —
+   * both caught by mutation rather than by the tests passing:
+   *
+   * - Counting SYNCS armed and expired before the read that mattered, because
+   *   the inserts' own syncs ate the lag. The bug's own mutant stayed alive.
+   * - Subtracting a constant from every read cancelled in the DELTA the caller
+   *   actually uses: `before` came back short too, so `after - before` was
+   *   right and nothing reproduced.
+   *
+   * A ceiling reproduces the round exactly. `before` is read when the deck is
+   * below it and is therefore accurate; `after` is read when the deck has grown
+   * past it and is capped — 5 when the deck held 7.
+   *
+   * `slideCountCeilingBinds` is how many reads it may CAP before lifting, and
+   * "cap" is the operative word — a read the ceiling does not actually reduce
+   * spends nothing. Three shapes were tried before this one, and each was
+   * caught by the bug's own mutant staying alive rather than by a test failing:
+   *
+   * - counting SYNCS armed and expired before the read that mattered, because
+   *   the inserts' own syncs ate the lag;
+   * - subtracting a constant from every read cancelled in the DELTA the caller
+   *   uses, since `before` came back short too;
+   * - counting every READ spent the allowance on `before` and on the several
+   *   `slideCount()` calls `insertSlidesFromPptx` makes internally;
+   * - lifting on a CLOCK expired during the two scenarios `runSelfTest` always
+   *   runs ahead of the named one.
+   *
+   * Counting binds is the one that survives all four, and it is deterministic
+   * where a clock is not.
+   *
+   * The distinction that matters, and why this is not `hollowReads`: nothing
+   * here REFUSES. Every read is a real past value and `unread` stays 0. The
+   * host is behind, not blind, and only one of those had a guard.
+   */
+  slideCountCeiling: null as number | null,
+  slideCountCeilingBinds: 0,
   faultShapeGetCount: false,
   strictGroup: false,
   strictTags: false,
@@ -2136,6 +2183,28 @@ export function installHost(
   // result resolves at the next sync to the count from before that sync's adds.
   let selectedSlide = selectedSlideArg;
   let committedCount = slides.length;
+  /**
+   * Advance the committed count. One helper rather than three assignments so
+   * the shortfall fault below has a single place to reason about.
+   */
+  const advanceCommitted = () => {
+    committedCount = slides.length;
+  };
+  /**
+   * What a resolving `getCount` should report — see `faults.slideCountShortBy`.
+   *
+   * Floored at zero: a fake answering a negative count would fail callers for a
+   * reason no host has ever produced.
+   */
+  const reportedCount = () => {
+    const cap = faults.slideCountCeiling;
+    // Only a read the ceiling actually REDUCES spends an allowance.
+    if (cap !== null && faults.slideCountCeilingBinds > 0 && committedCount > cap) {
+      faults.slideCountCeilingBinds--;
+      return cap;
+    }
+    return committedCount;
+  };
   /** Slides `slides.add()` created here — see `faults.newSlideResolvesTimes`. */
   const addedSlideIds = new Set<string>();
   /** How many times each of those has been asked for by id. */
@@ -2776,9 +2845,9 @@ export function installHost(
         // a slow sync eventually reports success and the shapes are on the
         // slide by then.
         await new Promise((r) => setTimeout(r, stallSyncDelayMs));
-        for (const r of pendingCounts) r.value = committedCount;
+        for (const r of pendingCounts) r.value = reportedCount();
         pendingCounts.length = 0;
-        committedCount = slides.length;
+        advanceCommitted();
         commit();
         return;
       }
@@ -2792,9 +2861,9 @@ export function installHost(
       }
       // Each getCount from this batch resolves to the PRE-batch committed count,
       // then this batch's adds become visible to the NEXT sync's getCount.
-      for (const r of pendingCounts) r.value = committedCount;
+      for (const r of pendingCounts) r.value = reportedCount();
       pendingCounts.length = 0;
-      committedCount = slides.length;
+      advanceCommitted();
       commit();
     },
   };

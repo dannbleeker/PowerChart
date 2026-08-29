@@ -77,6 +77,7 @@ import {
   reconcileDeck,
   showSlide,
   slideCount,
+  settledSlideCount,
   slideSize,
   slideShapeList,
   timeShapeRounds,
@@ -390,9 +391,39 @@ const duplicateSlot: Scenario = async (prefix) => {
   const run = newRunId();
   const { base64, shapesPerSlide } = await buildProbe(run, titles);
   const before = await slideCount();
-  await insertSlidesFromPptx(base64, titles.length);
-  await insertSlidesFromPptx(base64, titles.length);
-  const afterInsert = await slideCount();
+  const landedA = await insertSlidesFromPptx(base64, titles.length);
+  const landedB = await insertSlidesFromPptx(base64, titles.length);
+  /**
+   * THE RECONCILE'S WINDOW IS SIZED FROM A COUNT THIS HOST REPORTS LATE, and
+   * until 2026-08-29 that produced a hard FAILED verdict about half the slides.
+   *
+   * Round 297 stopped a whole cycle. The first of the two inserts reported
+   * `landed: 0` for slides that DID land, `slideCount()` answered 5 when the
+   * deck held 7, and `reconcileDeck` was handed `[3,5]` — two slides of four.
+   * Two distinct titles in that window, no duplicates, `0 queued`. Every step
+   * correct about the wrong population, and the scenario called it a failure.
+   *
+   * Not the flake this scenario already has: all five earlier failures had the
+   * dedup RUNNING and leaving slides behind. Not a blind host either — `unread`
+   * was 0 on that read, so the `blindSkip` below could not see it. The host was
+   * BEHIND, which is what `settledSlideCount` is for.
+   */
+  const wanted = titles.length * 2;
+  const afterInsert = await settledSlideCount(before + wanted);
+  if (afterInsert - before < wanted)
+    // A SKIP, not a failure. This scenario asks whether the reconcile
+    // deduplicates two slides claiming one slot; if the slides are not there to
+    // be deduplicated then it has not been asked, and "failed" blames the dedup
+    // for an insert that did not land. The same reasoning as `blindSkip`,
+    // reached by the other door — there the host would not SAY, here it did not
+    // DO.
+    return {
+      ok: false,
+      skipped: true,
+      detail:
+        `only ${afterInsert - before} of ${wanted} slides landed even after a settle ` +
+        `(the two inserts reported ${landedA} and ${landedB}), so there was nothing to deduplicate`,
+    };
   const outcome = await reconcileDeck(
     // The count the GENERATOR reported, not an estimate of what Office.js
     // would have drawn: the two disagree by design (a pie is one custGeom

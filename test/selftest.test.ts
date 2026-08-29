@@ -28,6 +28,7 @@ import {
   gridFootprint,
   shapesDrawnOn,
   _setLastStallForTest,
+  _setCountSettleDelayForTest,
   RASTERISE_OP,
 } from "../src/render/powerpoint";
 import { sampleConfig } from "../src/core/samples";
@@ -3147,5 +3148,94 @@ describe("the lone chart's other arm", () => {
         throw new Error("SecurityError");
       }),
     ).toBe(false);
+  });
+});
+
+/**
+ * `two slides claiming one slot` must not judge a window it cannot fill.
+ *
+ * Round 297 stopped a whole cycle on this. The scenario FAILED with `4 slides
+ * inserted, 4 kept, 4 of 2 still re-editable; 0 queued as duplicates`, and it
+ * is not the flake the scenario already has — all five earlier failures had the
+ * dedup RUNNING and leaving slides behind. The trace says the first of two
+ * inserts reported `landed: 0` for slides that did land, `slideCount()`
+ * answered 5 when the deck held 7, and `reconcileDeck` was handed `[3,5]`: two
+ * slides of four. Two distinct titles in that window, no duplicates, verdict
+ * correct about the wrong population.
+ *
+ * `unread` was 0 on that read, which is the whole distinction. The host was not
+ * refusing — `blindSkip` covers that and could not see this — it was BEHIND.
+ */
+describe("a deck count that is behind, not blind", () => {
+  const NAME = "two slides claiming one slot";
+  afterEach(() => {
+    faults.slideCountCeiling = null;
+    faults.slideCountCeilingBinds = 0;
+    _setCountSettleDelayForTest(4_000);
+  });
+
+  /**
+   * A CEILING OF SEVEN, TWO BINDS, reproduces round 297 step for step.
+   *
+   * `runSelfTest(prefix, only)` always runs the first two scenarios before the
+   * named one, so the deck stands at 5 when this starts and reaches 9. A cap of
+   * 7 therefore binds only here, and the two binds land where the round's did:
+   * the first inside `insertSlidesFromPptx` — which reports `landed: 0` for
+   * slides that DID land, the round's own signature — and the second on the
+   * read that sizes the reconcile, which answers 7 for a deck of 9.
+   *
+   * Without the settle the window is `[5,7]`: two slides of four, and a
+   * confident verdict about the wrong population.
+   */
+  it("still judges all four slides when the count settles late", () => {
+    installHost([makeSlide("s1")]);
+    faults.slideCountCeiling = 7;
+    faults.slideCountCeilingBinds = 2;
+    // Squashed so the test does not wait four real seconds for the settle.
+    _setCountSettleDelayForTest(120);
+    setTracing(true);
+    return runSelfTest("probe", NAME).then((rs) => {
+      setTracing(false);
+      const r = byName(rs)[NAME];
+      expect(r.skipped, `a recoverable lag was skipped: ${r.detail}`).toBeFalsy();
+      // The population is the point: four inserted, and the verdict is about
+      // four rather than about the two a short count would have shown.
+      expect(r.detail, `judged the wrong population: ${r.detail}`).toContain("4 slides inserted");
+      // AND THE BUG WAS ACTUALLY REPRODUCED. Without this the test passes on a
+      // host that never lagged at all, which is how three earlier versions of
+      // this fault looked correct while reproducing nothing — each one was
+      // caught by the bug's own mutant surviving, not by a red test.
+      const short = traceLog().entries.filter((e) => /count came back short/.test(e.message));
+      expect(short.length, "the count never came back short, so nothing was reproduced").toBeGreaterThan(0);
+      expect(short[0].data).toMatchObject({ counted: 7, wanted: 9 });
+    });
+  });
+
+  it("skips, naming the shortfall, when the count never settles", () => {
+    installHost([makeSlide("s1")]);
+    // The same ceiling, but it never lifts — so the settle cannot rescue it and
+    // the deck genuinely cannot be judged.
+    faults.slideCountCeiling = 7;
+    faults.slideCountCeilingBinds = 999;
+    _setCountSettleDelayForTest(120);
+    return runSelfTest("probe", NAME).then((rs) => {
+      const r = byName(rs)[NAME];
+      // A SKIP and not a FAILURE. Nothing about deduplication was tested, so
+      // blaming the dedup would be the false verdict this exists to stop.
+      expect(r.skipped, `a host that never settled produced a hard verdict: ${r.detail}`).toBe(true);
+      expect(r.detail).toMatch(/slides landed even after a settle/);
+      // And it says what it saw, so the next reader does not have to re-derive
+      // it from a trace.
+      expect(r.detail, `the skip did not name the shortfall: ${r.detail}`).toMatch(/of 4 slides landed/);
+    });
+  });
+
+  it("leaves an ordinary run alone", () => {
+    installHost([makeSlide("s1")]);
+    return runSelfTest("probe", NAME).then((rs) => {
+      const r = byName(rs)[NAME];
+      expect(r.skipped, `a healthy host was skipped: ${r.detail}`).toBeFalsy();
+      expect(r.detail).toContain("4 slides inserted");
+    });
   });
 });

@@ -1355,6 +1355,45 @@ export function _setSelectionTimeoutForTest(ms: number): void {
 }
 
 /**
+ * How long RUNG ONE of the slide-size ladder may take, and why it is not the
+ * budget above.
+ *
+ * Rung 1 times out in almost every round that reads a slide size — 162 of 163
+ * in the archive to 2026-08-29 — and always for the full four seconds. That
+ * looked like the price of the answer until the rungs were timed, and they say
+ * otherwise:
+ *
+ *     a SUCCESSFUL rung-1 read      246-504ms   (rounds 297-303)
+ *     rung 2's export               ~280ms      (round 301, in the same call)
+ *     the stall                     4,000ms flat
+ *
+ * `ms` counts from `slideSize()`'s own entry, so a read that traced 270ms is
+ * not the call that waited 4,000 — **the stall and the answer are different
+ * calls**, and the bound is not what buys the answer. It is paid by a first
+ * call meeting a host that has been sitting. Round 300, run seconds after a
+ * crash-recovery reload, had no stall at all and read the size in 138ms.
+ *
+ * SEPARATE FROM `SELECTION_TIMEOUT_MS` ON PURPOSE. That constant bounds six
+ * calls and five of them are real selection and view work — the selection's
+ * bounds, what is on the slide, which slide is showing, looking away, putting
+ * the view back. Nothing here has measured any of those, and lowering a shared
+ * budget on a good measurement of one of its users is the `UPDATE_SHARE_LIMIT`
+ * mistake this repo already records.
+ *
+ * 1,500 rather than 1,000: three times the worst successful read yet seen, on
+ * a sample of four. Falling through costs rung 2's ~280ms, so the worst case
+ * becomes about 1.8s against today's 4.28s. Every round now traces `ms` on all
+ * four rungs, so this can be lowered against a real distribution later rather
+ * than guessed at twice.
+ */
+let SLIDE_SIZE_TIMEOUT_MS = 1_500;
+
+/** Test-only, and distinct from the selection setter so a test can tell them apart. */
+export function _setSlideSizeTimeoutForTest(ms: number): void {
+  SLIDE_SIZE_TIMEOUT_MS = ms;
+}
+
+/**
  * A labelled sync WITH a deadline.
  *
  * `step` says where an error came from; this also says that an answer has to
@@ -2786,6 +2825,15 @@ export async function updateChartsInSlides(
       // On the failure path this is the litter to clear; see the catch.
       const drawn: PowerPoint.Shape[] = [];
       let deleted = false;
+      // WHAT A REDRAW'S DELETE COSTS, which nothing has ever recorded.
+      //
+      // A redraw is delete-then-draw and only the draw half is timed (`batch
+      // issued`). That gap is why the picture question below cannot be answered:
+      // collapsing a chart to a picture must remove its shapes whatever path it
+      // takes, so a "picture fast path" could at best save one create and one
+      // delete out of ~25 operations — and whether that is 8% or 80% of the cost
+      // turns entirely on what a delete costs against a draw. Nobody knows.
+      const delStartedAt = Date.now();
       try {
         old.delete();
         // Only the siblings the host CONFIRMED are there. One it would not
@@ -2799,6 +2847,17 @@ export async function updateChartsInSlides(
             removed++;
           }
         await boundedSync(context, "deleting the chart being replaced");
+        // Paired with `batch issued`'s timings, this is the whole cost of a
+        // redraw. `removed` is what the host CONFIRMED and took, not what the
+        // chart holds — a chart with no parts list removes exactly one shape
+        // however many it has, and reading the ms without it would average a
+        // one-shape delete together with a twenty-four-shape one.
+        trace("draw", "deleted the chart being replaced", {
+          ms: Date.now() - delStartedAt,
+          removed,
+          drawing: estimateOfficeShapes(it.scene),
+          slideId: it.target.slideId,
+        });
         // Committed gone, so the slide's count owes them back.
         forgetShapesDrawnOn(it.target.slideId, replacedShapeCount(removed, estimateOfficeShapes(it.scene)));
         // The chart this redraw just replaced. THE path that made the probe's id
@@ -4081,6 +4140,41 @@ export async function slideCount(): Promise<number> {
     // Not knowing has to stay distinguishable from knowing.
     return c.value;
   });
+}
+
+/**
+ * `slideCount()`, re-read once after a settle when it comes back SHORT.
+ *
+ * THIS HOST REPORTS SLIDES LATE, and that is a different failure from refusing
+ * to answer. Round 297: two inserts of two slides each, the first reporting
+ * `landed: 0` for slides that did land, and `slideCount()` answering 5 when the
+ * deck held 7. Every value was a real reading; the deck simply had not caught
+ * up. `unread` was 0 throughout — nothing was refused.
+ *
+ * A caller that sizes a range from that count then examines half the slides it
+ * asked about and draws a confident conclusion from the wrong population, which
+ * is exactly what stopped a whole cycle.
+ *
+ * The remedy is the one `slideShapeCounts` already applies to shape counts for
+ * the same host behaviour: read, wait `COUNT_SETTLE_MS`, read again. Only when
+ * the first read is short, so a healthy run pays nothing.
+ *
+ * Returns whatever the second read says, short or not — deciding what a
+ * persistent shortfall MEANS belongs to the caller, which knows what it asked
+ * the host for.
+ */
+export async function settledSlideCount(atLeast: number): Promise<number> {
+  const first = await slideCount();
+  if (first >= atLeast) return first;
+  trace("host", "the deck's count came back short — re-reading after a settle", {
+    counted: first,
+    wanted: atLeast,
+    settleMs: COUNT_SETTLE_MS,
+  });
+  await new Promise((r) => setTimeout(r, COUNT_SETTLE_MS));
+  const second = await slideCount();
+  trace("host", "the deck's count after a settle", { first, second, wanted: atLeast });
+  return second;
 }
 
 /**
@@ -7565,7 +7659,9 @@ export async function slideSize(opts: { refresh?: boolean } = {}): Promise<Slide
           await context.sync();
           return { width: setup.slideWidth, height: setup.slideHeight };
         },
-        SELECTION_TIMEOUT_MS,
+        // NOT `SELECTION_TIMEOUT_MS`, which this borrowed until 2026-08-29 and
+        // which bounds five genuine selection calls besides this one.
+        SLIDE_SIZE_TIMEOUT_MS,
       );
       if (Number.isFinite(got.width) && Number.isFinite(got.height) && got.width > 0 && got.height > 0) {
         cachedSlideSize = { ...got, source: "pageSetup" };
@@ -8876,11 +8972,27 @@ async function renderShapesChunked(
     // Report the picture as a single unit of work so a caller's progress bar
     // doesn't sit at zero and then jump — the picture IS the whole chart.
     onBatch?.(1, 1);
+    // TIMED, because this is the other half of the picture question. An update
+    // that draws a picture cannot take the in-place path — a picture is not in
+    // the scene the differ compares — so it redraws, and ~29 of those happen a
+    // round. Whether that is worth a feature depends on what this costs against
+    // the shape-by-shape draw it replaces, and `batch issued` reports this as
+    // `1 of 1` with no elapsed time at all.
+    const picStartedAt = Date.now();
     const picture = await renderPictureShape(context, getSlide, scene, opts);
     if (picture.length) {
+      // `nodes` is what the picture stands in FOR — the comparison this exists
+      // to make is against the same chart drawn shape by shape, and the node
+      // count is what sets that price.
+      trace("draw", "drew the chart as one picture", {
+        ms: Date.now() - picStartedAt,
+        nodes: scene.nodes.length,
+        shapes: estimateOfficeShapes(scene),
+      });
       sink?.push(...picture);
       return picture;
     }
+    trace("draw", "the picture was refused — drawing the nodes instead", { ms: Date.now() - picStartedAt });
     // Refused: fall through and draw the nodes instead, in this same context.
   }
   const { dx: left, dy: top } = frameOrigin(opts);

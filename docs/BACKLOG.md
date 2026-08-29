@@ -2330,11 +2330,25 @@ three ways.
 do not match the ratchet's totals line for line — it crosses six options. The
 structure is what is being claimed, not the arithmetic.)
 
-**One shape is NOT the grid, and it is the interesting leftover.**
-`p#-total# / p#-cagr-label` is the only family with a within-panel count (9 of
-26) and the only one that appears at **480x300 and 960x540** — ordinary sizes.
-That one is a real label collision at a size somebody would present, and it
-will still be there after the grid is fixed.
+**~~One shape is NOT the grid, and it is the interesting leftover.~~ WRONG, and
+the ratchet said so within the hour.** This claimed `p#-total# / p#-cagr-label`
+was "a real label collision at a size somebody would present" — 9 of its 26
+within-panel, and the only family appearing at 480x300 and 960x540 — and that
+it "will still be there after the grid is fixed".
+
+It is not there. After the fix the budget table holds **no `p#-` entry at all**,
+and the ratchet's "draws no shape it has never drawn before" test passes, which
+it could not if any `p#-` pair still occurred. The grid took the whole family,
+that one included.
+
+**Why the probe and the ratchet disagreed, because that is the reusable part.**
+They were not measuring the same charts. The probe built its `10 series` shape
+from scratch — ten fresh series with generated values — where `DATA_SHAPES`
+spreads the sample's existing series and keeps their colours and roles. Same
+name, different data, different decorations, different overlaps. A diagnostic
+written beside a gate has to reuse the gate's own variant table or its numbers
+answer a different question, and the two agreeing everywhere else is exactly
+what made this one look trustworthy.
 
 **The lesson, and it is the same one twice in a night.** The first explanation
 here was written from a count and read plausibly — this engine really does thin
