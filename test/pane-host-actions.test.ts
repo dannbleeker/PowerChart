@@ -2466,6 +2466,58 @@ describe("demo-insert one-shot deck insert", () => {
     dl.restore();
   });
 
+  it("abandons a tail that never answers, so the round FINISHES instead of hanging", async () => {
+    /**
+     * THE OTHER HALF, and banking the log alone does not get it.
+     *
+     * The test above proves the verdicts SURVIVE a tail that hangs — but the run
+     * itself never completes: no "Round finished", no automatic save, and the
+     * driver's `collectRound` is never reached, so it files a crash instead of a
+     * round. That is how 33 of 49 crash records came to hold a complete round.
+     *
+     * `collectDeckEvidence` has always CLAIMED to be best-effort — "a host too
+     * far gone to describe its own deck still gets the verdicts out" — and
+     * nothing enforced it. A throw was survivable because it catches. A hang was
+     * not, and a hang is what a dying host actually does.
+     */
+    const app = await import("../src/taskpane/app");
+    // THE DEFAULT, asserted here because every test below overrides it. The
+    // archive says 45s is 5.6x the worst complete tail ever recorded (7.96s over
+    // 31 completions) and 2x the worst single deck scan (22.1s of 6,785), with
+    // zero of either over 30s. A number that drifted upward would restore the
+    // unbounded hang silently.
+    expect(app.DECK_EVIDENCE_TIMEOUT_DEFAULT_MS, "the tail's budget moved").toBe(45_000);
+
+    const clean = captureDownloads();
+    $("demo-round").click();
+    await settle();
+    const perRound = host.deckInventoryScans;
+    clean.restore();
+
+    host.deckScanHangsOnScan = perRound * 2;
+    app._setDeckEvidenceTimeoutForTest(1);
+    try {
+      const dl = captureDownloads();
+      $("demo-round").click();
+      await settle();
+      // Real time, because the bound is a real timer and `settle` is a 0ms tick.
+      await new Promise((r) => setTimeout(r, 60));
+      await settle();
+
+      // THE ASSERTION THAT SEPARATES THIS FROM THE TEST ABOVE: the run reached
+      // its own end. Nothing was clicked to make that happen.
+      expect($("host-note").textContent ?? "", "the round never finished — the tail is still unbounded").toMatch(
+        /Round finished/,
+      );
+      const log = await dl.lastJson();
+      expect(log.selftest?.length, "finished without its verdicts").toBeGreaterThan(0);
+      expect(log.deck, "claimed deck evidence from a scan that never answered").toBeUndefined();
+      dl.restore();
+    } finally {
+      app._setDeckEvidenceTimeoutForTest(app.DECK_EVIDENCE_TIMEOUT_DEFAULT_MS);
+    }
+  });
+
   /**
    * "Both, one after the other" has never survived a deck that was not empty.
    *

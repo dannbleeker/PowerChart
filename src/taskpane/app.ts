@@ -3346,6 +3346,48 @@ function describeLitter(deck: RunLogFile["deck"]): string {
 }
 
 /**
+ * HOW LONG THE TAIL GETS BEFORE IT IS ABANDONED.
+ *
+ * `collectDeckEvidence` has always SAID it is best-effort — "a host too far gone
+ * to describe its own deck still gets the verdicts out" — and nothing enforced
+ * it. A failure was survivable because the function catches; a HANG was not,
+ * because there was no bound, and a hang is what a dying host actually does.
+ *
+ * What that cost: the crash band is 441-572s, 9 builds of 13 die in this tail,
+ * and 33 of 49 crash records hold a complete fourteen-scenario round that was
+ * never filed. `readChartsPage` bounds its own sync at `READBACK_TIMEOUT_MS` —
+ * ninety seconds — and `PowerPoint.run` need not settle at all once the host is
+ * going, so the tail could sit there for minutes with every verdict already in
+ * hand.
+ *
+ * 45 SECONDS, and the archive says that is enormously generous:
+ *
+ *     the whole tail, scanning -> done    31 completions   p50 5.6s   max 7.96s
+ *     the deck scan alone               6,785 scans        p50 1.3s   max 22.1s
+ *
+ * Zero of either over 30s, ever. So this is 5.6x the worst complete tail on
+ * record and 2x the worst single scan inside it — chosen to be impossible to hit
+ * by a host that is merely slow, which is the only way a bound like this can be
+ * wrong. (The tail has only 31 completions because per-phase tracing landed on
+ * 2026-08-27; the scan figure is the whole archive.)
+ */
+export const DECK_EVIDENCE_TIMEOUT_DEFAULT_MS = 45_000;
+let DECK_EVIDENCE_TIMEOUT_MS = DECK_EVIDENCE_TIMEOUT_DEFAULT_MS;
+
+/**
+ * Test-only, matching `_setSlideSizeTimeoutForTest`.
+ *
+ * The DEFAULT is exported and asserted, which is one step more than the sibling
+ * takes, because the failure modes are not alike. A slide-size budget that
+ * drifts high only wastes time; this one drifts back into the unbounded hang it
+ * exists to prevent — and every test of it overrides the value, so nothing else
+ * would ever notice.
+ */
+export function _setDeckEvidenceTimeoutForTest(ms: number): void {
+  DECK_EVIDENCE_TIMEOUT_MS = ms;
+}
+
+/**
  * What landed on the slides — the two uploads a person has been making by hand.
  *
  * Best-effort by construction, and that is deliberate: this runs at the END of a
@@ -3353,8 +3395,35 @@ function describeLitter(deck: RunLogFile["deck"]): string {
  * reason the round is worth reading. A failure here must cost the pictures and
  * nothing else — the verdicts are already in `lastRunLog`, and losing them to a
  * diagnostic's own tail would be the worst trade in the file.
+ *
+ * BOUNDED SINCE 2026-08-29, which is what makes the paragraph above true rather
+ * than merely intended. On timeout this returns `undefined` — the same path a
+ * throw already took — so the round finishes, the log is offered, and the round
+ * file simply carries no `deck`. An absent `deck` is loud: `poolGroupingOutcome`
+ * and `poolFullestSlide` both read it, and the trace names the abandonment.
  */
 async function collectDeckEvidence(idsBefore: string[] | undefined): Promise<RunLogFile["deck"] | undefined> {
+  let abandon: ReturnType<typeof setTimeout> | undefined;
+  const started = Date.now();
+  const bounded = await Promise.race([
+    collectDeckEvidenceUnbounded(idsBefore),
+    new Promise<"timeout">((resolve) => {
+      abandon = setTimeout(() => resolve("timeout"), DECK_EVIDENCE_TIMEOUT_MS);
+    }),
+  ]);
+  clearTimeout(abandon);
+  if (bounded !== "timeout") return bounded;
+  // NAMED, never silent. A round that files without deck evidence must say why,
+  // or the next reader takes an absent inventory for an empty deck — the same
+  // "unknown is not a no" mistake this repo has paid for three times.
+  trace("pane", "gave up collecting deck evidence", {
+    afterMs: Date.now() - started,
+    budget: DECK_EVIDENCE_TIMEOUT_MS,
+  });
+  return undefined;
+}
+
+async function collectDeckEvidenceUnbounded(idsBefore: string[] | undefined): Promise<RunLogFile["deck"] | undefined> {
   try {
     // TRACED PER PHASE, because a crash in here has been blaming the wrong step.
     //
