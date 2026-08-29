@@ -2847,9 +2847,46 @@ export async function recover(sh, sleep, profile = PROFILE_DIR) {
     //
     // Click the file only when no tab holds it; select it either way.
     if (!sh("tab-list").includes(deckName)) {
+      /**
+       * LOOK AT THE FILE LIST FIRST — the link is only ON the file list.
+       *
+       * `refFor` searches whatever tab is CURRENT. When the deck is missing the
+       * current tab is normally the other leg's presentation, and a presentation
+       * page carries no `link "PresentationNN"` at all. So the search found
+       * nothing, nothing was clicked, and this branch slept 25 seconds and gave
+       * up — every attempt, silently, because an absent ref is not an error.
+       *
+       * Measured on the live browser, 2026-08-29, with the deck genuinely absent:
+       *
+       *     from the current tab (a presentation)   No matches found
+       *     from the OneDrive tab                   Found 2 matches
+       *
+       * It cost a whole cycle tonight: seven attempts, `deck-missing` each time.
+       * It had been invisible because this stop used to arrive with `wrong-size`
+       * beside it — the size check read whichever deck WAS fronted — and
+       * `wrong-size` is deliberately unrecoverable, so the cycle died on attempt
+       * one and recovery never got this far. Fixing that guard this morning is
+       * what exposed this.
+       *
+       * PREFER AN EXISTING TAB to navigating: the other leg's deck may be open in
+       * another tab, and a `goto` on the current one would close a document this
+       * cycle still needs. Navigate only when no tab is on the file list.
+       */
+      const home = String(sh("tab-list") ?? "")
+        .split("\n")
+        .find((l) => l.includes(DECK_HOME_URL));
+      const homeIndex = home ? /(\d+):/.exec(home)?.[1] : null;
+      if (homeIndex) sh("tab-select", homeIndex);
+      else {
+        sh("tab-new", DECK_HOME_URL);
+        await sleep(8000);
+      }
       const deckPattern = new RegExp(`link "${deckName}`);
       const deck = refFor(sh, deckName, deckPattern);
       if (deck) clickRef(sh, deck);
+      // SAY WHICH WAY IT WENT. A ref that is simply absent looks exactly like a
+      // click that did not take, and that is what hid this for as long as it hid.
+      else console.error(`  the file list shows no \`${deckName}\` to open — recovery cannot reach it`);
       await sleep(25000);
     }
     const line = sh("tab-list")

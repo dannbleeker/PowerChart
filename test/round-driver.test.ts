@@ -52,6 +52,7 @@ const {
   selectDeck,
   sideloadAddIn,
   sweepDeck,
+  DECK_HOME_URL,
 } = driver;
 
 const READY = { head: "abc1234", deployed: "abc1234", stamp: "abc1234", slides: 1, verbose: true, pictures: true };
@@ -1468,6 +1469,52 @@ describe("asking the host whether it is awake", () => {
       order.indexOf("find Sorry"),
     );
     expect(order.indexOf("find Automation")).toBeGreaterThan(order.indexOf("find Insert chart"));
+  });
+
+  it("goes to the file list before hunting for a deck that is not open", async () => {
+    /**
+     * THE LINK IS ONLY ON THE FILE LIST, and this branch searched whatever tab
+     * happened to be current. When the deck is missing that is normally the other
+     * leg's presentation, and a presentation page carries no
+     * `link "PresentationNN"` — so the search found nothing, nothing was clicked,
+     * and recovery slept 25 seconds and gave up. An absent ref is not an error,
+     * so it did that silently, on every attempt.
+     *
+     * Measured on the live browser on 2026-08-29 with the deck genuinely absent:
+     * "No matches found" from the presentation tab, "Found 2 matches" from the
+     * OneDrive tab. It cost a full cycle — seven attempts, all `deck-missing`.
+     *
+     * It had been masked. This stop used to arrive beside `wrong-size` — the size
+     * check read whichever deck WAS fronted — and `wrong-size` is deliberately
+     * unrecoverable, so the cycle died on attempt one and recovery never reached
+     * here. Fixing that guard this morning is what uncovered this one.
+     */
+    const calls: string[][] = [];
+    const sh = ((...args: string[]) => {
+      calls.push(args);
+      // Two tabs, neither of them the wanted deck, the current one a presentation.
+      if (args[0] === "tab-list")
+        return `- 0: [Home - OneDrive](${DECK_HOME_URL})\n- 1: (current) [Presentation70.pptx](https://onedrive.live.com/x)`;
+      if (args[0] === "find" && args[1] === "Sorry, we ran into a problem") return 'No matches found for "…".';
+      if (args[0] === "find") return `link "${args[1]}" [ref=f9]`;
+      return "ok";
+    }) as unknown as Parameters<typeof recover>[0];
+
+    process.env.PW_DECK = "Presentation64";
+    try {
+      await recover(sh, async () => {});
+    } finally {
+      delete process.env.PW_DECK;
+    }
+    const flat = calls.map((c) => c.join(" "));
+    const selected = flat.indexOf("tab-select 0");
+    const searched = flat.findIndex((c) => c.startsWith("find Presentation64"));
+    expect(selected, "never fronted the file list").toBeGreaterThanOrEqual(0);
+    expect(searched, "never looked for the deck at all").toBeGreaterThanOrEqual(0);
+    expect(selected, "searched for the deck link before fronting the list that holds it").toBeLessThan(searched);
+    // An existing OneDrive tab is REUSED rather than navigated to: a `goto` on
+    // the current tab would close a presentation this cycle still needs.
+    expect(flat, "opened a new tab when one was already on the file list").not.toContain(`tab-new ${DECK_HOME_URL}`);
   });
 
   it("reloads when there is no dialog to clear", async () => {
