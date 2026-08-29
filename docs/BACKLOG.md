@@ -37,8 +37,22 @@ shipped, refused, or a finding rather than a task.
 
 Two standing costs that are not tasks: the host crashes during evidence
 collection after a long round (§3 — it costs the evidence, not the run), and
-`test/overlap-budget.test.ts` holds 317 overlapping pairs whose per-shape table
-is the live list.
+`test/overlap-budget.test.ts` holds **4,010** overlapping pairs whose per-shape
+table is the live list. That figure replaced 537 on 2026-08-29 because the
+SWEEP widened, not because the engine changed — it now crosses option variants
+with data shapes, which it never did. Do not compare it with any earlier number.
+
+**Newly open, 2026-08-29: small multiples do not thin their labels.** 2,683 of
+the 4,010 are panel-on-panel text, every one of them invisible until the sweep
+crossed `multiples` with dense data. Measured, cause untested, unfixed — see §3.
+
+**Newly open, 2026-08-29: `duplicateSlot` judges a window it cannot fill.** The
+scenario sizes its reconcile from a slide count this host reports LATE, so a
+round where an insert answers "nothing landed" for slides that did land gets a
+hard FAILED verdict about two slides out of four — and the cycle's fatal check
+stops the night on it. Round 297 is the worked example; the fix is a few lines
+and is deliberately not taken at 2am, because it changes a verdict rule with a
+273-round series behind it. See §3.
 
 **Newly reopened, 2026-08-29: PowerPointApi 1.8 bindings.** §2 retires them as
 "unanswerable on this host", on the strength of the host rejecting the batch
@@ -2029,6 +2043,55 @@ eight frame sizes, two fonts and both orientations — about 24,000 charts — w
 overlap measured by the frame gate's own ink rule. It ran for the first time on
 2026-08-27 at **2,148 overlapping pairs** and stands at **317**.
 
+**AND THE GATE HAD THE SAME BLIND SPOT IT WAS BUILT TO CLOSE — 2026-08-29.**
+
+`frame-fit.test.ts` swept kinds, frames and fonts and missed the option and
+data-shape variants; that is why this family lived nine days behind a green
+gate. `overlap-budget.test.ts` was written to close that hole, and it swept
+every option and every data shape **and never one of each** — the two tables
+were concatenated, not crossed. A chart with a secondary axis AND ten series
+was not among its 24,000. Neither was a footnote on twenty-four categories.
+
+Crossing a slice of them (six layout-changing options against four
+label-stressing data shapes) took the count from **537 to 4,010** and produced
+**twenty-two shapes this engine has never been seen to draw**. Nothing about the
+engine changed that day. The number moved because the sweep did, and a figure
+from before it is not comparable with one after — the same trap as the
+"75 pairs" of 2026-08-19, sprung a second time in ten days.
+
+    2,683   `p#-*`, small-multiples panels — ALL of it new
+    1,058   `value-axis-title` — the open decision below, unchanged in kind
+      269   everything else, including three new shapes
+
+**THE FIND: small multiples do not thin their labels when the data gets dense.**
+Panels lay out at a fraction of the frame. With the sample's data they are
+fine — `multiples 2 columns` has been swept alone since the start and produced
+no `p#-` shape at all. Crossed with twenty-four categories or ten series:
+
+    910  p#-category# / p#-category#
+    408  p#-title / p#-title
+    378  p#-value-axis / p#-value-axis
+    292  p#-label# / p#-label#
+    261  p#-label## / p#-label##
+    198  p#-total# / p#-total#
+
+Everywhere else this engine drops or shrinks a label it cannot fit —
+`seriesLabelNodes` spreads, shrinks and finally drops; the radar's ticks, the
+pie's outside labels and the sunburst's ring all do the same. Inside a panel it
+appears not to: the panel gets its share of the frame and lays out as though it
+had the whole of it. That is one hypothesis and it is worth exactly what an
+untested hypothesis is worth — the number is measured, the cause is not.
+
+**Not fixed tonight, deliberately.** It is a layout change across every kind
+that supports multiples, and it wants the sweep, the ratchet and a round rather
+than a 2am patch. What is done is that it can no longer hide: the budget holds
+all 2,683, so the first one that goes away has to be edited down and the first
+new one fails the build.
+
+**Still not crossed**, so nobody has to re-derive it: every option outside
+`CROSS_OPTIONS` against every data shape, and any product of three or more.
+Widen that list before calling a family closed.
+
 **It is a gate now, not a script somebody remembers.**
 `test/overlap-budget.test.ts` runs the sweep in eight seconds on every build and
 holds a budget PER SHAPE. Three of its four tests catch a regression; the fourth
@@ -2179,6 +2242,61 @@ A related caution, learned the same way: the figure that stood in this file from
 was never comparable to anything. Re-measuring gave 2,148. A number in prose
 decays; the sweep is four lines of script and the archive is on disk, so re-run
 it rather than quote it.
+
+### A reconcile window sized from a slide count the host reports late — 2026-08-29
+
+**Round 297 stopped a whole cycle on a verdict that was arithmetically correct
+about the wrong population.** `two slides claiming one slot` FAILED with
+`4 slides inserted, 4 kept, 4 of 2 still re-editable; 0 queued as duplicates`,
+and the fatal check did its job: a scenario that was passing had stopped.
+
+It is not the flake this scenario already has. Five earlier failures in 273
+rounds: four of them — 060, 148, 253, 273 — read `2 queued as duplicates`, so
+the dedup RAN and left slides behind, and the fifth (287) is the stale-chunk
+`Failed to fetch dynamically imported module` that `src/render/lazy.ts` was
+written for. None of the five found zero duplicates. This one did, which is a
+different thing.
+
+**The trace names the cause in three lines:**
+
+    handed the host a generated deck   expectedSlides 2, landed 0
+    handed the host a generated deck   expectedSlides 2, landed 2
+    read the deck back                 range [3,5], read 2, unread 0
+
+The first insert reported **nothing landed**. Its slides did land — the deck
+went 3 to 7, all four of them — but not by the time anyone counted. So
+`afterInsert = await slideCount()` answered 5, `reconcileDeck` was handed the
+window `[3,5]`, and it examined two slides out of the four that existed. Two
+distinct titles in the window, no duplicates, verdict `0`. Every step correct;
+the window was wrong.
+
+`unread` is **0** on that read, which matters: the host was not refusing. It was
+BEHIND. Those are different failures and only one of them the guards already
+cover — `duplicateSlot` checks `blind` on its readback and there was nothing
+blind to catch.
+
+**This is `addSlides`' problem seen from the other side.** That function exists
+because "PowerPoint on the web silently drops some `slides.add()` calls", and it
+verifies growth from a fresh context rather than trusting the batch. Here the
+host does the mirror image: it reports slides as NOT landed that did land. And
+`slideCount()` is already the fresh-context read, so a fresh context is not the
+remedy — the host is simply late, the same lateness `slideShapeCounts` pays
+`COUNT_SETTLE_MS` for on the shape counts.
+
+**The fix, and why it is not in tonight.** `duplicateSlot` knows it asked for
+four slides. When `afterInsert - before` is not four, the reconcile is about to
+be given a window that cannot contain the duplicates, and the honest answer is
+the one `blindSkip` already gives for the other kind of unreadable host: say the
+run could not be judged, rather than judge it. That is a few lines.
+
+It is not in tonight because it changes what a round MEASURES, and this
+scenario's pass/fail series is 273 rounds long and is itself evidence. A change
+to a verdict rule belongs in daylight, with the series re-read afterwards, not
+at 2am between cycles. Recorded here so it is not re-derived.
+
+**Read alongside** the entry above about the ratchet's own blind spot: three
+times this week a gate has been correct about the thing it was measuring and
+wrong about the thing it was believed to measure.
 
 ### The crash, counted across the whole archive — 2026-08-28
 

@@ -19,6 +19,18 @@ import { textWidth, type SceneNode, type TextNode } from "../src/core/scene";
  * a shape absent from the table is a regression by definition, since it is text
  * the engine has never been seen to draw over text before.
  *
+ * AND THEN THIS FILE TURNED OUT TO HAVE THE SAME BLIND SPOT IT WAS BUILT TO
+ * CLOSE. It swept every option and every data shape and never one of each: the
+ * two tables were CONCATENATED, so a secondary axis on ten series, or a
+ * footnote on twenty-four categories, was not among the 24,000 charts. Crossing
+ * a slice of them on 2026-08-29 took the count from 537 to 4,010 and found
+ * twenty-two shapes this engine had never been SEEN to draw — 2,683 of them in
+ * small-multiples panels alone. Nothing about the engine changed that day.
+ *
+ * So: the total moved because the sweep did, and a number from before that date
+ * is not comparable with one after it. `CROSS_OPTIONS` below says what is
+ * crossed and, more usefully, what still is not.
+ *
  * WHEN A NUMBER HERE GOES DOWN, EDIT IT DOWN. The budget is a ceiling, not a
  * target, and one left above the real figure is a ratchet that has stopped
  * ratcheting — the next regression hides under the slack. There is a test below
@@ -173,34 +185,116 @@ const DATA_SHAPES: Record<string, (c: any) => any> = {
 };
 
 /**
- * What each remaining shape is allowed, as of 2026-08-28. Total 537, from 2,148.
+ * What each remaining shape is allowed, as of 2026-08-29. Total 4,010.
+ *
+ * **THE JUMP FROM 537 TO 4,010 IS NOT A REGRESSION. It is the sweep widening.**
+ * Nothing about the engine changed; on 2026-08-29 this file started crossing
+ * option variants with data shapes (see `CROSS_OPTIONS`), and every pair below
+ * that was not there before had been drawn by this engine all along, in a
+ * configuration nobody had built. Read the count as coverage, not as damage —
+ * and never compare a number here against one measured before that date without
+ * saying which sweep produced it. The 2026-08-19 figure of "75 pairs" was
+ * mis-compared exactly that way once already.
  *
  * A `#` stands in for any run of digits, so `label-3 / label-4` and `label-9 /
  * label-10` are one shape. What each family is, and why the ones left are still
- * here, is in `docs/BACKLOG.md`. In short: the `value-axis-title` group is 270
- * of the 537 and waits on a decision about where a unit belongs when the band
- * above the plot cannot hold the chart title, the unit and the topmost tick
- * number all three.
+ * here, is in `docs/BACKLOG.md`.
+ *
+ * The 4,010 is two families and a tail:
+ *
+ *     2,683   `p#-*` — SMALL MULTIPLES, all of it new on 2026-08-29
+ *     1,058   `value-axis-title` — the owner's open decision
+ *       269   everything else
+ *
+ * The small-multiples family is the discovery. Panels lay out at a fraction of
+ * the frame, and with the sample's data they are fine — `multiples 2 columns`
+ * has been swept on its own since the start and produced no `p#-` shape at all.
+ * Crossed with twenty-four categories or ten series they are not: 910 pairs of
+ * panel category name on panel category name, 408 of panel title on panel
+ * title. The engine drops and shrinks labels that will not fit everywhere else
+ * (`seriesLabelNodes`, the radar's ticks, the pie's outside labels); inside a
+ * panel it appears not to. Measured, not yet fixed — see docs/BACKLOG.md.
  */
 const BUDGET: Record<string, number> = {
-  "value-axis-title / legend#": 100,
-  "value-axis-title / total#": 43,
-  "title / value-axis-title": 41,
-  "value-axis / value-axis-title": 33,
-  "total# / value-axis-title": 25,
-  "value-axis-title / label#": 24,
-  "combo-series-label# / combo-series-label#": 6,
-  "value-axis-title / series-label#": 15, // 14 before the combo gutter was laid out in one pass; one name moved onto it
-  "series-label# / series-label#": 1,
-  "title / series-label#": 3,
-  "value-axis-title / median-label#": 5,
-  "label# / label#": 4,
+  // Small multiples, crossed with dense data. New on 2026-08-29 and unfixed.
+  "p#-category# / p#-category#": 910,
+  "p#-title / p#-title": 408,
+  "p#-value-axis / p#-value-axis": 378,
+  "p#-label# / p#-label#": 292,
+  "p#-label## / p#-label##": 261,
+  "p#-total# / p#-total#": 198,
+  "p#-tick# / p#-category#": 48,
+  "p#-label## / p#-total#": 34,
+  "p#-cagr-label / p#-total#": 28,
+  "p#-total# / p#-cagr-label": 21,
+  "p#-value-axis / p#-title": 20,
+  "p#-cagr-label / p#-title": 19,
+  "p#-total# / p#-label##": 18,
+  "p#-tick# / p#-tick#": 16,
+  "p#-value-axis / p#-category#": 12,
+  "p#-cagr-label / p#-cagr-label": 8,
+  "p#-category# / p#-title": 6,
+  "p#-category# / p#-tick#": 4,
+  "p#-label# / p#-title": 2,
+  // The `value-axis-title` group — one open decision, not a pile of defects.
+  "value-axis-title / legend#": 394,
+  "title / value-axis-title": 205,
+  "value-axis-title / total#": 182,
+  "value-axis / value-axis-title": 163,
+  "total# / value-axis-title": 116,
+  "value-axis-title / label#": 73,
+  "value-axis-title / series-label#": 55,
+  "value-axis-title / median-label#": 20,
+  // The tail.
+  "combo-series-label# / combo-series-label#": 33,
+  "title / series-label#": 28,
+  "label# / label#": 22,
+  "title / total#": 8, // new 2026-08-29: a total row under a long title, crossed
+  "series-label# / series-label#": 7,
   "header# / label##": 4,
   "title / row#": 4,
   "tile#-value / tile#-value": 4,
   "title / category#": 3,
   "label## / cagr-label": 2,
+  "total# / title": 2, // new 2026-08-29
+  "legend# / footnote": 2, // new 2026-08-29: a footnote under a wrapped legend
 };
+
+/**
+ * THE COMBINATIONS, because until 2026-08-29 this sweep never made one.
+ *
+ * `variants` below was the two tables CONCATENATED — every option applied to a
+ * sample config, every data shape applied to a sample config, and never an
+ * option and a data shape together. So a chart with a secondary axis AND ten
+ * series was not among the 24,000, and neither was a footnote on
+ * twenty-four categories.
+ *
+ * That is the same defect this file was WRITTEN TO FIX, one level up.
+ * `frame-fit.test.ts` swept kinds, frames and fonts and missed the option and
+ * data-shape variants; this file swept the variants and missed their products.
+ * A gate is only as wide as its sweep, and both gates were green.
+ *
+ * Measured on a 5x4 slice before widening: three shapes appeared that the
+ * uncrossed sweep has never produced in any of its 24,000 charts —
+ * `title / total#`, `legend# / footnote`, `title / label#` — and every shape
+ * the two share came out several times larger. By this file's own rule a shape
+ * absent from the table is a regression by definition, so those were three
+ * regressions nobody could see.
+ *
+ * NOT THE FULL PRODUCT, and the reason is honest rather than principled: 24
+ * options by 10 shapes is 240 variants against 34, which takes this from eight
+ * seconds to about a minute and out of the ordinary suite. What is crossed here
+ * is the options that change the LAYOUT'S STRUCTURE against the data shapes
+ * that stress LABEL COUNT, which is where the interesting products live.
+ *
+ * WHAT IS STILL NOT CROSSED, so the next person does not have to re-derive it:
+ * every other option (`scale`, `logScale`, `axisBreak`, `gapWidth`, `overlap`,
+ * `segmentOrder`, `categorySort`, `otherBucket`, `numberFormat`, `render
+ * image`, the per-kind ones) against every data shape; and any product of three
+ * or more. Widen this list before concluding a family is closed.
+ */
+const CROSS_OPTIONS = ["secondaryAxis", "pareto", "valueAxisTitle", "footnote", "title", "multiples 2 columns"];
+const CROSS_SHAPES = ["24 categories", "10 series", "long series names", "long category names"];
 
 /** The whole sweep, once. */
 function measure(): { total: number; byShape: Map<string, number> } {
@@ -212,6 +306,13 @@ function measure(): { total: number; byShape: Map<string, number> } {
       ([k, o]) => [k, (c: unknown) => ({ ...(c as object), ...o })] as [string, (c: unknown) => unknown],
     ),
   ];
+  for (const ok of CROSS_OPTIONS)
+    for (const sk of CROSS_SHAPES) {
+      const o = OPTIONS[ok];
+      const fn = DATA_SHAPES[sk];
+      if (!o || !fn) throw new Error(`CROSS names a variant that does not exist: ${ok} x ${sk}`);
+      variants.push([`${ok} × ${sk}`, (c: unknown) => ({ ...(fn(c as never) as object), ...o })]);
+    }
   for (const [, fn] of variants)
     for (const { kind } of CHART_KINDS)
       for (const [w, h] of FRAMES)
@@ -242,6 +343,21 @@ function measure(): { total: number; byShape: Map<string, number> } {
 
 describe("the text this engine still draws over other text", () => {
   const { total, byShape } = measure();
+  /**
+   * `DUMP_BUDGET=1 npx vitest run test/overlap-budget.test.ts` prints the whole
+   * measured table, ready to paste over `BUDGET`.
+   *
+   * Here because re-baselining by hand from assertion output is how a budget
+   * ends up above its real figure — the failure prints only the shapes that
+   * broke a rule, so the unchanged ones get copied forward from the old table
+   * and quietly keep their slack. The fourth test exists to catch exactly that;
+   * this makes it unnecessary to trip.
+   */
+  if (process.env.DUMP_BUDGET) {
+    const lines = [...byShape.entries()].sort((a, b) => b[1] - a[1]).map(([k, v]) => `  "${k}": ${v},`);
+    // eslint-disable-next-line no-console
+    console.log(`TOTAL ${total}\n${lines.join("\n")}`);
+  }
 
   it("draws no shape it has never drawn before", () => {
     // A shape absent from the budget is text the engine has NOT been seen to
