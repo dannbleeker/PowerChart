@@ -48,7 +48,8 @@ compare any of them with an earlier number without naming the sweep.
 panel height of −0.4 was handed on, `clampDim` rewrote it to
 `DEFAULT_SIZE.height`, and ten full 300-point charts were stacked 9.6 points
 apart inside a box 60 points tall. 2,683 of the sweep's pairs; all of them gone,
-total now **1,327**. Awaiting a round, because it is a rendering change — see §3.
+total now **1,327**. **Validated**: rounds 298 and 299 at 16:9 and 300 at 4:3,
+all 14 of 14, plus a byte-identical showcase across 123 configs — see §3.
 
 **Newly open, 2026-08-29: `duplicateSlot` judges a window it cannot fill.** The
 scenario sizes its reconcile from a slide count this host reports LATE, so a
