@@ -212,8 +212,15 @@ const DATA_SHAPES: Record<string, (c: any) => any> = {
  *
  * The 1,327 is one family and a tail:
  *
- *     1,058   `value-axis-title` — the owner's open decision
- *       269   everything else
+ *     1,208   `value-axis-title` — the owner's open decision
+ *       119   everything else
+ *
+ * THOSE ARE NOT 1,058 AND 269, which is what the 4,010 sweep split into and
+ * what this said until it was re-summed. Removing the broken grids did not just
+ * subtract 2,683: a chart that used to render as an impossible grid now renders
+ * as an ordinary chart, and an ordinary chart with a unit label contributes
+ * `value-axis-title` overlaps. The family GREW by about 150 as the tail shrank
+ * by the same. A subtraction is not a re-measurement.
  *
  * The `p#-*` family that appeared here at 2,683 is GONE, and its story is worth
  * the four lines. It was not a labelling defect — that was the first guess and

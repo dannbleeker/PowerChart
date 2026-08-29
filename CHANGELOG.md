@@ -13,8 +13,15 @@ fact would produce a document nobody could trust.
 
 A sweep of every chart kind under twenty-four options and ten data shapes — at
 eight frame sizes, two fonts and both orientations — counted **2,148 places
-where this engine drew one piece of text through another**. It is now 467, and
-the sweep runs on every build so the number can only go down.
+where this engine drew one piece of text through another**. What is left is one
+open question about where a unit label belongs, plus a small tail, and the sweep
+runs on every build so the number can only go down.
+
+**Three figures appeared while this was in progress and only one of them was a
+change to the engine**, so none of them should be read against another without
+saying which sweep produced it: 2,148 → 467 was the fixes below; 467 → 4,010 was
+the sweep itself widening to cross options with data shapes, which it had never
+done; and 4,010 → 1,327 was the small-multiples bug in the next entry.
 
 What that looked like on a real chart:
 
@@ -41,6 +48,48 @@ What that looked like on a real chart:
   the middle — and drew that total wider than the arc it sits in.
 - **A bubble chart's size key** centred each reference number in a box the width
   of its own circle, so the smallest number spilled out over its neighbours.
+
+### Small multiples no longer scatter their labels off the slide
+
+Asking for a grid of panels that could not fit produced a chart whose text ran
+hundreds of points below the bottom of it — on the slide, under whatever came
+next, and nowhere near the chart it belonged to. Ten series in two columns on a
+short chart is the case: five rows, and after the title and the gaps there was
+nothing left per panel.
+
+The engine was computing a negative panel height and handing it on, where a
+guard meant for malformed input from outside — a width of `NaN` pasted from
+somewhere — quietly replaced it with a default. Each panel was then laid out as
+a full-size chart, and ten full-size charts were stacked nine points apart
+inside a box sixty points tall.
+
+A grid whose panels have no room is no longer drawn: the chart renders whole
+instead. Nothing that fits today changes, because only a size of zero or less
+was ever being rewritten.
+
+### Editing a chart is two to four times faster
+
+An edit that changes one thing used to send the host everything about every
+shape it touched — twenty separate instructions to change a single word of a
+title. It now sends only what actually differs.
+
+Measured on the real thing, not in a simulator: retitling sends two instructions
+where it sent twenty, recolouring a series 44 where it sent 152, and a deck-wide
+rescale 180 where it sent 272. On PowerPoint on the web that is a rescale across
+eight charts falling from around 150 seconds to 103, and the smaller edits
+falling further in proportion.
+
+### Inserting a chart no longer pays a four-second pause first
+
+Every insert asked PowerPoint for the slide's size, and on a document that had
+been sitting a moment that question went unanswered for a flat four seconds
+before the pane gave up and got the answer another way. The wait was not buying
+anything: when the question is answered at all it is answered in about a quarter
+of a second, and the fallback costs about the same again.
+
+The pane now waits a second and a half rather than four, so a cold document
+costs roughly two and a half seconds less per insert. Nothing else changed about
+how the size is found.
 
 ### The pane says when an insert will be slow
 

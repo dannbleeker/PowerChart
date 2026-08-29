@@ -388,9 +388,61 @@ export function layoutBoxplot(cfg: ChartConfig, style: ChartStyle, decor: Decora
         // chart — 10pt over the top of a 300x60 frame at 24pt. Fitted to the
         // band the median leaves and dropped when that band cannot carry a
         // readable number, which is what `gBoxW` already does sideways.
-        const medFs = H ? fs * 0.9 : aboveMarkFontSize(fs * 0.9, qMed, titleInkBottom(cfg, style), 1.3);
+        /**
+         * AND THE MEAN MARKER IS IN THAT BAND TOO, when the mean sits above the
+         * median.
+         *
+         * The label was fitted against the title alone, and the shipped
+         * showcase is what caught it: `Boxplot from raw samples` draws both
+         * marks, and three of its boxes put the `×` exactly where the median's
+         * number goes. The two are pushed by the same loop a few lines apart and
+         * neither knew about the other.
+         *
+         * Its INK bottom, not its box. The `×` is a `valign: middle` glyph in a
+         * `fs * 1.4` box, so its ink runs to `y + fs * 0.57`; measuring the box
+         * would drop labels that clear the mark perfectly well. That is the
+         * distinction the gauge total and the gantt nudge each got wrong once.
+         *
+         * Only when the mean is ABOVE the median. Below it the marker is inside
+         * the box and nowhere near this label, and taking the max with it would
+         * collapse the band and drop a number for no reason.
+         *
+         * A MUTANT SURVIVES HERE AND IT IS NOT EQUIVALENT — the gates simply
+         * cannot see what it costs. Removing this line leaves every overlap
+         * count identical, because the drop below catches the same cases. What
+         * changes is how many labels SURVIVE: 19 median numbers in the shipped
+         * deck with it, 17 without. This shrinks a label that the drop would
+         * delete, which is the whole difference between fitting and refusing,
+         * and no overlap gate can measure it. Counted by hand rather than left
+         * to a mutation run's verdict.
+         */
+        const meanY = b.mean != null ? qOf(b.mean) : null;
+        const meanInkBottom = meanY != null && meanY < qMed ? meanY + fs * 0.57 : -Infinity;
+        const medBandTop = Math.max(titleInkBottom(cfg, style), meanInkBottom);
+        const medFs = H ? fs * 0.9 : aboveMarkFontSize(fs * 0.9, qMed, medBandTop, 1.3);
         const medScale = medFs / (fs * 0.9);
-        if (medFs > 0 && gBoxW >= fs * 1.2 && (H || gBoxW >= textWidth(label, medFs) + 4)) {
+        /**
+         * AND THE FIT IS TESTED ON THE PLACED LABEL, not on the band.
+         *
+         * Shrinking to the band clears the marker where the two are far enough
+         * apart, and cannot where they are not: the label is anchored just
+         * above the median line and the `×` sits at the mean, so a mean within
+         * a line-height of the median leaves nowhere to be. Two of the
+         * showcase's three collisions went to the shrink and the third did not.
+         *
+         * So the drop is the answer, and it is the median NUMBER that goes —
+         * the median LINE is still drawn, and the `×` is the only thing that
+         * says where the mean is. This is remedy three from the pattern this
+         * repo keeps meeting: where a fit and a placement disagree, test the fit
+         * on the placed position.
+         */
+        const medInkClearsMean = (() => {
+          if (H || meanY == null || medFs <= 0) return true;
+          const boxY = qMed - fs * 1.5 * medScale;
+          const base = boxY + fs * 1.3 * medScale - medFs * 0.25;
+          return base + medFs * 0.21 <= meanY - fs * 0.8 || base - medFs * 0.8 >= meanY + fs * 0.57;
+        })();
+        if (medFs > 0 && medInkClearsMean && gBoxW >= fs * 1.2 && (H || gBoxW >= textWidth(label, medFs) + 4)) {
           nodes.push(
             H
               ? {

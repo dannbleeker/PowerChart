@@ -54,6 +54,21 @@ picking a type auto-collapses the gallery to a compact "current type" summary.
    A slide with room in neither direction falls back to a small cascading
    offset, so the chart lands somewhere you can see and drag rather than off
    the edge.
+
+   **If the slide is already busy, the pane may offer the chart a slide of its
+   own.** Adding to a loaded slide is several times slower than adding to an
+   empty one — the cost is PowerPoint's, and it grows with what is already
+   there — so when the wait looks long the pane says how long it will take
+   here, what it would take on a new slide, and lets you choose. Both figures
+   are estimates from measured inserts, and neither is called instant: a big
+   chart takes a while wherever it goes.
+
+   You only see the offer when moving the chart would at least halve the wait.
+   A chart that is slow because it is *large* is just as slow on an empty
+   slide, and there is no point offering a slide that would not help. If you
+   take the offer and PowerPoint fails to add the slide, the chart goes where
+   you originally asked and the pane says so — you never lose a chart to a
+   slide that did not appear.
 5. **Re-edit later**: select the chart on the slide — the pane shows an
    "Edit it" banner. Or click **Edit selected chart** to load its data and
    options back into the pane, change anything, and **Update chart** to
@@ -882,6 +897,10 @@ practical substitute for live data links.
 - **"Theme unavailable"** — host below 1.10.
 - **Chart not recognized for editing** — it must carry the SSF Charts tag;
   charts inserted before tagging existed can't be re-opened.
+- **"SSF Charts has been updated"** — a new version was published while your
+  pane was open, so the pane is holding a page whose files have been replaced.
+  Close the pane and open it again. Your slides are untouched; nothing was lost,
+  and the chart you were working on is still on the slide.
 - **Other languages** — the pane is translation-ready and localizes itself from
   `Office.context.displayLanguage`, but **no dictionary ships today**: every
   string is English. Adding one is a single entry in `DICTS` in

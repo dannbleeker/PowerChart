@@ -20,20 +20,31 @@ patterns.
 
 ## 1. Open
 
-**Everything actually open, as of 2026-08-28.** Eight items. The sections below
-carry the evidence; this list carries the state. Anything not on it is either
-shipped, refused, or a finding rather than a task.
+**Everything actually open, as of 2026-08-29.** The sections below carry the
+evidence; this list carries the state. Anything not on it is either shipped,
+refused, or a finding rather than a task.
+
+**Five of the eight closed on 2026-08-29, and the three left are all the
+owner's.** Two are product decisions and one goes out under his GitHub identity:
+
+    1  where a unit label belongs when the band above the plot cannot hold three
+    3  whether a crowded slide should get a picture instead of native shapes
+    5  filing this project's host measurements to the office-js tracker
+
+Nothing on that list is waiting on engineering. Items 2, 4, 6, 7 and 8 were
+closed by shipping, by measuring the remedy and declining it, or by the host
+refusing the mechanism outright — each says which, in its own row.
 
 | | What | Where | State |
 |---|---|---|---|
-| 1 | **`valueAxisTitle` runs over the legend and the totals row** — **1,058 of the 1,327** remaining pairs, and now the whole of what is left bar a 269-pair tail | §3, *Text drawn over text* | **Owner's call.** Three remedies built and measured, all three reverted; three ways out written up. It is the only label here that is text the AUTHOR typed. (Was "287 of 317" — a figure from the uncrossed sweep, not comparable. See the note on the three totals.) |
+| 1 | **`valueAxisTitle` runs over the legend and the totals row** — **1,208 of the 1,327** remaining pairs, and now the whole of what is left bar a 269-pair tail | §3, *Text drawn over text* | **Owner's call.** Three remedies built and measured, all three reverted; three ways out written up. It is the only label here that is text the AUTHOR typed. (Was "287 of 317" — a figure from the uncrossed sweep, not comparable. See the note on the three totals.) |
 | 2 | ~~**The slow-insert offer is not wired**~~ | §1, *The slow-insert offer* | **SHIPPED 2026-08-29.** All five steps, five pane tests, four mutants dead. The blocker this row named was a stale finding: a fresh slide's id IS usable once the slide settles, and the probe answer flipped at round 254 because of our own commit. Kept in §1 for the lesson, not the task. |
 | 3 | **Adding to an occupied slide costs ~24s; a fresh one ~0.75s** | §1, *Adding a chart to an existing slide* | Measured over 2,917 batches. Item 2 (shipped) is the user-facing half. **A fourth option is now costed, 2026-08-29**: draw the chart as ONE picture — ~43s becomes rasterise 705ms plus a single-shape insert, a 7–20× saving, and every part of the mechanism already ships. **Still the owner's call**, and a bigger one than the offer: it changes what the user RECEIVES, not just what they are told. |
-| 4 | **The picture fast-path** — and the cost it was filed under has moved | §1, *The largest product cost was in the FAST path* | **Partly done 2026-08-29, and the premise corrected.** Redraws are 14.5% and exactly 2 a round; the cost was inside the fast path, which took a median of 15.7s because it wrote every property of every changed node. It now writes only what differs — `same scale across the deck` 146–156s → **103s**, below the IQR of 275 rounds. The picture feature itself is untouched and still real: a picture cannot be diffed against a scene, so those ~29 redraws a round are correct. |
+| 4 | ~~**The picture fast-path**~~ | §1, *The largest product cost was in the FAST path* | **CLOSED 2026-08-29 on evidence, both halves.** The cost it was filed under had moved: redraws are 14.5% and exactly 2 a round, and the real cost was inside the FAST path, which took a median of 15.7s because it wrote every property of every changed node. It now writes only what differs — `same scale across the deck` 146–156s → **103s**, below the IQR of 275 rounds. And the picture feature itself is **not worth building**: a picture redraw is ~40ms of delete plus ~770ms of picture against 15–50s to draw the same shapes natively, so a fast path could save about five percent of an operation that is already twenty to sixty times cheaper than its alternative. |
 | 5 | **File this project's host measurements to the office-js tracker** | §1, *Report what this project has measured* | **Owner-gated** — it goes out under his GitHub identity, so nothing is filed without his word on that specific issue. Three are written and ready. |
 | 6 | ~~**The dual-axis gutter**~~ — 14 pairs, and the remedy costs 1,394 axis readings | §3, *Text drawn over text* | **MEASURED AND DECLINED 2026-08-29.** Not "30 pairs": 14, of 1,327, and none of them a tick number. Applying the merge to the secondary case fixes 8 and DELETES 1,394 secondary tick numbers — 174 readings lost per pair gained, where the original decision recorded about ten. The trade got seventeen times worse as the rest of the engine improved. The design is written and stays written; on these numbers nobody should build it. |
 | 7 | ~~**Positional group-member mapping → `Shape.creationId`**~~ | §3 | **CLOSED 2026-08-29 — the host refuses it.** This host reports PowerPointApi **1.10** and does not populate `Shape.creationId`: `absent` / `no-creation-id` on all three probe questions, 25 of 25 rounds. So it was never a matter of gating on 1.10. The positional mapping stays, still inferred, still guarded by the node-0 anchor test — which is now the permanent answer rather than a stopgap. |
-| 8 | **`slideSize()` rung 1 times out in EVERY round that reads a size** | §3 | Re-measured 2026-08-29 over 270 rounds: 157 of 157, always the full 4000ms — not "about twice as often as it answers". **And now timed**: a SUCCESSFUL rung-1 read costs 246–270ms (rounds 297–299), so the stall and the answer are different calls and the bound is not buying the answer. **Round 300 then broke the "157 of 157" entirely** — no stall, 138ms, on a round that followed a crash recovery and a full tab reload; round 301, on a tab left idle 35 minutes, stalled again. **And 301 measured rung 2 at ~280ms**, which is what this was blocked on — the export costs what the read costs, so a 500ms bound would take a stalled run from 4,280ms to under 800. No longer blocked on a measurement; only on choosing between a lower bound and a warm-up. |
+| 8 | ~~**`slideSize()` rung 1 times out in EVERY round that reads a size**~~ | §3 | **DONE 2026-08-29**, and measured on both sides. The bound is now its own constant at 1,500ms rather than the shared selection budget, and rounds 303 and 305 are a clean A/B on the same fallback path: `exportedSlide ms=4404` → `ms=2108`, **2.3 seconds back** per cold insert, with rung 1 still answering in 259ms when it answers. Remaining, and much smaller: whether a warm-up call removes the stall altogether. The measurement that got here: Re-measured 2026-08-29 over 270 rounds: 157 of 157, always the full 4000ms — not "about twice as often as it answers". **And now timed**: a SUCCESSFUL rung-1 read costs 246–270ms (rounds 297–299), so the stall and the answer are different calls and the bound is not buying the answer. **Round 300 then broke the "157 of 157" entirely** — no stall, 138ms, on a round that followed a crash recovery and a full tab reload; round 301, on a tab left idle 35 minutes, stalled again. **And 301 measured rung 2 at ~280ms**, which is what this was blocked on — the export costs what the read costs, so a 500ms bound would take a stalled run from 4,280ms to under 800. No longer blocked on a measurement; only on choosing between a lower bound and a warm-up. |
 
 Two standing costs that are not tasks: the host crashes during evidence
 collection after a long round (§3 — it costs the evidence, not the run), and
@@ -126,9 +137,32 @@ retitle that sends a tenth of the statements still pays two syncs.
 independent size classes all moved the same way by a lot, and the baseline is
 eight builds deep, but it is one round and should be read as one.
 
-**What is left of the original entry** is the picture feature, and it is
-unchanged by any of this: a picture cannot be diffed against a scene, so those
-29 redraws a round are correct and the fast path cannot take them. See below.
+**What is left of the original entry** is the picture feature — and rounds 304
+and 305 close it. **It is not worth building.**
+
+The two halves of a picture redraw were timed on 2026-08-29 and the split is
+lopsided:
+
+    deleting the chart being replaced    13-38ms    (removed=1)
+    drawing the chart as one picture     742-799ms  (nodes=24)
+
+About **810ms in total**, against 15 to 50 seconds for the same twenty-four
+shapes drawn one at a time — three batches at the 5,013 to 16,579ms this archive
+measures per batch. So the picture path is already twenty to sixty times cheaper
+than the thing it replaces.
+
+A "picture fast path" could at best reuse one existing shape as the host and
+save the delete: **40ms of 810, about five percent**, for a feature that has to
+teach a differ about a fill it cannot see. The argument for expecting that was
+written down before the measurement and the measurement agrees with it, which is
+the only reason to trust either.
+
+The `removed=1` is why the delete is so cheap and is worth keeping in mind: a
+grouped chart is one shape to delete however many it holds. A chart that failed
+to group would cost twenty-four deletes, and this host groups reliably now.
+
+**So item 4 is closed on evidence rather than deferred.** The redraws that
+remain are correct, cheap, and not worth removing.
 
 ### Two of every three redraws are a grouped chart the update cannot map — 2026-08-26
 
@@ -2401,12 +2435,22 @@ the exercise taught.
 
 ---
 
-**STILL OPEN, AND IT IS THE OWNER'S CALL: `valueAxisTitle`, 1,058 of the 1,327.**
+**STILL OPEN, AND IT IS THE OWNER'S CALL: `valueAxisTitle`, 1,208 of the 1,327.**
 
 The count is bigger than the "287 of 317" this said before and the problem is
 the same size — the sweep widened underneath it, and the panels that briefly
 outnumbered it have been fixed. It is now the whole of what remains bar a
-269-pair tail, which makes it the only overlap decision left worth the name.
+119-pair tail, which makes it the only overlap decision left worth the name.
+
+**It said 1,058 and a 269-pair tail for half a day, and both were arithmetic
+rather than measurement.** Those were the 4,010 sweep's split, carried forward
+by subtracting the 2,683 that the small-multiples fix removed. Re-summing the
+table gives 1,208 and 119 — the family GREW by about 150 while the tail shrank
+by the same, because a chart that used to render as an impossible grid now
+renders as an ordinary one, and an ordinary chart with a unit label contributes
+`value-axis-title` overlaps of its own. **A subtraction is not a
+re-measurement**, and this file has now made that mistake with two different
+figures in two days.
 
 Four collision shapes, and they are not one problem. Two were this label's own
 `y` clamped into the title and onto the topmost tick — fixed. The other two are
@@ -2439,6 +2483,34 @@ AUTHOR TYPED. Dropping a tick number costs a reading the gridline still carries;
 dropping `valueAxisTitle` deletes something a person wrote and cannot see is
 gone. The band above the plot holds the chart title, the unit and the topmost
 tick number, and there is not always room for three.
+
+**A FOURTH WAY WAS TRIED ON 2026-08-29 AND DOES NOT WORK, which is worth
+knowing because it is the one this engine would reach for by reflex.**
+
+The unit is the only label here drawn at a FIXED size and fitted to nothing —
+every other label shrinks to its room and drops past `MIN_LABEL_FS`. Shrinking
+is not dropping, so it does not raise the author's-text objection below, and
+none of the three remedies above tried it. Measured over every kind, frame, font
+and orientation, shrinking the unit until it fits the chart's own width:
+
+    charts where the unit overlaps something    174  ->  153
+
+    what it collides with       before   after
+      legend#                      100     100
+      total#                        68      39
+      title                         41      53
+      value-axis                    33      18
+
+It TRADES. The totals row and the tick numbers get most of their space back and
+the title loses some of its own, because a smaller unit sits lower in its box
+and moves up into the title's ink. Twenty-one charts of 352 is not worth a
+change to how every unit is drawn, and `legend#` — the largest partner — does
+not move at all, because the legend is nowhere near the unit's width.
+
+So the fit is not the missing piece, and the entry's judgement stands: there is
+no bound available here that is not a coupling to something drawn later. It is a
+decision about WHERE A UNIT BELONGS, and the three ways out below are still the
+three ways out.
 
 **The decision, and three ways out:**
 

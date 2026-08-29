@@ -1364,6 +1364,55 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
     }
   }
 
+  /**
+   * THE FIT'S STATISTICS YIELD TO THE POINT LABELS, and here is the only place
+   * they can.
+   *
+   * `trend-stats` is placed at the plot's right edge on the trend line's end and
+   * is fitted against nothing: the point labels do not exist yet when it is
+   * pushed, six hundred lines above. Nor can it fall back on the global
+   * de-collision pass — scatter is a `decorlessKind`, so
+   * `resolveLabelCollisions` never runs for this layout at all. Adding
+   * `trend-stats` to that pass's MOVABLE list was tried first and is dead code
+   * for exactly that reason.
+   *
+   * So it settles here, once everything it could hit exists. It is the label
+   * that gives way because it is the only one in the plot naming no datum: a
+   * point's label says which observation this is, where R² describes the fit and
+   * reads correctly from anywhere inside the plot.
+   *
+   * Found in the shipped showcase rather than by a sweep — `Scatter — partition
+   * lines, trend, groups` and the quadratic-fit chart both drew it through a
+   * point label at 480x300. See `test/showcase-overlap.test.ts`.
+   */
+  const stat = nodes.find((n): n is TextNode => n.kind === "text" && n.name === "trend-stats");
+  if (stat) {
+    const boxes = nodes
+      .filter((n): n is TextNode => n.kind === "text" && n !== stat && !!String(n.text).trim())
+      .map(tightBox);
+    const hits = () => {
+      const b = tightBox(stat);
+      return boxes.some((o) => b.x < o.x + o.w && b.x + b.w > o.x && b.y < o.y + o.h && b.y + b.h > o.y);
+    };
+    if (hits()) {
+      const from = stat.y;
+      // Both ways, nearest first: the box already picks a side from the trend's
+      // slope, so neither direction is the wrong one. Clamped into the plot,
+      // because a statistic outside the plot labels nothing.
+      const room = [1, -1, 2, -2, 3, -3]
+        .map((k) => from + k * fs * 1.3)
+        .find((y) => {
+          if (y < plot.y || y + stat.h > plot.y + plot.h) return false;
+          stat.y = y;
+          return !hits();
+        });
+      // Restored when nothing is clear, for the reason the nudge pass restores:
+      // a label that moved and still collides has been put somewhere nobody
+      // chose.
+      stat.y = room ?? from;
+    }
+  }
+
   return {
     nodes,
     anchors: {
