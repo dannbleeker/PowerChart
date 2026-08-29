@@ -4302,9 +4302,28 @@ function wireInsert() {
         // describe its own deck still gets the verdicts out.
         note("Collecting what landed on the slides…", "busy");
         const deck = await collectDeckEvidence(idsBefore);
-        // Re-taken rather than merged: the trace above stops before the scan, so
-        // a log kept at this point would describe a round that never scanned.
-        if (deck) lastRunLog = { ...lastRunLog, deck, ...(tracing() ? { trace: traceLog(traceFrom) } : {}) };
+        /**
+         * THE TRACE IS RE-TAKEN WHETHER OR NOT THE TAIL CAME BACK, and the first
+         * version of this got that wrong in the one case it was written for.
+         *
+         * Guarded on `deck`, the re-take never ran when the tail failed — so the
+         * filed round carried a trace snapshotted BEFORE the scan, ending at the
+         * last pre-tail line, with `deck` absent and nothing anywhere saying why.
+         * Round 313 is the proof: 14/14 at 4:3, no `deck`, and not one
+         * `collecting deck evidence` line in its trace, so the abandonment I had
+         * just added a diagnostic for was the one thing it could not show.
+         *
+         * That is this repo's most repeated defect — UNKNOWN PRINTED AS NOTHING —
+         * arrived at by guarding a diagnostic on the success it was meant to
+         * explain the absence of. `traceLog` is a local array read, so it is
+         * safe on a host that has stopped answering, which is exactly when it
+         * matters most.
+         */
+        lastRunLog = {
+          ...lastRunLog,
+          ...(deck ? { deck } : {}),
+          ...(tracing() ? { trace: traceLog(traceFrom) } : {}),
+        };
         // Only what THIS round added, and only what it could name. The button
         // stays disabled when the id diff came back empty, because a cleanup
         // with nothing to work from is one that would have to guess which

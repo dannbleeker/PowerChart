@@ -2512,6 +2512,23 @@ describe("demo-insert one-shot deck insert", () => {
       const log = await dl.lastJson();
       expect(log.selftest?.length, "finished without its verdicts").toBeGreaterThan(0);
       expect(log.deck, "claimed deck evidence from a scan that never answered").toBeUndefined();
+      /**
+       * AND THE FILED ROUND SAYS WHY, which the first version did not.
+       *
+       * The trace was snapshotted before the tail and re-taken only `if (deck)`,
+       * so a round that lost its deck carried a trace ending at the last
+       * pre-tail line with nothing explaining the gap. Round 313 on 2026-08-29
+       * is the live proof: 14/14 at 4:3, `deck` absent, and not one
+       * `collecting deck evidence` line in it.
+       *
+       * An absent field with no reason is this repo's most repeated defect —
+       * unknown printed as nothing — and it was reached here by guarding the
+       * diagnostic on the very success it exists to explain the absence of.
+       */
+      const said = (log.trace?.entries ?? []).some(
+        (e: { message?: string }) => e.message === "gave up collecting deck evidence",
+      );
+      expect(said, "the round lost its deck evidence and does not say why").toBe(true);
       dl.restore();
     } finally {
       app._setDeckEvidenceTimeoutForTest(app.DECK_EVIDENCE_TIMEOUT_DEFAULT_MS);
