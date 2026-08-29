@@ -1911,8 +1911,18 @@ cost nobody knows") is retired: the export costs what the read costs.
 
 301 also supports the cold-host reading. Its tab had been reloaded 35 minutes
 earlier and then sat idle, and the stall came back — where round 300, running
-seconds after a reload, had none. Two rounds, opposite conditions, opposite
-results. Still two rounds.
+seconds after a reload, had none.
+
+**Round 302 then narrowed it, which is more useful than a third confirmation.**
+Its PANE was closed and reopened three minutes before the round, and it stalled
+anyway (`READ pageSetup ms=504`, after the usual 4000). So "recently touched"
+is not the variable. What round 300 had that 301 and 302 did not is a full TAB
+RELOAD after PowerPoint's own crash-Refresh — a new editing session, not a new
+pane. Reopening the pane does not buy it.
+
+Three samples, one stall-free, and the thing that distinguishes it is the
+heaviest possible reset. That is a narrower and more testable claim than the one
+it replaces, and it is still three samples.
 
 **What remains before changing the number:** decide between the two remedies
 rather than doing both blindly. Lowering the bound saves ~3.5s on every stalled
