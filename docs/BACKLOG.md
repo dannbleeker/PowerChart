@@ -2863,6 +2863,27 @@ rounds, so a single bad leg moves the ratio a long way. Round duration is not it
 move and v0.4.0. Nobody should conclude anything from this yet; it is here so the
 next reading has something to be compared against.
 
+**THE NEXT READING — 2026-08-30, and it is 0.29** (4 crashes, 14 rounds, five
+cycles). Against 1.24 the night before, and the obvious reading of that is wrong.
+
+Nothing shipped that night prevents a crash. PowerPoint still falls over at
+425-427s — four times, in the same band it has occupied all week. What changed is
+that a crash stopped costing the leg: the 4:3 arm burned seven attempts for zero
+rounds on 08-29 and two attempts for a filed round on 08-30. **The numerator
+barely moved; the denominator did.** That is precisely the sensitivity the
+paragraph above warned about, working in the useful direction for once, and it
+means this ratio measures round SURVIVAL rather than host health.
+
+Two readings that would be wrong: "crashes fell 4x" (they did not — the rate
+did), and "the tail bound fixed it" (the bound has never fired in 14 rounds; it
+covers a hang, and these are crashes). What actually did it: `deck-missing`
+recovery reaching the file list, `wrong-size` stopping poisoning it, and the
+download button no longer being flipped mid-tail.
+
+If a per-round crash figure is wanted for HOST health rather than loop health, it
+needs attempts as the denominator, not archived rounds. Nobody has counted
+attempts.
+
 So — of the sentence that follows — no phase dominated across FIFTEEN builds.
 The per-phase traces did their job — before them, six of these would have been
 filed under the probe re-ask — and what they showed then was a host that falls
