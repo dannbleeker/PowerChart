@@ -239,8 +239,28 @@ export function decorationNodes(
       { kind: "arrowhead", x, y: yTo, angle: yTo < yFrom ? -90 : 90, size: 5, fill: style.text, name: "diff-head" },
     );
     const usePct = decor.difference.percent ?? true;
+    /**
+     * A PERCENTAGE NEEDS A POSITIVE BASE, and `vFrom !== 0` was not enough.
+     *
+     * `vTo / vFrom - 1` inverts its sign when `vFrom` is negative, so the
+     * caption contradicted the arrow drawn two lines above it — and the arrow
+     * was the half that was right:
+     *
+     *   -100 ->  -50   a loss HALVED     arrow UP     label "-50%"
+     *   -100 -> -200   a loss DOUBLED    arrow DOWN   label "+100%"
+     *    -50 ->   25   into profit       arrow UP     label "-150%"
+     *
+     * And there is no percentage to rescue: growth from a negative base is not
+     * a meaningful ratio at all — a swing from -50 to 25 is no more "+150%"
+     * than it is "-150%" — which is why `cagr()` already returns null on a
+     * non-positive base and the chart prints "CAGR n/a".
+     *
+     * So the guard that already caught zero now catches negatives too, for the
+     * same reason, and falls back to the ABSOLUTE difference: true on every
+     * base, and it still says which way the number went.
+     */
     const label =
-      usePct && vFrom !== 0
+      usePct && vFrom > 0
         ? formatPercent(vTo / vFrom - 1, 0, true, cfg.numberFormat?.locale)
         : formatNumber(vTo - vFrom, { ...cfg.numberFormat, forceSign: true });
     // The label reads to the RIGHT of the arrow, in a margin `computeFrame`

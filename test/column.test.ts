@@ -499,3 +499,59 @@ describe("upright column totals are fitted to their slot", () => {
     for (const t of totals(480, 300)) expect(t.fontSize).toBeCloseTo(10, 5);
   });
 });
+
+describe("the difference arrow's caption agrees with the arrow", () => {
+  /**
+   * The arrow and its own label come from the same two values, and on a
+   * NEGATIVE base they disagreed — the arrow being the half that was right.
+   * `vTo / vFrom - 1` inverts its sign under a negative denominator, so a loss
+   * halving from -100 to -50 pointed UP and said "-50%", and a swing from -50
+   * into 25 of profit pointed UP and said "-150%".
+   *
+   * A reader who trusts the number over the picture then reads the opposite of
+   * what happened, which is the worst outcome available on a slide.
+   */
+  const caption = (from: number, to: number) => {
+    const scene = buildChart({
+      kind: "clustered",
+      ...DEFAULT_SIZE,
+      data: { categories: ["FY23", "FY24"], series: [{ name: "Margin", values: [from, to] }] },
+      decorations: { difference: { from: 0, to: 1, percent: true } },
+    } as unknown as ChartConfig);
+    const label = scene.nodes.find((n): n is TextNode => n.kind === "text" && n.name === "diff-label")!;
+    const head = scene.nodes.find((n) => n.kind === "arrowhead" && n.name === "diff-head") as
+      { angle: number } | undefined;
+    expect(label, `no caption for ${from} -> ${to}`).toBeTruthy();
+    expect(head, `no arrow for ${from} -> ${to}`).toBeTruthy();
+    return { text: String(label.text), points: head!.angle === -90 ? "up" : "down" };
+  };
+
+  it("never labels an upward arrow with a fall, or the reverse", () => {
+    for (const [from, to] of [
+      [100, 150],
+      [100, 50],
+      [-100, -50],
+      [-100, -200],
+      [-50, 25],
+      [-50, -75],
+    ]) {
+      const { text, points } = caption(from, to);
+      const rose = to > from;
+      expect(points, `${from} -> ${to}: the arrow itself points the wrong way`).toBe(rose ? "up" : "down");
+      // The caption's SIGN is the claim a reader takes away from it.
+      expect(text.startsWith("-"), `${from} -> ${to}: caption "${text}" contradicts an arrow pointing ${points}`).toBe(
+        !rose,
+      );
+    }
+  });
+
+  it("still gives a percentage when the base is positive", () => {
+    // The fix falls back to an absolute difference, and it must not do that to
+    // the ordinary case — a percentage is what this decoration is FOR.
+    expect(caption(100, 150).text).toContain("%");
+    expect(caption(100, 50).text).toContain("%");
+    // …and drops the percentage exactly where it stops meaning anything.
+    expect(caption(-100, -50).text).not.toContain("%");
+    expect(caption(-50, 25).text).not.toContain("%");
+  });
+});
