@@ -3050,3 +3050,86 @@ describe("the pane's host-friction double", () => {
     expect(fake, "the double has drifted from the real counter set").toEqual(real);
   });
 });
+
+/**
+ * EVERY CONTROL IN THE PANE HAS A NAME, which until 2026-08-30 was untrue of
+ * thirty-six of them.
+ *
+ * AppSource validation tests accessibility, so this is a shipping gate and not
+ * only a courtesy. What the audit found, all of it in controls the pane builds
+ * in JavaScript rather than in the HTML:
+ *
+ *   - the DATASHEET, the pane's primary data-entry surface: twenty bare
+ *     `<input>`s in bare `<td>`s, no label, no `<th>`, no caption. A screen
+ *     reader announced "edit, blank" twenty times.
+ *   - eight `<label>`s each wrapping two to four controls. A label names only
+ *     its FIRST labelable descendant — that is the spec, not a lint opinion —
+ *     so thirteen more were anonymous: the axis-scale maximum, the label suffix
+ *     and locale, the log-scale checkbox, both difference-arrow categories.
+ *   - three static controls with nothing at all: the template picker, the JSON
+ *     automation box, the agenda chapters box.
+ *
+ * The assertion is deliberately GENERIC rather than a list of ids. A named list
+ * would pass the day someone adds the thirty-seventh unnamed control, which is
+ * exactly how the first thirty-six arrived.
+ */
+describe("every control the pane builds can be named by a screen reader", () => {
+  beforeEach(bootHostPane);
+
+  /** The accessible name of a control, by the rules a screen reader uses. */
+  const accessibleName = (el: Element): string => {
+    const aria = el.getAttribute("aria-label");
+    if (aria?.trim()) return aria.trim();
+    const by = el.getAttribute("aria-labelledby");
+    if (by) {
+      const ref = by
+        .split(/\s+/)
+        .map((id) => document.getElementById(id)?.textContent ?? "")
+        .join(" ")
+        .trim();
+      if (ref) return ref;
+    }
+    const title = el.getAttribute("title");
+    if (title?.trim()) return title.trim();
+    const forLabel = el.id ? document.querySelector(`label[for="${el.id}"]`) : null;
+    if (forLabel?.textContent?.trim()) return forLabel.textContent.trim();
+    // A WRAPPING label names its FIRST labelable descendant and no other. This
+    // is the rule the eight multi-control rows fell foul of, so the test has to
+    // model it rather than accept any ancestor label.
+    const wrapping = el.closest("label");
+    if (wrapping) {
+      const first = wrapping.querySelector("input, select, textarea, button");
+      if (first === el && wrapping.textContent?.trim()) return wrapping.textContent.trim();
+    }
+    return "";
+  };
+
+  const controls = (): Element[] =>
+    [...document.querySelectorAll("input, select, textarea")].filter(
+      (el) => (el as HTMLInputElement).type !== "hidden",
+    );
+
+  it("names every input, select and textarea in the pane", () => {
+    const all = controls();
+    expect(all.length, "the pane rendered no controls — the fixture is not booting it").toBeGreaterThan(20);
+    const unnamed = all.map((el) => (accessibleName(el) ? null : describeControl(el))).filter(Boolean);
+    expect(unnamed, `${unnamed.length} control(s) have no accessible name`).toEqual([]);
+  });
+
+  it("names every datasheet cell by its own row and column", () => {
+    // Named from the sheet's headers, so the name tracks a renamed series rather
+    // than being a static "cell 3, 2".
+    const cells = [...document.querySelectorAll(".datasheet input")];
+    expect(cells.length, "the datasheet rendered no cells").toBeGreaterThan(0);
+    for (const c of cells) expect(accessibleName(c), `a datasheet cell is anonymous`).not.toBe("");
+  });
+});
+
+/** Enough to find the offender in a failure message without opening the pane. */
+function describeControl(el: Element): string {
+  const tag = el.tagName.toLowerCase();
+  const id = el.id ? `#${el.id}` : "";
+  const cls = el.className ? `.${String(el.className).split(/\s+/)[0]}` : "";
+  const type = el.getAttribute("type") ? `[${el.getAttribute("type")}]` : "";
+  return `${tag}${type}${id}${cls}`;
+}

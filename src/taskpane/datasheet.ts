@@ -564,6 +564,33 @@ export function mountDatasheet(
         input.dataset.col = String(ci);
         if (ri === 0 || ci === 0) input.classList.add("header");
         if (ri === 0 && ci === 0) input.disabled = true;
+        /**
+         * EVERY CELL SAYS WHERE IT IS, because a screen reader has nothing else
+         * to go on. These are bare `<input>`s in bare `<td>`s — no label, no
+         * `<th>`, no caption — so the pane's primary data-entry surface
+         * announced "edit, blank" twenty times over, and a keyboard user had no
+         * way to tell the 2023 column from the 2024 one.
+         *
+         * Named from the sheet's OWN headers, which is what a sighted user reads
+         * off the first row and column: "Enterprise, 2024". The header cells name
+         * themselves by axis instead — their own text is already the label, and
+         * repeating it would announce "2024, 2024".
+         *
+         * Recomputed on every render, which is why it is here and not set once:
+         * renaming a series has to rename the cells under it.
+         */
+        const rowName = model.cells[ri]?.[0]?.trim();
+        const colName = model.cells[0]?.[ci]?.trim();
+        input.setAttribute(
+          "aria-label",
+          ri === 0 && ci === 0
+            ? "Corner cell, not editable"
+            : ri === 0
+              ? `Column ${ci} heading`
+              : ci === 0
+                ? `Row ${ri} heading`
+                : `${rowName || `Row ${ri}`}, ${colName || `column ${ci}`}`,
+        );
         input.addEventListener("input", () => {
           model.cells[ri][ci] = input.value;
           onChange(model);

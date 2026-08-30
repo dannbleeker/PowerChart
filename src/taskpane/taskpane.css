@@ -28,6 +28,11 @@
   --ink: #1a202c;
   --ink-2: #3d4756;
   --muted: #6b7280;
+  /* NOT FOR TEXT: 2.26:1 on white, against WCAG 1.4.3's 4.5:1 for body copy.
+     And there is no fix by nudging it — nothing lighter than --muted (4.83:1)
+     passes on this background, so an accessible "fainter than muted" text colour
+     does not exist here. Both of its text uses moved to --muted on 2026-08-30.
+     Keep it for rules, chrome and other non-text marks. */
   --faint: #a0aec0;
   --line: #cbd5e0;
   --line-2: #e2e8f0;
@@ -426,7 +431,7 @@ details.acc > summary .acc-sub {
 }
 details.acc > summary .acc-sub:not(:empty)::before {
   content: "· ";
-  color: var(--faint);
+  color: var(--muted);
 }
 .acc-body {
   padding: 4px 13px 13px;
@@ -555,7 +560,7 @@ details.acc > summary .acc-sub:not(:empty)::before {
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--faint);
+  color: var(--muted);
   margin: 13px 2px 6px;
 }
 .type-group:first-child .group-label {
@@ -1242,6 +1247,16 @@ input[type="checkbox"] {
        near-black page, so it lifts rather than deepens. Orange is unchanged:
        it is the one accent and it must read the same in both themes. */
     --navy: #12202f;
+    /* THE STATUS PAIR, and the one this block forgot. `--ok` and `--err` were
+       tuned for white paper and left at those values here, which put 5.37:1 and
+       5.14:1 greens and reds onto a near-black panel at 3.07:1 and 3.21:1 —
+       both under WCAG 1.4.3. They are the pane's ONLY error and success surface
+       (`note()` writes `status-ok` / `status-err`), so the one place a user is
+       told something went wrong was the one place that failed.
+       Lifted, same way the rest of this block lifts: 7.32:1 and 7.18:1 on the
+       panel, 8.22:1 and 8.06:1 on the surface. */
+    --ok: #4ec27a;
+    --err: #ff8a75;
   }
   .datasheet input.header {
     background: #1a2c3e;

@@ -1131,6 +1131,9 @@ function renderOptions() {
     renderPreview();
   };
   [diffCb, dFrom, dTo, dSeries].forEach((el) => el.addEventListener(el === diffCb ? "change" : "input", emitDiff));
+  dFrom.setAttribute("aria-label", "Difference arrow from category");
+  dTo.setAttribute("aria-label", "Difference arrow to category");
+  dSeries.setAttribute("aria-label", "Difference arrow series");
   diff.append(diffCb, "Difference arrow from ", dFrom, " to ", dTo, " series ", dSeries);
   G.analysis.body.appendChild(diff);
 
@@ -1162,6 +1165,7 @@ function renderOptions() {
   };
   vlMean.addEventListener("change", emitVl);
   vlValues.addEventListener("input", emitVl);
+  vlValues.setAttribute("aria-label", "Value line at fixed values");
   vl.append(vlMean, "Value line: mean Ø", " + values ", vlValues);
   G.analysis.body.appendChild(vl);
 
@@ -1209,6 +1213,7 @@ function renderOptions() {
   };
   scMin.addEventListener("input", emitScale);
   scMax.addEventListener("input", emitScale);
+  scMax.setAttribute("aria-label", "Axis scale maximum");
   sc.append("Axis scale min ", scMin, " max ", scMax);
   G.axes.body.appendChild(sc);
 
@@ -1233,6 +1238,7 @@ function renderOptions() {
   };
   abFrom.addEventListener("input", emitBreak);
   abTo.addEventListener("input", emitBreak);
+  abTo.setAttribute("aria-label", "Axis break to value");
   ab.append("Axis break from ", abFrom, " to ", abTo);
   G.axes.body.appendChild(ab);
 
@@ -1277,6 +1283,8 @@ function renderOptions() {
     state.locale = nfLoc.value;
     renderPreview();
   });
+  nfSuffix.setAttribute("aria-label", "Label suffix");
+  nfLoc.setAttribute("aria-label", "Label locale");
   nf.append("Labels: decimals ", nfDec, " suffix ", nfSuffix, " locale ", nfLoc);
   G.labels.body.appendChild(nf);
 
@@ -1356,6 +1364,7 @@ function renderOptions() {
     state.logScale = axLog.checked;
     renderPreview();
   });
+  axLog.setAttribute("aria-label", "Logarithmic scale");
   ax.append("Axis title ", axTitle, " ", axLog, " log scale");
   G.axes.body.appendChild(ax);
 
@@ -1465,6 +1474,8 @@ function pairControl(
   cb.addEventListener("change", emit);
   from.addEventListener("input", emit);
   to.addEventListener("input", emit);
+  from.setAttribute("aria-label", "From category");
+  to.setAttribute("aria-label", "To category");
   wrap.append(cb, label, " from ", from, " to ", to);
   return wrap;
 }

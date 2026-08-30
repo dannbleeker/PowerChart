@@ -90,7 +90,7 @@
             <div id="gallery"></div>
             <p class="no-type-result" id="type-noresult" style="display: none">No chart type matches that search.</p>
             <div class="element-row" style="margin-top: 8px">
-              <select id="template-list"></select>
+              <select id="template-list" aria-label="Saved templates"></select>
               <button id="template-save">Save as template</button>
               <button id="template-delete">Delete</button>
             </div>
@@ -124,8 +124,25 @@
           <div class="acc-body">
             <div class="element-row">
               <label
-                >Size <input type="number" id="chart-w" value="480" min="80" style="width: 52px" /> ×
-                <input type="number" id="chart-h" value="300" min="60" style="width: 52px" /> pt</label
+                >Size
+                <input
+                  type="number"
+                  id="chart-w"
+                  value="480"
+                  min="80"
+                  aria-label="Chart width in points"
+                  style="width: 52px"
+                />
+                ×
+                <input
+                  type="number"
+                  id="chart-h"
+                  value="300"
+                  min="60"
+                  aria-label="Chart height in points"
+                  style="width: 52px"
+                />
+                pt</label
               >
               <label><input type="checkbox" id="auto-update" /> Auto-update chart</label>
               <label
@@ -233,6 +250,7 @@
           </p>
           <textarea
             id="agenda-chapters"
+            aria-label="Agenda chapters, one per line"
             rows="4"
             placeholder="Introduction&#10;Market overview&#10;Strategy&#10;Financials"
           ></textarea>
@@ -431,7 +449,7 @@
             Export the current chart as JSON, edit or generate it programmatically, and import it back — or paste an
             array of configs and insert them all. Same schema as <code>npm run render</code>.
           </p>
-          <textarea id="json-io" rows="5" spellcheck="false"></textarea>
+          <textarea id="json-io" rows="5" spellcheck="false" aria-label="Chart configuration JSON"></textarea>
           <div class="actions">
             <button id="json-export">Export current</button>
             <button id="json-import">Import</button>
