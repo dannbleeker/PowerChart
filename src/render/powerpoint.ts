@@ -11592,6 +11592,34 @@ function addNode(
     case "arrowhead": {
       // No freeform API in Office.js: a rotated geometric triangle whose tip is
       // offset onto (n.x, n.y) about the box centre — see arrowheadBox.
+      /**
+       * AND WITHOUT ROTATION THERE IS NO ARROWHEAD TO DRAW, which the old
+       * comment here got wrong in a way that mattered.
+       *
+       * It said an ungated host "stays axis-aligned", as though the only loss
+       * were the angle. `arrowheadBox` (src/core/geometry.ts:67) computes the
+       * box FROM the rotation — `bx = x - (s/2)*sin(rad)` — so the tip lands on
+       * the target only ONCE ROTATED. Skip the rotation and the offset is still
+       * applied: the triangle points up AND sits displaced by `size` in two
+       * axes.
+       *
+       * A CAGR or difference arrow that points up whatever it measured is a
+       * bridge saying growth where the number fell. A missing arrow reads as
+       * missing; a confidently wrong one reads as data.
+       *
+       * So it is skipped and traced, exactly as `addWedgeFan` does one screen
+       * below. Below PowerPointApi 1.10 — most desktop Office, and volume
+       * builds for good — this is the honest outcome, and unlike the wedge it
+       * used to happen in total silence.
+       */
+      if (!canRotate()) {
+        trace("draw", "cannot draw an arrowhead on this host", {
+          name: n.name,
+          needs: "PowerPointApi 1.10",
+          consequence: "the arrow is omitted rather than drawn pointing the wrong way",
+        });
+        return [];
+      }
       const box = arrowheadBox(n.x, n.y, n.size, n.angle);
       const shape = shapes.addGeometricShape(PowerPoint.GeometricShapeType.triangle, {
         left: dx + box.left,
@@ -11601,9 +11629,8 @@ function addNode(
       });
       solidFill(shape.fill, n.fill);
       shape.lineFormat.visible = false;
-      // Geometric 'triangle' points up (= -90° in scene terms). Gated, not
-      // wrapped — see canRotate; without it the arrowhead stays axis-aligned.
-      if (canRotate()) (shape as unknown as { rotation: number }).rotation = box.rotation;
+      // Geometric 'triangle' points up (= -90° in scene terms).
+      (shape as unknown as { rotation: number }).rotation = box.rotation;
       if (n.name) shape.name = n.name;
       return [shape];
     }

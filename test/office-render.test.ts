@@ -6833,6 +6833,36 @@ describe("a host that cannot rotate", () => {
     expect(rotated.length, "the rotating host stopped rotating its diagonals").toBeGreaterThan(0);
   });
 
+  it("omits an arrowhead it cannot aim, rather than pointing it the wrong way", async () => {
+    /**
+     * The old code applied `arrowheadBox`'s rotation-derived OFFSET and then
+     * skipped the rotation, so the triangle pointed up AND sat displaced by
+     * `size` in two axes. Its comment said "stays axis-aligned", which is the
+     * half of it that sounds harmless.
+     *
+     * A difference arrow pointing up whatever it measured is a bridge claiming
+     * growth where the number fell — wrong output, stated confidently, in
+     * silence. Skipping is the honest outcome and it now traces.
+     */
+    setTracing(true);
+    const slide = makeSlide("s1");
+    installHost([slide], [], slide, noRotation);
+    const from = traceLog().entries.length;
+    await insertSceneIntoSlide(
+      buildChart({
+        ...config,
+        decorations: { cagr: { from: 0, to: 2 }, segmentLabels: true },
+      }),
+      {},
+    );
+    const heads = slide.created.filter((s) => s.geo === "triangle");
+    expect(heads, `drew ${heads.length} arrowhead(s) it could not aim`).toEqual([]);
+    const said = traceLog()
+      .entries.slice(from)
+      .some((e) => e.message === "cannot draw an arrowhead on this host");
+    expect(said, "omitted the arrow and said nothing anywhere").toBe(true);
+  });
+
   it("says so when it cannot draw a pie, instead of inserting an empty one", async () => {
     /**
      * A wedge cannot be built from axis-aligned shapes — that is why the fan of
