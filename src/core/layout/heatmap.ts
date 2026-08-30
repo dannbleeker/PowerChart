@@ -247,6 +247,18 @@ export function layoutHeatmap(cfg: ChartConfig, style: ChartStyle, decor: Decora
 
   // Marginal totals: neutral sum strips outside the color scale.
   const sum = (vals: (number | null)[]) => vals.reduce((a: number, v) => a + (v ?? 0), 0);
+  /**
+   * Whether a margin has anything to total — asked before the number is drawn.
+   *
+   * `sum` counts a null as zero, which is right for adding up what a row HAS
+   * and wrong the moment the answer becomes a label. A row or column whose
+   * every cell is blank sums to 0 and printed `row-total = "0"`, telling the
+   * reader that quarter measured nothing when the truth is nobody filled the
+   * cells in. The same defect as the stacked column's total, one file over —
+   * and `test/blank-is-not-zero.test.ts` did not see it at first, because these
+   * marginals are `heatmap: { totals }` and not `decorations.totals`.
+   */
+  const anyData = (vals: (number | null)[]) => vals.some((v) => typeof v === "number" && Number.isFinite(v));
   if (wantRowTotals) {
     rows.forEach((s, ri) => {
       const y = plot.y + ri * ch;
@@ -266,7 +278,9 @@ export function layoutHeatmap(cfg: ChartConfig, style: ChartStyle, decor: Decora
           y,
           w: totalsW - 6,
           h: ch - 1,
-          text: formatNumber(sum(s.values), fmt),
+          // The BACKGROUND still draws — the margin keeps its shape — and only
+          // the figure is withheld. See `anyData`.
+          text: anyData(s.values) ? formatNumber(sum(s.values), fmt) : "",
           fontSize: fs * 0.95,
           bold: true,
           color: style.text,
@@ -280,7 +294,8 @@ export function layoutHeatmap(cfg: ChartConfig, style: ChartStyle, decor: Decora
   if (wantColTotals) {
     data.categories.forEach((_, c) => {
       const x = plot.x + c * cw;
-      const total = sum(data.series.map((s) => s.values[c]));
+      const column = data.series.map((s) => s.values[c]);
+      const total = sum(column);
       nodes.push(
         {
           kind: "rect",
@@ -297,7 +312,7 @@ export function layoutHeatmap(cfg: ChartConfig, style: ChartStyle, decor: Decora
           y: plot.y + plot.h + 2,
           w: cw - 1,
           h: totalsH - 4,
-          text: formatNumber(total, fmt),
+          text: anyData(column) ? formatNumber(total, fmt) : "",
           fontSize: fs * 0.95,
           bold: true,
           color: style.text,

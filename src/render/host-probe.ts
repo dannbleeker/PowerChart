@@ -44,6 +44,7 @@ import {
   type ProbeContext,
 } from "./powerpoint";
 import { trace, traceElapsed } from "../core/trace";
+import { SYMBOL_PRESET } from "../core/geometry";
 // @ts-expect-error — a plain .mjs table with no types, and deliberately the
 // SAME one the CLI and the CI gate read. Two copies of it is how a claim
 // quietly stops matching its check.
@@ -851,6 +852,23 @@ function readCreationId(shape: unknown): string | null | "absent" {
     return v === null ? null : String(v);
   } catch {
     return "absent";
+  }
+}
+
+/**
+ * A number the host loaded, or NaN if it did not answer.
+ *
+ * NaN rather than 0 or undefined, deliberately: these readings get compared
+ * against an expected geometry, and a width that never arrived but reads as 0
+ * compares as a real measurement of zero. `Number.isFinite` then separates "the
+ * host said nothing" from "the host said something surprising", which is the
+ * distinction a probe exists to report.
+ */
+function readSize(read: () => unknown): number {
+  try {
+    return Number(read());
+  } catch {
+    return NaN;
   }
 }
 
@@ -2996,6 +3014,147 @@ const PROBES: Probe[] = [
         return {
           answer: kept === before.length ? "kept" : kept ? "partial" : "lost",
           detail: `${kept} of ${before.length} kept; before=${JSON.stringify(before)} after=${JSON.stringify(after)}`,
+        };
+      } catch (err) {
+        return threw(err);
+      }
+    },
+  },
+  {
+    id: "rotation-keeps-the-unrotated-box",
+    question: "After setting `rotation`, do left/top/width/height still describe the box BEFORE the turn?",
+    /**
+     * THE ASSUMPTION UNDER EVERY DIAGONAL THIS PRODUCT DRAWS, and until this
+     * probe nothing had ever asked it.
+     *
+     * `addSegment` draws a solid diagonal as a rectangle of the segment's
+     * LENGTH, placed at its midpoint, and then rotated. `arrowheadBox` offsets
+     * its box on the same premise. Both are only correct if `width` keeps
+     * meaning the unrotated side after the turn. If this host instead reports
+     * the post-rotation BOUNDING BOX, every diagonal in every line, scatter,
+     * radar and violin chart is drawn at the wrong size and in the wrong place.
+     *
+     * ASKED AS A PROBE RATHER THAN THROUGH A CHART, which is the lesson from
+     * round 334. The scenario that asked this by drawing a line chart and
+     * reading its segments back SKIPPED: the insert path groups a chart, so
+     * `slide.shapes` lists one shape called `PowerChart` and never the segments.
+     * The question is about the host, not about our pipeline, so measuring it
+     * through the pipeline only added a way to fail.
+     *
+     * 80 x 10 at 45 degrees: the unrotated width is 80 and the rotated extent is
+     * 80·cos45 + 10·sin45 = 63.6. Far enough apart that no rounding can
+     * confuse them, and both are checked so a host answering some third thing
+     * is reported rather than bucketed.
+     */
+    resample: true,
+    ask: async (ctx) => {
+      // `requirementSets()` rather than powerpoint.ts's private `supports`, for
+      // the reason the 1.8 probe already gives: same source, and this module
+      // answers from what the host declared rather than from a helper the host
+      // cannot see.
+      if (!requirementSets().includes("1.10"))
+        return { answer: "no-rotation-api", detail: "PowerPointApi 1.10 is not declared" };
+      const W = 80;
+      const H = 10;
+      const DEG = 45;
+      // THE ADD IS SETUP, NOT THE QUESTION. Through `scratchShapes`, so a host
+      // that refuses every add answers `no-scratch-shape` — "never asked" —
+      // instead of `threw`, which would read as an opinion about rotation from
+      // a run in which nothing was ever rotated.
+      const [made] = await scratchShapes(ctx, [{ left: 100, top: 100, width: W, height: H }]);
+      try {
+        try {
+          (made as unknown as { rotation: number }).rotation = DEG;
+        } catch (err) {
+          return { answer: "rotation-not-writable", detail: short(err) };
+        }
+        /**
+         * SET AND READ IN ONE BATCH, deliberately.
+         *
+         * The obvious shape — set, sync, load, sync — reads back through a
+         * handle a sync old, and `shape-proxy-survives-one-sync` says this host
+         * answers `unreadable` to exactly that. The question would then be
+         * answered by proxy staleness rather than by rotation, which is the
+         * mistake this file's four contaminated 2026-08-04 answers were.
+         */
+        made.load("left,top,width,height,rotation");
+        await ctx.sync();
+        const w = readSize(() => made.width);
+        const h = readSize(() => made.height);
+        const rot = readSize(() => (made as unknown as { rotation: number }).rotation);
+        if (!Number.isFinite(w)) return { answer: "unreadable", detail: "width did not come back a number" };
+        const detail = `set ${W}x${H} at ${DEG}deg; host reports ${w.toFixed(1)}x${h.toFixed(1)}, rotation ${String(rot)}`;
+        /**
+         * AND IT MUST NOT CONCLUDE FROM A ROTATION THAT DID NOT TAKE.
+         *
+         * If the set never landed, the shape is still 80 wide and unrotated —
+         * which is indistinguishable from the answer we hope for. A probe that
+         * cannot tell "the host means the unrotated box" from "nothing was
+         * rotated" would confirm the product's assumption from no evidence, and
+         * that is the worse of the two failures by a distance.
+         */
+        if (!Number.isFinite(rot) || Math.abs(rot - DEG) > 0.5) return { answer: "rotation-did-not-take", detail };
+        const rad = (DEG * Math.PI) / 180;
+        const extent = Math.abs(W * Math.cos(rad)) + Math.abs(H * Math.sin(rad));
+        const full = `${detail} (unrotated ${W}, rotated extent ${extent.toFixed(1)})`;
+        if (Math.abs(w - W) < 0.5) return { answer: "unrotated-box", detail: full };
+        if (Math.abs(w - extent) < 0.5) return { answer: "POST-ROTATION-BOX", detail: full };
+        return { answer: "neither", detail: full };
+      } catch (err) {
+        return threw(err);
+      }
+    },
+  },
+  {
+    id: "named-preset-resolves",
+    question: "Does a GeometricShapeType named from our own table actually draw?",
+    /**
+     * `SYMBOL_PRESET` names are handed straight to the host as
+     * `PowerPoint.GeometricShapeType[name]`, and a name this host's enum does
+     * not carry resolves to `undefined` — which `addGeometricShape` accepts and
+     * draws as a shape with NO GEOMETRY. Invisible, and impossible to explain
+     * from the file afterwards. `symbolPreset` guards names missing from OUR
+     * table; nothing guards a name missing from the HOST's.
+     *
+     * It stopped being hypothetical when the hex tile map moved onto `hexagon`:
+     * a shipped chart now depends on one of these names resolving, on a node
+     * kind (`symbol`) that no round has ever drawn. Asked for every name in the
+     * table, not just that one, because the answer is about the enum rather
+     * than about any single shape.
+     */
+    resample: true,
+    ask: async (ctx) => {
+      const wanted = [...new Set(Object.values(SYMBOL_PRESET))].sort();
+      const enumeration = PowerPoint.GeometricShapeType as unknown as Record<string, unknown>;
+      // READING THE ENUM NEEDS NO SLIDE, so it is asked first and answered even
+      // on a host that would refuse the shape below. The names being absent is
+      // the whole finding; drawing one is the corroboration.
+      const missing = wanted.filter((n) => enumeration[n] === undefined);
+      if (missing.length)
+        return {
+          answer: "MISSING-FROM-ENUM",
+          detail: `this host's GeometricShapeType has no ${missing.join(", ")} (asked for ${wanted.join(", ")})`,
+        };
+      // THE ADD IS SETUP. A host refusing every add must answer
+      // `no-scratch-shape` rather than `threw` — see the rotation probe above.
+      // The rectangle proves adds work at all; the hexagon is the question.
+      await scratchShapes(ctx, [{ left: 140, top: 140, width: 8, height: 8 }]);
+      try {
+        const shape = probeShapes(ctx).addGeometricShape(enumeration.hexagon as PowerPoint.GeometricShapeType, {
+          left: 160,
+          top: 140,
+          width: 24,
+          height: 24,
+        });
+        // One batch, for the reason the rotation probe gives at length: a read
+        // through a sync-old handle is a question about proxy staleness.
+        shape.load("width,height");
+        await ctx.sync();
+        const w = readSize(() => shape.width);
+        const h = readSize(() => shape.height);
+        return {
+          answer: Number.isFinite(w) && w > 0 && Number.isFinite(h) && h > 0 ? "draws" : "drew-nothing",
+          detail: `every name in the table is in the enum (${wanted.join(", ")}); hexagon drew ${String(w)}x${String(h)}`,
         };
       } catch (err) {
         return threw(err);

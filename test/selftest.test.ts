@@ -3277,6 +3277,44 @@ describe("where a rotated shape lands", () => {
     expect(r.detail, "did not report what it measured").toMatch(/UNROTATED box/);
   });
 
+  it("still concludes when the slide lists only the group, as a real one does", async () => {
+    /**
+     * THE REASON THIS SCENARIO REPORTED NOTHING TWICE.
+     *
+     * Rounds 334 and 335 both skipped it — "the host would not report the line
+     * segments' geometry" — while the host had reported everything it was asked
+     * for. `insertSceneIntoSlide` GROUPS a chart, so a real slide answers with
+     * one shape called `PowerChart` per chart and no parts at all; both rounds
+     * show exactly six of those and not one segment. The lookup read slide
+     * level, and the message blamed the host for our own mistake.
+     *
+     * It passed here throughout, because this fake leaves grouped children in
+     * the slide's collection — the fake being the optimistic one, which is the
+     * direction that misleads. `faults.groupHidesChildren` is that divergence
+     * modelled, and without the descent into groups this test skips.
+     */
+    installHost([makeSlide("s1")]);
+    setSelfTestRasterizer(async () => "data:image/png;base64,UE5H");
+    faults.groupHidesChildren = true;
+    try {
+      // THIS SCENARIO ALONE, because the fault is blunter than the host it
+      // stands for: a real slide hides its group members from the collection
+      // but still resolves one by id, and this hides them from everything. Run
+      // over the whole battery it starves the readback scenarios and the run
+      // gives up three scenarios before reaching this one. Narrowing the run is
+      // honest here — the claim is about this scenario's lookup, not about the
+      // battery surviving a host that behaves this way.
+      const results = await runSelfTest("probe", "where a rotated shape lands");
+      const r = results.find((x) => x.name === "where a rotated shape lands");
+      expect(r, "the scenario did not run at all").toBeTruthy();
+      expect(r!.skipped ?? false, `skipped on a slide that hides its group members: ${r!.detail}`).toBe(false);
+      expect(r!.ok, `did not conclude: ${r!.detail}`).toBe(true);
+      expect(r!.detail, "did not report what it measured").toMatch(/UNROTATED box/);
+    } finally {
+      faults.groupHidesChildren = false;
+    }
+  });
+
   it("FAILS on a host that means the box after rotation", async () => {
     // The whole point. A scenario that cannot report the bad answer is not
     // evidence, and this is the answer that would invalidate every diagonal the

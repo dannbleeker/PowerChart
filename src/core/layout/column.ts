@@ -32,7 +32,7 @@ import {
 import { layoutWaterfall, detailParents } from "./waterfall";
 import { layoutMekko } from "./mekko";
 import { layoutLine } from "./line";
-import { columnNegativeTotal, columnPositiveTotal, columnSignedTotal } from "./totals";
+import { columnHasData, columnNegativeTotal, columnPositiveTotal, columnSignedTotal } from "./totals";
 import { maxOf, minOf } from "../agg";
 import { tightBox } from "../collide";
 
@@ -574,7 +574,13 @@ export function layoutColumns(cfg: ChartConfig, style: ChartStyle, decor: Decora
             name: `total-${c}-s${sp}`,
           });
       });
-    } else if (decor.totals && !pct) {
+    } else if (decor.totals && !pct && columnHasData(data.series, c)) {
+      // `columnHasData` gates BOTH branches below, because both print the same
+      // number and a category with nothing in it has no total to print. It sums
+      // to 0 — "missing cells count as 0", which is right for the stack's reach
+      // and wrong for a label — and `total-3 = "0"` told the reader the business
+      // measured zero where the truth was an empty column. Gated here rather
+      // than inside each branch so a third one cannot be added past it.
       if (H) {
         // A total is centred on its row in a box `fs * 1.5` tall, so once the
         // font outgrows the row pitch the totals overlap each OTHER down the

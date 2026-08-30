@@ -85,6 +85,19 @@ export const FAKE_BASELINE = {
   // corrected by the gate.
   "untrack-available-on-shape": "yes",
   "scratch-slides-returned": "all",
+  // THE FAKE ANSWERS THE WAY THE PRODUCT ASSUMES, which is the point of asking.
+  // Every diagonal we draw is a rectangle of the segment's LENGTH rotated about
+  // its midpoint, so `unrotated-box` is not an observation here — it is a
+  // restatement of what `addSegment` and `arrowheadBox` are built on. A real
+  // host answering `POST-ROTATION-BOX` is therefore a divergence saying every
+  // diagonal in every line, scatter, radar and violin chart is drawn at the
+  // wrong size and in the wrong place, which is the finding no round could
+  // reach while the question was asked through a chart.
+  "rotation-keeps-the-unrotated-box": "unrotated-box",
+  // `draws` only since the fake's GeometricShapeType learned `hexagon`. It
+  // threw before that, and the throw was right: the hex tile map had just moved
+  // onto a preset name that nothing rendered through this renderer.
+  "named-preset-resolves": "draws",
 };
 
 /**
@@ -474,7 +487,18 @@ export const UNSTABLE_ANSWERS = {
  * 25 rounds. Retiring the positional group-member mapping in favour of creation
  * ids is therefore not available here, and is not a matter of gating on 1.10.
  */
-export const PENDING_QUESTIONS = {};
+export const PENDING_QUESTIONS = {
+  // BOTH ADDED 2026-08-30, AFTER the committed sheet was taken (build 8d8267f).
+  // They are here rather than in the sheet because a probe cannot answer
+  // retroactively: the code has to deploy, a round has to ask, and the fixture
+  // is refreshed from that round. Delete these two entries then — an id left
+  // here after the host has answered is the fixture going stale in writing,
+  // which is the failure this register exists to make impossible to do quietly.
+  "rotation-keeps-the-unrotated-box":
+    "Whether `left/top/width/height` still describe the box BEFORE the turn once `rotation` is set. `addSegment` draws every solid diagonal as a rectangle of the segment's LENGTH placed at its midpoint and then rotated, and `arrowheadBox` offsets its box on the same premise, so a host that means the POST-rotation bounding box draws every diagonal in every line, scatter, radar and violin chart at the wrong size and in the wrong place. Never asked in 334 rounds: the battery draws only `clustered`, whose one line node is the horizontal baseline, so `Shape.rotation` has never been written on a real host. Round 334 tried to ask it through a line chart and SKIPPED — the insert path groups a chart, so the slide lists one shape called `PowerChart` and never the segments. Asked as a probe now, on one rectangle, because the question is about the host and not about our pipeline.",
+  "named-preset-resolves":
+    "Whether the names in `SYMBOL_PRESET` exist in this host's `GeometricShapeType`. The lookup is handed straight to `addGeometricShape`, and a name the host's enum lacks resolves to `undefined`, which is ACCEPTED and drawn as a shape with no geometry — invisible, and unexplainable from the file afterwards. `symbolPreset` guards a name missing from OUR table; nothing guarded one missing from the HOST's. It stopped being hypothetical when the hex tile map moved onto `hexagon`, putting a shipped chart on a preset name and on `symbol`, a node kind no round has ever drawn. The renderer now falls back to `ellipse` and traces, so a bad answer is survivable; this question is what tells us whether it ever happens.",
+};
 
 /**
  * What each divergence would MEAN, so the report says something actionable

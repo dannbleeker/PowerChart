@@ -540,6 +540,13 @@ describe("the fake host's answer sheet", () => {
         // `bindings.add` was never reached — which is why the shape add, the
         // binding call and the commit are now three separate failure points.
         "binding-names-shape-later",
+        // Needs a rectangle to rotate, and a hexagon to try to draw. Both call
+        // `probeShapes` inside their own try/catch, which is only safe because
+        // `threw` re-throws `ProbeSetupFailed`; without that they would report a
+        // refused add as `threw` — an opinion about rotation from a run in which
+        // nothing was ever rotated. That contract is what this list asserts.
+        "rotation-keeps-the-unrotated-box",
+        "named-preset-resolves",
       ];
       for (const id of needShapes) expect(answers[id], `${id} claimed a host answer`).toBe("no-scratch-shape");
       // And the questions that need no shape are still answered — one refusal

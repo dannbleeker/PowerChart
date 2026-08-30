@@ -8476,7 +8476,9 @@ export async function shapeGeometryByName(
       slide.load("id");
       await context.sync();
       if (!isLive(slide)) return null;
-      slide.shapes.load("items/name,items/left,items/top,items/width,items/height");
+      // `items/type` alongside the geometry, because the shapes worth measuring
+      // are usually not on the slide — see the descent below.
+      slide.shapes.load("items/name,items/left,items/top,items/width,items/height,items/type");
       // Separate load, separate failure: on a host below 1.10 asking for
       // `rotation` can reject the sync it rides in, and the geometry is the
       // half worth having either way.
@@ -8489,16 +8491,71 @@ export async function shapeGeometryByName(
       await context.sync();
       const items = loadedItems(slide.shapes);
       if (!items) return null;
-      return items
-        .map((s) => ({
-          name: String(loadedValue(() => (s as unknown as { name: string }).name) ?? ""),
-          left: Number(loadedValue(() => s.left)),
-          top: Number(loadedValue(() => s.top)),
-          width: Number(loadedValue(() => s.width)),
-          height: Number(loadedValue(() => s.height)),
-          rotation: rotated ? (loadedValue(() => (s as unknown as { rotation: number }).rotation) ?? null) : null,
-        }))
-        .filter((s) => match(s.name) && [s.left, s.top, s.width, s.height].every((n) => Number.isFinite(n)));
+      const read = (s: PowerPoint.Shape) => ({
+        name: String(loadedValue(() => (s as unknown as { name: string }).name) ?? ""),
+        left: Number(loadedValue(() => s.left)),
+        top: Number(loadedValue(() => s.top)),
+        width: Number(loadedValue(() => s.width)),
+        height: Number(loadedValue(() => s.height)),
+        rotation: rotated ? (loadedValue(() => (s as unknown as { rotation: number }).rotation) ?? null) : null,
+      });
+      const keep = (g: { name: string; left: number; top: number; width: number; height: number }) =>
+        match(g.name) && [g.left, g.top, g.width, g.height].every((n) => Number.isFinite(n));
+      const top = items.map(read).filter(keep);
+      if (top.length) return top;
+
+      /**
+       * NOTHING ON THE SLIDE MATCHED, WHICH IS THE NORMAL CASE FOR A CHART.
+       *
+       * `insertSceneIntoSlide` groups what it draws, so a slide holding six
+       * charts lists six shapes, all called `PowerChart`, and not one of the
+       * parts. Round 334 and 335 both skipped `where a rotated shape lands` on
+       * exactly this — "the host would not report the line segments' geometry"
+       * — when the host had reported everything it was asked for and the
+       * segments were simply never in the collection.
+       *
+       * ONLY ON SHAPES THE HOST CALLS A GROUP. `Shape.group` on anything else
+       * returns GeneralException and POISONS THE SYNC it was queued in;
+       * `queueGroupMembers` carries the archive's count of that — 76 times
+       * across 38 rounds. Case-folded because `PowerPoint.ShapeType` spells it
+       * `group`, the same fold `contentShapes` needs.
+       */
+      if (!supports("1.8")) return [];
+      const groups = items.filter(
+        (s) => String(loadedValue(() => (s as unknown as { type?: string }).type) ?? "").toLowerCase() === "group",
+      );
+      if (!groups.length) return [];
+      const collections: PowerPoint.ShapeScopedCollection[] = [];
+      for (const g of groups) {
+        try {
+          const members = (g as unknown as { group?: { shapes?: PowerPoint.ShapeScopedCollection } }).group?.shapes;
+          if (!members) continue;
+          members.load("items/name,items/left,items/top,items/width,items/height");
+          if (rotated) {
+            try {
+              members.load("items/rotation");
+            } catch {
+              /* the geometry is still worth having — see above */
+            }
+          }
+          collections.push(members);
+        } catch {
+          // One group refusing is not the others refusing, and it must not cost
+          // the whole reading.
+        }
+      }
+      if (!collections.length) return [];
+      await context.sync();
+      const inner: ReturnType<typeof read>[] = [];
+      for (const c of collections) {
+        const members = loadedItems(c as unknown as PowerPoint.ShapeCollection);
+        if (!members) continue;
+        for (const m of members) {
+          const g = read(m);
+          if (keep(g)) inner.push(g);
+        }
+      }
+      return inner;
     });
   } catch {
     return null;
@@ -11623,9 +11680,29 @@ function addNode(
       // Native preset geometry, so the marker stays FILLED here — the reason a
       // symbol is its own kind rather than a polygon, which PowerPoint can only
       // outline. symbolPreset names are GeometricShapeType keys.
-      const geo = (PowerPoint.GeometricShapeType as unknown as Record<string, PowerPoint.GeometricShapeType>)[
-        symbolPreset(n.shape)
-      ];
+      const table = PowerPoint.GeometricShapeType as unknown as Record<string, PowerPoint.GeometricShapeType>;
+      const wanted = symbolPreset(n.shape);
+      /**
+       * AND THE HOST'S ENUM IS NOT OUR TABLE'S.
+       *
+       * `symbolPreset` guards a name missing from OUR table. Nothing guarded a
+       * name missing from the HOST's: the lookup hands back `undefined`, which
+       * `addGeometricShape` accepts and draws as a shape with no geometry —
+       * invisible on the slide, and impossible to explain from the file
+       * afterwards. The fake's `GeometricShapeType` is a throwing Proxy for
+       * exactly this reason; a real host has no such courtesy.
+       *
+       * It stopped being hypothetical when the hex tile map moved onto
+       * `hexagon`: a shipped chart now rests on one of these names existing, on
+       * a node kind no round has ever drawn. `named-preset-resolves` asks the
+       * host directly; this makes the bad answer survivable rather than silent,
+       * by falling back to the one preset every host has and SAYING so.
+       */
+      let geo = table[wanted];
+      if (geo === undefined) {
+        trace("render", `this host has no ${wanted} preset — drawing an ellipse instead`, { shape: n.shape });
+        geo = table.ellipse;
+      }
       const shape = shapes.addGeometricShape(geo, {
         left: dx + n.cx - n.size,
         top: dy + n.cy - n.size,

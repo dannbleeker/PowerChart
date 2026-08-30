@@ -2203,7 +2203,13 @@ const rotatedShapePlacement: Scenario = async (prefix) => {
   };
   if (!drawn || !drawn.length) {
     await clean();
-    return { ok: false, skipped: true, detail: "the host would not report the line segments' geometry" };
+    // NOT "the host would not report" any more, which is what this said while
+    // the host was reporting everything it had been asked for. Rounds 334 and
+    // 335 both skipped here because the segments are INSIDE the chart's group
+    // and `shapeGeometryByName` read only the slide — our lookup was in the
+    // wrong place and the message blamed the host for it. It descends into
+    // groups now; if this still fires, the reading really is missing.
+    return { ok: false, skipped: true, detail: "no line segments came back, on the slide or inside its group" };
   }
   if (drawn.every((s) => s.rotation === null)) {
     await clean();

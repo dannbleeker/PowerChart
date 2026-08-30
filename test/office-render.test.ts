@@ -149,6 +149,95 @@ describe("insertSceneIntoSlide", () => {
     expect(group.tagStore.get(CHART_TAG)).toBe(JSON.stringify(config));
   });
 
+  it("draws every hex tile as a fillable hexagon, not an outline", async () => {
+    /**
+     * THE ONE CHART WHOSE ENTIRE MESSAGE IS FILL, and until this test nothing
+     * had ever put it through THIS renderer.
+     *
+     * Its tiles were PolygonNodes, which Office.js cannot fill — it draws a
+     * polygon as one line per edge — so the add-in rendered a 51-region
+     * choropleth as 51 hollow rings while the SVG preview beside it drew them
+     * solid. They are SymbolNodes naming the native `hexagon` preset now.
+     *
+     * That change shipped green with the tile map covered only at SCENE level,
+     * and the fake caught it the moment a test finally rendered one: its
+     * `GeometricShapeType` Proxy throws on a preset it has not been told about,
+     * exactly so an unknown name cannot come back `undefined` and be drawn as a
+     * shape with no geometry at all. This asserts the consequence instead — a
+     * count of FILLED hexagons carrying more than one colour.
+     */
+    const cfg = {
+      kind: "tilemap",
+      width: 480,
+      height: 300,
+      map: "us",
+      tilemap: { shape: "hex" },
+      data: { categories: ["CA", "TX", "NY"], series: [{ name: "S", values: [100, 80, 60] }] },
+    } as unknown as typeof config;
+    const slide = makeSlide("s-hex");
+    installHost([slide]);
+    await insertSceneIntoSlide(buildChart(cfg), { left: 0, top: 0 });
+
+    const hexes = slide.created.filter((s) => s.geo === "hexagon");
+    // Every region in the layout gets a tile, with or without data.
+    expect(hexes.length).toBeGreaterThan(40);
+    // `fillColor`, NOT `fill`. `fill` is the API object — `setSolidColor` and
+    // friends — and there is a fresh one per shape, so a Set of them has one
+    // entry per tile and "more than one colour" passes on a slide painted
+    // entirely in white. `fillColor` is where the colour actually lands.
+    expect(hexes.filter((h) => !h.fillColor).length).toBe(0);
+    expect(new Set(hexes.map((h) => String(h.fillColor))).size).toBeGreaterThan(1);
+  });
+
+  it("still draws something when the host's enum has no such preset", async () => {
+    /**
+     * A real host's `GeometricShapeType` answers `undefined` for a name it does
+     * not carry, and `addGeometricShape(undefined, …)` is ACCEPTED — it draws a
+     * shape with no geometry, which is invisible on the slide and unexplainable
+     * from the file. Our table is not the host's enum, and nothing checked that.
+     *
+     * An ellipse in the wrong place is a bug someone can see and report. Fifty
+     * invisible tiles are a chart that silently lost its data, which is the
+     * failure mode this repo keeps deciding is the worse one.
+     */
+    faults.presetMissing = "hexagon";
+    try {
+      const cfg = {
+        kind: "tilemap",
+        width: 480,
+        height: 300,
+        map: "us",
+        tilemap: { shape: "hex" },
+        data: { categories: ["CA", "TX"], series: [{ name: "S", values: [10, 20] }] },
+      } as unknown as typeof config;
+      const slide = makeSlide("s-nohex");
+      installHost([slide]);
+      await insertSceneIntoSlide(buildChart(cfg), { left: 0, top: 0 });
+      // BY NAME, not by "anything without a geo" — a group and a text box have
+      // no preset either, and a test that counted those would pass on a slide
+      // where every tile was invisible.
+      // COUNTS AND STRINGS ONLY, never a FakeShape handed to `expect`. A failing
+      // assertion makes vitest serialize the actual value, serializing walks
+      // every getter, and `group` on a non-group throws "shape is not a group"
+      // — which then REPLACES the assertion error and reports the fake instead
+      // of the defect. It cost twenty minutes here; do not hand these to expect.
+      // `tile-XX`, NOT `startsWith("tile-")` — that also catches the
+      // `tile-code-XX` text labels, which have no preset and are supposed to
+      // have none. Counting them made this read "52 tiles drew no geometry" on
+      // a slide where every tile was fine.
+      const tiles = slide.created.filter((s) => /^tile-[A-Z]{2}$/.test(String(s.name ?? "")));
+      expect(tiles.length).toBeGreaterThan(40);
+      // Not one drawn with no geometry, and all of them on the preset every
+      // host has.
+      expect(tiles.filter((t) => t.geo === undefined).length).toBe(0);
+      expect(tiles.filter((t) => t.geo !== "ellipse").length).toBe(0);
+      // …and the choropleth still carries its value.
+      expect(new Set(tiles.map((t) => String(t.fillColor))).size).toBeGreaterThan(1);
+    } finally {
+      faults.presetMissing = "";
+    }
+  });
+
   it("keeps the config tag when the host refuses to say where the chart landed", async () => {
     // The failure five real rounds reported and none could reproduce. `same
     // scale across the deck` scores 4 of 8 every time, and every loss is the

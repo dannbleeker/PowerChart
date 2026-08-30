@@ -56,6 +56,33 @@ export const faults = {
    * question can be shown to fail when the answer is bad.
    */
   reportRotatedBounds: false,
+  /**
+   * A preset name this host's `GeometricShapeType` does not carry — reported
+   * the way a real host reports it, as `undefined`.
+   *
+   * The stub's enum is a throwing Proxy so that a preset it has not been told
+   * about cannot come back undefined and get drawn as a shape with no geometry.
+   * That is right for catching OUR mistakes and wrong for modelling the HOST's:
+   * a real Office.js enum simply lacks the key, `addGeometricShape(undefined,
+   * …)` is accepted, and what lands on the slide is invisible. This fault is
+   * the only way to drive that branch.
+   */
+  presetMissing: "" as string,
+  /**
+   * List the GROUP on the slide and not its members, the way a real slide does.
+   *
+   * This fake leaves grouped children in the slide's own collection, so a
+   * `slide.shapes` read here answers with every segment of every chart. A real
+   * PowerPoint answers with one shape called `PowerChart` per chart and nothing
+   * else — rounds 334 and 335 show six of them and not one part.
+   *
+   * It is the reason `where a rotated shape lands` passed in CI and SKIPPED on
+   * the host twice: the scenario looked for its segments at slide level, found
+   * them here, and found nothing there. Off by default because turning it on
+   * globally would rewrite what several hundred tests are looking at; armed by
+   * the tests that are about reaching INTO a group.
+   */
+  groupHidesChildren: false,
   failSyncOn: 0,
   /**
    * Refuse to store a custom XML part — the deck-style write path.
@@ -1601,7 +1628,22 @@ export function makeSlide(id: string) {
         // second argument, which `freshHandle`'s id override would take as a
         // config object. Typecheck catches it today; it would be a silent bug the
         // moment that parameter took something more forgiving than an object.
-        const live = created.filter((s) => !s.deleted).map((s) => freshHandle(s));
+        // See `faults.groupHidesChildren`: a real slide lists the GROUP and not
+        // its members, and this fake lists both.
+        // BY ID, not by identity: `addGroup` is handed shape HANDLES, and a
+        // handle is not the FakeShape it stands for — a Set of the members
+        // matched nothing at all, and the mutant that removed the descent under
+        // test walked straight through.
+        const grouped = faults.groupHidesChildren
+          ? new Set(
+              created.flatMap((s) =>
+                ((s.grouped ?? []) as { id?: string }[]).map((c) => String(c?.id ?? "")).filter(Boolean),
+              ),
+            )
+          : null;
+        const live = created
+          .filter((s) => !s.deleted && !(grouped && grouped.has(String(s.id))))
+          .map((s) => freshHandle(s));
         // The web host has been observed answering a shape-collection read
         // with FAR fewer shapes than it holds: one readback page asked about
         // 19 slides carrying 19 shapes and got 3 back. `faults.hollowReads` models
@@ -3013,9 +3055,19 @@ export function installHost(
         lineInverse: "lineInverse",
         diamond: "diamond",
         plus: "plus",
+        // The hex tile map's tile. The Proxy below did exactly what it was
+        // built for on the way in: NOTHING rendered a hex tilemap through this
+        // renderer, so moving its tiles from polygons to symbols shipped green
+        // while the very first `addGeometricShape` for one would have thrown.
+        // `draws every hex tile as a fillable hexagon` closes that.
+        hexagon: "hexagon",
       } as Record<string, string>,
       {
         get(target, prop: string) {
+          // See faults.presetMissing: a real host's enum answers `undefined`
+          // for a name it lacks rather than throwing, and that is the branch
+          // the renderer's fallback exists for.
+          if (faults.presetMissing && prop === faults.presetMissing) return undefined;
           if (!(prop in target)) throw new Error(`office stub: unknown GeometricShapeType "${String(prop)}"`);
           return target[prop];
         },
