@@ -24,15 +24,17 @@ patterns.
 evidence; this list carries the state. Anything not on it is either shipped,
 refused, or a finding rather than a task.
 
-**Six of the eight closed on 2026-08-29, and the two left are the owner's.** One
-is a product decision and one goes out under his GitHub identity:
+**Six of the eight closed on 2026-08-29. Two of the three now open are the
+owner's** — one a product decision, one going out under his GitHub identity —
+and the third is engineering, opened 2026-08-30:
 
     3  whether a crowded slide should get a picture instead of native shapes
     5  filing this project's host measurements to the office-js tracker
+    9  the violin at 259 shapes, found when the density gate was corrected
 
-Nothing on that list is waiting on engineering. Items 1, 2, 4, 6, 7 and 8 were
-closed by shipping, by measuring the remedy and declining it, or by the host
-refusing the mechanism outright — each says which, in its own row.
+Items 1, 2, 4, 6, 7 and 8 were closed by shipping, by measuring the remedy and
+declining it, or by the host refusing the mechanism outright — each says which,
+in its own row.
 
 **Item 1 did not need the decision it had been waiting for**, which is the
 lesson worth keeping from it. It was framed as "where does a unit belong when
@@ -52,6 +54,7 @@ simply the one thing in the band that had never been told. See §3.
 | 6 | ~~**The dual-axis gutter**~~ — 14 pairs, and the remedy costs 1,394 axis readings | §3, *Text drawn over text* | **MEASURED AND DECLINED 2026-08-29.** Not "30 pairs": 14, of 1,327, and none of them a tick number. Applying the merge to the secondary case fixes 8 and DELETES 1,394 secondary tick numbers — 174 readings lost per pair gained, where the original decision recorded about ten. The trade got seventeen times worse as the rest of the engine improved. The design is written and stays written; on these numbers nobody should build it. |
 | 7 | ~~**Positional group-member mapping → `Shape.creationId`**~~ | §3 | **CLOSED 2026-08-29 — the host refuses it.** This host reports PowerPointApi **1.10** and does not populate `Shape.creationId`: `absent` / `no-creation-id` on all three probe questions, 25 of 25 rounds. So it was never a matter of gating on 1.10. The positional mapping stays, still inferred, still guarded by the node-0 anchor test — which is now the permanent answer rather than a stopgap. |
 | 8 | ~~**`slideSize()` rung 1 times out in EVERY round that reads a size**~~ | §3 | **DONE 2026-08-29**, and measured on both sides. The bound is now its own constant at 1,500ms rather than the shared selection budget, and rounds 303 and 305 are a clean A/B on the same fallback path: `exportedSlide ms=4404` → `ms=2108`, **2.3 seconds back** per cold insert, with rung 1 still answering in 259ms when it answers. Remaining, and much smaller: whether a warm-up call removes the stall altogether. The measurement that got here: Re-measured 2026-08-29 over 270 rounds: 157 of 157, always the full 4000ms — not "about twice as often as it answers". **And now timed**: a SUCCESSFUL rung-1 read costs 246–270ms (rounds 297–299), so the stall and the answer are different calls and the bound is not buying the answer. **Round 300 then broke the "157 of 157" entirely** — no stall, 138ms, on a round that followed a crash recovery and a full tab reload; round 301, on a tab left idle 35 minutes, stalled again. **And 301 measured rung 2 at ~280ms**, which is what this was blocked on — the export costs what the read costs, so a 500ms bound would take a stalled run from 4,280ms to under 800. No longer blocked on a measurement; only on choosing between a lower bound and a warm-up. |
+| 9 | **The violin is the heaviest chart we ship — 259 shapes — and was budgeted at 16** | §1, *A gate is only as true as the quantity it reads* | **OPEN 2026-08-30, and so far a measurement rather than a defect.** `test/shape-budget.test.ts` read `scene.nodes.length` for its whole life while its title, its 300-shape crash line and its 767ms-per-shape opening were all about SHAPES. Now reads `estimateOfficeShapes`. The violin's 16 nodes are **259 shapes** — a 16× under-count, and the largest single chart in the deck now the hex tile map is 146. Nothing here says 259 is too many; it says nobody has ever looked at it. Cost what it spends before deciding whether it needs anything. |
 
 Two standing costs that are not tasks: the host crashes during evidence
 collection after a long round (§3 — it costs the evidence, not the run), and
