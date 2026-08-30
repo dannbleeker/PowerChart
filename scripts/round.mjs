@@ -3077,6 +3077,49 @@ export function readReceipt(path = RECEIPT_PATH, read = readFileSync) {
 export const RECEIPT_PATH = ".round-outcome.json";
 
 /**
+ * Where the SESSION chain lives — and why it is not the receipt.
+ *
+ * `sessionPosition` chains through a file because each round is its own
+ * process, and it chained through `RECEIPT_PATH`. That file has a second reader
+ * with an incompatible lifetime: `cycle.mjs` clears it before EVERY leg, so its
+ * "the driver left no receipt" branch reads THIS leg's outcome rather than the
+ * last one's. Both readers are right about their own question, and one file
+ * could not serve them both.
+ *
+ * SO THE INSTRUMENT WAS BEING DESTROYED BY THE ONLY SANCTIONED WAY TO RUN A
+ * PAIR. Every leg of every cycle began as `sessionIndex: 1, 0m in`. The archive
+ * says it plainly: of 52 consecutive rounds under 45 minutes apart, 33 record
+ * the later one as the first of a fresh session, and `sessionElapsedMs` is 0 in
+ * 76 of the 104 rounds that carry it — 89 minutes being the largest figure ever
+ * recorded, for an effect indexed from 0 to 224.
+ *
+ * What that costs is not bookkeeping. `sessionDepthWarning` REFUSES a round from
+ * the fifth of a session — measured: 10 skips across rounds 5-10 of a
+ * back-to-back block against 0 across 9 rested ones — and a refusal needs an
+ * index that counts. Pinned at 1 the stop is unreachable, `--deep` has nothing
+ * to override, and a night of back-to-back rounds runs well past the point where
+ * the host starts dropping scenarios, with nothing saying so.
+ *
+ * Two questions, two files. Nothing clears this one but a real gap in time.
+ */
+export const SESSION_PATH = ".round-session.json";
+
+/**
+ * Where the last round sat in its session, or null when there is no chain.
+ *
+ * Same shape and the same forgiveness as `readReceipt`: a missing, unreadable or
+ * half-written file all mean "no previous round", and none of them should stop a
+ * round from running.
+ */
+export function readSession(path = SESSION_PATH, read = readFileSync) {
+  try {
+    return JSON.parse(String(read(path, "utf8")));
+  } catch {
+    return null;
+  }
+}
+
+/**
  * The round of a session at which scenarios start being skipped.
  *
  * Measured 2026-08-25, ten back-to-back rounds against nine rested ones:
@@ -3355,8 +3398,20 @@ async function main(argv, deps = {}) {
   // any attempt, so a round that needed three recoveries still reports the time
   // the work actually started rather than the time it finally succeeded.
   const startedAtMs = (deps.now ?? Date.now)();
-  const prevReceipt = (deps.readReceipt ?? readReceipt)();
-  const session = sessionPosition(prevReceipt, startedAtMs);
+  /**
+   * THE SESSION CHAIN, FROM ITS OWN FILE — see `SESSION_PATH`.
+   *
+   * Read from the receipt until 2026-08-31, and `cycle.mjs` clears that before
+   * every leg, so every leg of every cycle called itself round 1 of a fresh
+   * session and the `deep-session` stop could never fire.
+   *
+   * The driver no longer reads the receipt AT ALL, which lint pointed out the
+   * moment this moved — and that is the useful part: the session chain was the
+   * receipt's only reader inside `main`. It is written here and read by
+   * `cycle.mjs`. One question each, which is what the split was for.
+   */
+  const prevSession = (deps.readSession ?? readSession)();
+  const session = sessionPosition(prevSession, startedAtMs);
   // A fresh browser before the first attempt, when asked for. See `startFresh`.
   if (argv.includes("--fresh")) {
     console.log("  closing the browser — this round starts from a fresh session");
@@ -3446,29 +3501,41 @@ async function main(argv, deps = {}) {
       // Best-effort, exactly like archiving: a round that ran is not undone by
       // a failed write, and turning one into a non-zero exit would make the
       // paperwork more important than the evidence.
+      const receipt = outcomeReceipt({
+        reason,
+        codes,
+        roundFile,
+        build,
+        size,
+        threw,
+        sessionIndex: session.index,
+        sessionStartedAt: session.startedAt,
+        // See `outcomeReceipt`: an attempt that ran no round keeps the previous
+        // round's place in the session rather than taking one. Chained off the
+        // SESSION file, which is where that place now lives.
+        prev: prevSession,
+      });
+      try {
+        write(RECEIPT_PATH, JSON.stringify(receipt, null, 2));
+      } catch (err) {
+        console.error(`  (could not write ${RECEIPT_PATH}: ${err?.message ?? err})`);
+      }
+      // AND THE CHAIN, SEPARATELY. Only the three fields `sessionPosition`
+      // reads, so nothing else can grow a dependency on this file and give it a
+      // second lifetime — which is the whole reason it exists apart from the
+      // receipt. Written from the receipt so the "ran nothing holds its place"
+      // rule has exactly one implementation.
       try {
         write(
-          RECEIPT_PATH,
+          SESSION_PATH,
           JSON.stringify(
-            outcomeReceipt({
-              reason,
-              codes,
-              roundFile,
-              build,
-              size,
-              threw,
-              sessionIndex: session.index,
-              sessionStartedAt: session.startedAt,
-              // See `outcomeReceipt`: an attempt that ran no round keeps the
-              // previous round's place in the session rather than taking one.
-              prev: prevReceipt,
-            }),
+            { at: receipt.at, sessionIndex: receipt.sessionIndex, sessionStartedAt: receipt.sessionStartedAt },
             null,
             2,
           ),
         );
       } catch (err) {
-        console.error(`  (could not write ${RECEIPT_PATH}: ${err?.message ?? err})`);
+        console.error(`  (could not write ${SESSION_PATH}: ${err?.message ?? err})`);
       }
       return code;
     }

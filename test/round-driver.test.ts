@@ -17,6 +17,10 @@ const {
   sessionDir,
   sessionPosition,
   sessionDepthWarning,
+  SESSION_DEPTH_WARN_AT,
+  readSession,
+  SESSION_PATH,
+  RECEIPT_PATH,
   readReceipt,
   ensureSessionDir,
   spawnFailureRemedy,
@@ -2572,6 +2576,97 @@ describe("where in a run of rounds this one sits", () => {
     // A new session starts its own clock at zero rather than inheriting one.
     expect(p.elapsedMs).toBe(0);
     expect(p.startedAt).toBe(new Date(T0 + 90 * 60000).toISOString());
+  });
+
+  it("keeps counting across the receipt the cycle clears before every leg", () => {
+    /**
+     * THE DEFECT THIS SPLIT EXISTS FOR, as an arithmetic statement.
+     *
+     * `cycle.mjs` deletes `RECEIPT_PATH` before each leg so its "the driver left
+     * no receipt" check reads THIS leg's outcome and not the last one's. The
+     * session chain used to live in that same file, so every leg of every cycle
+     * started over: of 52 archived rounds under 45 minutes apart, 33 record the
+     * later one as round 1, and rounds 334 and 335 — nine minutes apart, inside
+     * one cycle — both say `sessionIndex: 1, 0m in`.
+     *
+     * The chain is `SESSION_PATH` now. Reading a session while the receipt is
+     * gone has to keep counting, because that is precisely the state a cycle
+     * leaves between its legs.
+     */
+    const p = sessionPosition(
+      { at: "2026-08-24T08:00:00.000Z", sessionIndex: 2, sessionStartedAt: "2026-08-24T07:45:00.000Z" },
+      T0 + 9 * 60000,
+    );
+    expect(p.index, "a cleared receipt must not reset the session").toBe(3);
+    expect(p.elapsedMs, "07:45 to 08:09 is 24 minutes").toBe(24 * 60000);
+  });
+
+  it("reaches the depth at which the driver refuses to run", () => {
+    // `sessionDepthWarning` refuses from SESSION_DEPTH_WARN_AT, and a refusal
+    // needs an index that climbs. Pinned at 1 — which is what a cleared receipt
+    // produced on every leg — the stop was unreachable and `--deep` had nothing
+    // to override.
+    const fifth = sessionPosition(
+      { at: "2026-08-24T08:00:00.000Z", sessionIndex: 4, sessionStartedAt: "2026-08-24T07:00:00.000Z" },
+      T0 + 15 * 60000,
+    );
+    expect(fifth.index).toBe(SESSION_DEPTH_WARN_AT);
+    expect(sessionDepthWarning(fifth.index), "the depth stop never fires").not.toEqual([]);
+    // …and a first round still runs, or the driver would refuse everything.
+    expect(sessionDepthWarning(sessionPosition(null, T0).index)).toEqual([]);
+  });
+
+  it("keeps the chain in a file of its own, not the one the cycle clears", () => {
+    // The two paths must not be the same string, and `readSession` must be
+    // reading the session file rather than quietly falling back to the receipt
+    // — which is how this would regress to exactly what it was.
+    expect(SESSION_PATH).not.toBe(RECEIPT_PATH);
+    const seen: string[] = [];
+    const chained = readSession(SESSION_PATH, (p: string) => {
+      seen.push(String(p));
+      return JSON.stringify({ at: "2026-08-24T08:00:00.000Z", sessionIndex: 6, sessionStartedAt: "x" });
+    });
+    expect(seen, "read something other than the session file").toEqual([SESSION_PATH]);
+    expect(chained?.sessionIndex).toBe(6);
+    // A missing chain is "no previous round", never a throw: a first-ever run
+    // has no file and must still be allowed to start.
+    expect(
+      readSession(SESSION_PATH, () => {
+        throw new Error("ENOENT");
+      }),
+    ).toBeNull();
+  });
+
+  it("wires the session chain, not the receipt, into the position", () => {
+    /**
+     * READ FROM THE SOURCE, because `main` is not exported and the wiring is
+     * the whole defect.
+     *
+     * Everything above tests `sessionPosition`, which was never wrong — it was
+     * being handed the wrong file. Swapping `readSession` back to `readReceipt`
+     * in `main` reproduces the original defect exactly and passed every other
+     * test in this suite, so the one line that matters had no guard at all.
+     *
+     * The same idiom `host-probe.test.ts` uses for "the formula was inlined
+     * again instead of calling the helper": crude, and it fails on the change
+     * that would undo this.
+     */
+    const src = readFileSync(new URL("../scripts/round.mjs", import.meta.url), "utf8");
+    expect(src, "the session chain is not read from its own file").toMatch(
+      /const prevSession = \(deps\.readSession \?\? readSession\)\(\)/,
+    );
+    expect(src, "the position is taken from something other than the session chain").toMatch(
+      /sessionPosition\(prevSession, startedAtMs\)/,
+    );
+    // And `main` no longer reads the receipt AT ALL — lint found that the
+    // moment the chain moved, because the chain was its only reader there. The
+    // receipt is written here and read by `cycle.mjs`: one question each, which
+    // is the whole point of the split. Asserted so nothing quietly hands the
+    // receipt a second reader with a second lifetime again.
+    expect(src, "main is reading the receipt again — give it its own question or none").not.toMatch(
+      /const prevReceipt = /,
+    );
+    expect(src, "the receipt stopped being written, so the cycle cannot see this leg").toMatch(/write\(RECEIPT_PATH/);
   });
 
   it("treats no previous round as the first", () => {
