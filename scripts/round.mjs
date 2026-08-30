@@ -2256,7 +2256,55 @@ export function pruneProfileCaches(profile, { browserOpen, rm = rmSync, exists =
  * Anything with a destructive real-filesystem default has to be reachable only
  * through a seam a test can close.
  */
-export async function startFresh(sh, sleep, recoverFn = recover, profile = PROFILE_DIR, prune = pruneProfileCaches) {
+/**
+ * Tell the profile it exited on purpose, so the next start does not offer to
+ * restore the pages we deliberately closed.
+ *
+ * `sh("close")` ends the browser process without Chromium's own shutdown, so
+ * `Default/Preferences` keeps `exit_type: "Crashed"` — which is exactly the flag
+ * the next launch reads to decide whether to show "Restore pages?". Every
+ * `--fresh` leg left one behind, and the owner meets the bubble when they next
+ * open that profile by hand.
+ *
+ * THE OBVIOUS FIX IS THE DANGEROUS ONE. Closing the tabs before the browser
+ * looks tidier and is the thing this repo has already paid for twice: a
+ * PowerPoint tab with unsaved work raises `beforeunload`, and accepting it
+ * discards the work AND — measured after rounds 124 and 132 — the per-document
+ * SIDELOAD, which then refuses the next several rounds with `addin-missing`.
+ * The sweep that runs just before this guarantees unsaved work. So the tabs are
+ * left alone and the flag is repaired instead: no dialog, nothing to accept,
+ * nothing to lose.
+ *
+ * Injectable for the reason the prune beside it is: a real-filesystem default
+ * that a test could reach once walked a live 1.5GB profile from a unit run.
+ */
+export function clearCrashFlag(profile, { read = readFileSync, write = writeFileSync, exists = existsSync } = {}) {
+  const file = `${profile}/Default/Preferences`;
+  if (!exists(file)) return false;
+  try {
+    const prefs = JSON.parse(read(file, "utf8"));
+    prefs.profile ??= {};
+    // Already clean — say so rather than rewriting a large file for nothing.
+    if (prefs.profile.exit_type === "Normal" && prefs.profile.exited_cleanly === true) return false;
+    prefs.profile.exit_type = "Normal";
+    prefs.profile.exited_cleanly = true;
+    write(file, JSON.stringify(prefs));
+    return true;
+  } catch {
+    // A profile we cannot parse is not one to guess at. The restore bubble is a
+    // nuisance; a corrupted Preferences file costs the sign-in.
+    return false;
+  }
+}
+
+export async function startFresh(
+  sh,
+  sleep,
+  recoverFn = recover,
+  profile = PROFILE_DIR,
+  prune = pruneProfileCaches,
+  clearFlag = clearCrashFlag,
+) {
   sh("close");
   await sleep(3000);
   // HERE, and only here: the browser is closed and has not been rebuilt yet,
@@ -2267,6 +2315,8 @@ export async function startFresh(sh, sleep, recoverFn = recover, profile = PROFI
       `  pruned ${pruned.removed.length} profile cache(s) — over ${Math.round(PROFILE_PRUNE_ABOVE_BYTES / 1e9)}GB, ` +
         "sign-in and crash log untouched",
     );
+  // Same moment, same reason: the process is gone, so the file is nobody's.
+  if (clearFlag(profile)) console.log("  marked the profile as cleanly exited — no restore prompt next time");
   await recoverFn(sh, sleep);
 }
 

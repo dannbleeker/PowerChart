@@ -2816,3 +2816,92 @@ describe("which kind of missing the add-in is", () => {
     expect(needsSideload({ pane: "ref_1", canOpenPane: false, commandPresent: false, sightings: 9 })).toBe(null);
   });
 });
+
+/**
+ * THE RESTORE BUBBLE, and why the tidy-looking fix is the one to avoid.
+ *
+ * `sh("close")` ends the browser without Chromium's own shutdown, so the profile
+ * keeps `exit_type: "Crashed"` and the next launch offers to restore the pages
+ * the driver deliberately closed. Every `--fresh` leg left one behind.
+ *
+ * Closing the tabs first would look neater and is the move this repo has already
+ * paid for twice: a PowerPoint tab with unsaved work raises `beforeunload`, and
+ * accepting it discards the work AND the per-document SIDELOAD — measured after
+ * rounds 124 and 132, which then refused with `addin-missing`. The deck sweep
+ * runs immediately before this and guarantees unsaved work. So the tabs are left
+ * alone and the flag is repaired instead.
+ */
+describe("leaving the browser profile as if it had exited on purpose", () => {
+  const prefs = (over: Record<string, unknown> = {}) =>
+    JSON.stringify({ profile: { exit_type: "Crashed", ...over }, other: { kept: true } });
+
+  it("marks a crashed profile as cleanly exited", () => {
+    let written = "";
+    const changed = driver.clearCrashFlag("P", {
+      exists: () => true,
+      read: () => prefs(),
+      write: (_p: string, s: string) => {
+        written = s;
+      },
+    });
+    expect(changed, "did not repair a profile flagged as crashed").toBe(true);
+    const out = JSON.parse(written);
+    expect(out.profile.exit_type).toBe("Normal");
+    expect(out.profile.exited_cleanly).toBe(true);
+    // Everything else in Preferences survives — this file carries the sign-in.
+    expect(out.other.kept, "rewrote the profile and lost the rest of it").toBe(true);
+  });
+
+  it("leaves an already-clean profile alone", () => {
+    let wrote = false;
+    const changed = driver.clearCrashFlag("P", {
+      exists: () => true,
+      read: () => prefs({ exit_type: "Normal", exited_cleanly: true }),
+      write: () => {
+        wrote = true;
+      },
+    });
+    expect(changed).toBe(false);
+    expect(wrote, "rewrote a Preferences file that needed nothing").toBe(false);
+  });
+
+  it("does not guess at a profile it cannot read", () => {
+    // A nuisance bubble is worth less than the sign-in this file holds, so an
+    // unparseable Preferences is left exactly as found.
+    let wrote = false;
+    const changed = driver.clearCrashFlag("P", {
+      exists: () => true,
+      read: () => "{ not json",
+      write: () => {
+        wrote = true;
+      },
+    });
+    expect(changed).toBe(false);
+    expect(wrote, "wrote over a Preferences file it could not parse").toBe(false);
+    expect(driver.clearCrashFlag("P", { exists: () => false, read: () => "", write: () => {} })).toBe(false);
+  });
+
+  it("repairs the flag on the fresh path, and closes no tabs doing it", async () => {
+    const calls: string[] = [];
+    const sh = ((...args: string[]) => {
+      calls.push(args[0]);
+      return "";
+    }) as never;
+    let cleared = "";
+    await driver.startFresh(
+      sh,
+      (async () => {}) as never,
+      (async () => {}) as never,
+      "PROFILE",
+      () => null,
+      (p: string) => {
+        cleared = p;
+        return true;
+      },
+    );
+    expect(cleared, "the fresh path did not repair the profile it just crashed").toBe("PROFILE");
+    // The whole point: no tab is closed, so no beforeunload can fire.
+    expect(calls, "closed a tab — that is what cost the sideload after rounds 124 and 132").not.toContain("tab-close");
+    expect(calls).toContain("close");
+  });
+});
