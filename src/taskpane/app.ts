@@ -4271,9 +4271,34 @@ function wireInsert() {
           selftest: results,
           ...(tracing() ? { trace: traceLog(traceFrom) } : {}),
         };
-        ($("demo-log") as HTMLButtonElement).disabled = false;
         /**
-         * AND PERSISTED, because enabling the button is not enough on its own.
+         * THE BUTTON STAYS DISABLED UNTIL THE ROUND IS ACTUALLY OVER, and
+         * enabling it here — which the first version of this did — is a
+         * regression that silently strips deck evidence from rounds.
+         *
+         * `scripts/round.mjs:2002` is the reason:
+         *
+         *     if (/button "Download run log"(?! \[disabled\])/.test(dl)) break;
+         *
+         * That button becoming enabled IS the driver's "the round has finished"
+         * signal. Enabling it before `collectDeckEvidence` made the driver break
+         * out of its wait loop mid-tail and download the banked log — verdicts
+         * complete, `deck` absent, trace snapshotted before the scan.
+         *
+         * Rounds 313 and 318 are that race, both at 4:3, and I read 313 as proof
+         * the new timeout had fired. It was not. Nothing had timed out; the
+         * driver simply asked early. 314, 316 and 317 kept their deck only
+         * because the tail beat the next poll.
+         *
+         * Durability does not need this. The verdicts survive a dying host
+         * through the crash log — `runLogHead` below plus one `selftest:` finding
+         * per scenario — which is the path `scripts/salvage-crashed.mjs` already
+         * reads, and it works precisely because the pane outlives the host. The
+         * button is a completion signal, not a safety net, and using it as both
+         * made it a poor version of each.
+         */
+        /**
+         * PERSISTED, because a variable does not survive what comes next.
          *
          * `lastRunLog` is a variable. Recovery RELOADS the tab after a crash, so
          * anything held only in memory is gone before the driver could press
@@ -4324,6 +4349,10 @@ function wireInsert() {
           ...(deck ? { deck } : {}),
           ...(tracing() ? { trace: traceLog(traceFrom) } : {}),
         };
+        // NOW the round is over, and only now may the button say so — it is the
+        // driver's completion signal (`scripts/round.mjs:2002`), so enabling it
+        // any earlier makes the driver download a round that is still running.
+        ($("demo-log") as HTMLButtonElement).disabled = false;
         // Only what THIS round added, and only what it could name. The button
         // stays disabled when the id diff came back empty, because a cleanup
         // with nothing to work from is one that would have to guess which

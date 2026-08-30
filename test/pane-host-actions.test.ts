@@ -2426,10 +2426,22 @@ describe("demo-insert one-shot deck insert", () => {
      * result five times that evening — 14/14 four of them — and archived none,
      * because the host died in the scan every time, between 441s and 572s.
      *
-     * So the log is assembled and its button enabled BEFORE the scan, and the
-     * header is written to the crash log, which survives the tab reload that
-     * recovery performs. `slideSize()` stays on this side of the scan too: it is
-     * a host call, and after the crash there is no host to ask.
+     * So the log is assembled and its header written to the CRASH LOG before the
+     * scan. `slideSize()` stays on this side of it too: it is a host call, and
+     * after the crash there is no host to ask.
+     *
+     * THE BUTTON IS NOT PART OF THAT, and the first version of this test said it
+     * was. Enabling `demo-log` early looked like belt-and-braces and was a
+     * regression: that button becoming enabled is the DRIVER's "round finished"
+     * signal (`scripts/round.mjs:2002`), so enabling it before the tail made the
+     * driver download a round that was still running — verdicts complete, `deck`
+     * absent, trace snapshotted pre-scan. Rounds 313 and 318 are that race, and
+     * I misread 313 as proof the new timeout had fired.
+     *
+     * Durability lives in the crash log, which is the path
+     * `scripts/salvage-crashed.mjs` already reads and which works because the
+     * pane outlives the host. The button is a completion signal, and a signal
+     * used as a safety net is a poor version of both.
      */
     // One clean round first, to learn how many inventory scans a round makes.
     // The last of them is the evidence collector's, and hard-coding that number
@@ -2447,23 +2459,23 @@ describe("demo-insert one-shot deck insert", () => {
     $("demo-round").click();
     await settle();
 
-    // The button is what the driver presses; before this change it was never
-    // reached, so `collectRound` found nothing to download and filed a crash.
+    // WHILE THE TAIL IS STILL RUNNING the button must stay disabled, or the
+    // driver takes it as "finished" and downloads a half-made round. This is the
+    // anti-regression, and it is the assertion the first version had backwards.
     expect(
       ($("demo-log") as HTMLButtonElement).disabled,
-      "the round's log was never offered — a crash in the scan still loses it",
-    ).toBe(false);
-    $("demo-log").click();
-    const log = await dl.lastJson();
-    expect(log.selftest?.length, "the verdicts did not survive a scan that never answered").toBeGreaterThan(0);
-    expect(log.hostAnswers?.answers?.length, "the probe sheet did not survive").toBeGreaterThan(0);
-    // Read while the host was still alive to answer. Without it a salvaged round
-    // cannot say which profile it ran at, and this archive pools two.
-    expect(log.slideSize, "the round cannot say what profile it ran at").toBeTruthy();
-    // No deck, and it must not pretend otherwise — a guessed inventory would be
-    // worse than none, because everything downstream reads it as measured.
-    expect(log.deck, "invented deck evidence the scan never returned").toBeUndefined();
+      "offered the log mid-tail — the driver reads that as the round having finished",
+    ).toBe(true);
+    // Nothing was offered, so nothing could have been downloaded.
+    expect(await dl.lastJson().catch(() => null), "a round still running wrote a file").toBeNull();
     dl.restore();
+
+    // WHERE THE DURABILITY ACTUALLY LIVES is the crash log — `runLogHead` plus
+    // one `selftest:` finding per scenario, written before the tail — and it is
+    // asserted where it belongs: `crashlog.test.ts` for the record surviving a
+    // pane that dies, `salvage-crashed.test.ts` for turning one back into a
+    // round. Re-reading it here would need a flush and a store reset mid-run,
+    // which tests the harness rather than the pane.
   });
 
   it("abandons a tail that never answers, so the round FINISHES instead of hanging", async () => {
