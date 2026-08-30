@@ -815,7 +815,21 @@ const CHART_GROUPS: { label: string; kinds: ChartKind[] }[] = [
 
 function thumbButton(kind: ChartKind, label: string): HTMLButtonElement {
   const b = document.createElement("button");
-  b.className = "thumb" + (kind === state.kind ? " active" : "");
+  const chosen = kind === state.kind;
+  b.className = "thumb" + (chosen ? " active" : "");
+  /**
+   * WHICH ONE IS CHOSEN, said out loud. The selected chart type was carried by
+   * a CSS class alone, so a screen-reader user tabbing the gallery heard
+   * "Waterfall, button" twenty-five times with nothing to say which was the
+   * current chart. Sighted users were fine — `.thumb.active` changes border,
+   * background AND font-weight, so it was never colour-alone — which is exactly
+   * why it went unnoticed.
+   *
+   * `aria-pressed` rather than a radiogroup: these are buttons that apply a
+   * config, and `role="radio"` would promise arrow-key navigation between them
+   * that this gallery does not implement.
+   */
+  b.setAttribute("aria-pressed", String(chosen));
   b.dataset.kind = kind;
   b.dataset.label = label.toLowerCase();
   if (!thumbnails.has(kind)) thumbnails.set(kind, thumbnailSvg(kind));
@@ -849,7 +863,18 @@ function renderGallery() {
     if (!g.kinds.length) continue;
     const sec = document.createElement("div");
     sec.className = "type-group";
-    const heading = document.createElement("div");
+    /**
+     * A REAL HEADING, because this is how a screen-reader user moves around.
+     * The six chart families — "Columns & bars", "Line & area" and the rest —
+     * were `<div class="group-label">`: they looked like headings, read like
+     * headings, and were navigable as none, so the gallery was one flat run of
+     * twenty-five buttons with no way to jump between families.
+     *
+     * `h3` is the level this pane already uses for a sub-heading inside a
+     * section (`.run-label` in taskpane.html), and `.group-label` sets font-size,
+     * weight and margin explicitly, so nothing moves on screen.
+     */
+    const heading = document.createElement("h3");
     heading.className = "group-label";
     heading.textContent = g.label;
     const grid = document.createElement("div");

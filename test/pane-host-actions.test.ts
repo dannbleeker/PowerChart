@@ -3133,3 +3133,40 @@ function describeControl(el: Element): string {
   const type = el.getAttribute("type") ? `[${el.getAttribute("type")}]` : "";
   return `${tag}${type}${id}${cls}`;
 }
+
+/**
+ * STRUCTURE AND STATE, the half of accessibility that naming does not cover.
+ *
+ * A control can have a perfect name and still be unusable: a screen-reader user
+ * navigates by heading, and needs to be told which of twenty-five buttons is the
+ * one currently in effect. Neither was true of the chart gallery.
+ */
+describe("the chart gallery can be navigated and its state can be heard", () => {
+  beforeEach(bootHostPane);
+
+  it("gives each chart family a real heading, not a div that looks like one", () => {
+    // Six families — "Columns & bars", "Line & area" … — were
+    // `<div class="group-label">`, so the gallery was one flat run of buttons
+    // with nothing to jump between. h3 is the level the rest of the pane uses
+    // for a sub-heading inside a section.
+    const families = [...document.querySelectorAll(".group-label")];
+    expect(families.length, "the gallery rendered no family headings").toBeGreaterThan(1);
+    const notHeadings = families.filter((el) => !/^H[1-6]$/.test(el.tagName)).map((el) => el.tagName.toLowerCase());
+    expect(notHeadings, "a chart family is styled as a heading but is not one").toEqual([]);
+  });
+
+  it("says which chart type is currently chosen", () => {
+    const thumbs = [...document.querySelectorAll("button.thumb")];
+    expect(thumbs.length, "the gallery rendered no chart types").toBeGreaterThan(5);
+    // Every thumb must state its state, not only the chosen one — a button with
+    // no `aria-pressed` at all reads as a plain button beside ones that toggle.
+    const silent = thumbs.filter((t) => t.getAttribute("aria-pressed") === null);
+    expect(silent.length, `${silent.length} chart types do not say whether they are selected`).toBe(0);
+    // And exactly one is pressed: the visible `.active` class and the announced
+    // state must be the same fact, or the two audiences are told different things.
+    const pressed = thumbs.filter((t) => t.getAttribute("aria-pressed") === "true");
+    const active = thumbs.filter((t) => t.classList.contains("active"));
+    expect(pressed.length, "no chart type is announced as selected").toBe(1);
+    expect(pressed[0], "the announced selection is not the one shown as selected").toBe(active[0]);
+  });
+});
