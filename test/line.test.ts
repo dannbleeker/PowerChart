@@ -647,3 +647,85 @@ describe("a difference arrow on a multi-series line reads the series it spans", 
     expect(Math.abs(line.y1 - bFrom), "arrow still anchored on series B").toBeGreaterThan(1);
   });
 });
+
+/**
+ * A FILLED SEGMENT IS TILED TO APPROXIMATE A SLOPE, so what the tiling has to
+ * resolve is how far the edge MOVES — and until 2026-08-30 the count came from
+ * the segment's width alone. A perfectly level segment 80pt wide got twenty
+ * identical rectangles laid side by side: one rectangle, drawn twenty times.
+ *
+ * Shapes are the unit of cost on this host. An in-place update runs about 767ms
+ * PER SHAPE, measured over 178 updates in the archive, and round 150 recorded
+ * 400-500 shapes in one context crashing PowerPoint on all seven attempts — with
+ * a chart we ship sitting at 300. Taking the rise into account:
+ *
+ *     sample charts      400 slabs -> 318
+ *     the shipped deck   652 slabs -> 419   (-36%)
+ *
+ * The span rule stays as the ceiling, so no segment can ever GAIN a slab.
+ */
+describe("filled segments are tiled by how far the edge moves, not just how wide it is", () => {
+  const areaWith = (values: number[], over: Partial<ChartConfig> = {}): SceneNode[] =>
+    buildChart({
+      kind: "area",
+      ...DEFAULT_SIZE,
+      data: { categories: values.map((_, i) => `C${i}`), series: [{ name: "S", values }] },
+      decorations: { segmentLabels: false },
+      ...over,
+    } as ChartConfig).nodes.filter((n) => /^area-\d+-\d+-\d+$/.test(n.name || ""));
+
+  it("draws a level segment once instead of twenty times", () => {
+    // Flat data: every edge is level, so no tessellation resolves anything.
+    const flat = areaWith([50, 50, 50, 50]);
+    // Three segments, one slab each — the old rule gave ~20 apiece on this width.
+    expect(flat.length, `a level area drew ${flat.length} rects for 3 segments`).toBe(3);
+  });
+
+  it("still tessellates a steep segment", () => {
+    // The rule must not simply shrink everything: an edge that climbs hard still
+    // needs the staircase, or the fill visibly steps away from its own line.
+    const steep = areaWith([0, 100, 0, 100]);
+    expect(steep.length, "a steep area stopped being tessellated").toBeGreaterThan(20);
+  });
+
+  it("keeps the staircase within a point of the edge, where this rule decides it", () => {
+    /**
+     * The error of a straight edge tiled at `steps` is `slope * slabWidth / 2`,
+     * and `steps = rise / 2` makes that 1pt — WHILE THAT IS THE BINDING RULE.
+     *
+     * The first version of this test asserted 1pt unconditionally and failed,
+     * which was the test correcting my docstring rather than the code: on a
+     * steep edge the historical 24-slab ceiling binds first, and the error there
+     * is whatever it has always been, because this rule changes nothing on those
+     * segments. The honest claim is about the segments the rise rule decides.
+     */
+    for (const cats of [4, 8, 16]) {
+      // A gentle zig-zag: every segment has a real but small rise, so the rise
+      // rule is the one choosing rather than the ceiling.
+      const values = Array.from({ length: cats }, (_, i) => 50 + (i % 2) * 3);
+      const slabs = areaWith(values) as RectNode[];
+      const seg = slabs.filter((s) => /^area-0-0-\d+$/.test(s.name || ""));
+      expect(seg.length, `no slabs in the first segment at ${cats} categories`).toBeGreaterThan(0);
+      if (seg.length >= 24) continue; // the ceiling is choosing, not this rule
+      const rise = Math.max(...seg.map((s) => s.y)) - Math.min(...seg.map((s) => s.y));
+      const err = rise / seg.length / 2;
+      expect(err, `${cats} categories tile to a ${err.toFixed(2)}pt staircase error`).toBeLessThanOrEqual(1.5);
+    }
+  });
+
+  it("never gives a segment MORE slabs than the width rule alone would", () => {
+    // The span rule is the ceiling. Whatever the rise says, a wide segment can
+    // only ever lose shapes — otherwise this optimisation could regress the very
+    // shape budget it was written to protect.
+    for (const values of [
+      [10, 90, 20, 80],
+      [0, 1, 2, 3],
+      [5, 5, 5, 100],
+    ]) {
+      const n = areaWith(values).length;
+      const segs = values.length - 1;
+      // 24 is the historical per-segment cap the span rule tops out at.
+      expect(n, `${values} drew ${n} rects across ${segs} segments`).toBeLessThanOrEqual(24 * segs);
+    }
+  });
+});
