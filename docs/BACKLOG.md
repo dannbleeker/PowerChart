@@ -86,6 +86,53 @@ list above because nothing has been designed — the `silent` third is its own
 problem — but it is no longer refuted, and `binding-names-shape-later` is back
 on the probe's resample shortlist so the next rounds keep counting.
 
+### A doomed round trip on every grouped-chart update — bisected 2026-08-30
+
+**Open, small, and NOT a regression — which took a second look to establish.**
+
+Three errors appear in every recent round, exactly once each. All three come from
+one operation, `explode a degraded picture`, which is also the only scenario
+carrying real friction (4.0 events a round against 0.0 everywhere else) and was
+the worst in the archive before it was repaired:
+
+    reading back an ungrouped chart's shape ids  :: InvalidParam passed to GetItem(id)
+    resolving the charts' shapes                 :: GeneralException
+    a by-id lookup refused the whole resolve — re-reading the slides instead
+
+The code around the fallback (`powerpoint.ts:2604-2640`) says "Costs nothing on a
+healthy host: no refusal, nothing unanswered, no read." On this path that premise
+is false — the refusal is not the exceptional case, it is the only case — so the
+engine spends a guaranteed-failed sync and then does the collection read it was
+always going to need.
+
+**BISECTED FROM THE ARCHIVE, which is what it was kept for.** Refusal rate by
+round, and the flip is one build wide:
+
+    rounds 0-99      0%        round 142  bcfc126   ok
+    rounds 100-149  14%        round 143  408d00b   REFUSES
+    rounds 150-349  92-100%    ...and never recovers
+
+`408d00b` is *"Teach the in-place update to read a group's members (#642)"*. Its
+own comment says that before it, the update **refused every grouped chart** for
+want of a parts list — "18 of 21 in round 142, and the feature had never once run
+in 117 rounds."
+
+So nothing broke. A feature that never ran started running, and its by-id lookup
+refuses every time on this host. The 123 rounds that show no refusal are the
+rounds where the code never tried. Reading the 0% as "it used to work" would have
+been exactly backwards, and the raw rate invites that reading.
+
+**What is worth doing**, when there is a cycle to validate it against: on the
+grouped-member path only, skip the by-id resolve and go straight to the re-read
+that already works. Never `resolveCharts` generally — the other 11.8 updates a
+round never hit this and by-id is fine for them.
+
+**Why it was not done on 2026-08-30 despite being planned.** It touches the
+hottest path in the product — the in-place update is 108 seconds and a quarter of
+every round — and the verification that justified it also showed the change could
+not be checked against a live host in the time left. A saved round trip is not
+worth an unvalidated edit to that function.
+
 ### The largest product cost was in the FAST path, not the redraws — 2026-08-29
 
 **Looking for the picture feature below, I measured the redraws and found they
