@@ -69,6 +69,40 @@ export const faults = {
    */
   presetMissing: "" as string,
   /**
+   * Accept a write to `rotation` and leave the shape exactly where it was.
+   *
+   * A host below 1.10 has no `rotation` at all — a different state, already
+   * covered by `requirementSets`. This models the nastier one: the property is
+   * there, the assignment does not throw, and nothing turns. A shape that never
+   * turned reports its original width, which is the SAME reading a well-behaved
+   * host gives, so without this the rotation probe could not be shown to tell
+   * "this host means the unrotated box" apart from "no rotation happened" — and
+   * would confirm the product's own assumption from no evidence at all.
+   */
+  ignoreRotationWrites: false,
+  /**
+   * Reject a write to `rotation` outright, the way a read-only property does.
+   *
+   * The sibling of `ignoreRotationWrites` and a different host: that one accepts
+   * the write and does nothing, this one refuses it. They need telling apart
+   * because they call for different words in the sheet — `rotation-did-not-take`
+   * is a measurement that failed, `rotation-not-writable` is a host that has the
+   * property and will not let go of it.
+   */
+  rotationWriteThrows: false,
+  /**
+   * Accept a preset by name and draw it with no extent — a shape that is there
+   * and is not visible.
+   *
+   * The half of the preset question that `presetMissing` cannot ask. A name
+   * present in the enum is not the same as a name this host can DRAW, and the
+   * two fail differently: one hands back `undefined` before the call, the other
+   * takes the call and puts nothing on the slide. Only the second is invisible
+   * from the code, which is why the probe measures the shape rather than
+   * trusting the lookup.
+   */
+  presetDrawsNothing: "" as string,
+  /**
    * List the GROUP on the slide and not its members, the way a real slide does.
    *
    * This fake leaves grouped children in the slide's own collection, so a
@@ -1047,7 +1081,18 @@ export function makeShape(
     fillCleared: false,
     text: undefined as string | undefined,
     name: undefined as string | undefined,
-    rotation: undefined as number | undefined,
+    // A GETTER/SETTER PAIR, not a data property — see `faults.ignoreRotationWrites`,
+    // which needs a write that is accepted and does nothing. The backing field
+    // is what `width`'s own getter reads through `this.rotation` below.
+    _rotation: undefined as number | undefined,
+    get rotation(): number | undefined {
+      return this._rotation;
+    },
+    set rotation(v: number | undefined) {
+      if (faults.rotationWriteThrows) throw new Error("rotation is read-only on this host");
+      if (faults.ignoreRotationWrites) return;
+      this._rotation = v;
+    },
     deleted: false,
     // The sync count at proxy creation — used to model the web host's
     // getItem(id) rewrite: a shape proxy is valid within the sync that queued
@@ -1129,6 +1174,10 @@ export function makeShape(
       ownTop = v;
     },
     get width() {
+      // See faults.presetDrawsNothing: the host took the preset and put nothing
+      // on the slide. Reported as no extent, which is what "not visible" looks
+      // like from the API side.
+      if (faults.presetDrawsNothing && geo === faults.presetDrawsNothing) return 0;
       // See faults.reportRotatedBounds. A rotated rectangle's bounding box is
       // |w·cos| + |h·sin| across, which for a long thin diagonal is far shorter
       // than the rectangle itself — that gap is what the scenario measures.

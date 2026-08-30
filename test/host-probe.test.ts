@@ -2829,3 +2829,104 @@ describe("why a scratch slide was bought", () => {
     expect((src.match(/scratchReplacementWhy\(/g) ?? []).length).toBeGreaterThanOrEqual(3);
   });
 });
+
+describe("the two questions a chart's ink rests on", () => {
+  /**
+   * These probes exist to be answered by a REAL host, so what matters in the
+   * suite is that each of their answers is REACHABLE — a probe that can only
+   * ever say the comfortable thing is not evidence. The happy answers are
+   * pinned in FAKE_BASELINE; these are the refusals.
+   */
+  const ask = async (id: string) => {
+    const sheet = await runHostProbes("fake", "test");
+    return sheet.answers.find((a) => a.id === id);
+  };
+
+  it("reports a host that places a rotated shape by its POST-rotation box", async () => {
+    // The answer that would invalidate every diagonal the product draws. If
+    // this were unreachable the probe would confirm our own assumption and
+    // never be able to deny it, which is worse than not asking.
+    installHost([makeSlide("s1")]);
+    faults.reportRotatedBounds = true;
+    try {
+      const a = await ask("rotation-keeps-the-unrotated-box");
+      expect(a?.answer, `did not notice the bounding-box host: ${a?.detail}`).toBe("POST-ROTATION-BOX");
+      expect(a?.detail, "reported the finding without the measurement behind it").toMatch(/rotated extent/);
+    } finally {
+      faults.reportRotatedBounds = false;
+    }
+  });
+
+  it("refuses to conclude when the rotation did not take", async () => {
+    // A shape that never turned is still 80 wide, which is the same reading a
+    // well-behaved host gives — so "no rotation happened" must not be reported
+    // as "the host means the unrotated box". This is the guard against a
+    // confirmation drawn from no evidence.
+    installHost([makeSlide("s1")]);
+    faults.ignoreRotationWrites = true;
+    try {
+      const a = await ask("rotation-keeps-the-unrotated-box");
+      expect(a?.answer, `concluded from a shape that never turned: ${a?.detail}`).toBe("rotation-did-not-take");
+    } finally {
+      faults.ignoreRotationWrites = false;
+    }
+  });
+
+  it("says so plainly on a host with no rotation API at all", async () => {
+    /**
+     * Not a hypothetical: PowerPointApi 1.10 is missing from most desktop Office
+     * builds and from every volume-licensed one, permanently. Such a host cannot
+     * answer this question, and must not be recorded as having answered it —
+     * `no-rotation-api` is a "never asked" word, not an opinion about geometry.
+     */
+    const slide = makeSlide("s1");
+    installHost([slide], [], slide, (v) => v !== "1.10");
+    const a = await ask("rotation-keeps-the-unrotated-box");
+    expect(a?.answer).toBe("no-rotation-api");
+  });
+
+  it("separates a host that refuses the write from one that swallows it", async () => {
+    // Two different hosts and two different words. `rotation-did-not-take` is a
+    // measurement that failed; this is a host that HAS the property and will
+    // not let go of it, which is a fact about the host worth carrying.
+    const slide = makeSlide("s1");
+    installHost([slide]);
+    faults.rotationWriteThrows = true;
+    try {
+      const a = await ask("rotation-keeps-the-unrotated-box");
+      expect(a?.answer).toBe("rotation-not-writable");
+    } finally {
+      faults.rotationWriteThrows = false;
+    }
+  });
+
+  it("notices a preset the host accepts and then does not draw", async () => {
+    // The half the enum lookup cannot see. A name present in
+    // `GeometricShapeType` is not a promise that the host will draw it, and a
+    // shape that is there with no extent is invisible on the slide and looks
+    // exactly like success from the calling code.
+    const slide = makeSlide("s1");
+    installHost([slide]);
+    faults.presetDrawsNothing = "hexagon";
+    try {
+      const a = await ask("named-preset-resolves");
+      expect(a?.answer).toBe("drew-nothing");
+    } finally {
+      faults.presetDrawsNothing = "";
+    }
+  });
+
+  it("names a preset this host's enum does not carry", async () => {
+    // The failure that is otherwise invisible: `addGeometricShape(undefined)` is
+    // accepted and draws a shape with no geometry.
+    installHost([makeSlide("s1")]);
+    faults.presetMissing = "hexagon";
+    try {
+      const a = await ask("named-preset-resolves");
+      expect(a?.answer).toBe("MISSING-FROM-ENUM");
+      expect(a?.detail, "did not say WHICH name was missing").toMatch(/hexagon/);
+    } finally {
+      faults.presetMissing = "";
+    }
+  });
+});

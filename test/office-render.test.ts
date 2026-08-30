@@ -19,6 +19,7 @@ import {
   insertAgendaSlides,
   insertDemoDeck,
   insertSceneIntoSlide,
+  shapeGeometryByName,
   isPowerPointHost,
   listChartsInDeck,
   listChartsInSelection,
@@ -236,6 +237,95 @@ describe("insertSceneIntoSlide", () => {
     } finally {
       faults.presetMissing = "";
     }
+  });
+
+  describe("reading a chart's parts back off a real slide", () => {
+    /**
+     * `shapeGeometryByName` is how a scenario measures what actually landed, and
+     * on a real slide the parts are NOT on the slide: `insertSceneIntoSlide`
+     * groups them, so `slide.shapes` answers with one `PowerChart` per chart.
+     * Rounds 334 and 335 both skipped `where a rotated shape lands` on that.
+     *
+     * The refusals below matter as much as the happy path. Reaching into a
+     * group costs a `Shape.group` access, and on a shape that is NOT a group
+     * that throws GeneralException and POISONS the sync it rides in — the
+     * archive carries it 76 times across 38 rounds. So the descent has to be
+     * able to give up in three places without taking the reading down with it.
+     */
+    const drawLineChart = async (slideId: string) => {
+      const slide = makeSlide(slideId);
+      installHost([slide]);
+      await insertSceneIntoSlide(
+        buildChart({
+          kind: "line",
+          width: 160,
+          height: 220,
+          data: { categories: ["a", "b", "c"], series: [{ name: "S", values: [1, 9, 2] }] },
+        } as unknown as typeof config),
+        { left: 0, top: 0 },
+      );
+      return slide;
+    };
+
+    it("finds the segments inside the group when the slide lists only the group", async () => {
+      const slide = await drawLineChart("s-grp");
+      faults.groupHidesChildren = true;
+      try {
+        const got = await shapeGeometryByName(slide.id, (n) => /^line-\d+-\d+$/.test(n));
+        expect(got, "the reader gave up entirely").toBeTruthy();
+        expect(got!.length, "found no segments inside the group").toBeGreaterThan(0);
+        expect(got!.filter((g) => !Number.isFinite(g.width)).length).toBe(0);
+      } finally {
+        faults.groupHidesChildren = false;
+      }
+    });
+
+    it("needs no group API when nothing grouped the parts", async () => {
+      /**
+       * Written expecting an empty reading, and the host corrected it: below
+       * 1.8 the renderer does not GROUP either, so the segments stay on the
+       * slide and are found without ever reaching for `Shape.group`. The
+       * descent is for hosts that group, which are the hosts that can be asked.
+       *
+       * Kept rather than deleted, because the pairing is the point: the two
+       * abilities travel together, and a reading that came back empty here
+       * would mean the renderer had started grouping on a host that cannot open
+       * a group again.
+       */
+      const slide = makeSlide("s-no18");
+      installHost([slide], [], slide, (v) => v !== "1.8");
+      await insertSceneIntoSlide(
+        buildChart({
+          kind: "line",
+          width: 160,
+          height: 220,
+          data: { categories: ["a", "b"], series: [{ name: "S", values: [1, 9] }] },
+        } as unknown as typeof config),
+        { left: 0, top: 0 },
+      );
+      const got = await shapeGeometryByName(slide.id, (n) => /^line-\d+-\d+$/.test(n));
+      expect(got!.length, "a host that does not group still has its parts on the slide").toBeGreaterThan(0);
+    });
+
+    it("survives a group that refuses to open", async () => {
+      const slide = await drawLineChart("s-refuse");
+      faults.groupHidesChildren = true;
+      faults.refuseGroupRead = true;
+      try {
+        const got = await shapeGeometryByName(slide.id, (n) => /^line-\d+-\d+$/.test(n));
+        // Nothing found is the right answer; taking the whole read down is not.
+        expect(got ?? []).toEqual([]);
+      } finally {
+        faults.refuseGroupRead = false;
+        faults.groupHidesChildren = false;
+      }
+    });
+
+    it("matches nothing when no name matches, without reaching into a group", async () => {
+      const slide = await drawLineChart("s-nomatch");
+      const got = await shapeGeometryByName(slide.id, () => false);
+      expect(got).toEqual([]);
+    });
   });
 
   it("keeps the config tag when the host refuses to say where the chart landed", async () => {

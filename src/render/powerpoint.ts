@@ -8544,7 +8544,10 @@ export async function shapeGeometryByName(
           // the whole reading.
         }
       }
-      if (!collections.length) return [];
+      // No early return on an empty `collections`: the loop below produces an
+      // empty reading from it anyway, and the sync costs nothing when nothing
+      // was queued. A guard that only restates what the code already does is a
+      // branch to keep honest for no gain.
       await context.sync();
       const inner: ReturnType<typeof read>[] = [];
       for (const c of collections) {
