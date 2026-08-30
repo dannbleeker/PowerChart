@@ -1,10 +1,16 @@
-import type { SymbolShape } from "./geometry";
-
 /**
- * A point shape. "circle" and "square" are the scene's existing ellipse and
- * rect; the rest are SymbolNode shapes drawn from PowerPoint preset geometry.
+ * A point shape — RE-EXPORTED, not restated.
+ *
+ * This was a second `"circle" | "square" | SymbolShape` beside the one in
+ * ./geometry, and the two agreed only by luck. The file that owns `MARKER_AREA`
+ * and `markerSymbolOf` is the one that decides what a marker may BE, so a copy
+ * here could disagree with it and still typecheck. It nearly did: adding
+ * `hexagon` to SymbolShape for the hex tile map widened both copies at once,
+ * silently making a tile shape a public scatter marker in the config surface —
+ * the accident the comment on the geometry-side type describes.
  */
-export type MarkerSymbol = "circle" | "square" | SymbolShape;
+import type { MarkerSymbol } from "./geometry";
+export type { MarkerSymbol };
 
 /** Chart kinds supported by the layout engine (think-cell equivalents in comments). */
 export type ChartKind =

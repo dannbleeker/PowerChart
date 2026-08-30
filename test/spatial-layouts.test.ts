@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { buildChart, DEFAULT_SIZE } from "../src/core/chart";
 import { detectLayout } from "../src/core/layout/tilemap-layouts";
 import type { ChartConfig } from "../src/core/types";
-import type { PolygonNode, RectNode, TextNode } from "../src/core/scene";
+import type { RectNode, SymbolNode, TextNode } from "../src/core/scene";
 
 /**
  * Bug-hunt guards for the spatial layouts (tilemap, calendar heatmap, waffle,
@@ -12,7 +12,7 @@ import type { PolygonNode, RectNode, TextNode } from "../src/core/scene";
 
 const iso = (n: number) => new Date(Date.UTC(2026, 0, 5) + n * 86400000).toISOString().slice(0, 10);
 
-describe("hex tilemap survives the Office.js polygon degradation", () => {
+describe("hex tilemap is not subject to the Office.js polygon degradation", () => {
   const cfg: ChartConfig = {
     kind: "tilemap",
     ...DEFAULT_SIZE,
@@ -23,19 +23,25 @@ describe("hex tilemap survives the Office.js polygon degradation", () => {
     data: { categories: ["CA", "TX", "NY", "FL"], series: [{ name: "Sales", values: [10, 40, 25, 5] }] },
   };
 
-  it("outlines each hex in its own value color, not the background", () => {
-    // Office.js has no freeform fill and draws a polygon as `stroke ?? fill`
-    // (scene.ts's parity contract), so a background-colored stroke rendered the
-    // whole cartogram white-on-white in the add-in.
+  it("carries its value in FILL, which the add-in can actually draw", () => {
+    // This test used to guard a workaround. The tile was a polygon, Office.js
+    // draws a polygon as `stroke ?? fill` (scene.ts's parity contract), so the
+    // layout set stroke = fill to stop the cartogram rendering white-on-white —
+    // and what reached the slide was still 51 hollow rings beside a preview
+    // full of solid ones. The tile is a SymbolNode now and none of that
+    // applies: assert the encoding lives in fill and that no tile is a polygon,
+    // which is what makes the degradation unreachable rather than survivable.
     const tiles = buildChart(cfg).nodes.filter(
-      (n): n is PolygonNode => n.kind === "polygon" && !!n.name?.startsWith("tile-"),
+      (n): n is SymbolNode => n.kind === "symbol" && !!n.name?.startsWith("tile-"),
     );
     expect(tiles.length).toBeGreaterThan(2);
-    for (const t of tiles) expect(t.stroke).toBe(t.fill);
-    // …and the tiles still differ by value, so the outline carries the encoding.
+    expect(buildChart(cfg).nodes.some((n) => n.kind === "polygon" && !!n.name?.startsWith("tile-"))).toBe(false);
     const ca = tiles.find((t) => t.name === "tile-CA")!;
     const tx = tiles.find((t) => t.name === "tile-TX")!;
-    expect(ca.stroke).not.toBe(tx.stroke);
+    expect(ca.fill).not.toBe(tx.fill);
+    // No stroke to lean on: if the fill stopped carrying the value the chart
+    // would go blank rather than quietly falling back to an outline.
+    for (const t of tiles) expect(t.stroke).toBeUndefined();
   });
 });
 

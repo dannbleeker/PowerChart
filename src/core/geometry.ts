@@ -223,16 +223,42 @@ export function annularSectorPoints(
  *   - `mathMultiply` (an X) — angled arms, same class of problem. Redundant
  *     with `plus` at 3-4pt anyway.
  */
-export type SymbolShape = "diamond" | "triangle" | "plus";
+export type SymbolShape = "diamond" | "triangle" | "plus" | "hexagon";
 
 /**
  * A point shape. "circle" and "square" are the scene's existing ellipse and
  * rect; the rest are SymbolNode shapes drawn from PowerPoint preset geometry.
+ *
+ * NOT `"circle" | "square" | SymbolShape`, which is what this was until
+ * `hexagon` joined the symbol vocabulary for the hex tile map. SymbolShape
+ * answers "what can a SymbolNode draw"; MarkerSymbol answers "what may a data
+ * point BE", and they were only incidentally the same list. Deriving one from
+ * the other made every new symbol a public marker as a side effect: `hexagon`
+ * would have become a scatter/bubble marker nobody designed, and `MARKER_AREA`
+ * — a `Record<MarkerSymbol, number>` feeding `markerScale`, where a wrong
+ * number silently mis-sizes every marker of that shape — would have demanded an
+ * area for it just to compile. A tile is not a marker. `markerSymbolOf`
+ * own-property-checks against MARKER_AREA, so `symbol: "hexagon"` in user
+ * config still resolves to `circle` and never reaches a renderer.
  */
-export type MarkerSymbol = "circle" | "square" | SymbolShape;
+export type MarkerSymbol = "circle" | "square" | "diamond" | "triangle" | "plus";
 
 /** OOXML `plus` arm half-width as a fraction of the box side (its default adj). */
 const PLUS_ARM = 25000 / 100000;
+
+/**
+ * OOXML `hexagon` shoulder inset as a fraction of the box side (its default
+ * adj) — how far in from each vertical edge the flat top and bottom begin.
+ *
+ * The preset computes this against `ss`, the SHORTER box side, so in a
+ * RECTANGULAR box the inset is not a fixed fraction of the width and the SVG
+ * renderer could not predict what PowerPoint would draw. A SymbolNode's box is
+ * always square (`size` is half the side), which collapses `ss` to the side and
+ * makes the preset's geometry determinate — the same "reproduce the preset
+ * exactly" requirement that rejected `star5`. It is also why the hex tile is a
+ * symbol in a square box rather than a polygon in the tile's own rectangle.
+ */
+const HEX_SHOULDER = 25000 / 100000;
 
 /**
  * Area of each shape when inscribed with half-extent 1, i.e. in a 2x2 box.
@@ -310,6 +336,7 @@ export const SYMBOL_PRESET: Record<SymbolShape, string> = {
   diamond: "diamond",
   triangle: "triangle",
   plus: "plus",
+  hexagon: "hexagon",
 };
 
 /**
@@ -354,6 +381,22 @@ export function symbolPoints(shape: SymbolShape, cx: number, cy: number, size: n
         { x: cx - a, y: cy + s },
         { x: cx - a, y: cy + a },
         { x: cx - s, y: cy + a },
+      ];
+    }
+    case "hexagon": {
+      // Points at the LEFT and RIGHT with flat top and bottom edges, which is
+      // the preset's orientation, not the pointy-top hexagon a cartogram is
+      // usually drawn with. PowerPoint offers no rotation below API 1.10 and no
+      // pointy-top hexagon at any level, so the choice was to draw the tiles
+      // the way the host can fill them or not to fill them at all.
+      const a = 2 * s * HEX_SHOULDER;
+      return [
+        { x: cx - s, y: cy },
+        { x: cx - s + a, y: cy - s },
+        { x: cx + s - a, y: cy - s },
+        { x: cx + s, y: cy },
+        { x: cx + s - a, y: cy + s },
+        { x: cx - s + a, y: cy + s },
       ];
     }
     default:

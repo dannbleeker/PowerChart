@@ -218,7 +218,19 @@ function shoelace(pts: { x: number; y: number }[]): number {
   return Math.abs(a) / 2;
 }
 
-const SHAPES: SymbolShape[] = ["diamond", "triangle", "plus"];
+const SHAPES: SymbolShape[] = ["diamond", "triangle", "plus", "hexagon"];
+
+/**
+ * The subset a data point may actually BE.
+ *
+ * Deliberately not the same list as SHAPES, and the split is the point:
+ * `hexagon` is drawn by a SymbolNode for the hex tile map but is not a marker,
+ * so it carries no `MARKER_AREA` entry and `markerScale` will not size it.
+ * Outline and preset tests run over SHAPES; area and scaling tests run over
+ * this. Folding them back together would force either a bubble area for a
+ * cartogram tile or an unchecked tile outline.
+ */
+const MARKER_SHAPES: Extract<SymbolShape, MarkerSymbol>[] = ["diamond", "triangle", "plus"];
 
 describe("marker symbols", () => {
   it("every shape stays inside the box the PowerPoint renderers hand the preset", () => {
@@ -265,7 +277,7 @@ describe("marker symbols", () => {
     // without this the same Size value would read half as large by group.
     // Measured off the real outline, so a wrong constant in MARKER_AREA fails
     // here rather than silently mis-sizing every marker of that shape.
-    for (const s of SHAPES) {
+    for (const s of MARKER_SHAPES) {
       const k = markerScale(s);
       expect(shoelace(symbolPoints(s, 0, 0, k))).toBeCloseTo(Math.PI, 6);
     }
@@ -278,6 +290,44 @@ describe("marker symbols", () => {
     expect(markerScale("circle")).toBe(1);
   });
 
+  it("draws the two adjustable presets at their OOXML default adj", () => {
+    /**
+     * The module's entry requirement is that a shape "reproduces its OOXML
+     * preset EXACTLY" — the rule that rejected star5 — and for the two shapes
+     * with an adjustment nothing checked it. Both derive their outline from a
+     * `25000/100000` constant, and setting `HEX_SHOULDER` to 0 (which turns the
+     * hexagon into a plain rectangle) passed the whole suite, including the
+     * tile-grid overlap test, because the tiles clear each other by 0.004·cell
+     * whatever shape they are.
+     *
+     * So the expected vertices are written out rather than computed: the claim
+     * is about PowerPoint's defaults, and a test that recomputes them from the
+     * same constant asserts nothing. Box side 20, so adj = 5.
+     */
+    expect(symbolPoints("hexagon", 0, 0, 10)).toEqual([
+      { x: -10, y: 0 }, // left point — flat-top orientation, which is the
+      { x: -5, y: -10 }, // preset's own: PowerPoint has no pointy-top hexagon
+      { x: 5, y: -10 }, // and rotating one needs API 1.10.
+      { x: 10, y: 0 },
+      { x: 5, y: 10 },
+      { x: -5, y: 10 },
+    ]);
+    expect(symbolPoints("plus", 0, 0, 10)).toEqual([
+      { x: -10, y: -5 },
+      { x: -5, y: -5 },
+      { x: -5, y: -10 },
+      { x: 5, y: -10 },
+      { x: 5, y: -5 },
+      { x: 10, y: -5 },
+      { x: 10, y: 5 },
+      { x: 5, y: 5 },
+      { x: 5, y: 10 },
+      { x: -5, y: 10 },
+      { x: -5, y: 5 },
+      { x: -10, y: 5 },
+    ]);
+  });
+
   it("names a preset for every symbol shape, and only lowercase OOXML names", () => {
     // One table feeds Office.js (as a GeometricShapeType key) and PptxgenJS (as
     // an addShape name). A typo here is invisible until it reaches PowerPoint.
@@ -288,7 +338,7 @@ describe("marker symbols", () => {
   });
 
   it("markerScale covers every MarkerSymbol", () => {
-    const all: MarkerSymbol[] = ["circle", "square", ...SHAPES];
+    const all: MarkerSymbol[] = ["circle", "square", ...MARKER_SHAPES];
     for (const m of all) expect(markerScale(m)).toBeGreaterThan(0);
   });
 });

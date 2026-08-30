@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { buildChart } from "../src/core/chart";
+import { estimateOfficeShapes } from "../src/core/scene";
 import type { ChartConfig } from "../src/core/types";
 
 /**
@@ -26,43 +27,69 @@ import type { ChartConfig } from "../src/core/types";
  * making a chart lighter forces the number down instead of banking slack.
  *
  * WHAT THIS IS NOT. It is not a claim that any of these figures is too high; it
- * is a claim that they should not RISE without somebody saying so. The one that
- * would repay attention is `line` at 226, which is the smoothed Catmull-Rom
- * chart — it overtook the stacked area as the densest thing we ship only because
- * the area got lighter.
+ * is a claim that they should not RISE without somebody saying so.
+ *
+ * ── IT COUNTED THE WRONG THING FOR ITS WHOLE LIFE ───────────────────────────
+ * Every number above is about SHAPES, and until 2026-08-30 this file measured
+ * `scene.nodes.length` — the graph the layouts emit, not what the renderer
+ * writes. They are not the same count and `estimateOfficeShapes` exists to say
+ * so: a polygon is one node and one line per EDGE, a wedge one node and a whole
+ * fan. So the gate was blind in exactly the places density comes from.
+ *
+ * What it was hiding, measured the day it was fixed:
+ *   - The hex tile map: 146 nodes, **401 shapes**. Sitting inside the 400-500
+ *     window that took PowerPoint down on all seven attempts in round 150,
+ *     while `keeps every shipped chart clear of the count that crashed the
+ *     host` passed on 146. That test could not have failed: the number it
+ *     compared against 300 was not the number in its own docstring.
+ *   - The violin: 16 nodes, **259 shapes**. Budgeted as the second-LIGHTEST
+ *     chart we ship when it is now the heaviest — a 16x under-count.
+ *   - Sunburst 21 -> 101, pie 17 -> 56, doughnut 15 -> 55, radar 36 -> 79.
+ *   - The deck total: 5560 nodes, 7128 shapes.
+ *
+ * The tile map is 146 shapes now because its tiles became fillable symbols, and
+ * the deck 6873. The violin is the one that would repay attention next.
+ *
+ * A gate is only as true as the quantity it reads, and this one named its
+ * quantity correctly in prose while measuring its neighbour in code.
+ * ────────────────────────────────────────────────────────────────────────────
  */
 
-/** Worst chart of each kind in `examples/showcase.json`, as of 2026-08-30. */
+/**
+ * Worst chart of each kind in `examples/showcase.json`, in OFFICE SHAPES, as of
+ * 2026-08-30. Nine of these rose when the metric was corrected; none rose
+ * because a chart changed.
+ */
 const BUDGET: Record<string, number> = {
+  violin: 259,
   line: 226,
   combo: 164,
   tilemap: 146,
   area: 123,
   waffle: 107,
+  sunburst: 101,
   heatmap: 100,
+  radar: 79,
   scatter: 75,
   gantt: 68,
   boxplot: 62,
+  pie: 56,
+  doughnut: 55,
   butterfly: 53,
   stacked: 47,
   bubble: 46,
   clustered: 40,
-  radar: 36,
   candlestick: 35,
   stacked100: 33,
   mekko: 32,
   waterfall: 31,
   treemap: 31,
   cascade: 30,
-  sunburst: 21,
   funnel: 20,
-  pie: 17,
-  violin: 16,
-  doughnut: 15,
 };
 
 /** The whole deck, so a rise spread thinly across many charts still shows. */
-const TOTAL_BUDGET = 5560;
+const TOTAL_BUDGET = 6873;
 
 function measure(): { byKind: Map<string, number>; total: number; worst: Map<string, string> } {
   const items = JSON.parse(readFileSync("examples/showcase.json", "utf8")) as ChartConfig[];
@@ -72,7 +99,9 @@ function measure(): { byKind: Map<string, number>; total: number; worst: Map<str
   for (const cfg of items) {
     let n: number;
     try {
-      n = buildChart(cfg).nodes.length;
+      // What the RENDERER writes, not what the layout emitted. `nodes.length`
+      // is the tempting one and it is the wrong one — see the header.
+      n = estimateOfficeShapes(buildChart(cfg));
     } catch {
       // A config the engine refuses is not a density problem, and
       // `showcase.test.ts` is what holds the deck to building at all.
@@ -99,7 +128,7 @@ describe("no chart quietly becomes too heavy to draw", () => {
   it("keeps every kind inside its budget", () => {
     const over = [...byKind.entries()]
       .filter(([k, n]) => n > (BUDGET[k] ?? 0))
-      .map(([k, n]) => `${k}: ${n} nodes (budget ${BUDGET[k] ?? 0}) — ${worst.get(k)}`);
+      .map(([k, n]) => `${k}: ${n} shapes (budget ${BUDGET[k] ?? 0}) — ${worst.get(k)}`);
     expect(over, "a chart kind got denser, and shapes are what this host charges for").toEqual([]);
   });
 
@@ -116,7 +145,7 @@ describe("no chart quietly becomes too heavy to draw", () => {
   it("has not grown across the deck as a whole", () => {
     // Per-kind ceilings cannot see a rise spread thinly over many charts, which
     // is the shape a data change makes.
-    expect(total, `${total} nodes across the shipped deck, budget ${TOTAL_BUDGET}`).toBeLessThanOrEqual(TOTAL_BUDGET);
+    expect(total, `${total} shapes across the shipped deck, budget ${TOTAL_BUDGET}`).toBeLessThanOrEqual(TOTAL_BUDGET);
   });
 
   it("keeps every shipped chart clear of the count that crashed the host", () => {

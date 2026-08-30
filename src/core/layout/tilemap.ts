@@ -23,6 +23,27 @@ import type { LayoutResult } from "./column";
 const LEGEND_INK = 2.65;
 
 /**
+ * A hex tile's width and height as a fraction of its grid cell.
+ *
+ * √3/2, and it is inherited rather than chosen: the tile used to be a pointy-top
+ * regular hexagon of circumradius `tile/2`, which spans `tile` tall by
+ * `0.866·tile` wide. The whole hex grid — the `cols + 0.5` width, the 0.87·tile
+ * row step, the half-cell odd-row shift, and the "tiles never touch" property
+ * all of it is fitted around — was derived from THAT width, so the flat-top
+ * preset that replaced it takes the same 0.866·tile as its box side and none of
+ * the fit math moves.
+ *
+ * At the cell's full `tile` the flat top and bottom reach the neighbouring row:
+ * rows step 0.87·tile, and two hexes an odd row apart sit only half a cell over
+ * from each other. The pointy-top hexagon got away with a full-cell HEIGHT
+ * because its narrow axis faced the shift, which is horizontal. Turning the
+ * shape a quarter turn swaps which axis is narrow, so the size has to follow —
+ * `no two hex tiles overlap` in test/tilemap.test.ts is the guard, and it fails
+ * on ME/NH the moment this becomes 1.
+ */
+const HEX_W = Math.sqrt(3) / 2;
+
+/**
  * Tile-grid cartogram ("map chart"): every region is a uniform square, so
  * geography stays recognizable without area distortion — and it renders as
  * native shapes everywhere (no freeform paths needed). Categories are region
@@ -170,11 +191,6 @@ export function layoutTilemap(cfg: ChartConfig, style: ChartStyle, decor: Decora
    */
   const legendClearOfTitle = legendTop >= titleInkBottom(cfg, style);
 
-  const hexPts = (cx: number, cy: number, R: number) =>
-    [90, 150, 210, 270, 330, 30].map((a) => ({
-      x: cx + R * Math.cos((a * Math.PI) / 180),
-      y: cy - R * Math.sin((a * Math.PI) / 180),
-    }));
   for (const [code, [col, row]] of Object.entries(layout)) {
     const v = values.get(code);
     // In glyph mode the tile is a faint backdrop for the bars; otherwise it
@@ -187,18 +203,35 @@ export function layoutTilemap(cfg: ChartConfig, style: ChartStyle, decor: Decora
     const x = x0 + col * (tile + gutter) + (hex && row % 2 === 1 ? (tile + gutter) / 2 : 0);
     const y = hex ? y0 + row * tile * 0.87 : y0 + row * (tile + gutter);
     if (hex) {
+      // A SYMBOL, not a polygon, and that is the whole fix for this chart.
+      //
+      // Office.js has no freeform fill, so a PolygonNode degrades to its stroked
+      // outline (scene.ts's parity contract). A choropleth says what it says
+      // through FILL — 51 tiles carrying 16 distinct colours — so the add-in
+      // drew the one chart whose entire message is fill as 51 hollow rings while
+      // the SVG preview beside it drew them solid. The preview did not
+      // approximate the slide; it disagreed with it. The old workaround here set
+      // stroke = fill so the outline at least carried the colour, which stopped
+      // the cartogram being white-on-white and left it hollow.
+      //
+      // SymbolNode exists for exactly this: it names a native preset the host
+      // fills itself. The cost is the tile's POINTY top — PowerPoint's `hexagon`
+      // preset points left and right, and turning it needs `Shape.rotation`, API
+      // 1.10, which no round has ever exercised and which most desktop builds do
+      // not have at all. A flat-top hexagon is still a hexagon and still reads as
+      // a cartogram; a hollow one is not a tile. It also drops the chart from 6
+      // shapes a tile to 1 — 401 shapes to 146 — which is most of why this was
+      // the heaviest chart we ship, and inside the 400-500 band that took
+      // PowerPoint down on all seven attempts in round 150.
       nodes.push({
-        kind: "polygon",
-        points: hexPts(x + tile / 2, y + tile / 2, tile / 2),
+        kind: "symbol",
+        shape: "hexagon",
+        cx: x + tile / 2,
+        cy: y + tile / 2,
+        // HALF-WIDTH, not half-cell: see HEX_W. `size` is half a SQUARE box side
+        // and the preset spans it corner to corner.
+        size: (tile * HEX_W) / 2,
         fill: tileFill,
-        // Outline in the tile's OWN colour, not the background: Office.js has no
-        // freeform fill and degrades a polygon to its stroke (scene.ts's parity
-        // contract), so a background-coloured edge left the whole cartogram
-        // white-on-white in the add-in. The tiles never touch — the grid steps
-        // tile+gutter across and 0.87·tile down, both wider than the hex — so
-        // the separator the background stroke used to draw is not needed.
-        stroke: tileFill,
-        strokeWidth: 1,
         name: `tile-${code}`,
       });
     } else {

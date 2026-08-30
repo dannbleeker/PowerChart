@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_SIZE, buildChart } from "../src/core/chart";
 import { sampleConfig } from "../src/core/samples";
-import type { PolygonNode, RectNode, TextNode } from "../src/core/scene";
+import type { RectNode, SymbolNode, TextNode } from "../src/core/scene";
+import { symbolPoints } from "../src/core/geometry";
 import type { ChartConfig } from "../src/core/types";
 
 /** Tilemap cartogram — hex tiles and mini-glyphs. */
@@ -14,25 +15,98 @@ describe("tilemap hex tiles", () => {
     data: { categories: ["CA", "TX", "NY"], series: [{ name: "S", values: [100, 80, 60] }] },
   };
 
-  it("draws hexagon polygons instead of square tiles", () => {
+  it("draws hex tiles as FILLED symbols, never as polygons", () => {
+    // A polygon is the one thing this tile must not be: Office.js has no
+    // freeform fill and degrades a PolygonNode to its outline, which on a
+    // choropleth discards the entire encoding. A SymbolNode names a preset the
+    // host fills itself.
     const s = buildChart({ ...base, tilemap: { shape: "hex" } });
-    const ca = s.nodes.find((n): n is PolygonNode => n.kind === "polygon" && n.name === "tile-CA");
+    const ca = s.nodes.find((n): n is SymbolNode => n.kind === "symbol" && n.name === "tile-CA");
     expect(ca).toBeTruthy();
-    expect(ca!.points).toHaveLength(6);
+    expect(ca!.shape).toBe("hexagon");
+    expect(ca!.fill).toBeTruthy();
+    expect(s.nodes.some((n) => n.kind === "polygon" && !!n.name?.startsWith("tile-"))).toBe(false);
   });
 
   it("default tilemap uses square rects", () => {
     const s = buildChart(base);
     expect(s.nodes.some((n) => n.kind === "rect" && n.name === "tile-CA")).toBe(true);
-    expect(s.nodes.some((n) => n.kind === "polygon" && n.name === "tile-CA")).toBe(false);
+    expect(s.nodes.some((n) => n.kind === "symbol" && n.name === "tile-CA")).toBe(false);
   });
 
-  it("odd rows are offset (hex packing)", () => {
-    const s = buildChart({ ...base, tilemap: { shape: "hex" } });
-    // Every hex tile is a polygon; the map has more than one row so some tiles
-    // are horizontally offset from the base column grid.
-    const hexes = s.nodes.filter((n): n is PolygonNode => n.kind === "polygon" && !!n.name?.startsWith("tile-"));
-    expect(hexes.length).toBeGreaterThan(2);
+  it("odd rows are offset half a cell — the thing that makes it a hex grid", () => {
+    // This used to COUNT the tiles and call that packing, so it passed with the
+    // offset deleted. Measured against the square layout instead, which shares
+    // the same column grid and shifts nothing: if odd rows are offset, the hex
+    // map resolves to strictly MORE distinct tile centres than there are
+    // columns, and the square map is what says how many columns there are.
+    const squares = buildChart(base).nodes.filter(
+      (n): n is RectNode => n.kind === "rect" && !!n.name?.startsWith("tile-"),
+    );
+    const hexes = buildChart({ ...base, tilemap: { shape: "hex" } }).nodes.filter(
+      (n): n is SymbolNode => n.kind === "symbol" && !!n.name?.startsWith("tile-"),
+    );
+    expect(hexes).toHaveLength(squares.length);
+    const cols = new Set(squares.map((t) => Math.round(t.x * 100))).size;
+    const centres = new Set(hexes.map((t) => Math.round(t.cx * 100))).size;
+    expect(cols).toBeGreaterThan(1);
+    expect(centres).toBeGreaterThan(cols);
+  });
+
+  it("no two hex tiles overlap, at any size the grid is drawn at", () => {
+    /**
+     * The size of a hex tile is `HEX_W` (√3/2) of its cell, and this is the
+     * whole reason for that number — so it should not be possible to change it
+     * and keep the suite green.
+     *
+     * The tile used to be a POINTY-top hexagon: narrow across, tall down, and
+     * the grid shifts odd rows sideways, so its narrow axis faced the shift and
+     * a full-cell height was free. The preset that replaced it points left and
+     * right, which swaps the narrow axis onto the one that matters. At a full
+     * cell its flat top and bottom reach the offset row below.
+     *
+     * Separating-axis over the real outlines rather than bounding boxes: the
+     * boxes of two hexes an odd row apart DO overlap, at the corners where
+     * neither shape has any ink. A box test would fail a correct grid, which is
+     * how you end up loosening a test until it stops meaning anything.
+     */
+    const overlaps = (a: { x: number; y: number }[], b: { x: number; y: number }[]) => {
+      for (const poly of [a, b]) {
+        for (let i = 0; i < poly.length; i++) {
+          const p = poly[i];
+          const q = poly[(i + 1) % poly.length];
+          const nx = -(q.y - p.y);
+          const ny = q.x - p.x;
+          const proj = (pts: { x: number; y: number }[]) => pts.map((t) => t.x * nx + t.y * ny);
+          const pa = proj(a);
+          const pb = proj(b);
+          // A shared edge is not an overlap: tiles are allowed to touch.
+          if (Math.min(...pa) >= Math.max(...pb) - 1e-9 || Math.min(...pb) >= Math.max(...pa) - 1e-9) return false;
+        }
+      }
+      return true;
+    };
+
+    for (const [w, h] of [
+      [480, 300],
+      [960, 540],
+      [320, 240],
+      [240, 160],
+    ]) {
+      const tiles = buildChart({ ...base, width: w, height: h, tilemap: { shape: "hex" } }).nodes.filter(
+        (n): n is SymbolNode => n.kind === "symbol" && !!n.name?.startsWith("tile-"),
+      );
+      expect(tiles.length).toBeGreaterThan(20);
+      const outlines = tiles.map((t) => ({ name: t.name, pts: symbolPoints(t.shape, t.cx, t.cy, t.size) }));
+      for (let i = 0; i < outlines.length; i++) {
+        for (let j = i + 1; j < outlines.length; j++) {
+          expect(
+            overlaps(outlines[i].pts, outlines[j].pts),
+            `${w}x${h}: ${outlines[i].name} overlaps ${outlines[j].name}`,
+          ).toBe(false);
+        }
+      }
+    }
   });
 });
 
