@@ -80,6 +80,8 @@ import {
   settledSlideCount,
   slideSize,
   slideShapeList,
+  shapeGeometryByName,
+  deleteShapesById,
   timeShapeRounds,
   updateChartInSlide,
   moveShapeBy,
@@ -2112,6 +2114,139 @@ const chartIsVisible: Scenario = async (prefix) => {
  * every round — a full-size pair would add a minute to a battery that already
  * takes ten.
  */
+/**
+ * DOES THIS HOST PLACE A ROTATED SHAPE BY ITS ROTATED BOX, OR ITS UNROTATED ONE?
+ *
+ * After 333 rounds nobody could answer, because `Shape.rotation` had never once
+ * been written on a real host. The battery draws only `clustered`, whose single
+ * line node is the horizontal baseline, so `addSegment`'s rotated-rectangle
+ * branch — the one every diagonal in the product goes through — had zero
+ * executions outside the fake.
+ *
+ * It is not a curiosity. `addSegment` draws a solid diagonal as a rectangle of
+ * the segment's LENGTH, placed at its midpoint, then rotated about the centre;
+ * `arrowheadBox` offsets its box on the same assumption. If this host means the
+ * post-rotation bounding box by `left`/`top`/`width`, then every diagonal in
+ * every line, scatter, radar and violin chart is drawn in the wrong place and
+ * the wrong size — and no round could have noticed.
+ *
+ * THE DISCRIMINATOR IS THE WIDTH, and it is chosen because it needs no
+ * agreement about where the chart was placed. For a diagonal of length L whose
+ * horizontal extent is W:
+ *
+ *     width ~= L   the host stores the box BEFORE rotation (what we assume)
+ *     width ~= W   the host stores the bounding box AFTER it (we are wrong)
+ *
+ * L and W differ by more than a third on the segments this chart draws, so the
+ * two readings cannot be confused. `left`/`top` would need the insertion offset
+ * and give a weaker answer for more work.
+ *
+ * A host that cannot rotate at all (below PowerPointApi 1.10) SKIPS: it has no
+ * opinion to report, and a scenario that cannot conclude must say so rather
+ * than pass.
+ */
+const rotatedShapePlacement: Scenario = async (prefix) => {
+  const { found: hosts, blind, gap } = await probeCharts(prefix);
+  const [host] = hosts;
+  if (!host)
+    return blind ? blindSkip(gap) : { ok: false, skipped: true, detail: "no probe chart to place a line chart beside" };
+  const shown = await showSlide(host.target.slideId);
+  const slide = await slideSize();
+  const title = `${prefix} rotation`;
+  // Slot 3 is shared with the rasterise arm, which is harmless here: this
+  // scenario reads its shapes BY NAME, and `line-` is a name no other chart in
+  // this battery emits.
+  const { left, top } = sideSlot(3, slide, boxOf(host));
+  /**
+   * A FIXED, TALL box rather than the slot's — and deliberately not the slot's
+   * shape at all.
+   *
+   * The discriminator needs segments steep enough that the length and the
+   * horizontal extent cannot be confused. Taking the slot's aspect made that a
+   * property of the DECK: on a 4:3 deck the slot is short and wide, the segments
+   * flatten, and the scenario skipped with "no segment was steep enough" — which
+   * is a scenario that reports nothing precisely when the deck is ordinary.
+   *
+   * Narrow and tall makes steep segments an invariant of the measurement instead.
+   * Overlapping whatever is in that slot costs nothing here: this chart is
+   * deleted before the scenario returns, which is the same reason it can borrow
+   * an occupied slot at all.
+   *
+   * Three points, so the two segments slope hard in OPPOSITE directions — a
+   * single slope could be matched by a host that happens to mirror the box.
+   */
+  const c: ChartConfig = {
+    ...cfg(title, "line"),
+    width: 160,
+    height: 220,
+    data: { categories: ["A", "B", "C"], series: [{ name: "S", values: [1, 9, 2] }] },
+    decorations: { segmentLabels: false },
+  };
+  const scene = buildChart(c);
+  const placed = await insertSceneIntoSlide(scene, { tagData: JSON.stringify(c), left, top });
+
+  const drawn = await shapeGeometryByName(host.target.slideId, (n) => /^line-\d+-\d+$/.test(n));
+  /**
+   * A MEASUREMENT, NOT A SPECIMEN — taken away as soon as it has been read.
+   *
+   * Every side slot is already claimed by a scenario that leaves its chart
+   * behind, and `leaves no two charts stacked on one slide` rightly fails a
+   * battery that stacks one on another — it caught this on the first run. So
+   * this chart borrows a slot and gives it back. Taking a SIXTH slot instead
+   * would narrow every other one, and quietly change what every other scenario
+   * draws and measures.
+   */
+  const clean = async (): Promise<void> => {
+    if (!placed) return;
+    const ids = [placed.shapeId, ...(placed.partIds ?? [])].filter(Boolean);
+    if (ids.length) await deleteShapesById(placed.slideId, ids);
+  };
+  if (!drawn || !drawn.length) {
+    await clean();
+    return { ok: false, skipped: true, detail: "the host would not report the line segments' geometry" };
+  }
+  if (drawn.every((s) => s.rotation === null)) {
+    await clean();
+    return {
+      ok: false,
+      skipped: true,
+      detail: `this host reports no rotation on ${drawn.length} segment(s) — below PowerPointApi 1.10, so it has no placement opinion to read`,
+    };
+  }
+
+  // What the SCENE asked for, for the same named segments.
+  const want = new Map(
+    scene.nodes
+      .filter((n): n is Extract<typeof n, { kind: "line" }> => n.kind === "line" && /^line-\d+-\d+$/.test(n.name ?? ""))
+      .map((n) => [n.name as string, { len: Math.hypot(n.x2 - n.x1, n.y2 - n.y1), ext: Math.abs(n.x2 - n.x1) }]),
+  );
+  const judged = drawn
+    .map((s) => ({ s, w: want.get(s.name) }))
+    .filter((p): p is { s: (typeof drawn)[number]; w: { len: number; ext: number } } => !!p.w)
+    // Only segments where the two readings are far enough apart to tell apart.
+    .filter((p) => p.w.len - p.w.ext > 4);
+  if (!judged.length) {
+    await clean();
+    return { ok: false, skipped: true, detail: "no segment was steep enough to distinguish the two placements" };
+  }
+
+  const preRotation = judged.filter((p) => Math.abs(p.s.width - p.w.len) < Math.abs(p.s.width - p.w.ext));
+  const sample = judged[0];
+  const detail =
+    `${preRotation.length} of ${judged.length} segment(s) sized by the UNROTATED box` +
+    ` (e.g. ${sample.s.name}: host ${sample.s.width.toFixed(1)}pt, length ${sample.w.len.toFixed(1)}pt,` +
+    ` horizontal extent ${sample.w.ext.toFixed(1)}pt, rotation ${String(sample.s.rotation)})` +
+    `${shown ? "" : " (host would not move the view)"}`;
+  await clean();
+  return {
+    ok: preRotation.length === judged.length,
+    detail:
+      preRotation.length === judged.length
+        ? detail
+        : `${detail} — this host places rotated shapes by their POST-rotation box, so every diagonal in the product is drawn wrong`,
+  };
+};
+
 const rasteriseThenDraw: Scenario = async (prefix) => {
   const attempt = stepsOf("rasterise-draw step");
   const { found, blind, gap } = await probeCharts(prefix);
@@ -3023,6 +3158,11 @@ const SCENARIOS: {
   // in the routine list because it is the newest, which is the rule the comment
   // at the head of this array states.
   { name: "does a rasterise poison the next draw", run: rasteriseThenDraw },
+  // LAST of the routine list, and only because its shapes share a slot with the
+  // arm above. It reads its own segments by name, so an overlap costs it
+  // nothing — but running after everything else means it cannot cost anyone
+  // ELSE a readback either.
+  { name: "where a rotated shape lands", run: rotatedShapePlacement },
   // Picked only for the plainest reason there is: it blocks on a human.
   { name: "edit the chart YOU click", run: editViaRealClick, pickedOnly: true },
   { name: "what makes a long run slow down", run: degradesOverTime, pickedOnly: true },

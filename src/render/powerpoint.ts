@@ -8446,6 +8446,65 @@ export const OFFSCREEN_BATCH = 40;
  * >50-item load ceiling (office-js#4272); it can throw outright on a host that
  * does not offer it, which costs the corroboration and nothing else.
  */
+/**
+ * A named shape's geometry AS THE HOST HOLDS IT, rotation included.
+ *
+ * Written for one question nobody could answer after 333 rounds: when this host
+ * is handed a rotated shape, does `left`/`top` mean the box BEFORE rotation —
+ * which is what this renderer assumes everywhere — or the bounding box after it?
+ *
+ * It matters far past a diagnostic. `addSegment` draws a solid diagonal as a
+ * rectangle of the segment's LENGTH, placed at the midpoint and then rotated;
+ * `arrowheadBox` offsets its box on the same assumption. If the host means the
+ * rotated box, every diagonal in every line, scatter, radar and violin chart is
+ * placed wrong — and no round could ever have seen it, because the harness draws
+ * only `clustered`, whose one line node is the horizontal baseline.
+ *
+ * `rotation` is itself PowerPointApi 1.10, so it is loaded in its own try: a
+ * host that lacks it must still answer the geometry rather than failing the
+ * whole read.
+ */
+export async function shapeGeometryByName(
+  slideId: string,
+  match: (name: string) => boolean,
+): Promise<
+  { name: string; left: number; top: number; width: number; height: number; rotation: number | null }[] | null
+> {
+  try {
+    return await PowerPoint.run(async (context) => {
+      const slide = context.presentation.slides.getItemOrNullObject(slideId);
+      slide.load("id");
+      await context.sync();
+      if (!isLive(slide)) return null;
+      slide.shapes.load("items/name,items/left,items/top,items/width,items/height");
+      // Separate load, separate failure: on a host below 1.10 asking for
+      // `rotation` can reject the sync it rides in, and the geometry is the
+      // half worth having either way.
+      let rotated = true;
+      try {
+        slide.shapes.load("items/rotation");
+      } catch {
+        rotated = false;
+      }
+      await context.sync();
+      const items = loadedItems(slide.shapes);
+      if (!items) return null;
+      return items
+        .map((s) => ({
+          name: String(loadedValue(() => (s as unknown as { name: string }).name) ?? ""),
+          left: Number(loadedValue(() => s.left)),
+          top: Number(loadedValue(() => s.top)),
+          width: Number(loadedValue(() => s.width)),
+          height: Number(loadedValue(() => s.height)),
+          rotation: rotated ? (loadedValue(() => (s as unknown as { rotation: number }).rotation) ?? null) : null,
+        }))
+        .filter((s) => match(s.name) && [s.left, s.top, s.width, s.height].every((n) => Number.isFinite(n)));
+    });
+  } catch {
+    return null;
+  }
+}
+
 export async function slideShapeList(slideId: string): Promise<{ id: string; name: string }[] | null> {
   try {
     return await PowerPoint.run(async (context) => {

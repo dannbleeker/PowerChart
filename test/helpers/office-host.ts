@@ -41,6 +41,21 @@ const CHART_TAG_KEY = "POWERCHART_CONFIG";
  * lesson should be learnable in CI.
  */
 export const faults = {
+  /**
+   * Report `left`/`top`/`width`/`height` as the bounding box AFTER rotation,
+   * rather than before it.
+   *
+   * The renderer assumes the opposite everywhere: `addSegment` draws a diagonal
+   * as a rectangle of the segment's LENGTH placed at its midpoint and then
+   * rotated, and `arrowheadBox` offsets its box on the same premise. Nobody has
+   * ever checked which this host means — `Shape.rotation` has never once been
+   * written on a real PowerPoint in 333 rounds, because the battery draws only
+   * `clustered`, whose single line node is the horizontal baseline.
+   *
+   * This models the answer we do NOT expect, so the scenario that asks the
+   * question can be shown to fail when the answer is bad.
+   */
+  reportRotatedBounds: false,
   failSyncOn: 0,
   /**
    * Refuse to store a custom XML part — the deck-style write path.
@@ -1086,7 +1101,19 @@ export function makeShape(
     set top(v: number) {
       ownTop = v;
     },
-    width: box.width,
+    get width() {
+      // See faults.reportRotatedBounds. A rotated rectangle's bounding box is
+      // |w·cos| + |h·sin| across, which for a long thin diagonal is far shorter
+      // than the rectangle itself — that gap is what the scenario measures.
+      if (faults.reportRotatedBounds && typeof this.rotation === "number" && this.rotation % 180 !== 0) {
+        const rad = (this.rotation * Math.PI) / 180;
+        return Math.abs(box.width * Math.cos(rad)) + Math.abs(box.height * Math.sin(rad));
+      }
+      return box.width;
+    },
+    set width(v: number) {
+      box.width = v;
+    },
     height: box.height,
     tagStore,
     get tags() {

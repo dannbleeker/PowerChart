@@ -158,6 +158,11 @@ describe("the host self-test battery", () => {
       // purpose: these are the only two draws in the battery that follow a
       // rasterise, and the pair is what separates the CALL from the SCENARIO.
       "does a rasterise poison the next draw",
+      // Last, and it leaves nothing behind: it draws a line chart purely to read
+      // back where the host put a ROTATED shape, then deletes it. Every side slot
+      // is already occupied by a scenario whose chart stays, and taking a sixth
+      // would narrow all the others.
+      "where a rotated shape lands",
     ]);
     for (const r of results) {
       expect(typeof r.ok).toBe("boolean");
@@ -3238,4 +3243,62 @@ describe("a deck count that is behind, not blind", () => {
       expect(r.detail).toContain("4 slides inserted");
     });
   });
+});
+
+/**
+ * THE QUESTION NOBODY COULD ANSWER, and the scenario that now asks it.
+ *
+ * `Shape.rotation` has never been written on a real PowerPoint in 333 rounds,
+ * because the battery draws only `clustered` and its one line node is the
+ * horizontal baseline. So `addSegment`'s rotated-rectangle branch — the path
+ * EVERY diagonal in the product takes — has zero real-host executions, and the
+ * renderer's assumption that `left`/`top`/`width` mean the box BEFORE rotation
+ * is untested against the host it is an assumption about.
+ *
+ * If the host means the post-rotation bounding box instead, every diagonal in
+ * every line, scatter, radar and violin chart is drawn wrong. These tests are
+ * what make the scenario capable of saying so.
+ */
+describe("where a rotated shape lands", () => {
+  const verdict = async () => {
+    const results = await runSelfTest("probe");
+    const r = results.find((x) => x.name === "where a rotated shape lands");
+    expect(r, "the scenario did not run at all").toBeTruthy();
+    return r!;
+  };
+
+  it("passes on a host that means the box before rotation", async () => {
+    installHost([makeSlide("s1")]);
+    setSelfTestRasterizer(async () => "data:image/png;base64,UE5H");
+    const r = await verdict();
+    expect(r.ok, `expected a pass on a well-behaved host: ${r.detail}`).toBe(true);
+    // Non-vacuous: it must have actually compared segments, not skipped.
+    expect(r.skipped ?? false, `skipped instead of measuring: ${r.detail}`).toBe(false);
+    expect(r.detail, "did not report what it measured").toMatch(/UNROTATED box/);
+  });
+
+  it("FAILS on a host that means the box after rotation", async () => {
+    // The whole point. A scenario that cannot report the bad answer is not
+    // evidence, and this is the answer that would invalidate every diagonal the
+    // product draws.
+    installHost([makeSlide("s1")]);
+    setSelfTestRasterizer(async () => "data:image/png;base64,UE5H");
+    faults.reportRotatedBounds = true;
+    try {
+      const r = await verdict();
+      expect(r.ok, `did not notice a host placing rotated shapes by their bounding box: ${r.detail}`).toBe(false);
+      expect(r.skipped ?? false, "called it a skip rather than a finding").toBe(false);
+      expect(r.detail, "failed without naming what it found").toMatch(/POST-rotation/);
+    } finally {
+      faults.reportRotatedBounds = false;
+    }
+  });
+
+  // CLEANUP IS GUARDED, but not from here. My own version of that test looked
+  // for the measurement shapes by name across every slide and found none either
+  // way — vacuous, and the cleanup mutant walked straight through it. The real
+  // guard is `leaves no two charts stacked on one slide` above: it fails when
+  // the cleanup is removed, because it asserts the CONSEQUENCE (a chart left on
+  // top of another) rather than the mechanism. Verified by mutating
+  // `await clean()` away and watching that test, not this one, go red.
 });
