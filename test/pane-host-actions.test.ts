@@ -181,6 +181,8 @@ const host = vi.hoisted(() => ({
    * first version of the guard for that used the first condition and passed
    * with the protection removed.
    */
+  /** Which platform the pane believes it is on — drives every web-only guard. */
+  platform: "OfficeOnline" as string,
   deckScanThrows: false,
   /**
    * THE SCAN THAT NEVER ANSWERS — what a host CRASH looks like, and a different
@@ -591,6 +593,7 @@ async function bootHostPane(opts?: { deckStyle?: Record<string, unknown> | null 
   host.deckSlideIds = undefined;
   host.canRaster = true;
   host.deckScanThrows = false;
+  host.platform = "OfficeOnline";
   host.deckInventoryScans = 0;
   host.deckScanHangsOnScan = null;
   host.deletedSlides = [];
@@ -668,9 +671,19 @@ async function bootHostPane(opts?: { deckStyle?: Record<string, unknown> | null 
       cb();
     },
     EventType: { DocumentSelectionChanged: "DocumentSelectionChanged" },
+    // `isWebHost()` lives in app.ts and is NOT part of the mocked renderer, so
+    // without these the pane always believed it was on the desktop and every
+    // web-only guard was untestable. Reverted once as noise; a surviving mutant
+    // (`web: false`) proved it is not.
+    PlatformType: { OfficeOnline: "OfficeOnline", PC: "PC", Mac: "Mac" },
     context: {
       host: "PowerPoint",
       displayLanguage: "en-US",
+      // A GETTER: this object is built once per boot, so a test setting
+      // `host.platform` afterwards would otherwise be silently ignored.
+      get diagnostics() {
+        return { platform: host.platform };
+      },
       document: {
         // watchSelection() registers a selection listener; capture it so a test
         // can fire it the way PowerPoint does when the user clicks a shape.
@@ -3168,5 +3181,62 @@ describe("the chart gallery can be navigated and its state can be heard", () => 
     const active = thumbs.filter((t) => t.classList.contains("active"));
     expect(pressed.length, "no chart type is announced as selected").toBe(1);
     expect(pressed[0], "the announced selection is not the one shown as selected").toBe(active[0]);
+  });
+});
+
+/**
+ * THE DOOR BACK THROUGH THE WALL, which had no lock on it.
+ *
+ * A chart over the web shape budget is auto-inserted as a picture, with a
+ * message ending "…\"Explode to native shapes\" turns it back." `doExplode` then
+ * rebuilt with `render: "shapes"` and went straight to `updateChartInSlide`,
+ * never consulting `wantsAutoPicture` — whose only other call site in the whole
+ * codebase is the insert path. The product invited the user through the one door
+ * it had just told them was dangerous.
+ *
+ * 17 of the 123 shipped charts exceed the budget; the largest is 401 shapes,
+ * which at this host's measured rate is many minutes of work — well past the
+ * 425-470s window where PowerPoint has been dying all week. The user loses the
+ * session and whatever was unsaved, having followed the add-in's own advice.
+ */
+describe("Explode respects the same budget the insert path enforces", () => {
+  beforeEach(bootHostPane);
+
+  const pictureChart = () => ({
+    configJson: JSON.stringify({ ...JSON.parse(chartJson([1, 2])), render: "image" }),
+    target: { slideId: "s1", shapeId: "pic-1", left: 10, top: 20 },
+  });
+
+  it("refuses to explode a chart the budget would have made a picture", async () => {
+    host.autoPicture = true; // the renderer says: too many shapes for this host
+    host.loadSelectionResult = pictureChart();
+    $("explode").click();
+    await settle();
+    expect(host.calls.updateChart, "exploded a chart the insert path would have refused").toHaveLength(0);
+    const said = $("host-note").textContent ?? "";
+    expect(said, `refused without saying why: ${said}`).toMatch(/shapes/i);
+    // AND IT ASKED THE RIGHT QUESTION. The renderer is mocked here, so a wrong
+    // argument is invisible to the return value — `alreadyPicture: true` would
+    // disable this guard for ever and every assertion above would still pass.
+    const pp = (await import("../src/render/powerpoint")) as unknown as {
+      wantsAutoPicture: { mock: { calls: [number, Record<string, unknown>][] } };
+    };
+    const asked = pp.wantsAutoPicture.mock.calls.at(-1);
+    expect(asked?.[1], "asked whether an ALREADY-picture wants to be one — the guard would never fire").toMatchObject({
+      alreadyPicture: false,
+      web: true,
+      canPicture: true,
+    });
+  });
+
+  it("explodes when the budget is not the problem", async () => {
+    // The common case must be untouched: most charts are nowhere near the budget,
+    // and a guard that refused everything would be worse than the bug.
+    host.autoPicture = false;
+    host.loadSelectionResult = pictureChart();
+    host.updateResult = { slideId: "s1", shapeId: "grp-1", left: 10, top: 20 };
+    $("explode").click();
+    await settle();
+    expect(host.calls.updateChart, "refused an ordinary chart").toHaveLength(1);
   });
 });

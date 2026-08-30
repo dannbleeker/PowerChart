@@ -2362,10 +2362,47 @@ async function doExplode() {
     return;
   }
   const cfg = { ...(JSON.parse(found.configJson) as ChartConfig), render: "shapes" as const };
+  const scene = buildChart(cfg);
+  /**
+   * THE SAME BUDGET THE INSERT PATH USES, because this is the door back through
+   * the wall it put up — and it had no lock on it.
+   *
+   * A chart over the budget is auto-inserted as a picture with a message that
+   * ends "…\"Explode to native shapes\" turns it back." This function then
+   * rebuilt with `render: "shapes"` and went straight to `updateChartInSlide`,
+   * never consulting `wantsAutoPicture` — whose only other call site in the
+   * codebase is the insert path. So the product invited the user through the
+   * one door it had just told them was dangerous.
+   *
+   * The cost is not theoretical: 17 of the 123 shipped charts exceed the budget
+   * and the largest is 401 shapes, which at this host's measured rate is many
+   * minutes of work, well past the 425-470s window where PowerPoint has been
+   * dying all week. The user loses the session and whatever was unsaved, having
+   * followed the add-in's own instruction.
+   *
+   * Refuse with the count. `canPicture` matters: a host that cannot rasterise
+   * has no picture to fall back TO, so exploding is the only way to see the
+   * chart at all and the guard correctly stands aside.
+   */
+  const shapes = estimateOfficeShapes(scene);
+  if (
+    wantsAutoPicture(shapes, {
+      web: isWebHost(),
+      canPicture: canInsertPicture(),
+      alreadyPicture: false,
+    })
+  ) {
+    note(
+      `That chart is ${shapes} shapes — too many for PowerPoint on the web to draw, so it stays a picture. ` +
+        `Open it on the desktop app to explode it, or make the chart simpler.`,
+      "err",
+    );
+    return;
+  }
   // Same live-canvas wall as an ordinary update: exploding a picture draws
   // every shape onto the slide in view. Look away while it happens.
   const next = await withSlideDeselected([found.target.slideId], (deselected) =>
-    updateChartInSlide(buildChart(cfg), found.target, {
+    updateChartInSlide(scene, found.target, {
       tagData: JSON.stringify(cfg),
       ...(deselected ? { shapesPerSync: OFFSCREEN_BATCH } : {}),
     }),
