@@ -723,7 +723,13 @@ while the published release stayed wrong.
 
 - Requirement sets: shapes need PowerPointApi **1.4+** (Win 2207+, Mac
   16.62+, web; not iPad); grouping 1.8, re-edit tags 1.3, pie rotation 1.10,
-  theme colors 1.10. The pane degrades gracefully below each.
+  theme colors 1.10. The pane degrades gracefully below each **except 1.10**:
+  below that the pie family (pie, doughnut, sunburst, gauge) inserts with no
+  slices at all, because a wedge cannot be built without rotation. Diagonal
+  lines used to fail there too — drawn as flat rectangles — and that is fixed
+  (2026-08-30). Microsoft's validator states a store submission is tested on
+  Windows and Mac desktop, which is exactly where 1.10 is most often missing, so
+  this is a submission concern and not only a user one.
 - Pages is static HTTPS — exactly what an add-in needs; no server code, no
   auth, no cost. If the repo must stay private instead, any static HTTPS
   host works (Azure Static Web Apps free tier, Cloudflare Pages) — only the

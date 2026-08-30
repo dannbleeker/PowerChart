@@ -6772,3 +6772,91 @@ describe("adding the slide a slow insert is offered", () => {
     }
   });
 });
+
+/**
+ * WHAT AN OLD HOST ACTUALLY DRAWS, which until 2026-08-30 nothing asserted.
+ *
+ * `Shape.rotation` is PowerPointApi 1.10 — recent, so most desktop Office is
+ * below it and volume-licensed builds are below it permanently. Both of the
+ * things that need rotation failed there, and neither failed loudly:
+ *
+ *   - a diagonal line was drawn as a rectangle at the right length and midpoint
+ *     and then left LYING FLAT, so line charts, scatter trend lines and radar
+ *     outlines came out as stacks of horizontal bars;
+ *   - a pie wedge was skipped entirely, so pie, doughnut, sunburst and gauge
+ *     inserted with a title, a legend, labels and no slices.
+ *
+ * `docs/MANUAL.md` said "missing capabilities degrade gracefully — charts still
+ * insert". The charts inserted; they were wrong.
+ */
+describe("a host that cannot rotate", () => {
+  const noRotation = (v: string) => v !== "1.10";
+
+  it("draws a diagonal as a real diagonal, not a rectangle lying flat", async () => {
+    const slide = makeSlide("s1");
+    installHost([slide], [], slide, noRotation);
+    await insertSceneIntoSlide(
+      buildChart({
+        ...config,
+        kind: "line",
+        data: { categories: ["A", "B", "C"], series: [{ name: "S", values: [1, 9, 3] }] },
+      }),
+      {},
+    );
+    // A line-chart segment on this host must be a LINE shape (`addLine`, or the
+    // `lineInverse` geometry for an up-right slope) — both draw a true diagonal
+    // without rotating anything, which is what this branch already did for
+    // dashed lines and simply never did for solid ones.
+    const flatBars = slide.created.filter(
+      (s) => s.name?.startsWith("line-") && s.geo === "rectangle" && s.rotation === undefined,
+    );
+    expect(flatBars, `${flatBars.length} line segments drawn as unrotated rectangles`).toEqual([]);
+    const segments = slide.created.filter((s) => s.name?.startsWith("line-"));
+    expect(segments.length, "no line segments at all").toBeGreaterThan(0);
+  });
+
+  it("still draws a proper rotated diagonal where the host can rotate", async () => {
+    // The fix must not cost the good host its precise geometry: with 1.10 the
+    // solid diagonal stays a rotated rectangle, which is what carries an exact
+    // stroke weight.
+    const slide = makeSlide("s1");
+    installHost([slide]);
+    await insertSceneIntoSlide(
+      buildChart({
+        ...config,
+        kind: "line",
+        data: { categories: ["A", "B", "C"], series: [{ name: "S", values: [1, 9, 3] }] },
+      }),
+      {},
+    );
+    const rotated = slide.created.filter((s) => s.name?.startsWith("line-") && typeof s.rotation === "number");
+    expect(rotated.length, "the rotating host stopped rotating its diagonals").toBeGreaterThan(0);
+  });
+
+  it("says so when it cannot draw a pie, instead of inserting an empty one", async () => {
+    /**
+     * A wedge cannot be built from axis-aligned shapes — that is why the fan of
+     * rotated triangles exists — so unlike the diagonal there is no rotation-free
+     * remedy here, and choosing one (refuse the insert, or fall back to the
+     * picture path) is a product decision recorded in docs/BACKLOG.md.
+     *
+     * What is NOT a decision is whether the failure is silent. It was.
+     */
+    setTracing(true);
+    const slide = makeSlide("s1");
+    installHost([slide], [], slide, noRotation);
+    const from = traceLog().entries.length;
+    await insertSceneIntoSlide(
+      buildChart({
+        ...config,
+        kind: "pie",
+        data: { categories: ["A", "B"], series: [{ name: "S", values: [3, 1] }] },
+      }),
+      {},
+    );
+    const said = traceLog()
+      .entries.slice(from)
+      .some((e) => e.message === "cannot draw a pie wedge on this host");
+    expect(said, "a pie inserted with no slices and nothing anywhere said why").toBe(true);
+  });
+});

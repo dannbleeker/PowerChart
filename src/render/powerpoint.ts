@@ -10627,10 +10627,26 @@ function addSegment(
     }
   };
 
-  // A rotated rectangle cannot carry a dash style, so a dashed line has to be a
-  // real line shape. Same question as `setDash` asks, for the same reason: `[]`
-  // is truthy and was forcing this branch for a line that is not dashed.
-  if (w < 0.5 || h < 0.5 || dashStyle !== "none") {
+  /**
+   * A rotated rectangle cannot carry a dash style, so a dashed line has to be a
+   * real line shape. Same question as `setDash` asks, for the same reason: `[]`
+   * is truthy and was forcing this branch for a line that is not dashed.
+   *
+   * AND A HOST THAT CANNOT ROTATE BELONGS HERE TOO, which is the whole of a bug
+   * this drew on every build below PowerPointApi 1.10. The rectangle path ended
+   * `if (canRotate()) rect.rotation = …`, so where rotation was unavailable the
+   * rectangle was still created — right length, right midpoint — and left LYING
+   * FLAT. Every diagonal in a line chart, every scatter trend line and every
+   * radar outline came out as a stack of horizontal bars. That is worse than
+   * drawing nothing: a missing line reads as missing, a horizontal one reads as
+   * data.
+   *
+   * Nothing new is needed. This branch already draws a true diagonal without
+   * rotating anything — `addLine` for a down-right slope, `lineInverse` for an
+   * up-right one — because that is what it has always done for dashed lines. The
+   * host that could not rotate was simply never sent here.
+   */
+  if (w < 0.5 || h < 0.5 || dashStyle !== "none" || !canRotate()) {
     const downRight = (x2 - x1) * (y2 - y1) > 0;
     const line =
       w < 0.5 || h < 0.5 || downRight
@@ -11653,10 +11669,33 @@ function addText(
  */
 function addWedgeFan(shapes: PowerPoint.ShapeCollection, n: WedgeNode, dx: number, dy: number): PowerPoint.Shape[] {
   const created: PowerPoint.Shape[] = [];
-  // Every shape in the fan is rotated, so on a host without 1.10 there is no fan
-  // to draw. Checked ONCE, up front: gated rather than wrapped, because the
-  // rejection would otherwise land on the shared sync — see canRotate.
-  if (!canRotate()) return created;
+  /**
+   * Every shape in the fan is rotated, so on a host without 1.10 there is no fan
+   * to draw. Checked ONCE, up front: gated rather than wrapped, because the
+   * rejection would otherwise land on the shared sync — see canRotate.
+   *
+   * AND IT IS TRACED, because until 2026-08-30 this was the quietest failure in
+   * the product. A pie, doughnut, sunburst or gauge on any build below
+   * PowerPointApi 1.10 — most desktop Office, and volume-licensed builds for
+   * good — inserted a chart with its title, its legend, its labels and NO
+   * SLICES, and said nothing anywhere. `docs/MANUAL.md` promised the opposite:
+   * "missing capabilities degrade gracefully — charts still insert".
+   *
+   * Unlike the diagonal-line case in `addSegment`, there is no rotation-free way
+   * to do this: a wedge cannot be built from axis-aligned shapes, which is why
+   * the fan exists at all. So the remedy is a product decision — refuse the
+   * insert with a message, or fall back to the picture path this engine already
+   * has — and it is recorded as one in `docs/BACKLOG.md`. What is NOT a decision
+   * is whether the failure should be silent.
+   */
+  if (!canRotate()) {
+    trace("draw", "cannot draw a pie wedge on this host", {
+      name: n.name,
+      needs: "PowerPointApi 1.10",
+      consequence: "the chart inserts with no slices",
+    });
+    return created;
+  }
   const cx = dx + n.cx;
   const cy = dy + n.cy;
   const span = n.endAngle - n.startAngle;

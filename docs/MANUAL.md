@@ -17,8 +17,16 @@ section and `skill/reference.md`.
 2. Requirements: PowerPoint on Windows 2207+, Mac 16.62+, or the web
    (PowerPointApi 1.4+). Grouping needs 1.8+, chart re-editing (tags) 1.3+,
    pies 1.10+ (shape rotation), deck-theme colors 1.10+. Marker symbols need
-   only 1.4 — they are preset geometry, not rotated shapes. Missing
-   capabilities degrade gracefully — charts still insert.
+   only 1.4 — they are preset geometry, not rotated shapes. Most missing
+   capabilities degrade gracefully: grouping, tags and theme colours are simply
+   skipped and the chart still inserts.
+
+   **The pie family is the exception, and it is a hard one.** Pie, doughnut,
+   sunburst and gauge are built from rotated shapes, and there is no way to
+   build them without rotation. Below **1.10** they insert with their title,
+   legend and labels and **no slices at all**. If you are on a build without
+   1.10 — most desktop Office before 2026, and volume-licensed/LTSC builds —
+   use a bar or column chart instead. The pane records the refusal in its trace.
 3. No host? The pane also runs as a plain web page (`npm run dev` →
    `localhost:3000`) with everything except insertion, plus a demo gallery.
 
