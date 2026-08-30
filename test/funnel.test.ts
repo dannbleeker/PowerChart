@@ -335,3 +335,70 @@ describe("the conversion rate stays inside the gap it is written in", () => {
     expect(checked, "no conversion label was examined at any frame — the test matched nothing").toBeGreaterThan(0);
   });
 });
+
+/**
+ * A BLANK CELL IS NOT A ZERO, and for three kinds it used to become one.
+ *
+ * funnel, waffle and cascade all opened with the same line —
+ * `Math.max(0, data.series[0]?.values[c] ?? 0)` — and then formatted their
+ * labels off the CLAMPED array. So "no data" and "negative" both reached the
+ * label as the number zero and the chart asserted it. Measured on
+ * `[1000, null, 250]` before the fix:
+ *
+ *     funnel    stage-value-1  = "0"
+ *     waffle    legend-label-1 = "Signups  0%"
+ *     cascade   drop-label-1   = "Other: 1,000 (100.0%)"
+ *
+ * The third is the one that shows why this ranks above a crash: cascade did not
+ * merely print a wrong number, it DERIVED a total collapse from an empty cell
+ * and captioned it. Every other kind — clustered, line, pie, treemap, sunburst
+ * — has always omitted a blank.
+ *
+ * Geometry may still clamp; a band cannot have negative width. Text may not.
+ */
+describe("a value nobody supplied is never printed as a measurement", () => {
+  const withBlank = (kind: string): SceneNode[] =>
+    buildChart({
+      kind,
+      ...DEFAULT_SIZE,
+      data: { categories: ["Visits", "Signups", "Paid"], series: [{ name: "S", values: [1000, null, 250] }] },
+    } as unknown as ChartConfig).nodes;
+
+  const texts = (ns: SceneNode[], re: RegExp) =>
+    ns.filter((n): n is TextNode => n.kind === "text" && re.test(n.name || "")).map((n) => String(n.text));
+
+  it("omits the funnel's value label for a stage with no value", () => {
+    const ns = withBlank("funnel");
+    expect(texts(ns, /^stage-value-/), "printed a value for a stage that has none").toEqual(["1,000", "250"]);
+    // And no conversion rate either: a percentage of an unknown is unknown.
+    const conv = texts(ns, /^conv/).join(" ");
+    expect(conv, `stated a conversion against a blank stage: ${conv}`).not.toMatch(/0\.0%|100\.0%/);
+  });
+
+  it("omits the waffle's share for a category with no value", () => {
+    const legend = texts(withBlank("waffle"), /^legend-label-/);
+    expect(legend, "stated a 0% share for a category nobody measured").toEqual(["Visits  80%", "Signups", "Paid  20%"]);
+  });
+
+  it("does not invent a cascade drop out of an empty cell", () => {
+    const ns = withBlank("cascade");
+    const drops = texts(ns, /^drop-label-/).join(" | ");
+    expect(drops, `invented a drop from a blank stage: ${drops}`).not.toMatch(/100\.0%/);
+    // The stage itself carries no number either.
+    expect(texts(ns, /^stage-label-1-/), "labelled a stage that has no value").toEqual([]);
+  });
+
+  it("changes nothing when every value is present", () => {
+    // The guard must not cost a complete chart its labels — this is the case
+    // every existing test and the whole shipped deck depend on.
+    const full = (kind: string) =>
+      buildChart({
+        kind,
+        ...DEFAULT_SIZE,
+        data: { categories: ["Visits", "Signups", "Paid"], series: [{ name: "S", values: [1000, 600, 250] }] },
+      } as unknown as ChartConfig).nodes;
+    expect(texts(full("funnel"), /^stage-value-/)).toEqual(["1,000", "600", "250"]);
+    expect(texts(full("waffle"), /^legend-label-/).every((t) => /%/.test(t))).toBe(true);
+    expect(texts(full("cascade"), /^stage-label-1-/).join(" "), "a complete cascade lost its stage").toMatch(/600/);
+  });
+});

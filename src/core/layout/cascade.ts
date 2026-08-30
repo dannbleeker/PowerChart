@@ -2,7 +2,7 @@ import type { ChartConfig, ChartStyle, Decorations } from "../types";
 import { contrastInk, textWidth, type SceneNode } from "../scene";
 import { clipToWidth } from "../elements";
 import { formatNumber, formatPercent, resolveFormat } from "../format";
-import { titleInkBottom, fitPlot, footnoteH, titleHeight, titleNode } from "./frame";
+import { titleInkBottom, firstSeriesValues, fitPlot, footnoteH, titleHeight, titleNode } from "./frame";
 import type { LayoutResult } from "./column";
 
 /**
@@ -24,7 +24,7 @@ export function layoutCascade(cfg: ChartConfig, style: ChartStyle, decor: Decora
   const dropLabels = parts.map((p) => p[1] ?? "");
   const groups = parts.map((p) => p[2] ?? "");
   const n = stages.length;
-  const values = stages.map((_, c) => Math.max(0, data.series[0]?.values[c] ?? 0));
+  const { plot: values, raw } = firstSeriesValues(data, n);
   // Valid cascades decrease, so the first stage IS the max; scaling by the
   // max keeps malformed (growing) data inside the plot instead of overflowing.
   const v0 = Math.max(...values, 1);
@@ -119,7 +119,9 @@ export function layoutCascade(cfg: ChartConfig, style: ChartStyle, decor: Decora
     nodes.push({ kind: "rect", x, y: plot.y, w: barW, h, fill, name: `stage-${c}` });
 
     // In-bar text: stage name near the top, value + % of previous centered.
-    const pct = c > 0 && values[c - 1] > 0 ? values[c] / values[c - 1] : null;
+    // Unknown in, unknown out: a blank cell used to make this a 100% drop.
+    const known = raw[c] !== null && raw[c - 1] !== null;
+    const pct = c > 0 && known && values[c - 1] > 0 ? values[c] / values[c - 1] : null;
     const lines = [
       { text: stages[c], y: plot.y + h * 0.18, bold: false, size: fs },
       { text: formatNumber(v, fmt), y: plot.y + h * 0.5 - fs * 0.75, bold: true, size: fs * 1.05 },
@@ -167,7 +169,11 @@ export function layoutCascade(cfg: ChartConfig, style: ChartStyle, decor: Decora
     }
 
     // Remainder box: what the previous stage lost at this split.
-    if (c > 0) {
+    // `known`, or the remainder is invented: with a blank stage clamped to 0 the
+    // subtraction said the whole of the previous stage was lost and captioned it
+    // "Other: 1,000 (100.0%)". If we do not know this stage, we do not know what
+    // stopped here.
+    if (c > 0 && known) {
       const rem = Math.max(0, values[c - 1] - v);
       if (rem > 0) {
         // The column is ONE bar split in two: the colored segment above is

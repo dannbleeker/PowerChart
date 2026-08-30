@@ -2,7 +2,7 @@ import type { ChartConfig, ChartStyle, Decorations } from "../types";
 import { textWidth, type SceneNode } from "../scene";
 import { formatPercent } from "../format";
 import { noDataFill } from "../color";
-import { MIN_LABEL_FS, footnoteH, titleHeight, titleNode } from "./frame";
+import { MIN_LABEL_FS, firstSeriesValues, footnoteH, titleHeight, titleNode } from "./frame";
 import type { LayoutResult } from "./column";
 
 /**
@@ -20,7 +20,7 @@ import type { LayoutResult } from "./column";
 export function layoutWaffle(cfg: ChartConfig, style: ChartStyle, decor: Decorations): LayoutResult {
   const { data } = cfg;
   const fs = style.fontSize;
-  const values = data.categories.map((_, c) => Math.max(0, data.series[0]?.values[c] ?? 0));
+  const { plot: values, raw } = firstSeriesValues(data, data.categories.length);
   const sum = values.reduce((a, b) => a + b, 0);
   const single = data.categories.length === 1;
   const stated =
@@ -49,13 +49,18 @@ export function layoutWaffle(cfg: ChartConfig, style: ChartStyle, decor: Decorat
   const titleH = titleHeight(cfg, style);
   const legendEntries = data.categories.map((name, c) => ({
     name,
-    pct: formatPercent(values[c] / denom, quotas[c] > 0 && quotas[c] < 1 ? 1 : 0, false, cfg.numberFormat?.locale),
+    // A share DERIVED from an unknown is unknown. A blank cell used to read
+    // "Signups  0%", which states a measurement that was never taken.
+    pct:
+      raw[c] === null
+        ? ""
+        : formatPercent(values[c] / denom, quotas[c] > 0 && quotas[c] < 1 ? 1 : 0, false, cfg.numberFormat?.locale),
     color: data.series[0]?.colors?.[c] ?? style.palette[c % style.palette.length],
   }));
   const legendW =
     decor.seriesLabels === false
       ? 0
-      : Math.max(...legendEntries.map((e) => textWidth(`${e.name}  ${e.pct}`, fs))) + fs * 2.2;
+      : Math.max(...legendEntries.map((e) => textWidth(`${e.name}  ${e.pct}`.trimEnd(), fs))) + fs * 2.2;
 
   const footH = footnoteH(cfg, style, decor);
   const availH = cfg.height - titleH - footH - 8;
@@ -181,7 +186,9 @@ export function layoutWaffle(cfg: ChartConfig, style: ChartStyle, decor: Decorat
           y,
           w: cfg.width - lx - fs * 1.3 - 2,
           h: rowH,
-          text: `${e.name}  ${e.pct}`,
+          // Trimmed: a category whose value is unknown has no percentage, and the
+          // separator alone would read as a truncated number.
+          text: `${e.name}  ${e.pct}`.trimEnd(),
           fontSize: fs,
           color: style.text,
           align: "left",

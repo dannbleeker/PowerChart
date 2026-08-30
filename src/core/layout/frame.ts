@@ -446,6 +446,37 @@ export function varianceBandHeight(cfg: ChartConfig, decor: Decorations, style: 
   return room - want >= MIN_PLOT_SIDE ? want : 0;
 }
 
+/**
+ * The first series' values, twice: clamped for GEOMETRY, and raw for TEXT.
+ *
+ * Three single-series kinds — funnel, waffle and cascade — opened with the same
+ * line, `Math.max(0, data.series[0]?.values[c] ?? 0)`, and then formatted their
+ * labels off the clamped array. So a blank cell and a negative both arrived at
+ * the label as the number zero, and the chart ASSERTED it. Measured on
+ * `[1000, null, 250]`:
+ *
+ *     funnel    stage-value-1  = "0"
+ *     waffle    legend-label-1 = "Signups  0%"
+ *     cascade   drop-label-1   = "Other: 1,000 (100.0%)"   <- a drop that never happened
+ *
+ * Every other kind — clustered, line, pie, treemap, sunburst — omits a blank
+ * correctly. A missing bar reads as missing; a printed "0" reads as measured,
+ * and cascade went on to compute a 100% collapse out of nothing.
+ *
+ * The split is the fix. `plot` is what geometry needs and may be clamped, since
+ * a band cannot have negative width. `raw` keeps `null` for "no value" and keeps
+ * a negative as itself, and it is what any TEXT must be formatted from — with
+ * the rule that a figure DERIVED from an unknown is itself unknown and must not
+ * be printed at all.
+ */
+export function firstSeriesValues(data: ChartConfig["data"], n: number): { plot: number[]; raw: (number | null)[] } {
+  const raw = Array.from({ length: n }, (_, c) => {
+    const v = data.series[0]?.values[c];
+    return typeof v === "number" && Number.isFinite(v) ? v : null;
+  });
+  return { raw, plot: raw.map((v) => Math.max(0, v ?? 0)) };
+}
+
 /** Height reserved above the plot for the chart title (0 when untitled). */
 export function titleHeight(cfg: ChartConfig, style: ChartStyle): number {
   return cfg.title ? style.fontSize * 1.6 + 6 : 0;

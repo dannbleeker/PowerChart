@@ -2,7 +2,7 @@ import type { ChartConfig, ChartStyle, Decorations } from "../types";
 import { contrastInk, textWidth, type SceneNode } from "../scene";
 import { clipToWidth } from "../elements";
 import { formatNumber, formatPercent, resolveFormat } from "../format";
-import { MIN_LABEL_FS, bandFontSize, fitPlot, footnoteH, titleHeight, titleNode } from "./frame";
+import { MIN_LABEL_FS, bandFontSize, firstSeriesValues, fitPlot, footnoteH, titleHeight, titleNode } from "./frame";
 import type { LayoutResult } from "./column";
 
 /**
@@ -16,7 +16,7 @@ export function layoutFunnel(cfg: ChartConfig, style: ChartStyle, decor: Decorat
   const { data } = cfg;
   const fs = style.fontSize;
   const n = data.categories.length;
-  const values = data.categories.map((_, c) => Math.max(0, data.series[0]?.values[c] ?? 0));
+  const { plot: values, raw } = firstSeriesValues(data, n);
   const vMax = Math.max(1, ...values);
   const fmt = resolveFormat(values, cfg.numberFormat);
 
@@ -126,8 +126,11 @@ export function layoutFunnel(cfg: ChartConfig, style: ChartStyle, decor: Decorat
         name: `category-${c}`,
       });
     }
-    if (decor.segmentLabels && labelFs > 0) {
-      const label = formatNumber(v, fmt);
+    // `raw[c]`, not `v`: `v` is the CLAMPED value, so a blank cell and a negative
+    // both reach here as 0 and the label states it as measured. No value, no label
+    // — which is what clustered and line have always done.
+    if (decor.segmentLabels && labelFs > 0 && raw[c] !== null) {
+      const label = formatNumber(raw[c] as number, fmt);
       const labelW = textWidth(label, labelFs) + 6;
       // Outside means to the RIGHT of the band, and the widest band already
       // reaches the edge of the plot — so on a large font there is no room out
@@ -161,7 +164,9 @@ export function layoutFunnel(cfg: ChartConfig, style: ChartStyle, decor: Decorat
     // Conversion rate vs the previous stage, in the gap between bands. The
     // marker follows the direction: a fixed ▾ contradicted itself on the
     // ascending (pyramid) ordering this file recommends, printing "▾ 500.0%".
-    if (c > 0 && values[c - 1] > 0) {
+    // A conversion rate DERIVED from an unknown is unknown. Either end missing
+    // means no percentage rather than a percentage of zero.
+    if (c > 0 && values[c - 1] > 0 && raw[c] !== null && raw[c - 1] !== null) {
       const marker = v > values[c - 1] ? "▴ " : v < values[c - 1] ? "▾ " : "";
       // Bounded by the GAP it sits in, which nothing did.
       //
