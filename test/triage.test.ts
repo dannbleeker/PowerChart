@@ -2659,6 +2659,41 @@ describe("what it took to start each round", () => {
     expect(pooled.clean, "an absent reading was counted as a clean start").toBe(1);
   });
 
+  it("divides crashes by ATTEMPTS per slide size — the number nobody had computed", () => {
+    /**
+     * Every input to this has been in the archive for months and no instrument
+     * divided one by the other; `docs/BACKLOG.md` says so in as many words. Over
+     * 322 rounds the answer is 40 crash events in 81 attempts at 4:3 against 9
+     * in 365 at 16:9 — a sixteen-fold gap that no report printed.
+     *
+     * ATTEMPTS, NOT ROUNDS, is the denominator, and this fixture is built so the
+     * two disagree: the 4:3 round below crashed twice before landing, so it is
+     * ONE round and THREE attempts. Counting rounds would report one-in-one and
+     * hide how hard that arm is failing.
+     */
+    const pooled = poolDriverRuns([
+      { driverSlideSize: "4:3", driverRun: { attempts: 3, recovered: ["crashed", "crashed"] } },
+      { driverSlideSize: "16:9", driverRun: { attempts: 1, recovered: [] } },
+      { driverSlideSize: "16:9", driverRun: { attempts: 2, recovered: ["not-ready:pane-closed"] } },
+      { driverRun: { attempts: 1, recovered: [] } }, // never said which size it ran
+    ]);
+    const by = Object.fromEntries(pooled.bySize.map((s: { size: string }) => [s.size, s]));
+    expect(by["4:3"]).toMatchObject({ rounds: 1, attempts: 3, crashes: 2, roundsWithCrash: 1 });
+    expect(by["16:9"]).toMatchObject({ rounds: 2, attempts: 3, crashes: 0, roundsWithCrash: 0 });
+    // A round that did not record its size gets its own bucket and is never
+    // folded into a real arm — the same rule `unrecorded` follows everywhere
+    // else here, because a missing reading is not a reading of zero.
+    expect(by.unrecorded).toMatchObject({ rounds: 1, attempts: 1, crashes: 0 });
+    // Worst first, so the failing arm cannot be skimmed past.
+    expect(pooled.bySize[0].size, "the worst arm was not listed first").toBe("4:3");
+    // A recovery reason that merely MENTIONS a crash is still one crash event.
+    expect(
+      poolDriverRuns([{ driverSlideSize: "4:3", driverRun: { attempts: 2, recovered: ["crashed+pane-closed"] } }])
+        .bySize[0].crashes,
+      "a compound recovery reason was not counted as a crash",
+    ).toBe(1);
+  });
+
   it("separates the three reasons a chart has no parts list, which one counter cannot", async () => {
     // `tracePartsOutcome` was built to tell three faults apart — never built
     // because the chart was grouped; built and lost to a throwing read-back;

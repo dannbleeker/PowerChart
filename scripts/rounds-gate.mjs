@@ -315,6 +315,20 @@ if (isMain(import.meta.url, process.argv[1])) {
     for (const c of starts.causes.slice(0, 6))
       console.log(`      ${String(c.n).padStart(3)}x  recovered from ${c.cause}`);
     console.log("    Counts, not a rate: driverRun is newer than most of the archive.");
+    // CRASHES PER ATTEMPT, BY SLIDE SIZE. Every input to this has been archived
+    // for months and nothing divided one by the other; `docs/BACKLOG.md` says as
+    // much in as many words. The gap it prints is sixteen-fold, and invisible
+    // until something printed it.
+    if (starts.bySize?.length > 1) {
+      console.log("    crashes per ATTEMPT, by slide size — the arm that is failing, not the round count:");
+      for (const s of starts.bySize)
+        console.log(
+          `      ${s.size.padEnd(11)} ${String(s.crashes).padStart(3)} crash(es) in ${String(s.attempts).padStart(4)} attempt(s)` +
+            ` = ${((100 * s.crashes) / Math.max(1, s.attempts)).toFixed(1).padStart(5)}%` +
+            `   (${s.roundsWithCrash} of ${s.rounds} round(s) hit one)`,
+        );
+      console.log("      Aspect ratio and deck file are CONFOUNDED — cyclePlan has never crossed them.");
+    }
     // THE ARM, SPLIT ON THE PANE RATHER THAN ON THE FLAG. Round 166 ran without
     // `--fresh` and started on a 69-second pane anyway, because a merge preceded
     // it. The flag is one way to get a fresh pane, not the variable itself, and

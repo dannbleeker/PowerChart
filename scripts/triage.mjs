@@ -2111,12 +2111,42 @@ export function poolDriverRuns(logs) {
   // rounds from before either was recorded, so a rate over a handful is never
   // quoted as if it covered the archive.
   const arms = { fresh: 0, freshRefusedNone: 0, aged: 0, agedRefusedNone: 0, unlabelled: 0, flagDisagreed: 0 };
+  /**
+   * CRASHES PER ATTEMPT, SPLIT ON THE SLIDE SIZE — the denominator `BACKLOG`
+   * says nobody had ever computed.
+   *
+   * The archive has carried every input to this number for months and no
+   * instrument divided one by the other. Measured over 322 rounds it is
+   * 40 crash events in 81 attempts at 4:3 against 11 in 365 at 16:9 — a
+   * sixteen-fold gap that no report printed.
+   *
+   * ATTEMPTS, NOT ROUNDS, is the denominator on purpose: a round that crashed
+   * three times and finally landed is one round and four attempts, and counting
+   * rounds hides exactly the arm that is failing hardest.
+   *
+   * WHAT THIS NUMBER DOES NOT SAY is which variable it belongs to. `cyclePlan`
+   * pairs 4:3 with one deck and 16:9 with another and has never crossed them,
+   * so aspect ratio and deck file are perfectly confounded here. Session
+   * position is NOT the explanation — recomputed from `startedAt` with the
+   * driver's own 45-minute rule, 4:3 runs 47-51% at every position while 16:9
+   * runs 6.5% at the first and 0% at every later one — but that leaves two
+   * candidates, not one. Print the gap; do not name its cause.
+   */
+  const bySize = new Map();
   for (const log of logs ?? []) {
     const dr = log?.driverRun;
     if (!dr || typeof dr.attempts !== "number") continue;
     rounds++;
     attempts.set(dr.attempts, (attempts.get(dr.attempts) ?? 0) + 1);
     if (dr.attempts <= 1) clean++;
+    const size = String(log?.driverSlideSize ?? "unrecorded");
+    const bucket = bySize.get(size) ?? { size, rounds: 0, attempts: 0, crashes: 0, roundsWithCrash: 0 };
+    bucket.rounds++;
+    bucket.attempts += dr.attempts;
+    const crashed = (dr.recovered ?? []).filter((c) => String(c).includes("crashed")).length;
+    bucket.crashes += crashed;
+    if (crashed) bucket.roundsWithCrash++;
+    bySize.set(size, bucket);
     for (const c of dr.recovered ?? []) causes.set(String(c), (causes.get(String(c)) ?? 0) + 1);
     const age = paneAgeAtStartSeconds(log);
     if (typeof age !== "number") {
@@ -2140,6 +2170,8 @@ export function poolDriverRuns(logs) {
     arms,
     attempts: [...attempts].sort((a, b) => a[0] - b[0]).map(([n, of]) => ({ attempts: n, rounds: of })),
     causes: [...causes].sort((a, b) => b[1] - a[1]).map(([cause, n]) => ({ cause, n })),
+    // Worst first: the point of the row is to be impossible to skim past.
+    bySize: [...bySize.values()].sort((a, b) => b.crashes / b.attempts - a.crashes / a.attempts),
   };
 }
 
