@@ -601,6 +601,38 @@ describe("task pane — status colour and headings", () => {
     expect(note().className).toBe("hint status-err");
   });
 
+  it("does not call valid JSON a syntax error", () => {
+    /**
+     * One `try` used to cover both `JSON.parse` and `applyConfig`, so a config
+     * that PARSES and then breaks ingest was reported as "Invalid JSON:
+     * data.series.some is not a function" — sending the user to hunt a syntax
+     * error that is not there, in text any validator calls fine.
+     *
+     * `stateFromConfig`'s own comment records this symptom, and `asArray` made
+     * the common shapes survivable without making the MESSAGE honest. These two
+     * are shapes it does not cover.
+     */
+    for (const valid of [
+      { kind: "clustered", data: null },
+      { kind: "clustered", data: { categories: "A", series: "x" } },
+    ]) {
+      ($("json-io") as HTMLTextAreaElement).value = JSON.stringify(valid);
+      $("json-import").click();
+      const said = String($("host-note").textContent);
+      expect(said, `called valid JSON a syntax error: ${said}`).not.toMatch(/^Invalid JSON:/);
+      expect(said, `said nothing useful instead: ${said}`).toMatch(/valid JSON, but not a chart/);
+      expect($("host-note").className, "reported a failure as a success").toBe("hint status-err");
+    }
+  });
+
+  it("still calls a real syntax error one", () => {
+    // The other half: separating the two must not stop the pane naming an
+    // actual syntax error, which is what that message was always right about.
+    ($("json-io") as HTMLTextAreaElement).value = "{ not json";
+    $("json-import").click();
+    expect(String($("host-note").textContent)).toMatch(/^Invalid JSON:/);
+  });
+
   it("labels a successful load as such", () => {
     importConfig({ kind: "clustered", data: baseData });
     expect($("host-note").className).toBe("hint status-ok");

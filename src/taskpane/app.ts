@@ -2748,14 +2748,40 @@ $("json-export").addEventListener("click", () => {
   ($("json-io") as HTMLTextAreaElement).value = JSON.stringify(currentConfig(), null, 2);
 });
 $("json-import").addEventListener("click", () => {
+  /**
+   * TWO FAILURES, TWO MESSAGES. One `try` covered both, so anything
+   * `applyConfig` threw was reported as a SYNTAX error. Measured on configs
+   * that are perfectly valid JSON:
+   *
+   *   {"kind":"clustered","data":null}
+   *     -> Invalid JSON: Cannot read properties of null (reading 'series')
+   *   {"kind":"clustered","data":{"categories":"A","series":"x"}}
+   *     -> Invalid JSON: data.series.some is not a function
+   *
+   * That sends the user hunting a syntax error that is not there, in text any
+   * validator will tell them is fine. `stateFromConfig`'s own comment records
+   * this symptom ("palette.join is not a function") and `asArray` made the
+   * common shapes survivable — it did not make the MESSAGE honest, and the
+   * shapes it does not cover still arrive here.
+   */
+  let parsed: unknown;
   try {
-    const parsed = JSON.parse(($("json-io") as HTMLTextAreaElement).value);
-    applyConfig({ ...DEFAULT_SIZE, ...(Array.isArray(parsed) ? parsed[0] : parsed) }, null);
+    parsed = JSON.parse(($("json-io") as HTMLTextAreaElement).value);
+  } catch (err) {
+    note("Invalid JSON: {error}", "err", { error: err instanceof Error ? err.message : String(err) });
+    return;
+  }
+  try {
+    const one = (Array.isArray(parsed) ? parsed[0] : parsed) as ChartConfig;
+    applyConfig({ ...DEFAULT_SIZE, ...one }, null);
     if (Array.isArray(parsed))
       note('Loaded chart 1 of {total} — use "Insert batch" for all.', "ok", { total: parsed.length });
     else note("Chart config loaded.", "ok");
   } catch (err) {
-    note("Invalid JSON: {error}", "err", { error: err instanceof Error ? err.message : String(err) });
+    // The JSON parsed; the chart it describes is not one this pane can open.
+    note("That is valid JSON, but not a chart this pane can open: {error}", "err", {
+      error: err instanceof Error ? err.message : String(err),
+    });
   }
 });
 

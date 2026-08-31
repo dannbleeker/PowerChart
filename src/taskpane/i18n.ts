@@ -128,6 +128,8 @@ export const EN = {
   "Couldn't render PNG: {error}": "Couldn't render PNG: {error}",
   "Style import failed: {error}": "Style import failed: {error}",
   "Invalid JSON: {error}": "Invalid JSON: {error}",
+  "That is valid JSON, but not a chart this pane can open: {error}":
+    "That is valid JSON, but not a chart this pane can open: {error}",
   "Host answered late — {message}": "Host answered late — {message}",
   "Same scale applied to {n} charts (max {max}).": "Same scale applied to {n} charts (max {max}).",
   "Inserted {n} chart(s) on the current slide.": "Inserted {n} chart(s) on the current slide.",
