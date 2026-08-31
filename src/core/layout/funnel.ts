@@ -166,7 +166,13 @@ export function layoutFunnel(cfg: ChartConfig, style: ChartStyle, decor: Decorat
     // ascending (pyramid) ordering this file recommends, printing "▾ 500.0%".
     // A conversion rate DERIVED from an unknown is unknown. Either end missing
     // means no percentage rather than a percentage of zero.
-    if (c > 0 && values[c - 1] > 0 && raw[c] !== null && raw[c - 1] !== null) {
+    // …AND NEITHER END IS NEGATIVE. `values` is the CLAMPED array, so a stage of
+    // -50 arrives here as 0 and printed "▾ 0.0%" — a conversion rate of nothing,
+    // stated as measured, from a number the stage label beside it renders
+    // honestly as "-50". A funnel stage is a count: negative is not a small
+    // conversion, it is data that cannot have a rate taken of it. The stage
+    // value still shows -50, which is what tells the user their sheet is wrong.
+    if (c > 0 && values[c - 1] > 0 && raw[c] !== null && raw[c - 1] !== null && raw[c]! >= 0 && raw[c - 1]! >= 0) {
       const marker = v > values[c - 1] ? "▴ " : v < values[c - 1] ? "▾ " : "";
       // Bounded by the GAP it sits in, which nothing did.
       //

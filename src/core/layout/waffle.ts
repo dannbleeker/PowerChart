@@ -49,10 +49,18 @@ export function layoutWaffle(cfg: ChartConfig, style: ChartStyle, decor: Decorat
   const titleH = titleHeight(cfg, style);
   const legendEntries = data.categories.map((name, c) => ({
     name,
-    // A share DERIVED from an unknown is unknown. A blank cell used to read
-    // "Signups  0%", which states a measurement that was never taken.
+    /**
+     * A share DERIVED from an unknown is unknown. A blank cell used to read
+     * "Signups  0%", which states a measurement that was never taken.
+     *
+     * A NEGATIVE part reaches that same "0%" by the same route: `values` is the
+     * CLAMPED array, so -20 arrives as 0 and printed "B  0%". A waffle is a
+     * part-to-whole picture, and a negative part has no share of a whole — it
+     * is not a share of NOTHING, which is what "0%" claims. The category keeps
+     * its name, so it stays visible as something the chart could not place.
+     */
     pct:
-      raw[c] === null
+      raw[c] === null || raw[c]! < 0
         ? ""
         : formatPercent(values[c] / denom, quotas[c] > 0 && quotas[c] < 1 ? 1 : 0, false, cfg.numberFormat?.locale),
     color: data.series[0]?.colors?.[c] ?? style.palette[c % style.palette.length],

@@ -401,4 +401,68 @@ describe("a value nobody supplied is never printed as a measurement", () => {
     expect(texts(full("waffle"), /^legend-label-/).every((t) => /%/.test(t))).toBe(true);
     expect(texts(full("cascade"), /^stage-label-1-/).join(" "), "a complete cascade lost its stage").toMatch(/600/);
   });
+
+  /**
+   * THE HALF THAT WAS DEFERRED, and it reaches the same "0%" by the same route.
+   *
+   * The blank-cell fix above kept `null` out of the labels. `Math.max(0, …)` is
+   * still in front of the geometry, though, so a NEGATIVE cell also arrives at
+   * the label as zero. Measured on `[1000, -50, 250]` before this:
+   *
+   *     funnel    conversion-1 = "▾ 0.0%"
+   *     waffle    legend-label-1 = "B  0%"
+   *     cascade   drop-label-1 = "Other: 1,000 (100.0%)"
+   *
+   * Cascade is the worst again, and for the same reason: it dropped the stage,
+   * then DERIVED a total wipe-out from the clamp and captioned it — on a sheet
+   * whose only fault was a sign.
+   *
+   * These are counts. A negative stage is not a small conversion or a complete
+   * loss; it is a number no share can be taken of, and the rule is the null
+   * one: unknown in, unknown out. Geometry may still clamp — a band cannot have
+   * negative width. Text may not.
+   */
+  describe("and neither is a value no share can be taken of", () => {
+    const withNegative = (kind: string, values: (number | null)[] = [1000, -50, 250]): SceneNode[] =>
+      buildChart({
+        kind,
+        ...DEFAULT_SIZE,
+        data: { categories: ["Visits", "Signups", "Paid"], series: [{ name: "S", values }] },
+      } as unknown as ChartConfig).nodes;
+
+    it("states no funnel conversion across a negative stage", () => {
+      const ns = withNegative("funnel");
+      const conv = texts(ns, /^conv/).join(" ");
+      expect(conv, `stated a conversion across a negative stage: ${conv}`).not.toMatch(/%/);
+      // …and the stage still shows the number the user actually typed, which is
+      // what tells them the sheet is wrong.
+      expect(texts(ns, /^stage-value-/), "hid the negative instead of showing it").toContain("-50");
+    });
+
+    it("claims no cascade drop from a negative stage", () => {
+      const drops = texts(withNegative("cascade"), /^drop-label-/).join(" ");
+      expect(drops, `derived a drop from a clamped negative: ${drops}`).not.toMatch(/100\.0%/);
+    });
+
+    it("gives a negative waffle part no share of the whole", () => {
+      const legend = texts(withNegative("waffle", [60, -20, 40]), /^legend-label-/);
+      // "Signups" is the middle category `withNegative` uses — the negative one.
+      expect(
+        legend.find((t) => t.startsWith("Signups")),
+        "a negative part was given a share",
+      ).toBe("Signups");
+      // The parts that DO have a share keep it — the fix must not silence the
+      // legend wholesale.
+      expect(legend.filter((t) => /%/.test(t)).length).toBe(2);
+    });
+
+    it("leaves an all-positive chart of each kind exactly as it was", () => {
+      // The guard on the guard: every assertion above is about text NOT being
+      // drawn, and deleting the labels outright would satisfy all three.
+      const ok = (kind: string, values: number[]) => withNegative(kind, values);
+      expect(texts(ok("funnel", [1000, 600, 250]), /^conv/).join(" ")).toMatch(/%/);
+      expect(texts(ok("cascade", [1000, 600, 250]), /^stage-label-1-/).join(" ")).toMatch(/600/);
+      expect(texts(ok("waffle", [60, 20, 40]), /^legend-label-/).every((t) => /%/.test(t))).toBe(true);
+    });
+  });
 });

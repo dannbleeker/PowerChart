@@ -119,8 +119,20 @@ export function layoutCascade(cfg: ChartConfig, style: ChartStyle, decor: Decora
     nodes.push({ kind: "rect", x, y: plot.y, w: barW, h, fill, name: `stage-${c}` });
 
     // In-bar text: stage name near the top, value + % of previous centered.
-    // Unknown in, unknown out: a blank cell used to make this a 100% drop.
-    const known = raw[c] !== null && raw[c - 1] !== null;
+    /**
+     * KNOWN — and something a share can honestly be taken OF.
+     *
+     * Unknown in, unknown out: a blank cell used to make this a 100% drop, and
+     * the null half of this gate fixed that. A NEGATIVE stage does the same
+     * thing by the same route, because `values` is the CLAMPED array and -50
+     * arrives here as 0: the stage got no bar and no label, and the remainder
+     * box beside it read "Other: 1,000 (100.0%)" — a total wipe-out that never
+     * happened, computed from a clamp, on a sheet whose only fault was a sign.
+     *
+     * A cascade stage is a surviving count. Negative is not a 100% drop; it is
+     * a number no share can be taken of.
+     */
+    const known = raw[c] !== null && raw[c - 1] !== null && raw[c]! >= 0 && raw[c - 1]! >= 0;
     const pct = c > 0 && known && values[c - 1] > 0 ? values[c] / values[c - 1] : null;
     const lines = [
       { text: stages[c], y: plot.y + h * 0.18, bold: false, size: fs },

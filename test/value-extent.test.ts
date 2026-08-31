@@ -788,6 +788,32 @@ describe("a manual scale narrower than the data", () => {
     }
   });
 
+  it("clips on a LOG axis, which returns before the clamp was declared", () => {
+    /**
+     * The clamp above was written for the linear branch. `valueScale`'s log
+     * branch sits thirty lines EARLIER and returns its own `toY`, so it never
+     * saw the fix — and it survived the test beside it because that test never
+     * sets `logScale`.
+     *
+     * `scale.max: 100` over data reaching 10,000 put the top bar at y = -540 on
+     * a 300pt canvas: 540 points above the slide. `clip` is declared above both
+     * branches now, so they cannot answer this differently again.
+     */
+    const cfg = {
+      ...DEFAULT_SIZE,
+      kind: "clustered",
+      logScale: true,
+      scale: { max: 100 },
+      data: { categories: ["A", "B"], series: [{ name: "S", values: [10, 10000] }] },
+    } as unknown as ChartConfig;
+    const rects = buildChart(cfg).nodes.filter((n) => n.kind === "rect") as unknown as { y: number; h: number }[];
+    expect(rects.length, "nothing was drawn, so this proves nothing").toBeGreaterThan(0);
+    for (const r of rects) {
+      expect(r.y, "a bar was drawn above the canvas").toBeGreaterThanOrEqual(0);
+      expect(r.y + r.h, "a bar was drawn below the canvas").toBeLessThanOrEqual(DEFAULT_SIZE.height! + 1);
+    }
+  });
+
   it("clips SIDEWAYS too, on every kind that rotates", () => {
     // The clamp lived in `valueScale.toY`, and only the vertical branch of each
     // layout routed through it — the horizontal branch is its own linear map and

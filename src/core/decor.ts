@@ -292,8 +292,21 @@ export function decorationNodes(
   const valueLines = decor.valueLines ?? (decor.valueLine ? [decor.valueLine] : []);
   if (valueLines.length && a.valueToY) {
     valueLines.forEach((vl, i) => {
-      const value =
-        vl.mode === "mean" ? a.columnValue.reduce((s, v) => s + v, 0) / (a.columnValue.length || 1) : vl.value;
+      /**
+       * THE MEAN OF WHAT WAS MEASURED, not of what was left after coercion.
+       *
+       * Every layout builds `columnValue` with `?? 0`, so a blank category
+       * arrived here as a zero AND as a denominator: the mean of
+       * `[100, null, 200]` came out 100, drawn and labelled, where the mean of
+       * the numbers actually supplied is 150. Both halves were wrong, which is
+       * why dropping the blank from the SUM alone would not have fixed it.
+       *
+       * `columnHasData` is optional and absent means every category counts —
+       * the honest default for a `columnValue` built from something that is
+       * never blank. See LayoutAnchors.
+       */
+      const meanOf = a.columnValue.filter((_, i) => a.columnHasData?.[i] ?? true);
+      const value = vl.mode === "mean" ? meanOf.reduce((s, v) => s + v, 0) / (meanOf.length || 1) : vl.value;
       const y = a.valueToY!(value);
       nodes.push(
         {

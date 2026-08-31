@@ -537,6 +537,39 @@ describe("a drawn segment's percentage matches the segment", () => {
   });
 });
 
+describe("the mean line is the mean of what was measured", () => {
+  const meanLabel = (values: (number | null)[]) => {
+    const scene = buildChart({
+      kind: "clustered",
+      ...DEFAULT_SIZE,
+      data: { categories: ["A", "B", "C"], series: [{ name: "S", values }] },
+      decorations: { valueLine: { mode: "mean" } },
+    } as unknown as ChartConfig);
+    const label = scene.nodes.find(
+      (n): n is TextNode => n.kind === "text" && /^value-line-label/.test(String(n.name ?? "")),
+    );
+    expect(label, `no mean line drawn for ${JSON.stringify(values)}`).toBeTruthy();
+    return String(label!.text);
+  };
+
+  it("does not average in a category nobody filled in", () => {
+    /**
+     * Every layout builds `columnValue` with `?? 0`, so a blank arrived at the
+     * mean as a zero AND as a third of the denominator: `[100, null, 200]` came
+     * out 100, drawn and labelled "Ø 100", where the mean of the numbers
+     * actually supplied is 150. Both halves were wrong, which is why dropping
+     * the blank from the sum alone would not have been enough.
+     */
+    expect(meanLabel([100, null, 200]), "averaged a blank in as a zero").toContain("150");
+  });
+
+  it("is unchanged when every category has a value", () => {
+    // The guard on the guard: the fix must not move an ordinary chart's line,
+    // and `columnHasData` being absent has to keep meaning "count them all".
+    expect(meanLabel([100, 200, 300])).toContain("200");
+  });
+});
+
 describe("the difference arrow's caption agrees with the arrow", () => {
   /**
    * The arrow and its own label come from the same two values, and on a

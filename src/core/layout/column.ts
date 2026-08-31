@@ -837,6 +837,12 @@ export function layoutColumns(cfg: ChartConfig, style: ChartStyle, decor: Decora
       // `columnTop` and their NUMBER from here, so the arrow sat over a +25% rise
       // and read "+29%".
       columnValue: pct ? posTotals : stacked ? signedTotals : drawnTopValue,
+      // WHICH OF THOSE ARE MEASUREMENTS. All three arrays above are built with
+      // `?? 0`, so a category nobody filled in is a zero here, indistinguishable
+      // from a measured one — and the mean value line averaged it in, and
+      // counted it in the denominator. See LayoutAnchors. The column family is
+      // the one that offers `valueLines`, so it is the one that has to answer.
+      columnHasData: data.categories.map((_, c) => columnHasData(data.series, c)),
       // What the right-margin names were ANCHORED to, before the spread moved
       // them. The combo re-lays this gutter with its own line names added, and
       // it needs where the columns started, not where they settled.

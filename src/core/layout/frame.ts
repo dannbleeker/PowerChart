@@ -239,6 +239,22 @@ export function valueScale(
   // pass zeroFloor:false to keep the domain data-driven. cfg.scale still overrides.
   zeroFloor = true,
 ): ValueScale {
+  /**
+   * DECLARED HERE, above both branches, because it was written for one of them
+   * and the other returns before it.
+   *
+   * The full reasoning is at its old position below: a manual scale.max under
+   * the data — which the pane invites, "Axis scale min / max" being free-text
+   * boxes — drove `toY` clean off the canvas, and clamping is what every
+   * charting tool does with a value above the axis maximum. The linear branch
+   * got that fix. The LOG branch sits thirty lines earlier and returns its own
+   * `toY`, so it never saw it: `logScale` with `scale.max: 100` over data
+   * reaching 10,000 put the top bar at y = -540 on a 300pt canvas — 540 points
+   * above the slide — while the same numbers on a linear axis were fine.
+   *
+   * One definition above both, so they cannot answer this differently again.
+   */
+  const clip = (y: number) => Math.max(frame.y, Math.min(frame.y + frame.h, y));
   // Logarithmic axis: decade ticks; requires positive data (falls back otherwise).
   if (logScale && dataMax > 0) {
     const minPos = Math.max(dataMin > 0 ? dataMin : dataMax / 1000, 1e-12);
@@ -261,7 +277,8 @@ export function valueScale(
     const min = ticks[0];
     const max = ticks[ticks.length - 1];
     const span = Math.log10(max) - Math.log10(min) || 1;
-    const toY = (v: number) => frame.y + frame.h - ((Math.log10(Math.max(v, min)) - Math.log10(min)) / span) * frame.h;
+    const toY = (v: number) =>
+      clip(frame.y + frame.h - ((Math.log10(Math.max(v, min)) - Math.log10(min)) / span) * frame.h);
     return { min, max, ticks, toY };
   }
   const autoLo = zeroFloor ? Math.min(0, dataMin) : dataMin;
@@ -300,7 +317,7 @@ export function valueScale(
   // draws a value above the axis maximum as a bar reaching the top of the plot.
   // Anything inside the scale is untouched, so this changes only what was
   // previously drawn off the slide.
-  const clip = (y: number) => Math.max(frame.y, Math.min(frame.y + frame.h, y));
+  // (declared at the top of this function, above the log branch that also needs it)
   let toY = (v: number) => clip(frame.y + frame.h - ((v - min) / (max - min || 1)) * frame.h);
   let breakBand: ValueScale["breakBand"];
 

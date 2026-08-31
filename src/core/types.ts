@@ -726,6 +726,21 @@ export interface LayoutAnchors {
   columnTop: number[];
   /** Column total values (signed sum, or cumulative value for waterfall totals). */
   columnValue: number[];
+  /**
+   * Whether each category had ANY measured cell — the question `columnValue`
+   * cannot answer, because every layout builds it with `?? 0`.
+   *
+   * A mean over `[100, null, 200]` was (100 + 0 + 200) / 3 = 100, and the line
+   * was drawn and labelled at a number nobody measured; the true mean of what
+   * was measured is 150. A blank is not a zero to average in, and it is not a
+   * third of the denominator either.
+   *
+   * OPTIONAL, and absent means "every category counts" — the honest default for
+   * the layouts that publish `columnValue` from something that is never blank
+   * (a boxplot's median, a candlestick's close). Only the column family offers
+   * `valueLines`, so only it needs to answer this.
+   */
+  columnHasData?: boolean[];
   /** Per category: cumulative stack value after each series (for level arrows). */
   seriesLevels?: number[][];
   /**
