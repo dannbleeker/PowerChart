@@ -385,6 +385,52 @@ describe("triage — logs that are not inserts", () => {
     expect(e.lying, "a blank readback over a picture with content is the host lying").toBe(1);
   });
 
+  it("reads the archive's stripped placeholder as NO picture, not as a blank one", () => {
+    /**
+     * THE SECOND WITNESS WAS FAKE IN ALL 323 ARCHIVED ROUNDS.
+     *
+     * `stripImages` replaces every base64 payload with the sentence
+     * "<image stripped for the archive — …" before a round is written, so every
+     * one of the 1,923 shots on file is a 53- or 55-character string. It is
+     * truthy, so it survived the "a picture was taken" filter, and the reader
+     * scores it at 40 bytes — far under `BLANK_PNG_CEILING`.
+     *
+     * So the rasteriser AGREED that every added slide in every archived round
+     * was blank. Ten empty added slides across nine rounds (041, 042, 045, 055,
+     * 073, 074, 078, 080 twice, 085) printed as `confirmed` — what this file
+     * calls "the two-witness line a maintainer reads as proven data loss" —
+     * with `unseen: 0`, and the honest `unseen` branch had never executed.
+     * Re-triaging the real archive after the fix gives confirmed 0, unseen 10.
+     *
+     * Fixed in the reader rather than the stripper because the archive is
+     * append-only: those placeholders cannot be rewritten, and re-reading the
+     * archive is the whole point of keeping it.
+     */
+    const withStripped = (png: string) =>
+      deckEvidence({
+        inventory: [{ slideId: "s", shapes: [] }],
+        newSlides: ["s"],
+        shots: [{ slideId: "s", png }],
+      });
+    for (const placeholder of [
+      "<image stripped for the archive — see rounds/README.md>",
+      "<image stripped for the archive — see docs/ROUNDS.md>",
+    ]) {
+      const e = withStripped(placeholder);
+      expect(e.confirmed, `"${placeholder.slice(0, 22)}…" was read as a blank picture`).toBe(0);
+      expect(e.unseen, "a stripped picture is no picture at all").toBe(1);
+    }
+    // The control: a genuinely tiny PNG still counts as a blank, so the fix
+    // narrows nothing it was not meant to.
+    const real = deckEvidence({
+      inventory: [{ slideId: "s", shapes: [] }],
+      newSlides: ["s"],
+      shots: [{ slideId: "s", png: "A".repeat(300 * 4) }],
+    });
+    expect(real.confirmed, "a real blank PNG stopped being a witness").toBe(1);
+    expect(real.unseen).toBe(0);
+  });
+
   it("counts only the slides this round added, never the deck it landed in", () => {
     // A round drops its slides into whatever the user already had. Counting the
     // pre-existing ones would report someone's own empty slides as our losses.

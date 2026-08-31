@@ -2144,6 +2144,31 @@ const chartIsVisible: Scenario = async (prefix) => {
  * A host that cannot rotate at all (below PowerPointApi 1.10) SKIPS: it has no
  * opinion to report, and a scenario that cannot conclude must say so rather
  * than pass.
+ *
+ * ── WHICH LEAVES ONE BRANCH BELOW LOOKING LIKE IT BREAKS THAT RULE ──
+ *
+ * A mining pass over rounds 334-346 filed exactly that, and it is worth
+ * answering here rather than in a commit nobody will find. The sentence above
+ * was written when this scenario WAS the placement measurement, and it has not
+ * been true since the measurement moved. There are two questions now:
+ *
+ *   does the rotated draw complete on a real host?   THIS scenario answers it
+ *   where do the rotated shapes land?                the PROBE answers it
+ *
+ * The `ok: true` below is the first question and nothing else. It is a real
+ * pass on a real path: `Shape.rotation` had never been written on a live host
+ * in 333 rounds, so `addSegment`'s rotated branch — which every diagonal in the
+ * product takes — had never once executed outside the fake. What it must never
+ * be read as is an answer to the second question, which is why its detail says
+ * so and names the probe.
+ *
+ * AND THE POINTER NOW RESOLVES, which it did not when that branch was written.
+ * Until 2026-08-31 `rotation-keeps-the-unrotated-box` answered `unreadable` in
+ * all eleven rounds it had run — because `unreadable` locked its row against
+ * the `unrotated-box` its own samples carried four times, and the contradicting
+ * answer never. See `UNINFORMATIVE` in host-probe.ts. Sending a reader to a
+ * sheet that said "unreadable" is most of why this branch looked like a pass
+ * over a void.
  */
 const rotatedShapePlacement: Scenario = async (prefix) => {
   const { found: hosts, blind, gap } = await probeCharts(prefix);

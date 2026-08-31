@@ -5323,7 +5323,24 @@ export function reportSelfTest(selftest) {
  */
 export function deckEvidence(deck) {
   if (!deck || !Array.isArray(deck.inventory) || !deck.inventory.length) return null;
-  const shots = new Map((deck.shots ?? []).filter((s) => s.png).map((s) => [s.slideId, s.png]));
+  // A STRIPPED PICTURE IS NOT A BLANK ONE, and for 323 rounds this line could
+  // not tell the difference. `stripImages` replaces every base64 payload with
+  // the sentence "<image stripped for the archive — …" before a round is
+  // written, so ALL 1,923 shots in the archive are a 53- or 55-character string.
+  // That string is truthy, so it survived this filter as though a picture had
+  // been taken, and `bytes()` scores it at 40-41 — comfortably under
+  // `BLANK_PNG_CEILING`. Every added slide in every archived round therefore
+  // came back with the rasteriser AGREEING it was blank: the second witness, the
+  // one the docstring above calls "proven data loss". Ten empty added slides
+  // across nine rounds read `confirmed`, `unseen: 0`, and the honest `unseen`
+  // branch below had never once executed.
+  //
+  // Fixed HERE rather than in the stripper because the archive is append-only:
+  // those 1,923 placeholders cannot be rewritten, and re-triaging the archive is
+  // what the archive is for. Matched on the stable prefix — the sentence itself
+  // has already changed once, from `rounds/README.md` to `docs/ROUNDS.md`.
+  const stripped = (png) => typeof png === "string" && png.startsWith("<image stripped");
+  const shots = new Map((deck.shots ?? []).filter((s) => s.png && !stripped(s.png)).map((s) => [s.slideId, s.png]));
   /**
    * How big a slide's PNG can be and still be nothing.
    *
