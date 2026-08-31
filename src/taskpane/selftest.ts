@@ -2226,7 +2226,17 @@ const rotatedShapePlacement: Scenario = async (prefix) => {
      */
     return {
       ok: true,
-      detail: `drew ${placed?.partIds?.length ?? 0} rotated segment(s) without error; this host will not report a group's children, so where they landed is unmeasurable here — see the rotation-keeps-the-unrotated-box probe`,
+      /**
+       * COUNTED FROM THE SCENE, not from `partIds`.
+       *
+       * Round 341 reported "drew 0 rotated segment(s) without error", which is
+       * barely better than the skip it replaced: `partIds` is empty on this
+       * host, so the count was measuring the same refusal the rest of the
+       * sentence goes on to describe. The SCENE is what we handed the renderer,
+       * and its line nodes are exactly the rotated rectangles `addSegment` was
+       * asked to make — a number we know without asking the host anything.
+       */
+      detail: `drew a ${scene.nodes.filter((n) => n.kind === "line").length}-segment line chart without error; this host will not report a group's children, so where the segments landed is unmeasurable here — see the rotation-keeps-the-unrotated-box probe`,
     };
   }
   if (drawn.every((s) => s.rotation === null)) {

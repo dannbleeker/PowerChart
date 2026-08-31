@@ -3306,6 +3306,18 @@ describe("a chart of rotated shapes", () => {
       expect(r!.skipped ?? false, "threw the draw away as a skip").toBe(false);
       expect(r!.ok, `reported the draw as a failure: ${r!.detail}`).toBe(true);
       expect(r!.detail, "did not say the measurement was unavailable").toMatch(/unmeasurable|will not report/i);
+      /**
+       * AND THE NUMBER IT REPORTS IS A REAL ONE.
+       *
+       * Round 341 said "drew 0 rotated segment(s) without error", because the
+       * count came from `partIds` — which is empty on the very host the rest of
+       * the sentence is about. A pass reporting zero of the thing it exists to
+       * draw is barely better than the skip it replaced, so the count comes
+       * from the SCENE now and this asserts it is not zero.
+       */
+      const drew = /drew a (\d+)-segment/.exec(String(r!.detail));
+      expect(drew, `did not report a segment count: ${r!.detail}`).toBeTruthy();
+      expect(Number(drew![1]), "reported drawing nothing and called it a pass").toBeGreaterThan(0);
     } finally {
       faults.refuseGroupRead = false;
       faults.groupHidesChildren = false;

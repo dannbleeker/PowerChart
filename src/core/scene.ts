@@ -300,9 +300,11 @@ export function clipTextToFrame<T extends SceneNode>(nodes: T[], width: number):
       dropped.add(n);
       continue;
     }
-    let cut = t.text;
-    while (cut.length > 0 && textWidth(`${cut}…`, t.fontSize, t.bold) > room) cut = cut.slice(0, -1);
-    if (cut) t.text = `${cut}…`;
+    // Through the shared walk — see `ellipsize`. This was its own copy of the
+    // same loop, and it kept cutting emoji in half after the copy in
+    // `clipToWidth` was fixed.
+    const cut = ellipsize(t.text, t.fontSize, !!t.bold, room);
+    if (cut) t.text = cut;
     else dropped.add(n);
   }
   return dropped.size ? nodes.filter((n) => !dropped.has(n)) : nodes;
@@ -405,8 +407,102 @@ export function estimateOfficeShapes(scene: Scene): number {
  * draw `2024`, so measuring it as four characters is the honest answer, and
  * measuring a missing string as zero is what every caller already means by it.
  */
+/**
+ * A code point that takes a FULL em rather than the Latin average.
+ *
+ * CJK ideographs, kana, Hangul and the full-width forms are one em wide in any
+ * font that has them. Charged at 0.54 they came out 46% narrow — "売上高" measured
+ * 19.4pt at 12pt where the glyphs take 36 — and this feeds every clip, every
+ * shrink-to-fit and every de-collision test in the engine. So a Japanese,
+ * Chinese or Korean chart had its labels judged to fit where they do not, went
+ * unclipped where it should have been cut, and carried overlaps no fit could
+ * see. Half-width katakana (U+FF61-FF9F) is deliberately excluded: it is narrow,
+ * which is the entire point of that block.
+ */
+function fullWidth(cp: number): boolean {
+  return (
+    (cp >= 0x1100 && cp <= 0x115f) || // Hangul Jamo
+    (cp >= 0x2e80 && cp <= 0x303e) || // CJK radicals, Kangxi, CJK punctuation
+    (cp >= 0x3041 && cp <= 0x33ff) || // kana, Hangul compat, CJK compat
+    (cp >= 0x3400 && cp <= 0x4dbf) || // CJK ext A
+    (cp >= 0x4e00 && cp <= 0x9fff) || // CJK unified
+    (cp >= 0xa000 && cp <= 0xa4cf) || // Yi
+    (cp >= 0xac00 && cp <= 0xd7a3) || // Hangul syllables
+    (cp >= 0xf900 && cp <= 0xfaff) || // CJK compat ideographs
+    (cp >= 0xfe30 && cp <= 0xfe6f) || // CJK compat forms, small forms
+    (cp >= 0xff00 && cp <= 0xff60) || // FULL-width forms — NOT ff61+, which are half
+    (cp >= 0xffe0 && cp <= 0xffe6) ||
+    (cp >= 0x1f300 && cp <= 0x1faff) || // emoji and pictographs
+    (cp >= 0x20000 && cp <= 0x3fffd) // CJK ext B and beyond
+  );
+}
+
+/** One code point's width, the unit `textWidth` sums. */
+function charWidth(cp: number, fontSize: number, bold: boolean): number {
+  return fullWidth(cp) ? fontSize : fontSize * (bold ? 0.58 : 0.54);
+}
+
+/**
+ * `text` cut to fit `maxW`, with an ellipsis — the ONE implementation.
+ *
+ * There were two, identical and thirty lines apart: `clipToWidth` in elements.ts
+ * and the de-collision walk here. Both did `while (…textWidth(cut) > room) cut =
+ * cut.slice(0, -1)`, and fixing the surrogate bug in one of them left the other
+ * cutting emoji in half — which is precisely the "the fix was written and one
+ * call site was missed" shape this repo keeps finding, made once more while
+ * fixing an instance of it. One function, two callers, no third answer.
+ *
+ * LINEAR, where both of those were quadratic. `textWidth` is O(n) now that it
+ * has to look at the characters, and calling it once per dropped character made
+ * the walk O(n²): a 200-character title cost 40,000 character inspections, and a
+ * table of long cells pays it per cell. This keeps a running width and subtracts
+ * each dropped code point's own contribution, so the whole walk is one pass.
+ */
+export function ellipsize(text: string, fontSize: number, bold: boolean, maxW: number): string {
+  const s = String(text ?? "");
+  let w = textWidth(s, fontSize, bold);
+  if (w <= maxW) return s;
+  const ell = textWidth("…", fontSize, bold);
+  let end = s.length;
+  while (end > 0 && w + ell > maxW) {
+    const last = s.charCodeAt(end - 1);
+    const prev = end > 1 ? s.charCodeAt(end - 2) : 0;
+    // A pair comes off together — half a pair is a lone surrogate, which is
+    // invalid XML and reaches a .pptx as the repair dialog.
+    const pair = last >= 0xdc00 && last <= 0xdfff && prev >= 0xd800 && prev <= 0xdbff;
+    w -= charWidth(pair ? s.codePointAt(end - 2)! : last, fontSize, bold);
+    end -= pair ? 2 : 1;
+  }
+  return end > 0 ? `${s.slice(0, end)}…` : "";
+}
+
 export function textWidth(text: string, fontSize: number, bold = false): number {
-  return String(text ?? "").length * fontSize * (bold ? 0.58 : 0.54);
+  const s = String(text ?? "");
+  const narrow = bold ? 0.58 : 0.54;
+  /**
+   * THE LATIN PATH IS BYTE-IDENTICAL, deliberately.
+   *
+   * Sixty-odd call sites depend on this number and every shipped chart's fits
+   * were measured against it, so a string with no full-width code point takes
+   * exactly the `length * fontSize * ratio` it always did and nothing in the
+   * deck moves. Only text that was being measured wrongly changes.
+   *
+   * EMOJI KEEP THEIR OLD WIDTH BY A DIFFERENT ROUTE. A surrogate pair used to
+   * be counted as two Latin characters — 1.08em, which is about right for a
+   * pictograph by accident. Counting code points naively would have HALVED
+   * them: a silent regression on the way to fixing something else. Here a pair
+   * is one code point charged a full em.
+   */
+  let units = 0;
+  let wide = 0;
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    const pair = c >= 0xd800 && c <= 0xdbff && i + 1 < s.length;
+    if (fullWidth(pair ? s.codePointAt(i)! : c)) wide++;
+    units++;
+    if (pair) i++;
+  }
+  return wide ? (wide + (units - wide) * narrow) * fontSize : s.length * fontSize * narrow;
 }
 
 /**

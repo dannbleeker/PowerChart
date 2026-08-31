@@ -3,7 +3,7 @@
  * and a simple table — all as scenes for the same renderers as charts.
  */
 import type { Scene, SceneNode } from "./scene";
-import { contrastInk, finiteNodes, textWidth } from "./scene";
+import { contrastInk, ellipsize, finiteNodes, textWidth } from "./scene";
 import { DEFAULT_STYLE, PALETTE } from "./style";
 
 const S = DEFAULT_STYLE;
@@ -24,10 +24,12 @@ export function clipToWidth(text: string, fs: number, maxW: number, bold = false
   // is false, so the walk never ran and the function returned its input with an
   // ellipsis STUCK ON THE END, wider than what it was asked to fit. A KPI tile's
   // value and a table cell are both routinely numeric.
-  let t = String(text ?? "");
+  const t = String(text ?? "");
   if (textWidth(t, fs, bold) <= maxW) return t;
-  while (t.length > 0 && textWidth(`${t}…`, fs, bold) > maxW) t = t.slice(0, -1);
-  return t ? `${t}…` : "";
+  // Through the SHARED walk — see `ellipsize` in scene.ts. This was its own
+  // copy of the same loop, and the two drifted the moment one of them learned
+  // not to cut a surrogate pair in half.
+  return ellipsize(t, fs, bold, maxW);
 }
 
 /**

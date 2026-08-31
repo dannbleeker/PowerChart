@@ -3093,6 +3093,16 @@ const PROBES: Probe[] = [
          * the finding is `no-read-after-rotation` — this host will not answer a
          * load in a batch that also WRITES rotation — which is a fact about the
          * host worth having, and a different one from "we cannot measure here".
+         *
+         * AND ITS LIMIT, which round 341 reached: the control rides in the SAME
+         * batch as the rotation write, so on a host where that write poisons
+         * the whole sync BOTH widths come back empty and the answer is
+         * `unreadable` — a reading that still cannot be told apart from "this
+         * host answers no geometry for a probe-added shape at all". Separating
+         * those two needs the control in a batch of its own, which is a third
+         * sync and a question nobody has yet needed answered. What the control
+         * does settle is that the refusal is not specific to the ROTATED shape,
+         * and that is what stops this being read as an opinion about rotation.
          */
         const control = shapes.addGeometricShape(PowerPoint.GeometricShapeType.rectangle, {
           left: 200,
