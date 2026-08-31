@@ -1713,6 +1713,34 @@ describe("guard — busy lockout and error surfacing", () => {
     expect($("status-bar").classList.contains("indeterminate")).toBe(false);
   });
 
+  it("gives an element the same picture rescue a chart gets", async () => {
+    /**
+     * ELEMENTS ARE WHERE THIS MATTERS MOST, and they never went near
+     * `chartPicture`: this path calls `insertSceneIntoSlide` directly. A Harvey
+     * ball is a WEDGE at every fraction between 1% and 99% — 0% and 100% are
+     * ellipses and survive — so a host without rotation loses exactly the
+     * informative range and inserts an empty ring. A table trend cell is an
+     * arrowhead that vanishes while its text stays.
+     *
+     * Shipping the guard on the chart path alone left the two element kinds
+     * that need it most dropping their glyphs in silence.
+     */
+    const raster = stubRaster();
+    try {
+      host.canPicture = true;
+      host.cannotDraw = { what: ["a pie slice"], nodes: 1 };
+      $("harvey-insert").click();
+      await settle();
+      expect(
+        (host.calls.insertScene.at(-1) as { pictureBase64?: string }).pictureBase64,
+        "an element this host cannot draw went in as shapes",
+      ).toBeTruthy();
+      expect(String($("host-note").textContent), "inserted a picture without saying why").toMatch(/a pie slice/);
+    } finally {
+      raster.restore();
+    }
+  });
+
   /**
    * The flip side: an action that DID report an end state keeps it. "Done." is
    * the fallback for silence, not an overwrite — a settlement counted per

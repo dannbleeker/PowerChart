@@ -91,6 +91,19 @@ export const faults = {
    */
   rotationWriteThrows: false,
   /**
+   * Answer no geometry for a shape whose rotation was written in this batch,
+   * while an untouched shape in the same batch reads normally.
+   *
+   * The behaviour rounds 336-338 point at: the rotation probe came back
+   * `unreadable` three times while `named-preset-resolves` read a width in the
+   * same shape of batch and got 24x24 every time. One flat "unreadable" cannot
+   * tell "this host answers no geometry" from "this host answers no geometry
+   * AFTER a rotation write", and those are different facts — so the probe now
+   * carries an unrotated control, and this is the host that makes the control
+   * mean something.
+   */
+  rotationBlindsTheRead: false,
+  /**
    * Accept a preset by name and draw it with no extent — a shape that is there
    * and is not visible.
    *
@@ -1178,6 +1191,10 @@ export function makeShape(
       // on the slide. Reported as no extent, which is what "not visible" looks
       // like from the API side.
       if (faults.presetDrawsNothing && geo === faults.presetDrawsNothing) return 0;
+      // See faults.rotationBlindsTheRead: this shape was rotated, so the host
+      // answers nothing about its geometry — while its unrotated neighbour in
+      // the same batch answers normally.
+      if (faults.rotationBlindsTheRead && typeof this._rotation === "number") return undefined as unknown as number;
       // See faults.reportRotatedBounds. A rotated rectangle's bounding box is
       // |w·cos| + |h·sin| across, which for a long thin diagonal is far shorter
       // than the rectangle itself — that gap is what the scenario measures.

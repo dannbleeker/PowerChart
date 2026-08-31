@@ -162,7 +162,7 @@ describe("the host self-test battery", () => {
       // back where the host put a ROTATED shape, then deletes it. Every side slot
       // is already occupied by a scenario whose chart stays, and taking a sixth
       // would narrow all the others.
-      "where a rotated shape lands",
+      "a chart of rotated shapes",
     ]);
     for (const r of results) {
       expect(typeof r.ok).toBe("boolean");
@@ -3259,10 +3259,10 @@ describe("a deck count that is behind, not blind", () => {
  * every line, scatter, radar and violin chart is drawn wrong. These tests are
  * what make the scenario capable of saying so.
  */
-describe("where a rotated shape lands", () => {
+describe("a chart of rotated shapes", () => {
   const verdict = async () => {
     const results = await runSelfTest("probe");
-    const r = results.find((x) => x.name === "where a rotated shape lands");
+    const r = results.find((x) => x.name === "a chart of rotated shapes");
     expect(r, "the scenario did not run at all").toBeTruthy();
     return r!;
   };
@@ -3275,6 +3275,41 @@ describe("where a rotated shape lands", () => {
     // Non-vacuous: it must have actually compared segments, not skipped.
     expect(r.skipped ?? false, `skipped instead of measuring: ${r.detail}`).toBe(false);
     expect(r.detail, "did not report what it measured").toMatch(/UNROTATED box/);
+  });
+
+  it("reports the DRAW on a host that will not open a group", async () => {
+    /**
+     * WHAT THIS SCENARIO CAN ACTUALLY ESTABLISH ON THE HOST WE RUN AGAINST.
+     *
+     * Reading a chart's parts means reading a group's CHILDREN, and this host
+     * refuses both routes into one — `threw` on `group-reports-its-children`
+     * and on `group-children-via-getcount` in 29 of the last 30 rounds. So
+     * where the segments landed is unmeasurable here: rounds 334 and 335
+     * skipped because the lookup was at slide level, and 339 skipped with the
+     * descent in place, for this reason instead.
+     *
+     * The DRAW is still worth having, and nothing else in the battery does it.
+     * `Shape.rotation` had never been written on a real host in 333 rounds, so
+     * `addSegment`'s rotated branch — the path every diagonal in the product
+     * takes — had never executed outside the fake. Getting the chart in without
+     * an error is a real answer about a real path; a skip threw it away and
+     * left a scenario that could only ever report nothing.
+     */
+    installHost([makeSlide("s1")]);
+    setSelfTestRasterizer(async () => "data:image/png;base64,UE5H");
+    faults.groupHidesChildren = true;
+    faults.refuseGroupRead = true;
+    try {
+      const results = await runSelfTest("probe", "a chart of rotated shapes");
+      const r = results.find((x) => x.name === "a chart of rotated shapes");
+      expect(r, "the scenario did not run at all").toBeTruthy();
+      expect(r!.skipped ?? false, "threw the draw away as a skip").toBe(false);
+      expect(r!.ok, `reported the draw as a failure: ${r!.detail}`).toBe(true);
+      expect(r!.detail, "did not say the measurement was unavailable").toMatch(/unmeasurable|will not report/i);
+    } finally {
+      faults.refuseGroupRead = false;
+      faults.groupHidesChildren = false;
+    }
   });
 
   it("still concludes when the slide lists only the group, as a real one does", async () => {
@@ -3304,8 +3339,8 @@ describe("where a rotated shape lands", () => {
       // gives up three scenarios before reaching this one. Narrowing the run is
       // honest here — the claim is about this scenario's lookup, not about the
       // battery surviving a host that behaves this way.
-      const results = await runSelfTest("probe", "where a rotated shape lands");
-      const r = results.find((x) => x.name === "where a rotated shape lands");
+      const results = await runSelfTest("probe", "a chart of rotated shapes");
+      const r = results.find((x) => x.name === "a chart of rotated shapes");
       expect(r, "the scenario did not run at all").toBeTruthy();
       expect(r!.skipped ?? false, `skipped on a slide that hides its group members: ${r!.detail}`).toBe(false);
       expect(r!.ok, `did not conclude: ${r!.detail}`).toBe(true);

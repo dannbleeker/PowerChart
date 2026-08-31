@@ -2916,6 +2916,28 @@ describe("the two questions a chart's ink rests on", () => {
     }
   });
 
+  it("tells a host that answers nothing from one that answers nothing AFTER a rotation", async () => {
+    /**
+     * Rounds 336, 337 and 338 all came back `unreadable` — "width did not come
+     * back a number" — while `named-preset-resolves` read a width in the same
+     * shape of batch and got 24x24 in every one of them. One flat word could
+     * not tell "this host answers no geometry" from "this host answers no
+     * geometry AFTER a rotation write", and those call for different next
+     * moves. The probe carries an unrotated control now; this is the host that
+     * makes the control mean something.
+     */
+    const slide = makeSlide("s1");
+    installHost([slide]);
+    faults.rotationBlindsTheRead = true;
+    try {
+      const a = await ask("rotation-keeps-the-unrotated-box");
+      expect(a?.answer).toBe("no-read-after-rotation");
+      expect(a?.detail, "did not report the control that makes this a finding").toMatch(/unrotated shape/);
+    } finally {
+      faults.rotationBlindsTheRead = false;
+    }
+  });
+
   it("names a preset this host's enum does not carry", async () => {
     // The failure that is otherwise invisible: `addGeometricShape(undefined)` is
     // accepted and draws a shape with no geometry.

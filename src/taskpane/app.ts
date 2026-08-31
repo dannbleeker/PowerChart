@@ -1762,6 +1762,42 @@ function rasterizeScene(scene: Scene): Promise<string> {
  * survives — and where it counts as this action's settlement, so `guard` leaves
  * it standing instead of closing with "Done."
  */
+/**
+ * A picture for a scene this host cannot draw, or null when it can draw it.
+ *
+ * SHARED, because ELEMENTS need it too and they do not go through
+ * `chartPicture` at all — they call `insertSceneIntoSlide` directly. That is
+ * where the marks in question actually live: a Harvey ball is a wedge at every
+ * fraction between 1% and 99% (0% and 100% are ellipses and survive, so exactly
+ * the informative range is lost), and a table `[up]`/`[down]` cell is an
+ * arrowhead. Shipping this on the chart path alone would have left the two
+ * element kinds that need it most silently dropping their glyphs.
+ */
+async function pictureForUndrawableMarks(scene: Scene): Promise<{ png?: string; warn: string } | null> {
+  const dropped = marksThisHostWillDrop(scene);
+  if (!dropped.nodes) return null;
+  const missing = dropped.what.join(" and ");
+  if (!canInsertPicture())
+    return {
+      warn:
+        `This PowerPoint cannot draw ${missing}, and cannot insert a picture either (that needs PowerPointApi 1.8). ` +
+        `Drawing it as shapes — ${missing} will be missing.`,
+    };
+  const png = await boundedRaster(scene);
+  return png
+    ? {
+        png,
+        warn:
+          `This PowerPoint cannot draw ${missing} — that needs a newer Office (PowerPointApi 1.10). ` +
+          `Inserted as a picture so it is complete; it stays an image here.`,
+      }
+    : {
+        warn:
+          `This PowerPoint cannot draw ${missing}, and it could not be turned into a picture either. ` +
+          `Drawing it as shapes — ${missing} will be missing.`,
+      };
+}
+
 async function chartPicture(cfg: ChartConfig, scene: Scene): Promise<{ png?: string; warn?: string }> {
   /**
    * MARKS THIS HOST CANNOT DRAW — asked before density, because this one is
@@ -1783,29 +1819,9 @@ async function chartPicture(cfg: ChartConfig, scene: Scene): Promise<{ png?: str
    * exploding is the door back to the broken version, which is the mistake
    * `doExplode`'s own comment records the product having made once already.
    */
-  const dropped = marksThisHostWillDrop(scene);
-  if (dropped.nodes && cfg.render !== "image") {
-    const missing = dropped.what.join(" and ");
-    if (canInsertPicture()) {
-      const png = await boundedRaster(scene);
-      if (png)
-        return {
-          png,
-          warn:
-            `This PowerPoint cannot draw ${missing} — that needs a newer Office (PowerPointApi 1.10). ` +
-            `Inserted as a picture so the chart is complete; it stays an image here.`,
-        };
-      return {
-        warn:
-          `This PowerPoint cannot draw ${missing}, and the chart could not be turned into a picture either. ` +
-          `Drawing it as shapes — ${missing} will be missing.`,
-      };
-    }
-    return {
-      warn:
-        `This PowerPoint cannot draw ${missing}, and cannot insert a picture either (that needs PowerPointApi 1.8). ` +
-        `Drawing it as shapes — ${missing} will be missing.`,
-    };
+  if (cfg.render !== "image") {
+    const undrawable = await pictureForUndrawableMarks(scene);
+    if (undrawable) return undrawable;
   }
 
   // A chart nobody asked to rasterize, on the one host that cannot survive
@@ -4051,7 +4067,32 @@ function wireInsert() {
       btn.addEventListener(
         "click",
         guard(async () => {
-          await insertSceneIntoSlide(scene(), { left: 120, top: 160 }, phaseNote);
+          const built = scene();
+          /**
+           * ELEMENTS GET THE SAME TREATMENT AS CHARTS, and they are where it
+           * matters most: a Harvey ball is a WEDGE at every fraction between 1%
+           * and 99% — 0% and 100% are ellipses and survive, so a host without
+           * rotation loses exactly the informative range and draws an empty
+           * ring — and a table `[up]`/`[down]` cell is an arrowhead that
+           * vanishes while its text stays.
+           *
+           * This path calls `insertSceneIntoSlide` directly and never went near
+           * `chartPicture`, so shipping the guard on the chart path alone left
+           * the two element kinds that need it most dropping their glyphs in
+           * silence.
+           */
+          const undrawable = await pictureForUndrawableMarks(built);
+          await insertSceneIntoSlide(
+            built,
+            { left: 120, top: 160, ...(undrawable?.png ? { pictureBase64: undrawable.png } : {}) },
+            phaseNote,
+          );
+          // AFTER the insert, like every other warning here: the insert's first
+          // act is `onPhase("context")`, which overwrites a note posted before
+          // it. See `chartPicture`'s own comment.
+          // A picture is a SUCCESS — the element went in complete — so it settles as
+          // "ok"; only the shapes-with-marks-missing case is an error.
+          if (undrawable) note(undrawable.warn, undrawable.png ? "ok" : "err");
         }),
       );
     }

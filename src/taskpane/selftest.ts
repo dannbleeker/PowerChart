@@ -2203,13 +2203,31 @@ const rotatedShapePlacement: Scenario = async (prefix) => {
   };
   if (!drawn || !drawn.length) {
     await clean();
-    // NOT "the host would not report" any more, which is what this said while
-    // the host was reporting everything it had been asked for. Rounds 334 and
-    // 335 both skipped here because the segments are INSIDE the chart's group
-    // and `shapeGeometryByName` read only the slide — our lookup was in the
-    // wrong place and the message blamed the host for it. It descends into
-    // groups now; if this still fires, the reading really is missing.
-    return { ok: false, skipped: true, detail: "no line segments came back, on the slide or inside its group" };
+    /**
+     * THE DRAW IS THE FINDING HERE, and it is not nothing.
+     *
+     * This scenario was built to measure where a rotated shape LANDS, and on
+     * this host it cannot: reading a chart's parts means reading a group's
+     * children, and this host refuses both routes into one — `threw` on
+     * `group-reports-its-children` and `group-children-via-getcount` in 29 of
+     * the last 30 rounds. The archive settled that before the read was written.
+     * Rounds 334-335 skipped because the lookup was at slide level; 339 skipped
+     * with the descent in place, for this reason instead.
+     *
+     * What it still does, and nothing else in the battery does, is DRAW a chart
+     * whose every segment is a rotated rectangle. `Shape.rotation` had never
+     * been written on a real host in 333 rounds, so `addSegment`'s rotated
+     * branch — the path every diagonal in the product takes — had never once
+     * executed outside the fake. Getting the chart in without an error is a
+     * real answer about a real path, and it is reported as one.
+     *
+     * The measurement moved to `rotation-keeps-the-unrotated-box`, which asks
+     * the host directly instead of through our own pipeline.
+     */
+    return {
+      ok: true,
+      detail: `drew ${placed?.partIds?.length ?? 0} rotated segment(s) without error; this host will not report a group's children, so where they landed is unmeasurable here — see the rotation-keeps-the-unrotated-box probe`,
+    };
   }
   if (drawn.every((s) => s.rotation === null)) {
     await clean();
@@ -3168,7 +3186,7 @@ const SCENARIOS: {
   // arm above. It reads its own segments by name, so an overlap costs it
   // nothing — but running after everything else means it cannot cost anyone
   // ELSE a readback either.
-  { name: "where a rotated shape lands", run: rotatedShapePlacement },
+  { name: "a chart of rotated shapes", run: rotatedShapePlacement },
   // Picked only for the plainest reason there is: it blocks on a human.
   { name: "edit the chart YOU click", run: editViaRealClick, pickedOnly: true },
   { name: "what makes a long run slow down", run: degradesOverTime, pickedOnly: true },

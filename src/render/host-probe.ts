@@ -3079,7 +3079,29 @@ const PROBES: Probe[] = [
          * host that refuses every add must answer `no-scratch-shape` — never
          * asked — rather than offering an opinion about rotation.
          */
-        const made = probeShapes(ctx).addGeometricShape(PowerPoint.GeometricShapeType.rectangle, {
+        const shapes = probeShapes(ctx);
+        /**
+         * A CONTROL SHAPE, ADDED AND READ THE SAME WAY, AND NEVER ROTATED.
+         *
+         * Rounds 336-338 all answered `unreadable` — "width did not come back a
+         * number" — while `named-preset-resolves`, two probes down, reads a
+         * width in exactly this shape of batch and gets 24x24 every time. So
+         * the geometry read is not what this host refuses, and reporting the
+         * refusal as one flat "unreadable" hid which of the two it was.
+         *
+         * The control answers that. If it reads and the rotated one does not,
+         * the finding is `no-read-after-rotation` — this host will not answer a
+         * load in a batch that also WRITES rotation — which is a fact about the
+         * host worth having, and a different one from "we cannot measure here".
+         */
+        const control = shapes.addGeometricShape(PowerPoint.GeometricShapeType.rectangle, {
+          left: 200,
+          top: 100,
+          width: W,
+          height: H,
+        });
+        control.load("width");
+        const made = shapes.addGeometricShape(PowerPoint.GeometricShapeType.rectangle, {
           left: 120,
           top: 100,
           width: W,
@@ -3095,7 +3117,14 @@ const PROBES: Probe[] = [
         const w = readSize(() => made.width);
         const h = readSize(() => made.height);
         const rot = readSize(() => (made as unknown as { rotation: number }).rotation);
-        if (!Number.isFinite(w)) return { answer: "unreadable", detail: "width did not come back a number" };
+        const controlW = readSize(() => control.width);
+        if (!Number.isFinite(w))
+          return Number.isFinite(controlW)
+            ? {
+                answer: "no-read-after-rotation",
+                detail: `an unrotated shape in the same batch read back ${controlW.toFixed(1)}pt wide; the rotated one answered nothing`,
+              }
+            : { answer: "unreadable", detail: "neither shape's width came back — this host answers no geometry here" };
         const detail = `set ${W}x${H} at ${DEG}deg; host reports ${w.toFixed(1)}x${h.toFixed(1)}, rotation ${String(rot)}`;
         /**
          * AND IT MUST NOT CONCLUDE FROM A ROTATION THAT DID NOT TAKE.
