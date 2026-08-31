@@ -28,6 +28,7 @@ import {
   enrichSnapshots,
   traceEnvironment,
   wantsAutoPicture,
+  marksThisHostWillDrop,
   listChartsInDeck,
   listChartsInSelection,
   scanIsComplete,
@@ -1762,6 +1763,51 @@ function rasterizeScene(scene: Scene): Promise<string> {
  * it standing instead of closing with "Done."
  */
 async function chartPicture(cfg: ChartConfig, scene: Scene): Promise<{ png?: string; warn?: string }> {
+  /**
+   * MARKS THIS HOST CANNOT DRAW — asked before density, because this one is
+   * about the chart being WRONG rather than about the host being slow.
+   *
+   * Below PowerPointApi 1.10 a wedge and an arrowhead each trace and draw
+   * nothing, so a pie inserts as four labels around empty space. 18 of the 123
+   * shipped charts lose ink there and 8 lose their subject outright.
+   *
+   * DELIBERATELY NOT `wantsAutoPicture`, and the difference is the whole point:
+   * that one gates on `web`, because density is what kills PowerPoint on the
+   * WEB. This is the opposite host — the web reports 1.10 and never reaches
+   * here, while desktop, Mac and every volume-licensed build never have it.
+   * Sharing the predicate would have made this dead code on the only hosts it
+   * exists for.
+   *
+   * A picture is the whole chart, correct, on a host that cannot draw it. The
+   * message says what would have been missing and does NOT offer Explode:
+   * exploding is the door back to the broken version, which is the mistake
+   * `doExplode`'s own comment records the product having made once already.
+   */
+  const dropped = marksThisHostWillDrop(scene);
+  if (dropped.nodes && cfg.render !== "image") {
+    const missing = dropped.what.join(" and ");
+    if (canInsertPicture()) {
+      const png = await boundedRaster(scene);
+      if (png)
+        return {
+          png,
+          warn:
+            `This PowerPoint cannot draw ${missing} — that needs a newer Office (PowerPointApi 1.10). ` +
+            `Inserted as a picture so the chart is complete; it stays an image here.`,
+        };
+      return {
+        warn:
+          `This PowerPoint cannot draw ${missing}, and the chart could not be turned into a picture either. ` +
+          `Drawing it as shapes — ${missing} will be missing.`,
+      };
+    }
+    return {
+      warn:
+        `This PowerPoint cannot draw ${missing}, and cannot insert a picture either (that needs PowerPointApi 1.8). ` +
+        `Drawing it as shapes — ${missing} will be missing.`,
+    };
+  }
+
   // A chart nobody asked to rasterize, on the one host that cannot survive
   // drawing it. The densest kinds are far past what PowerPoint on the web will
   // take as shapes — violin 253, area 176, tile map 122, waffle 103 — and the
@@ -2383,7 +2429,24 @@ async function doExplode() {
    * Refuse with the count. `canPicture` matters: a host that cannot rasterise
    * has no picture to fall back TO, so exploding is the only way to see the
    * chart at all and the guard correctly stands aside.
+   *
+   * THE SAME MISTAKE HAS A SECOND DOOR, and it is the one this host actually
+   * walks through. A chart inserted as a picture because this PowerPoint cannot
+   * draw its wedges would explode into shapes with the wedges MISSING — the
+   * user asked for native shapes and would get a pie with no slices, having
+   * followed a button the add-in offered. Refused for the same reason and in
+   * the same shape as the density guard, and the insert-time message is careful
+   * not to advertise Explode on this path at all.
    */
+  const dropped = marksThisHostWillDrop(scene);
+  if (dropped.nodes) {
+    note(
+      `This PowerPoint cannot draw ${dropped.what.join(" and ")} — that needs a newer Office ` +
+        `(PowerPointApi 1.10) — so the chart stays a picture. Exploding it here would leave them out.`,
+      "err",
+    );
+    return;
+  }
   const shapes = estimateOfficeShapes(scene);
   if (
     wantsAutoPicture(shapes, {

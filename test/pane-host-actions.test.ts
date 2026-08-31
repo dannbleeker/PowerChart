@@ -114,6 +114,14 @@ const host = vi.hoisted(() => ({
   slideHoldsOnlyChart: false,
   /** Whether the renderer says this chart is too dense to draw as shapes. */
   autoPicture: false,
+  /**
+   * Marks this host cannot draw at all — a sub-1.10 PowerPoint, where a wedge
+   * and an arrowhead both draw NOTHING. A different question from `autoPicture`
+   * and a different host: that one is the web, which is too slow for a dense
+   * chart; this is desktop and every volume-licensed build, which is fast and
+   * simply has no `Shape.rotation`.
+   */
+  cannotDraw: { what: [] as string[], nodes: 0 },
   updateChartThrows: false,
   /**
    * Which items of a multi-chart update stall, keyed by index, and the stray
@@ -496,6 +504,12 @@ vi.mock("../src/render/powerpoint", () => ({
   // by the test that cares.
   traceEnvironment: vi.fn((build: string) => traceRef.fn("host", "environment", { build })),
   wantsAutoPicture: vi.fn(() => host.autoPicture),
+  // What this host cannot draw AT ALL — empty for every test that does not say
+  // otherwise, which is a host that can draw everything. A real export has to
+  // be listed here or it arrives `undefined` and the call throws: this module
+  // is mocked whole, and adding `marksThisHostWillDrop` to the renderer took 55
+  // tests down before it appeared in this object.
+  marksThisHostWillDrop: vi.fn(() => host.cannotDraw),
   // Selection juggling around an in-place redraw. The fake host has no view,
   // so it just runs the body — with `deselected` false, which is the honest
   // answer for a host that cannot move the selection.
@@ -636,6 +650,7 @@ async function bootHostPane(opts?: { deckStyle?: Record<string, unknown> | null 
   host.demoReconcile = undefined;
   host.swapOutcome = "failed";
   host.autoPicture = false;
+  host.cannotDraw = { what: [], nodes: 0 };
   host.updateGate = null;
   host.slideCountThrowsAfter = null;
   host.slideCountCalls = 0;
@@ -819,6 +834,58 @@ describe("image render mode", () => {
       await settle();
       expect((host.calls.insertScene[0] as { pictureBase64?: string }).pictureBase64).toBeUndefined();
       expect($("host-note").textContent).toMatch(/can't insert pictures/i);
+    } finally {
+      raster.restore();
+    }
+  });
+
+  it("inserts a picture, and says why, when this host cannot draw the marks", async () => {
+    /**
+     * WARN AND PICTURE — the owner's call, 2026-08-31, for the 18 of 123
+     * shipped charts that lose ink below PowerPointApi 1.10 and the 8 that lose
+     * their subject outright: a pie whose wedges cannot be drawn inserts as
+     * four labels around empty space.
+     *
+     * The picture is the whole chart, correct, on a host that cannot draw it.
+     * The message has to say WHAT would have been missing — "this chart could
+     * not be drawn" gives a user nothing to act on.
+     */
+    const raster = stubRaster();
+    try {
+      host.canPicture = true;
+      host.cannotDraw = { what: ["4 pie slices"], nodes: 4 };
+      $("insert").click();
+      await settle();
+      expect(
+        (host.calls.insertScene[0] as { pictureBase64?: string }).pictureBase64,
+        "a chart this host cannot draw went in as shapes",
+      ).toBeTruthy();
+      const note = String($("host-note").textContent);
+      expect(note, "did not say what was missing").toMatch(/4 pie slices/);
+      // NOT an invitation to explode: exploding is the door back to the version
+      // this host cannot draw, which is the mistake the density guard's own
+      // comment records the product having made once already.
+      expect(note, "offered Explode, which would put the chart back the way it could not be drawn").not.toMatch(
+        /explode/i,
+      );
+    } finally {
+      raster.restore();
+    }
+  });
+
+  it("still says what is missing when it cannot make a picture either", async () => {
+    // The chart goes in as shapes, because that beats refusing it — but
+    // silently dropping the marks is the one outcome this must never produce.
+    const raster = stubRaster();
+    try {
+      host.canPicture = false;
+      host.cannotDraw = { what: ["an arrow"], nodes: 1 };
+      $("insert").click();
+      await settle();
+      expect((host.calls.insertScene[0] as { pictureBase64?: string }).pictureBase64).toBeUndefined();
+      const note = String($("host-note").textContent);
+      expect(note).toMatch(/an arrow/);
+      expect(note, "did not say the mark would be missing").toMatch(/missing/i);
     } finally {
       raster.restore();
     }
@@ -3227,6 +3294,26 @@ describe("Explode respects the same budget the insert path enforces", () => {
       web: true,
       canPicture: true,
     });
+  });
+
+  it("refuses to explode into marks this host cannot draw", async () => {
+    /**
+     * THE SECOND DOOR, and the one a desktop host actually walks through.
+     *
+     * A chart inserted as a picture because this PowerPoint has no
+     * `Shape.rotation` would explode into shapes with its wedges MISSING — the
+     * user asks for native shapes and gets a pie with no slices, having pressed
+     * a button the add-in offered. Same trap as the density guard above, a
+     * different host: that one is the web, this one is everything else.
+     */
+    host.autoPicture = false; // density is NOT the reason here
+    host.cannotDraw = { what: ["4 pie slices"], nodes: 4 };
+    host.loadSelectionResult = pictureChart();
+    $("explode").click();
+    await settle();
+    expect(host.calls.updateChart, "exploded a chart into marks this host cannot draw").toHaveLength(0);
+    const said = $("host-note").textContent ?? "";
+    expect(said, `refused without saying what would be lost: ${said}`).toMatch(/4 pie slices/);
   });
 
   it("explodes when the budget is not the problem", async () => {

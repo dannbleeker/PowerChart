@@ -6738,6 +6738,41 @@ export async function reconcileDeck(
 const canRotate = (): boolean => supports("1.10");
 
 /**
+ * The marks THIS host will silently drop from this scene, in the user's words.
+ *
+ * Two node kinds need `Shape.rotation`, and both trace and return nothing
+ * without it: a `wedge` (`addWedgeFan`) and an `arrowhead`. A `line` segment
+ * does NOT belong here — `addSegment` falls back to a real line and still
+ * draws — and neither does anything else, which is why this asks the node kinds
+ * rather than guessing from the chart kind.
+ *
+ * MEASURED ACROSS THE SHIPPED DECK, 2026-08-31: 18 of 123 charts lose ink below
+ * 1.10, and 8 of them lose their subject — pie 4/4, doughnut 2/2, sunburst 2/2
+ * keep nothing but their labels, because the wedge IS the chart. The other 10
+ * (gantt, stacked, waterfall, scatter, radar) lose annotation arrows and keep
+ * their marks. Elements are not in that count: a Harvey ball is an empty ring at
+ * every fraction between 1% and 99%, and a table `[up]`/`[down]` cell keeps its
+ * text and loses its glyph.
+ *
+ * Not urgent for PowerPoint on the web, which reports 1.10. This is desktop,
+ * Mac, and every volume-licensed build, where 1.10 is absent permanently.
+ *
+ * The WORDS are the point of returning them. "This chart needs pie slices your
+ * PowerPoint cannot draw" is actionable; "wedge nodes were dropped" is not.
+ */
+export function marksThisHostWillDrop(scene: Scene): { what: string[]; nodes: number } {
+  if (canRotate()) return { what: [], nodes: 0 };
+  const wedges = scene.nodes.filter((n) => n.kind === "wedge").length;
+  const arrows = scene.nodes.filter((n) => n.kind === "arrowhead").length;
+  const what: string[] = [];
+  // Slices first: where both are present the slices are the subject and the
+  // arrows are the annotation, and a message reads best worst-first.
+  if (wedges) what.push(wedges === 1 ? "a pie slice" : `${wedges} pie slices`);
+  if (arrows) what.push(arrows === 1 ? "an arrow" : `${arrows} arrows`);
+  return { what, nodes: wedges + arrows };
+}
+
+/**
  * True when the host can paint pixels into a shape: `ShapeFill.setImage` is
  * PowerPointApi **1.8** (@types/office-js: "Sets the fill formatting of the
  * shape to an image. This changes the fill type to `PictureAndTexture`") and the

@@ -20,6 +20,7 @@ import {
   insertDemoDeck,
   insertSceneIntoSlide,
   shapeGeometryByName,
+  marksThisHostWillDrop,
   isPowerPointHost,
   listChartsInDeck,
   listChartsInSelection,
@@ -237,6 +238,75 @@ describe("insertSceneIntoSlide", () => {
     } finally {
       faults.presetMissing = "";
     }
+  });
+
+  describe("what this host cannot draw", () => {
+    /**
+     * `pane-host-actions.test.ts` mocks this whole module, so the pane tests
+     * prove the pane REACTS to the answer and can say nothing about whether the
+     * answer is right. This asks the real function.
+     *
+     * The list is exactly the node kinds that draw NOTHING without
+     * `Shape.rotation`: a wedge and an arrowhead. A diagonal `line` must never
+     * appear — `addSegment` falls back to a real line and still draws, so
+     * counting it would rasterise every line chart on every desktop Office for
+     * no reason at all.
+     */
+    const scene = (kind: string) =>
+      buildChart({
+        kind,
+        width: 480,
+        height: 300,
+        data: {
+          categories: ["A", "B", "C"],
+          series: [{ name: "S", values: [40, 35, 25] }],
+        },
+      } as unknown as typeof config);
+
+    it("names the pie's slices on a host without rotation", () => {
+      const slide = makeSlide("s-caps");
+      installHost([slide], [], slide, (v) => v !== "1.10");
+      const got = marksThisHostWillDrop(scene("pie"));
+      expect(got.nodes, "a pie lost nothing on a host that cannot draw a wedge").toBeGreaterThan(0);
+      expect(got.what.join(" "), "did not say what the user would lose").toMatch(/pie slice/);
+    });
+
+    it("says a line chart loses nothing, because its diagonals fall back", () => {
+      // The one that would be expensive to get wrong: `addSegment` routes a
+      // diagonal to a real line without rotation. Reporting a loss here would
+      // turn every line chart on every desktop Office into a picture.
+      const slide = makeSlide("s-line");
+      installHost([slide], [], slide, (v) => v !== "1.10");
+      expect(marksThisHostWillDrop(scene("line")).nodes).toBe(0);
+      expect(marksThisHostWillDrop(scene("clustered")).nodes).toBe(0);
+    });
+
+    it("counts in words a person would use, singular and plural", () => {
+      // The message is the whole product of this function, and "1 pie slices"
+      // is the kind of thing that makes a warning look automated and skippable.
+      // Built as a scene directly: no chart kind emits exactly one wedge beside
+      // exactly one arrow, and the wording is what is under test.
+      const slide = makeSlide("s-words");
+      installHost([slide], [], slide, (v) => v !== "1.10");
+      const sceneOf = (nodes: unknown[]) =>
+        marksThisHostWillDrop({ width: 100, height: 100, nodes } as unknown as ReturnType<typeof buildChart>);
+      const wedge = { kind: "wedge", cx: 50, cy: 50, r: 20, innerR: 0, startAngle: 0, endAngle: 90, fill: "#111" };
+      const arrow = { kind: "arrowhead", x: 10, y: 10, angle: 0, size: 4, fill: "#111" };
+      const one = sceneOf([wedge, arrow]);
+      expect(one.what).toEqual(["a pie slice", "an arrow"]);
+      expect(one.nodes).toBe(2);
+      // …and the slices lead, because where both are present the slices are the
+      // subject and the arrows are the annotation.
+      expect(sceneOf([wedge, wedge, arrow, arrow]).what).toEqual(["2 pie slices", "2 arrows"]);
+    });
+
+    it("loses nothing at all on a host that has rotation", () => {
+      const slide = makeSlide("s-full");
+      installHost([slide]);
+      for (const k of ["pie", "doughnut", "line", "clustered"]) {
+        expect(marksThisHostWillDrop(scene(k)), `${k} reported a loss on a 1.10 host`).toEqual({ what: [], nodes: 0 });
+      }
+    });
   });
 
   describe("reading a chart's parts back off a real slide", () => {
