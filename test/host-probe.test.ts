@@ -14,6 +14,7 @@ import {
   summariseHostSheet,
   _setProbeBudgetForTest,
   NOT_ASKED,
+  UNINFORMATIVE,
   weakAnswer,
   PROBE_PASSES,
   RESAMPLE_IDS,
@@ -90,6 +91,137 @@ describe("a named answer outranks the catch-all", () => {
     // between samples is `stable`'s job to report rather than `answer`'s to hide.
     expect(promote("overwrites", "keeps-first"), "a named answer was overwritten").toBe("overwrites");
     expect(promote("overwrites", "other"), "the catch-all displaced a real answer").toBe("overwrites");
+  });
+});
+
+describe("the failure vocabulary is classified on purpose", () => {
+  /**
+   * THREE WORDS, FOUND ONE AT A TIME, EACH COSTING ROUNDS OF REAL ANSWERS.
+   *
+   *   `other`       locked `tags-add-same-key-twice` in 83 of 86 rounds
+   *   `unreadable`  locked 87 rows across 8 questions, archive-wide
+   *   `silent`      locked 52 more, 16 of them a plain `yes`
+   *
+   * Each was fixed the same way and each was found by accident, months apart, by
+   * someone reading samples for an unrelated reason. The defect is not really
+   * any of the three words: it is that a probe can invent a new way of saying
+   * "no answer" and nothing forces anyone to decide which kind of word it is.
+   *
+   * So the vocabulary is pinned here. Add a word to `host-probe.ts` and this
+   * test fails until you say what it is — a REAL answer the host gave, or one
+   * more way of not answering. That is a thirty-second decision at the moment it
+   * is made, and it has three times now cost far more than that afterwards.
+   */
+  const readVocabulary = () => {
+    const src = readFileSync("src/render/host-probe.ts", "utf8");
+    const words = new Set<string>();
+    for (const m of src.matchAll(/answer:\s*"([a-z0-9-]+)"/g)) words.add(m[1]);
+    // `answer: isTimeout(err) ? "silent" : "threw"` — the form that hid `silent`
+    // from a first, simpler version of this scan.
+    for (const m of src.matchAll(/answer:\s*[^,;}\n]*?\?[^,;}\n]*/g))
+      for (const q of m[0].matchAll(/"([a-z0-9-]+)"/g)) words.add(q[1]);
+    return words;
+  };
+
+  /**
+   * Words that are a real thing the host said. `threw` and `commit-threw` belong
+   * here and NOT with the non-answers: a host actively raising an error on a
+   * call is a fact about that call, reproducible and worth keeping. A deadline
+   * expiring is not.
+   */
+  const REAL_ANSWERS = new Set([
+    "yes",
+    "no",
+    "null",
+    "undefined",
+    "boolean",
+    "number",
+    "string",
+    "absent",
+    "none",
+    "all",
+    "neither",
+    "both-answer",
+    "partial",
+    "some",
+    "first",
+    "second",
+    "two",
+    "at-least-5",
+    "kept",
+    "lost",
+    "changed",
+    "stable",
+    "still-there",
+    "draws",
+    "drew-nothing",
+    "refused",
+    "refused-after-group",
+    "no-refusal",
+    "threw",
+    "commit-threw",
+    "add-threw",
+    "add-returned-nothing",
+    "claims-live",
+    "null-object",
+    "not-listed",
+    "reports-gone",
+    "tags-gone",
+    "overwrites",
+    "keeps-first",
+    "keeps-head",
+    "keeps-tail",
+    "scattered",
+    "index-beats-items",
+    "index-unreadable",
+    "survives-8",
+    "survives-12",
+    "same-as-id",
+    "through-a-refetched-handle",
+    "returns-something",
+    "unrotated-box",
+    "rotation-did-not-take",
+    "rotation-not-writable",
+    "no-read-after-rotation",
+    "no-rotation-api",
+    "no-api",
+    "no-binding-api",
+    "no-count",
+    "no-creation-id",
+    "no-durable-slide",
+    "no-group-id",
+    "no-id",
+    "no-members",
+    "no-layouts",
+  ]);
+
+  it("classifies every answer word the probe can emit", () => {
+    const words = readVocabulary();
+    // The scan is itself an instrument, so it gets checked before it is trusted.
+    // `silent` is only ever emitted from a ternary; an extractor that misses it
+    // would pass this whole test while covering nothing.
+    expect(words.has("silent"), "the extractor missed the ternary form and proves nothing").toBe(true);
+    expect(words.has("unreadable")).toBe(true);
+    expect(words.size, "the extractor found suspiciously few words").toBeGreaterThan(40);
+
+    const unclassified = [...words].filter((w) => !NOT_ASKED.has(w) && !UNINFORMATIVE.has(w) && !REAL_ANSWERS.has(w));
+    expect(
+      unclassified,
+      `Unclassified probe answer(s): ${unclassified.join(", ")}. Decide what each one IS. ` +
+        `A real thing the host said goes in REAL_ANSWERS; one more way of not answering goes in ` +
+        `UNINFORMATIVE, where it can be displaced by a real answer. Getting this wrong is what made ` +
+        `the sheet report "unreadable" for eleven rounds while the host was answering.`,
+    ).toEqual([]);
+  });
+
+  it("keeps the three known non-answers weak, and a throw strong", () => {
+    for (const w of ["other", "unreadable", "silent"]) {
+      expect(answerRank(w), `${w} must not lock a row`).toBe(1);
+    }
+    // The line the classification turns on: an error the host RAISED is a fact
+    // about the host; a deadline that expired is a fact about the network.
+    expect(answerRank("threw"), "a throw is the host speaking").toBe(2);
+    expect(answerRank("commit-threw")).toBe(2);
   });
 });
 

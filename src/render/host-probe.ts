@@ -555,8 +555,28 @@ export function scratchReplacementWhy(result: { why?: string; answer: string }):
  *
  * `unreadable` is not a meaning to be stable about either. It is the absence of
  * a reading, and a reading beats it.
+ *
+ * ── AND A THIRD TIME, WHICH IS WHEN IT STOPPED BEING A COINCIDENCE ──
+ *
+ * `silent` is what a probe records when its own sync misses the deadline (see
+ * the `isTimeout(err)` branch that emits it). Unlike `threw`, which is the host
+ * actively refusing a call and therefore a fact worth keeping, `silent` says
+ * only that no reply arrived in time — the host may well answer the same
+ * question on the next pass, and repeatedly does.
+ *
+ * Archive-wide it locked 52 rows whose own samples held a real answer:
+ * `binding-names-shape-later` 34 of them, `shape-add-held-slide-proxy-again` 12.
+ * SIXTEEN of the 52 are a plain `yes` reported as a timeout — including
+ * `shape-add-held-slide-proxy` in round 346, inside the window this was mined
+ * from.
+ *
+ * Three words now, found one at a time, each costing rounds of real answers
+ * before anyone noticed. So the vocabulary is pinned by a test rather than by
+ * whoever next remembers: see "the failure vocabulary is classified on purpose"
+ * in `test/host-probe.test.ts`, which fails when a new non-answer word is
+ * emitted without being classified here.
  */
-export const UNINFORMATIVE = new Set(["other", "unreadable"]);
+export const UNINFORMATIVE = new Set(["other", "unreadable", "silent"]);
 
 /** Weak enough to be replaced by a named answer: never asked, or asked and unnameable. */
 export function weakAnswer(a: string): boolean {
