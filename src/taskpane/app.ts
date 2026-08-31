@@ -1671,6 +1671,17 @@ sheetApi = mountDatasheet(
         break;
     }
   },
+  // The sheet's own voice — today only the European-paste reading, which
+  // rewrites the user's cells and therefore has to say so.
+  //
+  // "none", not "ok" and not "busy". Not "ok" because a green tick over a
+  // reinterpretation of the user's numbers reads as confirmation rather than as
+  // the flag it is. Not "busy" either, which was the first choice here and was
+  // picked for its colour without reading what it DOES: "busy" un-hides the
+  // progress bar and skips the settled count, so the pane would have implied
+  // work in flight for a paste that had already finished. A neutral hint says
+  // the one true thing — this happened, look at it — and claims nothing else.
+  (message, params) => note(message, "none", params),
 );
 snapshot();
 

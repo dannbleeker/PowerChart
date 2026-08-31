@@ -70,8 +70,85 @@ function refCell(letters: string, digits: string): { row: number; col: number } 
  * 15. Refuse those instead — a visible gap beats a wrong number.
  */
 function numericValue(text: string): number {
-  if (/^[+-]?\d{1,3}(,\d{3})+(\.\d+)?$/.test(text)) return Number(text.replace(/,/g, ""));
+  if (US_GROUPED.test(text)) return Number(text.replace(/,/g, ""));
   return text.includes(",") ? NaN : Number(text);
+}
+
+/** "1,234" / "1,234.5" — the US thousands grouping Excel copies. */
+const US_GROUPED = /^[+-]?\d{1,3}(,\d{3})+(\.\d+)?$/;
+
+/** "1.234" / "1.234.567,89" — dot groups, optionally with a comma decimal. */
+const EU_GROUPED = /^[+-]?\d{1,3}(\.\d{3})+(,\d+)?$/;
+
+/** "987,5" — a plain comma decimal, no grouping. */
+const EU_DECIMAL = /^[+-]?\d+,\d+$/;
+
+/**
+ * IS THIS PASTE WRITTEN IN THE EUROPEAN CONVENTION — dot for thousands, comma
+ * for the decimal?
+ *
+ * The comma half was already refused, deliberately, by `numericValue`: it reads
+ * a US grouping and turns anything else with a comma into a visible gap, on the
+ * stated rule that a gap beats a wrong number. The DOT half had no such care,
+ * and there `Number()` is only too willing — so one paste out of a Danish Excel
+ * came apart three different ways:
+ *
+ *     1.234   ->    1.234    a thousand two hundred, read as one and a bit
+ *     2.500   ->    2.5      likewise
+ *     987,5   ->    null     correctly refused
+ *
+ * Two cells silently wrong by a factor of a thousand, one visibly refused, on a
+ * sheet whose only difference from a US one is the punctuation.
+ *
+ * PER CELL IT CANNOT BE DECIDED. "1.234" is a perfectly good en-US decimal and
+ * always will be. Across a PASTE it usually can, because the evidence arrives in
+ * the same clipboard block: a comma that is not a thousands group is a decimal
+ * comma, and a decimal comma means the dots are groups.
+ *
+ * So this asks for evidence in BOTH directions and answers only when one side is
+ * unopposed. A block carrying both — a mixed paste, or a category named "1,5" —
+ * gets today's reading, which is the honest outcome when the sheet contradicts
+ * itself.
+ */
+export function looksEuropean(cells: string[][]): boolean {
+  let european = false;
+  let american = false;
+  for (const row of cells) {
+    for (const cell of row) {
+      const t = String(cell ?? "").trim();
+      if (!t) continue;
+      if (EU_GROUPED.test(t) && t.includes(",")) european = true;
+      else if (EU_DECIMAL.test(t) && !US_GROUPED.test(t)) european = true;
+      // A US grouping, or a dot decimal that CANNOT be a group because it does
+      // not carry exactly three digits ("987.5", "1.2"). A bare "1.234" is not
+      // evidence either way and is deliberately not counted.
+      if (US_GROUPED.test(t)) american = true;
+      else if (/^[+-]?\d+\.\d+$/.test(t) && !/^[+-]?\d{1,3}(\.\d{3})+$/.test(t)) american = true;
+    }
+  }
+  return european && !american;
+}
+
+/**
+ * One cell rewritten from the European convention into the one this sheet
+ * stores — which is the plain machine form `Number()` reads.
+ *
+ * REWRITTEN AT PASTE TIME, INTO THE GRID, and that is the point rather than an
+ * implementation detail. The alternative was to teach `numericValue` the
+ * convention and convert on every read, which would make the same characters
+ * mean different things depending on cells elsewhere, and would hide the
+ * decision where nobody could see or correct it. Here the user watches 1.234
+ * become 1234 in the cell, and if the guess is ever wrong the value is right
+ * there to fix.
+ *
+ * Anything that is not a number in that convention — text, a date, a formula —
+ * comes back untouched.
+ */
+export function fromEuropeanNumber(text: string): string {
+  const t = String(text ?? "").trim();
+  if (EU_GROUPED.test(t)) return t.replace(/\./g, "").replace(",", ".");
+  if (EU_DECIMAL.test(t)) return t.replace(",", ".");
+  return text;
 }
 
 /**
@@ -518,6 +595,20 @@ export function mountDatasheet(
   sheet: SheetModel,
   onChange: (sheet: SheetModel) => void,
   onStructure: (change: SheetStructureChange) => void = () => {},
+  /**
+   * Something the sheet needs to SAY, not just do.
+   *
+   * Added for the European paste: rewriting "1.234" to "1234" in the user's grid
+   * is a judgement about their data, and a judgement made in silence is the
+   * thing this fix exists to stop. Optional so no existing caller changes, and
+   * the pane passes its own `note`.
+   *
+   * `message` is an EN catalogue KEY carrying {placeholders}, filled from
+   * `params` after translation — the same shape every other pane note uses. The
+   * count must not be interpolated here: baking it in would make "2 cells" and
+   * "3 cells" two different keys, and neither would ever be translated.
+   */
+  onNote: (message: string, params?: Record<string, string | number>) => void = () => {},
 ): { setSheet(next: SheetModel): void } {
   let model = sheet;
   /** Last focused cell, so row/column operations act at the cursor. */
@@ -678,6 +769,14 @@ export function mountDatasheet(
     // "\t\t", which is why this only ever bit single-column pastes.)
     const rows = text.replace(/\r/g, "").split("\n");
     while (rows.length && rows[rows.length - 1] === "") rows.pop();
+    /**
+     * DECIDED ONCE, FOR THE WHOLE BLOCK, because that is the only place the
+     * evidence exists. A single cell cannot say whether "1.234" is a thousand
+     * or a fraction; a paste that also carries "987,5" can. See `looksEuropean`.
+     */
+    const grid = rows.map((r) => r.split("\t"));
+    const european = looksEuropean(grid);
+    let converted = 0;
     const grewFrom = model.cells.length;
     rows.forEach((row, dr) => {
       row.split("\t").forEach((val, dc) => {
@@ -687,7 +786,13 @@ export function mountDatasheet(
         model.cells.forEach((mr) => {
           while (mr.length <= c) mr.push("");
         });
-        model.cells[r][c] = val;
+        // Rewritten into the GRID, so the reading is visible and correctable —
+        // see `fromEuropeanNumber`. A cell that is not a European number in the
+        // first place comes back identical, so `converted` counts only what
+        // actually moved.
+        const stored = european ? fromEuropeanNumber(val) : val;
+        if (stored !== val) converted++;
+        model.cells[r][c] = stored;
       });
     });
     // A row this paste APPENDED and left FULLY blank is `sheetToData`'s stack
@@ -711,6 +816,17 @@ export function mountDatasheet(
     }
     render();
     onChange(model);
+    // SAID, not just done. The pane read the user's numbers in a convention it
+    // inferred, and rewrote their cells to match — that is a judgement about
+    // their data and it has to be visible. The count is what makes it checkable:
+    // it names how many cells moved, and they are all on screen.
+    if (converted)
+      onNote(
+        "Read as European numbers — 1.234 as 1234, 987,5 as 987.5. Rewrote {n} cell(s); edit any that are wrong.",
+        {
+          n: converted,
+        },
+      );
   }
 
   function button(label: string, onClick: () => void): HTMLButtonElement {

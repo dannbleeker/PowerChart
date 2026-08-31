@@ -126,6 +126,11 @@ export const EN = {
   // Runtime status — {placeholder} templates (filled by t(key, params)).
   "Failed: {error}": "Failed: {error}",
   "Couldn't render PNG: {error}": "Couldn't render PNG: {error}",
+  // The one note the datasheet raises on its own. A translator should keep the
+  // two worked examples: they are what let a user check the reading at a glance
+  // rather than take it on trust, and the digits carry that in any language.
+  "Read as European numbers — 1.234 as 1234, 987,5 as 987.5. Rewrote {n} cell(s); edit any that are wrong.":
+    "Read as European numbers — 1.234 as 1234, 987,5 as 987.5. Rewrote {n} cell(s); edit any that are wrong.",
   "Style import failed: {error}": "Style import failed: {error}",
   "Invalid JSON: {error}": "Invalid JSON: {error}",
   "That is valid JSON, but not a chart this pane can open: {error}":

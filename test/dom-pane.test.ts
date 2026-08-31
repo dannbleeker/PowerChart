@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi } from "vitest";
 import { mountDatasheet, sheetToData, type SheetModel } from "../src/taskpane/datasheet";
-import { EN, localizePane, localizeTree, registerLanguage, type StringKey } from "../src/taskpane/i18n";
+import { EN, localizePane, localizeTree, registerLanguage, t, type StringKey } from "../src/taskpane/i18n";
 
 // A synthetic, fully-populated language: every catalogue key mapped to a marker.
 // The app ships English-only, so this is how the DOM-sweep mechanism (which only
@@ -161,6 +161,79 @@ describe("mountDatasheet", () => {
     // And the gap itself is still there — the row is what keeps every later
     // value on the category it was pasted against.
     expect(model.cells.length).toBe(5);
+  });
+
+  it("reads a European paste as European, and says it did", () => {
+    /**
+     * A Danish, German or Nordic Excel copies "1.234" for a thousand two hundred
+     * and thirty-four, and "987,5" for nine hundred and eighty-seven and a half.
+     * `numericValue` already refused the comma — its own comment says a visible
+     * gap beats a wrong number — and had no such care for the DOT, where
+     * `Number()` is only too willing. So one paste came apart three ways:
+     *
+     *     1.234  ->  1.234    a thousand two hundred, read as one and a bit
+     *     2.500  ->  2.5      likewise
+     *     987,5  ->  null     correctly refused
+     *
+     * Two cells silently wrong by a factor of a thousand, one visibly refused.
+     * The convention is inferred once from the whole block and written INTO the
+     * grid, so the reading is visible and correctable.
+     */
+    const host = document.createElement("div");
+    let model = sheet();
+    const said: { msg: string; params?: Record<string, string | number> }[] = [];
+    mountDatasheet(
+      host,
+      model,
+      (m) => (model = m),
+      () => {},
+      (msg, params) => said.push({ msg, params }),
+    );
+    const e = new Event("paste") as ClipboardEvent;
+    Object.defineProperty(e, "clipboardData", {
+      value: { getData: () => ["Nord\t1.234", "Syd\t2.500", "Vest\t987,5"].join("\n") },
+    });
+    cell(host, 1, 0).dispatchEvent(e);
+
+    const pasted = model.cells.slice(1, 4).map((r) => r[1]);
+    expect(pasted, "did not read the block as European").toEqual(["1234", "2500", "987.5"]);
+    // SAID, not just done: rewriting a user's cells is a judgement about their
+    // data, and a silent one is the thing this fix exists to stop.
+    expect(said, "rewrote the user's numbers without telling them").toHaveLength(1);
+    expect(said[0].msg).toMatch(/European/i);
+    // The count travels as a PARAM rather than baked into the sentence —
+    // otherwise "2 cell(s)" and "3 cell(s)" are two catalogue keys and neither
+    // one ever gets translated.
+    expect(said[0].msg, "interpolated the count into the key").toContain("{n}");
+    expect(said[0].params, "did not say how many cells moved").toEqual({ n: 3 });
+    // And it has to survive the pane's own translator, which is what the user
+    // actually reads: an uncatalogued key still passes through, but a
+    // placeholder the catalogue entry dropped would reach them raw.
+    expect(t(said[0].msg, said[0].params)).toContain("Rewrote 3 cell(s)");
+    expect(t(said[0].msg, said[0].params), "left a placeholder unfilled").not.toContain("{");
+  });
+
+  it("leaves a US paste exactly as it is", () => {
+    // The half that must not move. A US block is decisive the other way — a
+    // comma grouping, or a dot decimal that cannot be a group — and nothing
+    // about it should change.
+    const host = document.createElement("div");
+    let model = sheet();
+    const said: string[] = [];
+    mountDatasheet(
+      host,
+      model,
+      (m) => (model = m),
+      () => {},
+      (msg) => said.push(msg),
+    );
+    const e = new Event("paste") as ClipboardEvent;
+    Object.defineProperty(e, "clipboardData", {
+      value: { getData: () => ["North\t1,234", "South\t2,500", "West\t987.5"].join("\n") },
+    });
+    cell(host, 1, 0).dispatchEvent(e);
+    expect(model.cells.slice(1, 4).map((r) => r[1])).toEqual(["1,234", "2,500", "987.5"]);
+    expect(said, "claimed a US paste was European").toEqual([]);
   });
 
   it("expands the grid on multi-cell TSV paste", () => {

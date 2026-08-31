@@ -118,7 +118,13 @@ describe("the source tree stays searchable", () => {
    * A file nothing can search is a file nothing will fix, so this is checked
    * rather than remembered.
    */
-  it("has no invisible control character in any tracked source file", () => {
+  // 30s, not the default 5. This test reads EVERY tracked source file, so its
+  // runtime tracks the SIZE of the repo rather than the health of the code — it
+  // measured 3.8s under coverage instrumentation and had started timing out
+  // intermittently. A default deadline here is really a deadline on how large
+  // the repo may get, and the failure it produces points at whichever file was
+  // added last instead of at anything wrong. Raise the bound; keep the sweep.
+  it("has no invisible control character in any tracked source file", { timeout: 30_000 }, () => {
     const files = execFileSync("git", ["ls-files", "*.ts", "*.mjs", "*.js", "*.json", "*.md", "*.html", "*.css"], {
       encoding: "utf8",
       maxBuffer: 8 << 20,
