@@ -18,6 +18,7 @@ import {
   PROBE_PASSES,
   RESAMPLE_IDS,
   stabilityOf,
+  answerRank,
   outstandingScratch,
   supportOf,
   thinSupport,
@@ -89,6 +90,87 @@ describe("a named answer outranks the catch-all", () => {
     // between samples is `stable`'s job to report rather than `answer`'s to hide.
     expect(promote("overwrites", "keeps-first"), "a named answer was overwritten").toBe("overwrites");
     expect(promote("overwrites", "other"), "the catch-all displaced a real answer").toBe("overwrites");
+  });
+});
+
+describe("`unreadable` is the same trap as `other`, and cost eight questions their answers", () => {
+  const sheetWith = (rows: { id: string; answer: string; passes?: number[] }[]): HostAnswerSheet =>
+    ({
+      kind: "powerchart-host-answers",
+      source: "fake",
+      build: "test",
+      requirementSets: [],
+      answers: rows.map((r) => ({
+        ...r,
+        question: r.id,
+        ms: 1,
+        samples: (r.passes ?? [1]).map((pass) => ({
+          answer: r.answer,
+          pass,
+          atMs: 0,
+          regime: "healthy" as const,
+          scratch: "first-slide" as const,
+        })),
+      })),
+    }) as HostAnswerSheet;
+
+  it("ranks never-asked below unnameable below a real answer", () => {
+    // A BOOLEAN COLLAPSED TWO REAL THINGS. `no-scratch-shape` means the probe
+    // never reached its question; `unreadable` means it reached it and could not
+    // read the result. The second is strictly more informative, so a re-ask that
+    // gets as far as reading must still displace a deferral — while a real
+    // answer displaces both.
+    expect(answerRank("no-scratch-shape"), "never-asked is the floor").toBe(0);
+    expect(answerRank("not-asked")).toBe(0);
+    expect(answerRank("unreadable"), "reached the question, read nothing").toBe(1);
+    expect(answerRank("other")).toBe(1);
+    expect(answerRank("unrotated-box"), "a real answer is the ceiling").toBe(2);
+    expect(answerRank("threw"), "a throw is a fact about the host, not a non-answer").toBe(2);
+  });
+
+  it("lets a real answer displace `unreadable` — through mergeHostSheets, not a model of it", async () => {
+    const { mergeHostSheets } = await import("../src/render/host-probe");
+    /**
+     * Measured over all 322 archived rounds and 12,346 rows: 87 rows report
+     * `unreadable` while their own samples carry a real answer, across eight
+     * questions. `which-end-a-short-read-drops` answered `none` in 11 of them,
+     * `shapes-items-count-honest` answered `short-0` in 8, and
+     * `picture-then-shape-read` and `binding-names-shape-later` each answered a
+     * plain `yes`.
+     *
+     * The sharpest is `rotation-keeps-the-unrotated-box`, used here. Over its 33
+     * passes the host said `unrotated-box` four times and the contradicting
+     * answer NOT ONCE; the rest could not read. That question exists because if
+     * this host placed rotated shapes by their post-rotation box, every diagonal
+     * in every line, scatter, radar and violin chart would land wrong. The host
+     * answered it. Eleven sheets in a row said `unreadable`.
+     *
+     * Driven through `mergeHostSheets` on purpose: the rule has TWO call sites
+     * and a test that models the comparison locally proves nothing about either.
+     */
+    const base = sheetWith([
+      { id: "rotation-keeps-the-unrotated-box", answer: "unreadable" },
+      { id: "untouched", answer: "unreadable" },
+    ]);
+    const merged = mergeHostSheets(
+      base,
+      sheetWith([{ id: "rotation-keeps-the-unrotated-box", answer: "unrotated-box", passes: [2] }]),
+    );
+    const row = merged.answers.find((r) => r.id === "rotation-keeps-the-unrotated-box")!;
+    expect(row.answer, "the host answered and the sheet still hid it").toBe("unrotated-box");
+    // The re-ask asked ONE question; every other row keeps what it said.
+    expect(merged.answers.find((r) => r.id === "untouched")!.answer).toBe("unreadable");
+  });
+
+  it("still refuses to let a non-answer displace a real one", async () => {
+    const { mergeHostSheets } = await import("../src/render/host-probe");
+    // The invariant that must survive the change, in the other direction: a
+    // later `unreadable` must not overwrite an answer the host already gave.
+    const base = sheetWith([{ id: "q", answer: "unrotated-box" }]);
+    const merged = mergeHostSheets(base, sheetWith([{ id: "q", answer: "unreadable", passes: [2] }]));
+    expect(merged.answers.find((r) => r.id === "q")!.answer, "a failed read erased a real answer").toBe(
+      "unrotated-box",
+    );
   });
 });
 
@@ -1706,6 +1788,37 @@ describe("stabilityOf", () => {
     expect(stabilityOf([at("yes"), at("threw")])).toBe(false);
     // A never-asked between two agreeing answers does not make them disagree.
     expect(stabilityOf([at("yes"), at("no-scratch-slide"), at("yes")])).toBe(true);
+  });
+
+  it("does not let a failed READ vote against the answers that succeeded", () => {
+    /**
+     * `rotation-keeps-the-unrotated-box`, round 339, exactly as archived: pass 1
+     * could not read, passes 2 and 3 both said `unrotated-box`. The sheet called
+     * that UNSTABLE — the host contradicting itself — when the host had said one
+     * thing every time it said anything at all.
+     *
+     * Across the 12,346 archived rows that mislabelling hit 52. A pass that
+     * could not read is not a dissenting vote.
+     */
+    expect(stabilityOf([at("unreadable"), at("unrotated-box"), at("unrotated-box")])).toBe(true);
+    expect(stabilityOf([at("unreadable"), at("yes"), at("no")])).toBe(false);
+    // `other` is the same kind of non-answer and gets the same treatment.
+    expect(stabilityOf([at("other"), at("overwrites"), at("overwrites")])).toBe(true);
+  });
+
+  it("still reports a host that is CONSISTENTLY unreadable as consistent", () => {
+    /**
+     * The half that must not move, and the reason this rule has two tiers rather
+     * than one. Filtering every weak answer outright changes 1,765 archived
+     * rows, nearly all `true` → `undefined`: three passes that all said
+     * `unreadable` are a host reliably refusing, which is a real and useful
+     * fact. Only with two or more REAL answers to compare does the strict
+     * reading take over.
+     */
+    expect(stabilityOf([at("unreadable"), at("unreadable"), at("unreadable")])).toBe(true);
+    expect(stabilityOf([at("unreadable"), at("other")])).toBe(false);
+    // One real answer is not two, so the fallback still governs here.
+    expect(stabilityOf([at("unreadable"), at("unreadable"), at("yes")])).toBe(false);
   });
 });
 

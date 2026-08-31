@@ -531,12 +531,64 @@ export function scratchReplacementWhy(result: { why?: string; answer: string }):
  * The original rule's intent is kept — a sheet means today what it meant
  * yesterday, and disagreement is `stable`'s job to report — because `other` was
  * never a meaning to be stable about.
+ *
+ * ── AND THEN IT HAPPENED AGAIN, IN THE SAME FUNCTION, WITH A DIFFERENT WORD ──
+ *
+ * `unreadable` is the other half of the failure vocabulary: a probe says it when
+ * a value did not come back, or came back the wrong shape, or the read threw
+ * inside the probe's own catch. It was never added here, so it locked rows
+ * exactly as `other` used to.
+ *
+ * Measured over all 322 archived rounds and 12,346 rows: 87 rows say
+ * `unreadable` while their OWN samples carry a real answer, across eight
+ * different questions. `which-end-a-short-read-drops` answered `none` in 11 of
+ * them; `shapes-items-count-honest` answered `short-0` in 8; `picture-then-
+ * shape-read` and `binding-names-shape-later` each answered a plain `yes`.
+ *
+ * The sharpest one is `rotation-keeps-the-unrotated-box`. Across its 33 passes
+ * the host said `unrotated-box` FOUR times and the contradicting answer NOT
+ * ONCE — the rest could not read. That is the question the round harness gained
+ * a whole scenario to ask, because if this host placed rotated shapes by their
+ * post-rotation box then every diagonal in every line, scatter, radar and violin
+ * chart would land wrong. The host answered. The sheet said `unreadable` in all
+ * eleven rounds.
+ *
+ * `unreadable` is not a meaning to be stable about either. It is the absence of
+ * a reading, and a reading beats it.
  */
-export const UNINFORMATIVE = new Set(["other"]);
+export const UNINFORMATIVE = new Set(["other", "unreadable"]);
 
 /** Weak enough to be replaced by a named answer: never asked, or asked and unnameable. */
 export function weakAnswer(a: string): boolean {
   return NOT_ASKED.has(a) || UNINFORMATIVE.has(a);
+}
+
+/**
+ * How much an answer is worth when two of them compete for one row.
+ *
+ * THREE TIERS, BECAUSE A BOOLEAN COLLAPSED TWO REAL THINGS. Promotion used to
+ * ask `weakAnswer(seen) && !weakAnswer(arriving)`, which works only while "weak"
+ * has exactly one meaning. The moment `unreadable` joined `UNINFORMATIVE` that
+ * stopped being true and a genuine distinction went with it: `no-scratch-shape`
+ * means the probe never REACHED its question, `unreadable` means it reached it
+ * and could not read the result. The second is strictly more informative than
+ * the first, and a re-ask that gets as far as reading must still displace a
+ * deferral — `test/host-probe.test.ts` says so, and it is right.
+ *
+ * So rank rather than flag, and promote only on a strict increase:
+ *
+ *   0  never asked        the question was not reached
+ *   1  asked, unnameable  reached it; `other` or `unreadable` came back
+ *   2  a named answer     the host actually said something
+ *
+ * The original invariant survives at the top: two named answers do not displace
+ * each other, so the FIRST named answer is still the row's answer and a sheet
+ * means today what it meant yesterday. Disagreement remains `stable`'s job.
+ */
+export function answerRank(a: string): 0 | 1 | 2 {
+  if (NOT_ASKED.has(a)) return 0;
+  if (UNINFORMATIVE.has(a)) return 1;
+  return 2;
 }
 
 /**
@@ -562,9 +614,27 @@ export const PROBE_PASSES = 3;
  * unstable; it is a question this run mostly could not ask, and calling that
  * instability would manufacture exactly the noise `UNSTABLE_ANSWERS` warns
  * against. Pure, and exported, so the rule can be checked without a host.
+ *
+ * TWO TIERS, AND THE SECOND ONE WAS MEASURED BEFORE IT WAS WRITTEN. Once
+ * `unreadable` became weak (see `UNINFORMATIVE`), the obvious move was to filter
+ * it here too. That is WRONG, and the archive says so: filtering every weak
+ * answer changes 1,765 rows, and the overwhelming direction is `true` →
+ * `undefined` — rows where all three passes said `unreadable` and the sheet
+ * currently reports, correctly, that the host is CONSISTENTLY unreadable.
+ * Consistency of refusal is a real fact and worth keeping.
+ *
+ * So: judge among the strong answers when there are two or more of them, and
+ * otherwise fall back to the original rule. Measured over the same 12,346 rows
+ * that is 52 changes, every one `false` → `true` — rows that claimed the host
+ * contradicted itself when it had not: it answered the same thing every time it
+ * answered at all, and merely failed to read on the other passes. A pass that
+ * could not read is not a dissenting vote.
  */
 export function stabilityOf(samples: ProbeSample[] | undefined): boolean | undefined {
-  const real = (samples ?? []).map((x) => x.answer).filter((a) => !NOT_ASKED.has(a));
+  const answers = (samples ?? []).map((x) => x.answer);
+  const strong = answers.filter((a) => !weakAnswer(a));
+  if (strong.length >= 2) return new Set(strong).size === 1;
+  const real = answers.filter((a) => !NOT_ASKED.has(a));
   return real.length >= 2 ? new Set(real).size === 1 : undefined;
 }
 
@@ -3486,7 +3556,7 @@ export async function runHostProbes(
     // `other` used to count as real and lock the row — see `UNINFORMATIVE`. That
     // is how `tags-add-same-key-twice` read `other` in 83 of 86 rounds while two
     // of them had `overwrites` sitting in their samples.
-    if (weakAnswer(seen.answer) && !weakAnswer(row.answer)) {
+    if (answerRank(row.answer) > answerRank(seen.answer)) {
       seen.answer = row.answer;
       seen.ms = row.ms;
       seen.detail = row.detail;
@@ -4179,7 +4249,7 @@ export function mergeHostSheets(base: HostAnswerSheet, extra: HostAnswerSheet): 
     shifted.delete(row.id);
     const samples = [...(row.samples ?? []), ...(again.samples ?? [])];
     const next: HostAnswer =
-      weakAnswer(row.answer) && !weakAnswer(again.answer)
+      answerRank(again.answer) > answerRank(row.answer)
         ? { ...row, answer: again.answer, ms: again.ms, detail: again.detail, samples }
         : { ...row, samples };
     const verdict = stabilityOf(samples);
