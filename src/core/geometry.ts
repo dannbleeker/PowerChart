@@ -340,6 +340,75 @@ export const SYMBOL_PRESET: Record<SymbolShape, string> = {
 };
 
 /**
+ * Drop the points of an outline that do not move it by more than `tol` points.
+ *
+ * ONE EDGE IS ONE SHAPE on the Office.js sink — a polygon has no freeform fill
+ * there, so the renderer draws a line per edge — which makes an outline's point
+ * count a cost the host is charged directly. The violin is the whole example:
+ * three bodies sampled on a fixed 41-level KDE grid and mirrored to 82 points
+ * each, 246 of its 259 office shapes, the heaviest chart in the shipped deck by
+ * a distance. Most of those points are in the TAILS, where consecutive samples
+ * sit on top of one another and each one still costs a shape.
+ *
+ * At a quarter-point tolerance — sub-pixel at any sane rendering — those 246
+ * points become 46. The outline is the same curve; what goes is the part of the
+ * sampling grid that was never visible.
+ *
+ * DOUGLAS-PEUCKER, and the first version was not — which is the whole lesson
+ * here. It kept a point when that point deviated from the segment joining its
+ * KEPT predecessor to its IMMEDIATE successor: one pass, cheap, and a purely
+ * local test that says nothing about where the retained line ends up. Its
+ * comment claimed the recursive form was "a marginally better point count for a
+ * lot more machinery". That is backwards. The recursive form's value is that it
+ * BOUNDS THE ERROR, and the local one does not bound anything: asked for 0.25pt
+ * it moved the violin's outline by 0.845pt, and asked for 0.5 it moved it by
+ * 3.18 — six times over. The SVG snapshot caught it by showing a 56-point
+ * horizontal jump where twenty samples had been.
+ *
+ * So `tol` is a guarantee now: no point of the original outline lies further
+ * than `tol` from the line this returns. That is what makes "a quarter of a
+ * point is sub-pixel" an argument rather than a hope.
+ *
+ * Both endpoints are always kept — these are closed outlines, and moving either
+ * end moves where the shape joins itself.
+ */
+export function thinOutline(points: { x: number; y: number }[], tol: number): { x: number; y: number }[] {
+  if (points.length < 3 || !(tol > 0)) return points;
+  const keep = new Uint8Array(points.length);
+  keep[0] = 1;
+  keep[points.length - 1] = 1;
+  // Iterative, with an explicit stack: a violin body is 82 points today and
+  // nothing here should acquire a recursion depth that scales with the data.
+  const stack: [number, number][] = [[0, points.length - 1]];
+  while (stack.length) {
+    const [lo, hi] = stack.pop()!;
+    if (hi - lo < 2) continue;
+    const a = points[lo];
+    const b = points[hi];
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const len = Math.hypot(dx, dy);
+    let far = -1;
+    let worst = tol;
+    for (let i = lo + 1; i < hi; i++) {
+      const p = points[i];
+      // A zero-length chord has no line to measure against — the two ends
+      // collapsed onto one point, so measure from it.
+      const d =
+        len < 1e-9 ? Math.hypot(p.x - a.x, p.y - a.y) : Math.abs(dy * p.x - dx * p.y + b.x * a.y - b.y * a.x) / len;
+      if (d > worst) {
+        worst = d;
+        far = i;
+      }
+    }
+    if (far < 0) continue;
+    keep[far] = 1;
+    stack.push([lo, far], [far, hi]);
+  }
+  return points.filter((_, i) => keep[i] === 1);
+}
+
+/**
  * Outline of a marker symbol as scene-coordinate points, centred on (cx, cy)
  * and inscribed in the `2*size` square the PowerPoint renderers hand to the
  * preset. The SVG renderer draws these points directly; the other two name the

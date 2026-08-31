@@ -72,7 +72,11 @@ describe("demo deck", () => {
     const scene = (t: string) => items.find((i) => i.title === t)!.scene;
     // The bug the self-check exposed: node count under-counts the render. A wedge
     // fans out and a polygon draws one line per edge, so these explode.
-    expect(estimateOfficeShapes(scene("Violin"))).toBeGreaterThan(200); // ~250, was 10 nodes
+    // ~79 from 10 nodes. It was ~250 until the violin's KDE outlines were
+    // thinned to a quarter-point tolerance — 246 polygon edges down to 72 — and
+    // the PROPERTY this test is about, that a polygon costs far more than its
+    // node, is untouched. The line below states it without a magnitude at all.
+    expect(estimateOfficeShapes(scene("Violin"))).toBeGreaterThan(60);
     expect(estimateOfficeShapes(scene("Violin"))).toBeGreaterThan(scene("Violin").nodes.length * 5);
     expect(estimateOfficeShapes(scene("Sunburst"))).toBeGreaterThan(90); // now over budget → skipped
     expect(estimateOfficeShapes(scene("Pie"))).toBeGreaterThan(scene("Pie").nodes.length); // wedge fan expands

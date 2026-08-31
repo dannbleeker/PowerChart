@@ -4,6 +4,7 @@ import { resolveFormat } from "../format";
 import { maxOf, minOf } from "../agg";
 import { seriesColor } from "../style";
 import { lerpColor } from "../color";
+import { thinOutline } from "../geometry";
 import { chromeNodes, computeFrame, valueScale } from "./frame";
 import type { LayoutResult } from "./column";
 
@@ -103,7 +104,22 @@ export function layoutViolin(cfg: ChartConfig, style: ChartStyle, decor: Decorat
     const color = seriesColor(style, c, data.series.find((s) => s.color)?.color);
     nodes.push({
       kind: "polygon",
-      points,
+      /**
+       * THINNED, because on the add-in every edge of this outline is a SHAPE.
+       *
+       * `M` is a fixed 41-level KDE grid, mirrored to 82 points, and Office.js
+       * has no freeform fill — it draws a polygon as one line per edge. Three
+       * bodies came to 246 of this chart's 259 office shapes, which made the
+       * violin the heaviest thing in the shipped deck, and most of those points
+       * sit in the TAILS where consecutive samples land on top of one another
+       * and each still costs a shape.
+       *
+       * A quarter of a point is sub-pixel at any size this is read at, and it
+       * takes 246 points to 46. The grid stays at 41: that is what makes the
+       * curve smooth where it BENDS. This drops only the samples that were never
+       * distinguishable from the line through their own neighbours.
+       */
+      points: thinOutline(points, 0.25),
       fill: lerpColor(style.background, color, 0.32),
       stroke: color,
       strokeWidth: 1,

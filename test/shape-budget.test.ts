@@ -61,7 +61,11 @@ import type { ChartConfig } from "../src/core/types";
  * because a chart changed.
  */
 const BUDGET: Record<string, number> = {
-  violin: 259,
+  // 97, from 259, when the KDE outlines were thinned to a quarter-point
+  // tolerance: 246 polygon edges became 72, and the violin stopped being the
+  // heaviest chart in the deck. It opened this file as the one that would
+  // repay attention; this is what attending to it was worth.
+  violin: 97,
   line: 226,
   combo: 164,
   tilemap: 146,
@@ -89,7 +93,7 @@ const BUDGET: Record<string, number> = {
 };
 
 /** The whole deck, so a rise spread thinly across many charts still shows. */
-const TOTAL_BUDGET = 6873;
+const TOTAL_BUDGET = 6375;
 
 function measure(): { byKind: Map<string, number>; total: number; worst: Map<string, string> } {
   const items = JSON.parse(readFileSync("examples/showcase.json", "utf8")) as ChartConfig[];
