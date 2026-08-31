@@ -57,6 +57,7 @@ import {
   rescaleShouldStop,
   visibilityVerdict,
   sideSlot,
+  fitInSlot,
   SIDE_SLOTS,
   GRID_SLOT,
   stallDetail,
@@ -1330,6 +1331,53 @@ describe("scenarios that must not be able to pass without proving anything", () 
         need.height,
         `the 96-shape grid does not fit down its slot on a ${slide.width}pt deck`,
       ).toBeLessThanOrEqual(grid.height);
+    }
+  });
+
+  it("keeps a FIXED-size box on the slide, which the slot's own top does not", () => {
+    /**
+     * THE TEST ABOVE CHECKS THE SLOT, AND THE SLOT WAS NEVER THE PROBLEM.
+     *
+     * `sideSlot` clamps its height with `Math.max(1, …)`, so the band it returns
+     * fits by construction and `box.top + box.height <= slide.height` passes no
+     * matter how impossible that band is. What is DRAWN in the band is not
+     * checked by it at all — a gate only as wide as its sweep.
+     *
+     * `rotatedShapePlacement` keeps its own 160x220 on purpose: the segments
+     * must be steep enough that a length and a horizontal extent cannot be
+     * confused, which makes the size an invariant of the measurement rather than
+     * a property of the deck. Under the 300pt chart these decks really carry the
+     * band is 160pt at its tallest — so a 220pt box placed at the band's top
+     * hung 40 to 200pt off the bottom of the slide in every archived round, at
+     * both aspect ratios, and nothing said a word.
+     */
+    const decks = [
+      { width: 960, height: 540 }, // 16:9, as observed
+      { width: 720, height: 540 }, // 4:3, as observed
+    ];
+    const size = { width: 160, height: 220 };
+    for (const slide of decks) {
+      // Sweeping the chart DOWN the slide: the lower it sits the shorter the
+      // band, and the further a fixed box would hang off the bottom.
+      for (const top of [40, 90, 120, 150, 200, 260]) {
+        const chart = { left: 60, top, width: 480, height: 300 };
+        const slot = sideSlot(3, slide, chart);
+        const placed = fitInSlot(slot, size, slide);
+        const where = `${slide.width}pt deck, chart at top=${top}`;
+        expect(placed.top, `box starts above the slide on a ${where}`).toBeGreaterThanOrEqual(0);
+        expect(placed.top + size.height, `box hangs off the bottom on a ${where}`).toBeLessThanOrEqual(slide.height);
+        expect(placed.left + size.width, `box hangs off the right on a ${where}`).toBeLessThanOrEqual(slide.width);
+        // Still as low as it honestly can be: this is a fit, not a jump to the
+        // top of the slide, so it keeps clear of the chart above wherever the
+        // band genuinely has room.
+        expect(placed.top, `box was not placed in the band on a ${where}`).toBeLessThanOrEqual(slot.top);
+      }
+      // The control: where the band DOES have room the box is left exactly where
+      // the slot put it, so this narrows nothing it was not meant to.
+      const roomy = sideSlot(3, slide, { left: 60, top: 0, width: 480, height: 200 });
+      expect(fitInSlot(roomy, { width: 160, height: 100 }, slide).top, "moved a box that already fitted").toBe(
+        roomy.top,
+      );
     }
   });
 

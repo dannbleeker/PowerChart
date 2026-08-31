@@ -1379,8 +1379,46 @@ export interface Box {
   height: number;
 }
 
+/**
+ * The gap this battery leaves around anything it places.
+ *
+ * ONE FUNCTION BECAUSE A SECOND COPY IS HOW TWO NUMBERS DRIFT. It was inline in
+ * `sideSlot` and needed by a caller that places a FIXED-size box, which has to
+ * know the same margin to keep that box on the slide.
+ */
+export const slotMargin = (slide: { height: number }): number => Math.round(slide.height * 0.037);
+
+/**
+ * Fit a fixed-size box into the band, without letting it hang off the slide.
+ *
+ * `sideSlot` sizes a box TO the band. A caller that must keep its own width and
+ * height — `rotatedShapePlacement` needs segments steep enough to tell two
+ * readings apart, which makes 160x220 an invariant of the measurement rather
+ * than a property of the deck — cannot use the band's height, and was simply
+ * taking the band's `top`.
+ *
+ * Measured on the decks this battery actually runs: under a 300pt chart the
+ * band is 160pt at its tallest and 1pt at its shortest, so a 220pt box hung
+ * 40 to 200pt off the BOTTOM of the slide in every round, at both aspect
+ * ratios. Nothing reported it, because `sideSlot` clamps its height with
+ * `Math.max(1, …)` — a repair for an impossible band that hands back a
+ * plausible 1pt one, so the caller never learns the band could not hold it.
+ *
+ * Overlapping what is already in the slot was always accepted here and still
+ * is; the chart is deleted before the scenario returns. Hanging off the canvas
+ * is a different thing, and not one anybody chose.
+ */
+export function fitInSlot(slot: Box, size: { width: number; height: number }, slide: Box | { height: number }): Box {
+  const margin = slotMargin(slide);
+  return {
+    ...size,
+    left: slot.left,
+    top: Math.max(margin, Math.min(slot.top, slide.height - size.height - margin)),
+  };
+}
+
 export function sideSlot(n: number, slide: { width: number; height: number }, occupied: Box): Box {
-  const margin = Math.round(slide.height * 0.037);
+  const margin = slotMargin(slide);
   // A row, not a column: the free band on a slide holding one landscape chart
   // is underneath it on every deck shape this battery has met, while the strip
   // beside it disappears as soon as the slide narrows.
@@ -2181,7 +2219,12 @@ const rotatedShapePlacement: Scenario = async (prefix) => {
   // Slot 3 is shared with the rasterise arm, which is harmless here: this
   // scenario reads its shapes BY NAME, and `line-` is a name no other chart in
   // this battery emits.
-  const { left, top } = sideSlot(3, slide, boxOf(host));
+  //
+  // `fitInSlot` because the box below keeps its own 160x220 — see why in the
+  // comment on it — and the band under a 300pt chart is 160pt at its tallest.
+  // Taking the band's `top` unmodified hung this chart 40 to 200pt off the
+  // bottom of the slide in every archived round.
+  const { left, top } = fitInSlot(sideSlot(3, slide, boxOf(host)), { width: 160, height: 220 }, slide);
   /**
    * A FIXED, TALL box rather than the slot's — and deliberately not the slot's
    * shape at all.
