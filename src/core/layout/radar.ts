@@ -1,6 +1,6 @@
 import type { ChartConfig, ChartStyle, Decorations } from "../types";
 import { polar, textWidth, type SceneNode } from "../scene";
-import { formatNumber, niceTicks, resolveFormat } from "../format";
+import { formatNumber, niceTicks, resolveAxisFormat } from "../format";
 import { seriesColor } from "../style";
 import { bandFontSize, fitPlot, footnoteH, legendRowCount, titleHeight, titleNode } from "./frame";
 import { legendRow, type LayoutResult, type LegendEntry } from "./column";
@@ -121,7 +121,7 @@ export function layoutRadar(cfg: ChartConfig, style: ChartStyle, decor: Decorati
   // and its tick label off the top of the canvas.
   const ticks = rawTicks.filter((t) => t >= min - 1e-9 && t <= max + 1e-9);
   if (!ticks.length) ticks.push(max);
-  const fmt = resolveFormat(ticks, cfg.numberFormat);
+  const fmt = resolveAxisFormat(ticks, cfg.numberFormat);
   // Clamped at BOTH ends. It held values below `scale.min` on the centre and let
   // anything above `scale.max` run past the outer radius unbounded — and
   // `sampleConfig("radar")` ships `{min:0,max:5}`, so no bad scale has to be
@@ -530,7 +530,7 @@ function layoutRadialBars(cfg: ChartConfig, style: ChartStyle, decor: Decoration
   // outside the outer radius.
   const ticks = rawTicks.filter((t) => t <= max + 1e-9);
   if (!ticks.length) ticks.push(max);
-  const fmt = resolveFormat(ticks, cfg.numberFormat);
+  const fmt = resolveAxisFormat(ticks, cfg.numberFormat);
   // Same one-sided clamp, same fix — see the radar web above.
   const toR = (v: number) => innerR + (Math.min(max, Math.max(0, v)) / (max || 1)) * (r - innerR);
   const sector = 360 / Math.max(1, n);

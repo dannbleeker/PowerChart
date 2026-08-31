@@ -3061,22 +3061,35 @@ const PROBES: Probe[] = [
       // that refuses every add answers `no-scratch-shape` — "never asked" —
       // instead of `threw`, which would read as an opinion about rotation from
       // a run in which nothing was ever rotated.
-      const [made] = await scratchShapes(ctx, [{ left: 100, top: 100, width: W, height: H }]);
+      await scratchShapes(ctx, [{ left: 100, top: 100, width: 8, height: 8 }]);
       try {
+        /**
+         * THE MEASURED SHAPE IS ADDED HERE, not returned by `scratchShapes`.
+         *
+         * Round 336 answered `unreadable` — "width did not come back a number" —
+         * and the reason is in the same sheet: `scratchShapes` syncs, so its
+         * handle is a sync old by the time anything is read through it, and
+         * `shape-proxy-survives-one-sync` says this host refuses exactly that.
+         * The probe was measuring proxy staleness, which is the mistake this
+         * file's four contaminated 2026-08-04 answers were.
+         *
+         * `named-preset-resolves`, two probes down, reads its shape without
+         * trouble because it ADDS, sets and loads inside ONE batch. Same shape
+         * here. The `scratchShapes` call above is kept for the other half: a
+         * host that refuses every add must answer `no-scratch-shape` — never
+         * asked — rather than offering an opinion about rotation.
+         */
+        const made = probeShapes(ctx).addGeometricShape(PowerPoint.GeometricShapeType.rectangle, {
+          left: 120,
+          top: 100,
+          width: W,
+          height: H,
+        });
         try {
           (made as unknown as { rotation: number }).rotation = DEG;
         } catch (err) {
           return { answer: "rotation-not-writable", detail: short(err) };
         }
-        /**
-         * SET AND READ IN ONE BATCH, deliberately.
-         *
-         * The obvious shape — set, sync, load, sync — reads back through a
-         * handle a sync old, and `shape-proxy-survives-one-sync` says this host
-         * answers `unreadable` to exactly that. The question would then be
-         * answered by proxy staleness rather than by rotation, which is the
-         * mistake this file's four contaminated 2026-08-04 answers were.
-         */
         made.load("left,top,width,height,rotation");
         await ctx.sync();
         const w = readSize(() => made.width);

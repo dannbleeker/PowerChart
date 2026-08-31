@@ -1,7 +1,16 @@
 import type { ChartConfig, ChartStyle, Decorations } from "../types";
 import { contrastInk, textWidth, type SceneNode } from "../scene";
 import { clipToWidth } from "../elements";
-import { formatDay, formatDayRange, formatNumber, monthStarts, niceTicks, resolveFormat, weekStarts } from "../format";
+import {
+  formatDay,
+  formatDayRange,
+  formatNumber,
+  monthStarts,
+  niceTicks,
+  resolveFormat,
+  resolveAxisFormat,
+  weekStarts,
+} from "../format";
 import { seriesColor } from "../style";
 import type { LayoutResult } from "./column";
 import { bandFontSize, fitPlot, footnoteH, titleHeight, titleNode, MIN_LABEL_FS } from "./frame";
@@ -308,7 +317,7 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
    * stays 0 otherwise and no existing output moves.
    */
   const minW = workdays ? HAIRLINE : 0;
-  const fmt = resolveFormat(ticks, cfg.numberFormat);
+  const fmt = resolveAxisFormat(ticks, cfg.numberFormat);
   const tickLabel = (t: number, i: number) => {
     if (!dates) return formatNumber(t, fmt);
     const d = new Date(t * 86400000);

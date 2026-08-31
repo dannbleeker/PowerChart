@@ -500,6 +500,43 @@ describe("upright column totals are fitted to their slot", () => {
   });
 });
 
+describe("a drawn segment's percentage matches the segment", () => {
+  it("labels a negative stacked segment with its real share, not 0%", () => {
+    /**
+     * `Math.max(0, raw)` sent every negative segment's fraction to zero, so a
+     * returns row of -25 against a positive total of 100 was DRAWN at a quarter
+     * of the stack's height and labelled "0%". The picture said one thing and
+     * the caption said the outflow never happened — and the caption is the half
+     * a reader quotes.
+     *
+     * The clamp was right where it came from: a negative must not shorten the
+     * positive stack. It had no business reaching a LABEL.
+     */
+    const scene = buildChart({
+      kind: "stacked",
+      ...DEFAULT_SIZE,
+      data: {
+        categories: ["Q1"],
+        series: [
+          { name: "New", values: [60] },
+          { name: "Renewal", values: [40] },
+          { name: "Returns", values: [-25] },
+        ],
+      },
+      decorations: { segmentLabels: true, labelContent: ["percent"] },
+    } as unknown as ChartConfig);
+    const label = (nm: string) =>
+      String(scene.nodes.find((n): n is TextNode => n.kind === "text" && n.name === nm)?.text ?? "");
+    expect(label("label-0-0")).toBe("60%");
+    expect(label("label-1-0")).toBe("40%");
+    expect(label("label-2-0"), "a drawn outflow was labelled as nothing").toBe("-25%");
+    // And it is still DRAWN — the fix must not have quietly removed the bar the
+    // label is about.
+    const seg = scene.nodes.find((n): n is RectNode => n.kind === "rect" && n.name === "seg-2-0");
+    expect(seg?.h ?? 0, "the negative segment stopped being drawn").toBeGreaterThan(1);
+  });
+});
+
 describe("the difference arrow's caption agrees with the arrow", () => {
   /**
    * The arrow and its own label come from the same two values, and on a

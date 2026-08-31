@@ -1,7 +1,7 @@
 import type { ChartConfig, ChartStyle, Decorations, LayoutAnchors, Series } from "../types";
 import { contrastInk, textWidth, type SceneNode, type TextNode } from "../scene";
 import { clipToWidth } from "../elements";
-import { formatNumber, niceTicks, resolveFormat, segmentLabel, axisTickLabel } from "../format";
+import { formatNumber, niceTicks, resolveFormat, resolveAxisFormat, segmentLabel, axisTickLabel } from "../format";
 import { seriesColor } from "../style";
 import { lerpColor } from "../color";
 import {
@@ -487,7 +487,21 @@ export function layoutColumns(cfg: ChartConfig, style: ChartStyle, decor: Decora
         // think-cell's label-content dropdown: value / % / series / category.
         const label = segmentLabel(decor.labelContent ?? (pct ? ["percent"] : ["value"]), {
           value: raw!,
-          fraction: pct ? v : posTotals[c] > 0 ? Math.max(0, raw!) / posTotals[c] : null,
+          /**
+           * SIGNED, because the segment is drawn signed.
+           *
+           * `Math.max(0, raw!)` sent every negative segment's fraction to 0, so
+           * a returns row of -25 against a positive total of 100 was DRAWN at a
+           * quarter of the stack's height and labelled "0%". The picture was
+           * right and the caption said the outflow never happened.
+           *
+           * `posTotals[c]` stays the denominator: it is the height the stack
+           * actually reaches, so -25/100 is exactly the share the eye measures
+           * off the drawing. The clamp belongs to geometry, where a negative
+           * must not shorten the positive stack — it had no business reaching a
+           * label, which is the same split `columnHasData` makes for totals.
+           */
+          fraction: pct ? v : posTotals[c] > 0 ? raw! / posTotals[c] : null,
           series: s.name,
           category: data.categories[c],
           fmt,
@@ -1045,7 +1059,7 @@ export function layoutCombo(cfg: ChartConfig, style: ChartStyle, decor: Decorati
     lineToY = H
       ? (v: number) => plot.x + ((v - min2) / (max2 - min2 || 1)) * plot.w
       : (v: number) => plot.y + plot.h - ((v - min2) / (max2 - min2 || 1)) * plot.h;
-    const fmt2 = resolveFormat(ticks2, cfg.numberFormat);
+    const fmt2 = resolveAxisFormat(ticks2, cfg.numberFormat);
     /**
      * How much of its size this strip may keep, from the gap between its own
      * ticks. Zero drops the numbers and leaves the axis to its gridlines.

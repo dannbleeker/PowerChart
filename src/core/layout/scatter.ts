@@ -2,7 +2,16 @@ import type { ChartConfig, ChartStyle, Decorations, MarkerSymbol } from "../type
 import { arrowheadFits, markerScale, markerSymbolOf } from "../geometry";
 import { textWidth, type SceneNode, type TextNode } from "../scene";
 import { tightBox } from "../collide";
-import { formatNumber, formatP, histogramBins, niceTicks, polyTrend, resolveFormat, trendStats } from "../format";
+import {
+  formatNumber,
+  formatP,
+  histogramBins,
+  niceTicks,
+  polyTrend,
+  resolveFormat,
+  resolveAxisFormat,
+  trendStats,
+} from "../format";
 import { placeLabels, type Box, type LabelRequest } from "../labels";
 import { spreadAlongAxis } from "../spread";
 import { PALETTE, paletteColor } from "../style";
@@ -329,8 +338,8 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
   const toX = (v: number) => plot.x + ((v - x0) / (x1 - x0 || 1)) * plot.w;
   const toY = (v: number) => plot.y + plot.h - ((v - y0) / (y1 - y0 || 1)) * plot.h;
 
-  const xFmt = resolveFormat(xTicks, cfg.numberFormat);
-  const yFmt = resolveFormat(yTicks, cfg.numberFormat);
+  const xFmt = resolveAxisFormat(xTicks, cfg.numberFormat);
+  const yFmt = resolveAxisFormat(yTicks, cfg.numberFormat);
 
   const nodes: SceneNode[] = [];
   const titleN = titleNode(cfg, style);
