@@ -74,6 +74,7 @@ const host = vi.hoisted(() => ({
   // When set, updateChartInSlide awaits this — holds an in-place update open
   // so a test can act while it is still running.
   updateGate: null as null | Promise<void>,
+  insertGate: null as null | Promise<void>,
   // The selection-change listener app.ts registers via addHandlerAsync, captured
   // so a test can fire it the way PowerPoint would.
   selectionListener: null as null | (() => unknown),
@@ -299,6 +300,11 @@ vi.mock("../src/render/powerpoint", () => ({
         throw new Error("host refused the insert");
       }
       host.calls.insertScene.push(opts);
+      // The sibling of `updateGate`, for holding an INSERT open. Needed to show
+      // two guarded actions overlapping in either order: the update path had a
+      // gate and the insert path did not, so a test could hold the outer action
+      // but never the nested one.
+      if (host.insertGate) await host.insertGate;
       // The last thing a successful insert ever says — and it is still "busy".
       onPhase?.("done");
       return host.insertResult;
@@ -652,6 +658,7 @@ async function bootHostPane(opts?: { deckStyle?: Record<string, unknown> | null 
   host.autoPicture = false;
   host.cannotDraw = { what: [], nodes: 0 };
   host.updateGate = null;
+  host.insertGate = null;
   host.slideCountThrowsAfter = null;
   host.slideCountCalls = 0;
   host.insertFileLands = null;
@@ -2881,6 +2888,91 @@ describe("Stop", () => {
     expect(stop.textContent?.toLowerCase()).toContain("stopping");
     release();
     await settle();
+  });
+
+  it("keeps the user's stop when another action is started on top of it", async () => {
+    /**
+     * THE STOP THE USER PRESSED WAS CLEARED, AND THE CANCELLED WORK LANDED.
+     *
+     * `guard` leaves about thirteen controls enabled during a slow action, and
+     * called `resetStop()` on the way IN. So: start an insert, press Stop — the
+     * button disables and reads "Stopping…" — then touch any other live
+     * control, and the first action reaches its next batch, asks
+     * `isStopRequested()`, is told no, and finishes.
+     *
+     * The outermost action owns the stop flag now. This drives the real
+     * sequence through the real handlers rather than calling `resetStop`
+     * directly, because the defect was in WHO calls it, not in what it does.
+     */
+    const release = await startGatedUpdate();
+    ($("status-stop") as HTMLButtonElement).click();
+    expect(host.stopRequested, "the stop never registered, so this proves nothing").toBe(true);
+
+    // A second action, on a control `guard` leaves live during the first.
+    $("harvey-insert").click();
+    await settle();
+
+    expect(host.stopRequested, "a second action threw away the stop the user pressed").toBe(true);
+    release();
+    await settle();
+    expect($("host-note").textContent?.toLowerCase() ?? "", "the cancelled action did not report stopping").toContain(
+      "stopped",
+    );
+  });
+
+  it("does not report Done over an action that is still running", async () => {
+    /**
+     * The same `finally`, the other half: it posted "Done." in green, hid Stop
+     * and cleared the elapsed interval while the first action was still in
+     * flight — and that interval is the only carrier of the SILENT_RUN_MS
+     * watchdog, so the "PowerPoint died and the pane did not" check went with
+     * it. Measured before the fix: elapsed read "" 2.3s in, against "2s" when
+     * nothing else was clicked.
+     */
+    const release = await startGatedUpdate();
+    $("harvey-insert").click();
+    await settle();
+
+    expect($("host-note").textContent, "claimed the pane was finished mid-action").not.toBe("Done.");
+    expect($("status-stop").hasAttribute("hidden"), "hid Stop out from under a running action").toBe(false);
+    expect($("status-elapsed").textContent, "stopped the clock that carries the silence watchdog").not.toBe("");
+    release();
+    await settle();
+  });
+
+  it("keeps the lights on when the OUTER action finishes first", async () => {
+    /**
+     * The same defect with the two actions swapped, and the reason ownership is
+     * "the last one out turns off the lights" rather than "the one that turned
+     * them on".
+     *
+     * My first fix captured ownership at ENTRY, which is right only while
+     * actions finish in the order they started. Here the outer insert returns
+     * while the element insert is still going: an entry-captured owner tidies
+     * up on its way out — hiding Stop and stopping the clock that carries the
+     * silence watchdog — over an action that is still running.
+     */
+    let releaseElement!: () => void;
+    const elementGate = new Promise<void>((r) => (releaseElement = r));
+    const releaseInsert = await startGatedUpdate();
+
+    // The nested action, held open past the outer one's return.
+    host.insertGate = elementGate;
+    $("harvey-insert").click();
+    await settle();
+
+    // The OUTER action finishes first.
+    releaseInsert();
+    await settle();
+
+    expect($("status-stop").hasAttribute("hidden"), "hid Stop over a still-running action").toBe(false);
+    expect($("status-elapsed").textContent, "stopped the watchdog clock over a still-running action").not.toBe("");
+
+    releaseElement();
+    host.insertGate = null;
+    await settle();
+    // …and once nothing is left running, the lights DO go out.
+    expect($("status-stop").hasAttribute("hidden"), "left Stop showing with nothing running").toBe(true);
   });
 
   it("reports a stop as a stop, not as a failure", async () => {

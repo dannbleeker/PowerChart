@@ -3918,6 +3918,40 @@ function wireInsert() {
       btn.dataset.keepDisabled = "1";
     }
 
+    /**
+     * HOW MANY GUARDED ACTIONS ARE IN FLIGHT, and why one number fixes two bugs.
+     *
+     * `guard` owns three pieces of state that are MODULE-WIDE while it is not:
+     * the stop flag, the elapsed interval, and the Stop button. It leaves about
+     * thirteen controls enabled during a slow action, so two actions sit inside
+     * it at once and the second one's bookkeeping runs over the first's.
+     *
+     * THE STOP THE USER PRESSED WAS CLEARED AND THE CANCELLED WORK LANDED.
+     * Start an insert this code prices at "the better part of a minute", press
+     * Stop — the button disables and reads "Stopping…" — then touch any other
+     * live control. Its `guard` calls `resetStop()` on the way in, the insert
+     * reaches its next batch, asks `isStopRequested()`, is told NO, and writes
+     * its chart onto the slide. Reproduced against this module with the real
+     * stop functions: `stopSeen: [false] landed: 1`, against `[true] landed: 0`
+     * when nothing else is clicked.
+     *
+     * AND THE FINALLY LIED ABOUT THE OUTCOME. It posted "Done." in green, hid
+     * Stop and cleared the elapsed interval while the first action was still
+     * running — and that interval is the only carrier of the `SILENT_RUN_MS`
+     * watchdog, so the "PowerPoint died and the pane did not" check was disarmed
+     * for the rest of the action. Measured: elapsed reads "" 2.3s in, against
+     * "2s" when the second action is not clicked.
+     *
+     * So the OUTERMOST action owns all three and a nested one leaves them alone.
+     * NOT per-action stop tokens: `isStopRequested()` is asked from eleven
+     * places inside `powerpoint.ts`, and threading a token through them is a far
+     * larger change than this defect needs. One consequence worth naming — a
+     * pending stop DOES cancel a concurrently started action, because the flag
+     * stays global. That is the safe direction: Stop stops work, and nothing
+     * completes against the user's wish.
+     */
+    let actionsInFlight = 0;
+
     const guard = (fn: () => Promise<void>) =>
       async function (this: unknown, ev?: Event) {
         const clicked = ev?.currentTarget as HTMLButtonElement | undefined;
@@ -3939,12 +3973,21 @@ function wireInsert() {
         // so an insert that ends on one still needs "Done." to close it out.
         const settledAt = settledNotes;
         setProgress("busy");
-        startElapsed();
-        // Clear any stop left by the PREVIOUS action before offering a new one.
-        // A stop that survived into the next action would cancel it at its first
-        // batch, and the user would never learn why.
-        resetStop();
-        showStop(true);
+        // OWNS the stop flag, the elapsed timer and the Stop button — or does
+        // not, because another action is already inside `guard`. See
+        // `actionsInFlight`.
+        const owns = actionsInFlight === 0;
+        actionsInFlight++;
+        if (owns) {
+          startElapsed();
+          // Clear any stop left by the PREVIOUS action before offering a new
+          // one. A stop that survived into the next action would cancel it at
+          // its first batch, and the user would never learn why. PREVIOUS, not
+          // concurrent: doing this while another action is running is what
+          // threw away the stop the user had just pressed.
+          resetStop();
+          showStop(true);
+        }
         try {
           await fn();
           trace("pane", "action finished", { action, ms: Date.now() - startedAt });
@@ -3955,7 +3998,11 @@ function wireInsert() {
           // charts) rather than by throwing.
           if (isStopRequested()) {
             note("Stopped — anything already drawn was kept.", "err");
-          } else if (settledNotes === settledAt) {
+          } else if (settledNotes === settledAt && owns) {
+            // `owns`, because "Done." is a claim about the PANE and not about
+            // this handler: posted by a nested action it says the work is
+            // finished while an insert is still drawing. The outer action will
+            // post its own when it actually ends.
             note("Done.", "ok");
           }
         } catch (err) {
@@ -3972,9 +4019,24 @@ function wireInsert() {
             note("Failed: {error}", "err", { error: errorText(err) });
           }
         } finally {
-          stopElapsed();
-          showStop(false);
-          resetStop();
+          actionsInFlight = Math.max(0, actionsInFlight - 1);
+          /**
+           * THE LAST ONE OUT TURNS OFF THE LIGHTS — not the one that turned them
+           * on.
+           *
+           * Gating this on `owns` (taken at entry) is only right while actions
+           * finish in the order they started, and they need not: the outer
+           * action here is a slow insert and the nested one a fast element, but
+           * an insert that returned FIRST would tidy up while the element was
+           * still running — hiding Stop and stopping the watchdog clock under
+           * it, which is this same defect with the two swapped. Reading the
+           * count after the decrement is order-independent.
+           */
+          if (actionsInFlight === 0) {
+            stopElapsed();
+            showStop(false);
+            resetStop();
+          }
           // Only re-enable what this call disabled — never resurrect a button
           // some other state (no host, no selection) means to keep dead.
           //
