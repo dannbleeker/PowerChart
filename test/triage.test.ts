@@ -2541,6 +2541,59 @@ describe("what each scenario cost the host", () => {
     expect(o.rows[0]).toMatchObject({ name: "same scale", n: 2, sum: { errors: 6, idRefusals: 6, emptyReReads: 3 } });
   });
 
+  it("pools every counter the data carries, not a list someone wrote down", () => {
+    /**
+     * `KEYS` was a literal naming four counters. The friction object carries
+     * EIGHT, enumerated over all 4,285 friction records in the archive:
+     * `reReadsRepaired`, `shortReReads`, `unmatchedReReads` and
+     * `settledByBinding` were never pooled and reached no reader anywhere.
+     *
+     * One of them is not idle. `reReadsRepaired` is non-zero in 331 archived
+     * records, and over the last 13 rounds it sums to 51 on `does a rasterise
+     * poison the next draw` — a number nobody could have seen.
+     *
+     * The docstring on the function says conclusions are derived here "because a
+     * hardcoded conclusion keeps printing after it stops being true". The key
+     * list was the one thing still written down.
+     */
+    const o = poolScenarioFriction([
+      { trace: { entries: [{ data: { name: "a", friction: { errors: 1, reReadsRepaired: 4 } } }] } },
+      {
+        trace: { entries: [{ data: { name: "a", friction: { errors: 2, reReadsRepaired: 6, aBrandNewCounter: 5 } } }] },
+      },
+    ]);
+    expect(o.rows[0].sum.reReadsRepaired, "a counter with real signal was never pooled").toBe(10);
+    // A counter added tomorrow is pooled the day it first appears.
+    expect(o.rows[0].sum.aBrandNewCounter, "a newly added counter was ignored").toBe(5);
+    expect(o.rows[0].sum.errors).toBe(3);
+  });
+
+  it("gives every row every derived counter, so a row missing one still sums", () => {
+    /**
+     * The invariant that makes the derived key list safe, and worth pinning
+     * because it is not obvious: KEYS is a UNION over all logs, and the summing
+     * loop walks KEYS rather than the row's own friction object. So a scenario
+     * that never reports `errors` still gets `errors: 0` — the ranking, which
+     * adds `errors` and `idRefusals`, can never meet an undefined and produce
+     * NaN unless NO log anywhere carries that counter, in which case every row
+     * is equally absent and no order is observable either way.
+     *
+     * (The `?? 0` in the ranking is therefore belt-and-braces, and a mutant that
+     * removes it cannot be killed. Recorded as equivalent rather than left
+     * looking untested.)
+     */
+    const o = poolScenarioFriction([
+      { trace: { entries: [{ data: { name: "quiet", friction: { reReadsRepaired: 1 } } }] } },
+      { trace: { entries: [{ data: { name: "loud", friction: { errors: 9 } } }] } },
+    ]);
+    expect(o.rows).toHaveLength(2);
+    const quiet = o.rows.find((r: { name: string }) => r.name === "quiet");
+    expect(quiet.sum.errors, "a row that never reported this counter was left undefined").toBe(0);
+    expect(quiet.sum.reReadsRepaired).toBe(1);
+    // And the ranking still puts the noisier scenario first.
+    expect(o.rows[0].name).toBe("loud");
+  });
+
   it("names a counter that has NEVER moved, instead of printing it as a number", () => {
     // `generalExceptions` is 0 in every scenario in every one of 86 archived
     // rounds. Printed beside real counts it reads as "no general exceptions

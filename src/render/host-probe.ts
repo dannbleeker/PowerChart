@@ -4184,8 +4184,15 @@ export async function runHostProbes(
         (shrankBy !== undefined && shrankBy < returned
           ? ` (the deletes reported ${returned} but the deck only shrank by ${shrankBy})`
           : "") +
+        // "RECOGNISED", NOT "STILL LISTS". This number is measured BEFORE the
+        // deletes run — deliberately, and the comment at its assignment says
+        // why: it is what separates "the deletes fail" from "the id we captured
+        // at add time is not the id the deck answers to any more". The word
+        // `still` made it read as a leftover count taken afterwards, and printed
+        // beside a deck that ends at one slide it said the deck was holding
+        // twenty of them.
         (stillListed !== undefined && stillListed < outstanding.length
-          ? `; the deck still lists ${stillListed} of ${outstanding.length} of these ids`
+          ? `; the deck recognised ${stillListed} of ${outstanding.length} of these ids before the sweep`
           : "") +
         (swept ? `; ${swept} removed by a positional sweep after delete-by-id took none` : ""),
     });
@@ -4550,9 +4557,31 @@ export function scratchLeftSentence(o: {
   if (!o.left) return "";
   const neverLanded =
     o.stillListed === 0 && o.deckAfter !== undefined && o.deckBefore !== undefined && o.deckAfter <= o.deckBefore;
-  return neverLanded
-    ? `; ${o.left} never landed — the host took the add and the deck never listed them`
-    : `; ${o.left} left in the deck`;
+  if (neverLanded) return `; ${o.left} never landed — the host took the add and the deck never listed them`;
+  /**
+   * A THIRD CONDITION, BECAUSE THE DECK CAN CONTRADICT THE ARITHMETIC OUTRIGHT.
+   *
+   * `left` is `added - actually`, and those are not the same KIND of number.
+   * `added` is every scratch slide this run is still holding, accumulated across
+   * the whole round; `actually` is bounded by `shrankBy`, a delta between two
+   * readings of the deck. Subtracting a point-in-time delta from a cumulative
+   * count is a category error, and it shows: round 346 recorded `left=20` beside
+   * `deckAfter=1`. Twenty slides cannot be left in a deck that holds one. Across
+   * the archive 106 of 422 of these records — 25% — claim more left behind than
+   * the deck contains.
+   *
+   * NOT CLAMPED, for the reason the docstring above already gives: "clamping a
+   * number into a sentence that cannot hold it is exactly how the last one
+   * survived 25 rounds." Both numbers are printed and the contradiction is
+   * NAMED, which is the one thing a reader cannot do for themselves from a
+   * single figure.
+   */
+  if (o.deckAfter !== undefined && o.left > o.deckAfter)
+    return (
+      `; ${o.left} unaccounted for, and the deck ends at ${o.deckAfter} slide(s)` +
+      ` — they cannot all be in it, so this is a counting question and not a leak`
+    );
+  return `; ${o.left} left in the deck`;
 }
 
 export function slidesActuallyReturned(o: {

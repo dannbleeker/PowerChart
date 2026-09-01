@@ -2305,6 +2305,37 @@ describe("what the scratch clean-up may claim", () => {
     expect(scratchLeftSentence({ left: 0 }), "a complete handback says nothing at all").toBe("");
   });
 
+  it("will not claim more slides are left in the deck than the deck holds", async () => {
+    const { scratchLeftSentence } = await import("../src/render/host-probe");
+    /**
+     * Round 346, exactly as archived: `left=20` beside `deckAfter=1`. Twenty
+     * slides cannot be left in a deck that holds one, and the sentence said they
+     * were. Across the archive 106 of 422 of these records — 25% — claim more
+     * left behind than the deck contains.
+     *
+     * `left` is `added - actually`, and those are different KINDS of number:
+     * `added` accumulates across the whole round, `actually` is bounded by a
+     * delta between two readings of the deck. Subtracting one from the other is
+     * a category error.
+     *
+     * NAMED, NOT CLAMPED — this function's own docstring says clamping a number
+     * into a sentence that cannot hold it "is exactly how the last one survived
+     * 25 rounds". Both figures stay on the page and the contradiction is stated,
+     * because that is the part a reader cannot reconstruct from one number.
+     */
+    const s = scratchLeftSentence({ left: 20, stillListed: 20, deckBefore: 38, deckAfter: 1 });
+    expect(s, "claimed 20 slides sit in a 1-slide deck").not.toMatch(/left in the deck/);
+    expect(s, "dropped the count instead of naming the contradiction").toContain("20");
+    expect(s, "dropped the deck's own figure, which is the half that refutes it").toContain("1 slide(s)");
+    expect(s).toMatch(/cannot all be in it/);
+
+    // The boundary: exactly as many left as the deck holds is not a
+    // contradiction, and must keep the plain sentence.
+    expect(scratchLeftSentence({ left: 2, stillListed: 2, deckBefore: 9, deckAfter: 2 })).toMatch(/left in the deck/);
+    // And a round that never learned the deck size cannot be contradicted by it.
+    expect(scratchLeftSentence({ left: 20, stillListed: 20 })).toMatch(/left in the deck/);
+  });
+
   it("still reports success when the deck agrees", () => {
     const r = slidesActuallyReturned({ claimed: 42, added: 42, deckBefore: 99, deckAfter: 57 });
     expect(r.actually).toBe(42);

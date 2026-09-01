@@ -1097,7 +1097,30 @@ export function poolGroupingOutcome(logs) {
  * probe lied for three rounds.
  */
 export function poolScenarioFriction(logs) {
-  const KEYS = ["errors", "idRefusals", "generalExceptions", "emptyReReads"];
+  /**
+   * THE KEY LIST IS READ OFF THE DATA, because the docstring above says so and
+   * the code did the opposite.
+   *
+   * `KEYS` was a literal naming four counters. The friction object carries
+   * EIGHT — `errors`, `idRefusals`, `generalExceptions`, `emptyReReads`,
+   * `reReadsRepaired`, `shortReReads`, `unmatchedReReads`, `settledByBinding` —
+   * enumerated over all 4,285 friction records in the archive. Four never
+   * reached a reader anywhere, and one of them is not idle: `reReadsRepaired` is
+   * non-zero in 331 of those records. A hardcoded list goes stale silently,
+   * which is the reason given three lines above for deriving everything else.
+   *
+   * A union over what is actually present, so a counter added tomorrow is pooled
+   * the day it first appears rather than the day someone remembers.
+   */
+  const KEYS = [];
+  const seenKeys = new Set();
+  for (const log of logs ?? [])
+    for (const e of log?.trace?.entries ?? [])
+      for (const k of Object.keys(e?.data?.friction ?? {}))
+        if (!seenKeys.has(k)) {
+          seenKeys.add(k);
+          KEYS.push(k);
+        }
   const per = new Map();
   let rounds = 0;
   for (const log of logs) {
@@ -1123,7 +1146,11 @@ export function poolScenarioFriction(logs) {
     }
     if (any) rounds += 1;
   }
-  const rows = [...per.values()].sort((a, b) => b.sum.errors + b.sum.idRefusals - (a.sum.errors + a.sum.idRefusals));
+  // Ranked on the two counters the report leads with. Defaulted because the key
+  // list is derived now: a set of logs carrying no `errors` at all must sort,
+  // not produce NaN and a scrambled order.
+  const lead = (r) => (r.sum.errors ?? 0) + (r.sum.idRefusals ?? 0);
+  const rows = [...per.values()].sort((a, b) => lead(b) - lead(a));
   // A counter that has never once been non-zero anywhere carries no information.
   const dead = KEYS.filter((k) => rows.every((r) => r.sum[k] === 0));
   // A scenario/counter pair with exactly one distinct value across every round
@@ -1663,10 +1690,15 @@ function reportScenarioFriction(logs) {
   // never varies are both worthless, and printing them beside real numbers is
   // how a reader comes to trust one of them.
   if (o.dead.length) console.log("    " + deadCounterNote(o.dead, o.rounds));
+  // NAME THE CONSTANT, DO NOT EXPLAIN IT. This line used to append "(its
+  // deliberate abort)" to whatever it found, and it finds two things: `stop a
+  // run part-way`, which does abort deliberately, and `explode a degraded
+  // picture`, which does not — its `generalExceptions=1` is a real host throw.
+  // So the report attached a false explanation to a genuine exception and told
+  // the reader it was nothing, every round, for as long as anyone has looked.
+  // A constant is worth naming; its cause belongs to whoever knows the scenario.
   for (const c of o.constant)
-    console.log(
-      `    \`${c.name}\` reports ${c.key}=${c.value} EVERY round — a constant, not a signal (its deliberate abort).`,
-    );
+    console.log(`    \`${c.name}\` reports ${c.key}=${c.value} EVERY round — a constant, not a signal.`);
   console.log('    This is the per-scenario answer to "did it pass on an easier host", and it has');
   console.log("    been recorded since round 023 without anything reading it.");
 }
