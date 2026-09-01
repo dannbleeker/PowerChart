@@ -3299,8 +3299,17 @@ const PROBES: Probe[] = [
      * kind (`symbol`) that no round has ever drawn. Asked for every name in the
      * table, not just that one, because the answer is about the enum rather
      * than about any single shape.
+     *
+     * NO LONGER RESAMPLED, as of 2026-09-01. It carried `resample: true` while
+     * it was a new question nobody had an answer for. It has one now, and it is
+     * as settled as anything in the archive: `draws` in 14 of 14 rounds, 42 of
+     * 42 samples, stable in every one, across six builds — and that answer is in
+     * the committed sheet now rather than in `PENDING_QUESTIONS`. Asking it three
+     * times a round buys certainty that has already been bought.
+     *
+     * Put the mark back if `SYMBOL_PRESET` gains a name, which is the change
+     * that could make this false again.
      */
-    resample: true,
     ask: async (ctx) => {
       const wanted = [...new Set(Object.values(SYMBOL_PRESET))].sort();
       const enumeration = PowerPoint.GeometricShapeType as unknown as Record<string, unknown>;

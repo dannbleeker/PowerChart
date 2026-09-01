@@ -4,7 +4,7 @@ import { fileURLToPath } from "url";
 // @ts-expect-error — a plain .mjs tool with no types. The tables live THERE so
 // the diff tool and this gate cannot drift apart.
 // prettier-ignore
-import { FAKE_BASELINE, KNOWN_DIVERGENCES, PENDING_QUESTIONS, answersOf, diffAnswers, RENAMED_ANSWERS, pendingAlreadyAnswered } from "../scripts/host-diff.mjs";
+import { FAKE_BASELINE, KNOWN_DIVERGENCES, PENDING_QUESTIONS, answersOf, diffAnswers, RENAMED_ANSWERS, pendingAlreadyAnswered, UNSTABLE_ANSWERS } from "../scripts/host-diff.mjs";
 import { isHostAnswersKind } from "../src/render/host-probe";
 
 /**
@@ -73,7 +73,22 @@ describe("the fake, against the real host it stands for", () => {
       ...differ.map((d: { id: string }) => d.id),
       ...notAsked.map((n: { id: string }) => n.id),
     ]);
-    const stale = Object.keys(KNOWN_DIVERGENCES).filter((id) => !unresolved.has(id));
+    /**
+     * A QUESTION DECLARED UNSTABLE CANNOT BE JUDGED BY ONE CAPTURE, and this
+     * check could not tell "the fake was fixed" from "the coin landed heads".
+     *
+     * `how-many-syncs-a-creation-handle-survives` is declared in BOTH registers:
+     * a divergence, and a coin — `refused-after-1` 23 of 25 captures with
+     * `survives-8` twice. The 2026-09-01 fixture caught the rare face, so this
+     * check demanded the declaration be deleted as stale. Deleting it would have
+     * been wrong 92% of the time, and the next capture would have re-added it.
+     *
+     * So an id in `UNSTABLE_ANSWERS` is exempt: agreeing once is not evidence
+     * that it has stopped diverging. The other direction still bites — an
+     * unstable question that appears in `differ` stays declared, and a STABLE
+     * question that starts agreeing is still reported here.
+     */
+    const stale = Object.keys(KNOWN_DIVERGENCES).filter((id) => !unresolved.has(id) && !(id in UNSTABLE_ANSWERS));
     expect(stale, "declared as divergent, but the fake and the host now agree").toEqual([]);
   });
 

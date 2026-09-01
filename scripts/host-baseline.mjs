@@ -143,6 +143,34 @@ export const KNOWN_DIVERGENCES = {
   "load-isnullobject-populates":
     "The fake models the host `queueNullCheck` was written for, where loading the flag by name populates nothing. PowerPoint on the web does populate it. Both hosts are real; the workaround is harmless on this one rather than necessary.",
   // ---------------------------------------------------------------------------
+  // THE THREE BELOW ARRIVED WITH THE 2026-09-01 FIXTURE SWAP, and the number is
+  // the news: the previous capture would have brought SIX. Three went away by
+  // themselves when `unreadable`, `silent` and a probe's own `all` stopped
+  // locking rows against the real answers underneath them — the answer-ranking
+  // work of 2026-08-31 and 2026-09-01. These three are what is actually left.
+  // ---------------------------------------------------------------------------
+  "rotation-keeps-the-unrotated-box":
+    "The fake models the host this renderer is BUILT for — one that keeps reporting the unrotated box after `rotation` is " +
+    "set, which is what `addSegment` and `arrowheadBox` both assume. This host will not say. Measured across 36 probe " +
+    "passes in 12 rounds: `unreadable` 31 times, `unrotated-box` 4, and the contradicting answer NOT ONCE. The detail " +
+    "names the cause — 'neither shape's width came back' — and it is the documented behaviour of this host, which answers " +
+    "no geometry for a shape a probe has just added. Note the deck INVENTORY reads width and height perfectly for shapes " +
+    "already on a slide (2026-09-01, 49 of 49 across three rounds), so this is about a just-added proxy and not about " +
+    "geometry in general. The four readings all agree with the fake, so nothing here contradicts the assumption the " +
+    "product rests on; what is missing is confirmation, not evidence against. If a future capture reads `rotated-box`, " +
+    "every diagonal in every line, scatter, radar and violin chart is drawn wrong and this entry is the first thing to " +
+    "revisit.",
+  "shape-proxy-survives-one-sync":
+    "The fake's happy path hands back a shape proxy that is still usable one sync later. This host throws. It is the same " +
+    "5010 refusal every other id route meets, and it is why `renderShapesChunked` re-reads rather than holding proxies " +
+    "across a sync. Declared rather than modelled: teaching the fake to poison a proxy would change what every other " +
+    "test in this repo is standing on, for a path the product already avoids.",
+  "shapes-by-index-vs-items":
+    "The fake's happy path answers both routes into a shape collection. This host answers `index-beats-items` or " +
+    "`index-unreadable` depending on the capture — it is already declared in UNSTABLE_ANSWERS as a coin, and the two " +
+    "faces are what the 2026-09-01 pair caught (`index-unreadable` in round 350, `index-beats-items` in 351). Either " +
+    "way the by-index route is the one the product uses.",
+  // ---------------------------------------------------------------------------
   // THE NINE BELOW ARRIVED TOGETHER, ON 2026-08-29, WITH THE FIXTURE SWAP.
   //
   // Not nine new host behaviours. Nine that this gate has never been able to
@@ -244,6 +272,18 @@ export const KNOWN_DIVERGENCES = {
  * several runs agreeing, not one.
  */
 export const UNSTABLE_ANSWERS = {
+  // ---------------------------------------------------------------------------
+  // ADDED 2026-09-01, WHEN IT LEFT `PENDING_QUESTIONS` FOR THE COMMITTED SHEET.
+  // ---------------------------------------------------------------------------
+  "rotation-keeps-the-unrotated-box":
+    "A COIN THAT LANDS ON ITS EDGE almost every time: `unreadable` 31 of 36 probe passes across 12 rounds, " +
+    "`unrotated-box` 4, and the contradicting answer never. It is not that the host disagrees with itself about where a " +
+    "rotated shape sits — it is that it will not answer at all for a shape a probe has just added, and occasionally it " +
+    "does. That is why the question keeps its `resample` mark: a 1-in-9 read rate is exactly the case a single pass " +
+    "cannot settle, and the four reads it has managed all agree with the fake. Do not read a round of `unreadable` as " +
+    "the answer, and do not read one `unrotated-box` as proof either — the useful number is that nothing has ever come " +
+    "back saying the box is the POST-rotation one, which is the reading that would mean every diagonal in the product " +
+    "is drawn wrong.",
   // ---------------------------------------------------------------------------
   // THE SEVEN BELOW WERE ADDED 2026-08-29 FROM THE ARCHIVE, NOT FROM A SHEET.
   //
@@ -495,16 +535,24 @@ export const UNSTABLE_ANSWERS = {
  * ids is therefore not available here, and is not a matter of gating on 1.10.
  */
 export const PENDING_QUESTIONS = {
-  // BOTH ADDED 2026-08-30, AFTER the committed sheet was taken (build 8d8267f).
-  // They are here rather than in the sheet because a probe cannot answer
-  // retroactively: the code has to deploy, a round has to ask, and the fixture
-  // is refreshed from that round. Delete these two entries then — an id left
-  // here after the host has answered is the fixture going stale in writing,
-  // which is the failure this register exists to make impossible to do quietly.
-  "rotation-keeps-the-unrotated-box":
-    "Whether `left/top/width/height` still describe the box BEFORE the turn once `rotation` is set. `addSegment` draws every solid diagonal as a rectangle of the segment's LENGTH placed at its midpoint and then rotated, and `arrowheadBox` offsets its box on the same premise, so a host that means the POST-rotation bounding box draws every diagonal in every line, scatter, radar and violin chart at the wrong size and in the wrong place. Never asked in 334 rounds: the battery draws only `clustered`, whose one line node is the horizontal baseline, so `Shape.rotation` has never been written on a real host. Round 334 tried to ask it through a line chart and SKIPPED — the insert path groups a chart, so the slide lists one shape called `PowerChart` and never the segments. Asked as a probe now, on one rectangle, because the question is about the host and not about our pipeline.",
-  "named-preset-resolves":
-    "Whether the names in `SYMBOL_PRESET` exist in this host's `GeometricShapeType`. The lookup is handed straight to `addGeometricShape`, and a name the host's enum lacks resolves to `undefined`, which is ACCEPTED and drawn as a shape with no geometry — invisible, and unexplainable from the file afterwards. `symbolPreset` guards a name missing from OUR table; nothing guarded one missing from the HOST's. It stopped being hypothetical when the hex tile map moved onto `hexagon`, putting a shipped chart on a preset name and on `symbol`, a node kind no round has ever drawn. The renderer now falls back to `ellipse` and traces, so a bad answer is survivable; this question is what tells us whether it ever happens.",
+  // EMPTY, AND THAT IS THE POINT OF THE REGISTER WORKING.
+  //
+  // Both entries added on 2026-08-30 are gone as of 2026-09-01, retired the way
+  // the register asks: the code deployed, rounds 347-351 asked, and the fixture
+  // was refreshed from round 351. `named-preset-resolves` answered `draws` in
+  // 14 of 14 rounds and now lives in the committed sheet.
+  //
+  // `rotation-keeps-the-unrotated-box` answered too, and its answer is
+  // `unreadable` — so it moved to KNOWN_DIVERGENCES rather than out of the
+  // registers altogether, because the fake says `unrotated-box` and a
+  // disagreement has to be declared somewhere. Read that entry before assuming
+  // the question is closed: it is not answered, it is unanswerable on this
+  // host, and the four passes that did read all agreed with the fake.
+  //
+  // A new probe belongs here between the commit that adds it and the round that
+  // answers it, and nowhere else. `rounds-gate.mjs` prints any id left here
+  // that the ARCHIVE has already answered, which is what stopped
+  // `named-preset-resolves` sitting here for another fifty rounds.
 };
 
 /**

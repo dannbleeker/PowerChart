@@ -151,6 +151,14 @@ describe("the host self-test battery", () => {
       // diagnostic property, not a detail.
       "edit the chart the user selected",
       "stop a run part-way",
+      // Its mid-draw sibling, added 2026-09-01. `stop a run part-way` asks for
+      // the stop BEFORE the insert, so it throws on iteration zero and no shape
+      // is ever queued — 251 of 322 archived rounds say exactly that in their
+      // own detail. This one requests the stop from the first `commit`, which is
+      // the case the Stop button exists for and had never been exercised on a
+      // real host. It cleans up the wreckage it makes, because the deck it draws
+      // into is the deck every later scenario reads.
+      "stop a run mid-draw",
       // Routine again as of `c7d91d5`, where it PASSED on a real host after
       // five rounds of killing the tab — see the case below. Still last, for
       // the reason everything newest is last.
@@ -745,6 +753,86 @@ describe("the scenarios the selection API unlocked", () => {
     const bad = byName(await runSelfTest("probe"))["stop a run part-way"];
     expect(bad.ok, `called a stop clean with a chart left behind: ${bad.detail}`).toBe(false);
     expect(bad.detail).toContain("left a re-editable chart");
+  });
+
+  it("stops a chart HALF DRAWN, and takes the wreckage with it", async () => {
+    /**
+     * THE CASE THE STOP BUTTON EXISTS FOR, AND THE ONE NEVER EXERCISED.
+     *
+     * `stop a run part-way` asks for the stop before the insert begins, so
+     * `throwIfStopped()` throws on iteration zero and no shape is ever queued —
+     * its own detail says "no shape was ever queued" in 251 of 322 archived
+     * rounds, and "stopped at a batch boundary" in the other 71. A user pressing
+     * Stop is some seconds into a draw, which is neither.
+     *
+     * This one requests the stop from the first `onPhase("commit", …)`, so a
+     * batch of shapes has already landed when the abort happens.
+     *
+     * IT MUST COMMIT SOMETHING. A verdict that passes having drawn nothing is
+     * the old scenario wearing a new name, so the detail has to show batches —
+     * and when the insert never reaches a commit the scenario SKIPS rather than
+     * passing, because it cannot answer its own question.
+     */
+    vi.unstubAllGlobals();
+    // The DECK, held by reference. `installHost` mutates the array it is given
+    // as slides are added, and the draw this scenario aborts lands beside a
+    // probe chart — on a slide the probe setup created, not on `s1`. Watching
+    // one slide is how the first version of this assertion came to prove
+    // nothing at all.
+    const deck = [makeSlide("s1")];
+    installHost(deck);
+    const r = byName(await runSelfTest("probe", "stop a run mid-draw"))["stop a run mid-draw"];
+    expect(r.skipped, `could not run at all: ${r.detail}`).toBeFalsy();
+    expect(r.ok, r.detail).toBe(true);
+    expect(r.detail, "passed without ever getting inside the draw").toMatch(/stopped inside the draw after [1-9]/);
+    expect(r.detail, "did not say what it removed").toMatch(/shape\(s\) had landed and were removed/);
+    expect(r.detail).toContain("nothing left claiming to be a chart");
+    /**
+     * READ THE SLIDE, NOT THE SCENARIO'S OWN ACCOUNT OF IT.
+     *
+     * The wreckage is the whole reason this is a separate scenario: a partly
+     * drawn slide would contaminate `same scale across the deck`, which reads
+     * its chart population from that same deck. Asserting only the detail string
+     * tests what the scenario CLAIMS, and a version that skipped the delete
+     * while reporting a successful one passed every assertion above it.
+     *
+     * THE CLAIM IS TIED TO THE OBSERVATION. Counting live shapes cannot do it:
+     * the fake keeps deleted shapes in `created` behind a `deleted` flag so the
+     * array never shrinks, the aborted draw lands on a PROBE slide rather than
+     * the one installed, and re-running to look for growth also re-runs the
+     * probe setup, which legitimately adds more. All three made an earlier
+     * version of this assertion pass against a scenario that deleted nothing.
+     *
+     * So: read the number the scenario says it removed, and require that many
+     * shapes across the whole deck to actually carry the host's `deleted` flag.
+     * A version that skips the delete and reports a successful one fails here,
+     * because nothing on the deck was ever marked.
+     */
+    const removedSays = Number(/(\d+) shape\(s\) had landed and were removed/.exec(r.detail ?? "")?.[1]);
+    expect(removedSays, "the detail did not say how many shapes it removed").toBeGreaterThan(0);
+    const deleted = deck.reduce((n, s) => n + s.created.filter((x: { deleted?: boolean }) => x.deleted).length, 0);
+    expect(
+      deleted,
+      `claimed to remove ${removedSays} shape(s) but the deck shows ${deleted} deleted`,
+    ).toBeGreaterThanOrEqual(removedSays);
+  });
+
+  it("will not call a mid-draw stop clean when the wreckage claims to be a chart", async () => {
+    // The half that matters. Partial shapes are allowed — the pane's own message
+    // says "anything already drawn was kept". What is not allowed is half a
+    // chart carrying a config tag, because the pane would then offer to re-edit
+    // something that was never finished and Same Scale would rescale it as
+    // though it were whole.
+    vi.unstubAllGlobals();
+    const slide = makeSlide("s1");
+    const litter = makeShape("geometric", "rectangle", { left: 0, top: 0, width: 10, height: 10 });
+    litter.name = "PowerChart";
+    litter.tagStore.set(CHART_TAG, JSON.stringify({ ...sampleConfig("clustered"), title: "probe mid-draw" }));
+    slide.created.push(litter);
+    installHost([slide]);
+    const bad = byName(await runSelfTest("probe", "stop a run mid-draw"))["stop a run mid-draw"];
+    expect(bad.ok, `called a mid-draw stop clean with a chart left behind: ${bad.detail}`).toBe(false);
+    expect(bad.detail).toContain("left a re-editable chart behind");
   });
 
   it("sees the chart on the slide, and fails when the host renders the same bytes regardless", async () => {

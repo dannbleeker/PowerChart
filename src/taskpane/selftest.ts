@@ -1730,6 +1730,134 @@ const stopPartWay: Scenario = async (prefix) => {
 };
 
 /**
+ * Stop pressed while the chart is HALF DRAWN — the case a user actually meets.
+ *
+ * `stopPartWay` above asks for the stop before the insert starts, so
+ * `throwIfStopped()` throws on iteration zero and no shape is ever queued. Its
+ * own comment says so, and the archive agrees: across 322 rounds it reported
+ * "stopped before the first batch — no shape was ever queued" in 251 of them and
+ * "stopped at a batch boundary" in the other 71. The mid-draw promise — the one
+ * `CLAUDE.md` claimed was being tested, and the one the Stop button exists for —
+ * had been exercised ZERO times on a real host.
+ *
+ * The seam is `onPhase("commit", …)`, which fires once per batch of
+ * `SHAPES_PER_SYNC`. Requesting the stop from the FIRST commit aborts a
+ * genuinely part-drawn chart.
+ *
+ * WHY THIS IS ITS OWN SCENARIO AND NOT A CHANGE TO THAT ONE. `stopPartWay`'s
+ * comment names the blocker: a mid-draw abort leaves a partially drawn slide,
+ * and `same scale across the deck` discovers its chart population from that same
+ * deck, so it would contaminate every scenario after it. So this one CLEANS UP
+ * AFTER ITSELF — it records the slide's shape ids before the insert, and deletes
+ * whatever the aborted draw added. A new name also starts its own regression
+ * series rather than reinterpreting 322 rounds of the old one.
+ *
+ * WHAT IT ASSERTS is the contract the pane already states in words — "Stopped —
+ * anything already drawn was kept". Partial shapes are allowed. What is not
+ * allowed is a half-drawn chart that claims to be whole: if the abort left
+ * something carrying a config tag, the pane would offer to re-edit a chart that
+ * was never finished, and Same Scale would rescale it as though it were.
+ */
+const stopMidDraw: Scenario = async (prefix) => {
+  // Same guard, same reason as `stopPartWay`: never clear a stop the USER asked
+  // for. This is the other scenario that calls `resetStop()`.
+  if (isStopRequested()) return { ok: false, skipped: true, detail: "not reached — the run was stopped" };
+  const { found: hosts, blind, gap } = await probeCharts(prefix);
+  const [host] = hosts;
+  if (!host)
+    return blind
+      ? blindSkip(gap)
+      : { ok: false, skipped: true, detail: "no probe chart to draw a stopped chart beside" };
+  const slideId = host.target.slideId;
+
+  // WHAT WAS THERE BEFORE, so the cleanup can be exact rather than by name. A
+  // partial draw's shapes carry the ordinary names — `seg-0-0`, `category-1` —
+  // and deleting by name would take the probe chart's shapes with them.
+  const before = await slideShapeList(slideId);
+  if (!before)
+    return {
+      ok: false,
+      skipped: true,
+      detail: "the host would not list the slide's shapes, so nothing could be cleaned up after",
+    };
+  const beforeIds = new Set(before.map((s) => s.id));
+  const slideCountBefore = await slideCount();
+
+  // Big enough to need several batches at SHAPES_PER_SYNC — a chart that fits in
+  // one commit cannot be stopped half way through by definition.
+  const c = { ...cfg(`${prefix} mid-draw`, "waffle"), width: 320, height: 220 };
+  const scene = buildChart(c);
+  let commits = 0;
+  let outcome: string;
+  try {
+    const target = await insertSceneIntoSlide(scene, { slideId, tagData: JSON.stringify(c) }, (phase) => {
+      if (phase !== "commit") return;
+      commits += 1;
+      // THE STOP, from inside the draw. One batch has landed by the time this
+      // runs, so the abort is genuinely mid-chart.
+      if (commits === 1) requestStop();
+    });
+    outcome = target ? "the insert ran to completion and reported a chart" : "the insert finished without a chart";
+  } catch (err) {
+    outcome = isStopped(err) ? "stopped" : `threw something other than a stop: ${errorText(err)}`;
+  } finally {
+    resetStop();
+  }
+
+  const after = await slideShapeList(slideId);
+  const added = (after ?? []).filter((s) => !beforeIds.has(s.id));
+  // CLEAN UP FIRST, REPORT SECOND. Whatever this scenario decides, the deck must
+  // be left as it was found — every scenario after this one reads it.
+  const removed = added.length
+    ? await deleteShapesById(
+        slideId,
+        added.map((s) => s.id),
+      )
+    : 0;
+  const leftBehind = added.length - removed;
+
+  if (!after)
+    return {
+      ok: false,
+      skipped: true,
+      detail: `the host would not list the slide's shapes after the stop (${commits} batch(es) committed)`,
+    };
+  /**
+   * A stop that landed before any shape did is the case `stop a run part-way`
+   * already covers, and it cannot answer the mid-draw question — so it SKIPS
+   * rather than passing, because a scenario that cannot conclude must say so.
+   *
+   * BUT NOT WHEN THE INSERT THREW SOMETHING ELSE. A real error before the first
+   * batch is the loudest thing this scenario can discover, and skipping on it
+   * would file that under "nothing was drawn". Only an insert that ended
+   * cleanly without reaching a commit is excused here; a genuine throw falls
+   * through to the verdict below and is reported.
+   */
+  if (commits === 0 && (outcome === "stopped" || outcome.startsWith("the insert")))
+    return {
+      ok: false,
+      skipped: true,
+      detail: `the insert never reached its first commit, so nothing was drawn to stop half way through (${outcome})`,
+    };
+
+  const stillClaimsToBeAChart = await probeCharts(`${prefix} mid-draw`);
+  const problems = [
+    outcome !== "stopped" && outcome,
+    (await slideCount()) !== slideCountBefore && "a stopped insert changed the slide count",
+    // The one that matters: half a chart must not present itself as a whole one.
+    stillClaimsToBeAChart.found.length > 0 && "the aborted draw left a re-editable chart behind",
+    leftBehind > 0 && `${leftBehind} of ${added.length} shape(s) from the aborted draw could not be cleaned up`,
+  ].filter(Boolean);
+  return {
+    ok: problems.length === 0,
+    detail: problems.length
+      ? problems.join("; ")
+      : `stopped inside the draw after ${commits} batch(es); ${added.length} shape(s) had landed and were removed, ` +
+        `nothing left claiming to be a chart`,
+  };
+};
+
+/**
  * Whether anything is actually VISIBLE.
  *
  * Every other assertion in this file counts shapes and reads tags. All of them
@@ -3235,6 +3363,10 @@ const SCENARIOS: {
   { name: "a selected shape survives an insert", run: selectionSurvivesInsert },
   { name: "edit the chart the user selected", run: editViaSelection },
   { name: "stop a run part-way", run: stopPartWay },
+  // AFTER it, deliberately. This one aborts a half-drawn chart and cleans up the
+  // wreckage; running it before the cheaper before-the-first-batch case would
+  // put the harder of the two first for no reason.
+  { name: "stop a run mid-draw", run: stopMidDraw },
   // Picked only because it is 0 for 4 and takes the tab with it every time.
   //
   // Four real-host rounds, four different builds (a5b032d, 618b8d8, cedbc6c,

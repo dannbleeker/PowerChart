@@ -31,6 +31,7 @@ import {
   sheetOf,
   NEVER_ASKED,
   UNINFORMATIVE_ANSWERS,
+  UNSTABLE_ANSWERS,
   RENAMED_ANSWERS,
   pendingAlreadyAnswered,
 } from "./host-baseline.mjs";
@@ -48,6 +49,7 @@ export {
   sheetOf,
   NEVER_ASKED,
   UNINFORMATIVE_ANSWERS,
+  UNSTABLE_ANSWERS,
   RENAMED_ANSWERS,
   pendingAlreadyAnswered,
 };
