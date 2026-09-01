@@ -36,7 +36,7 @@ import { readDeck, faultsIn } from "./verify-deck.mjs";
 // was added to the two that are pinned and not to this one. A prediction reading
 // that answer would have judged a question "put and answered" when the harness
 // never asked it.
-import { NEVER_ASKED as NOT_ASKED_ANSWERS } from "./host-baseline.mjs";
+import { NEVER_ASKED as NOT_ASKED_ANSWERS, UNINFORMATIVE_ANSWERS } from "./host-baseline.mjs";
 
 /**
  * Verdicts, worst first — the order they are printed and counted in.
@@ -2489,6 +2489,85 @@ export function poolPairPosition(logs) {
     if (typeof b.age === "number" && b.age < FRESH_PANE_SECONDS) secondFresh++;
   }
   return { pairs, worse, better, tied, secondFresh };
+}
+
+/**
+ * Probes that gave two runs of the SAME COMMIT different answers.
+ *
+ * NOTHING IN THE GATE CHAIN HAS EVER READ `hostAnswers`. `rounds-gate.mjs`
+ * compares scenario verdicts and slide-size divergence and contains zero
+ * references to the probe sheet — while 14 of the 15 scenarios pass in every
+ * round and seven have a lifetime failure count of zero across 322 rounds. The
+ * discriminating content of a round has moved into the half nothing gates.
+ *
+ * Measured 2026-09-01 over 82 builds carrying two or more archived rounds: 328
+ * of 3,147 comparable probe slots — 10.4% — differ between rounds of the same
+ * commit, and 34 of the 44 probes have flipped within a build at least once.
+ * Same code, same host, different answer.
+ *
+ * `UNSTABLE_ANSWERS` exists to declare exactly this and was assembled BY HAND
+ * across ten rounds, which is why most of the 34 are missing from it. This makes
+ * the list derivable from evidence instead.
+ *
+ * A caveat worth carrying: some of these flips are the answer-ranking defects
+ * fixed on 2026-08-31 and 2026-09-01 — `unreadable`, `silent` and a probe's own
+ * `all` locking a row against a real answer that arrived on a later pass. Those
+ * should stop flipping now, and the ones that keep flipping are the real
+ * non-determinism. Re-derive after a few rounds rather than declaring today's
+ * list permanent.
+ */
+export function probeFlipsWithinBuild(logs) {
+  const byBuild = new Map();
+  for (const log of logs ?? []) {
+    const answers = log?.hostAnswers?.answers;
+    // The sha alone: `build` reads "f6e3568 · 2026-08-31 07:59Z", and the
+    // timestamp differs between two rounds of the same commit.
+    const sha = String(log?.build ?? "").split(" ")[0];
+    if (!sha || !Array.isArray(answers)) continue;
+    if (!byBuild.has(sha)) byBuild.set(sha, []);
+    byBuild.get(sha).push(Object.fromEntries(answers.map((a) => [a.id, a.answer])));
+  }
+  const flips = new Map();
+  let builds = 0,
+    slots = 0,
+    differing = 0;
+  for (const sheets of byBuild.values()) {
+    if (sheets.length < 2) continue;
+    builds++;
+    for (const id of new Set(sheets.flatMap((s) => Object.keys(s)))) {
+      /**
+       * REAL ANSWERS ONLY, and it changes the number considerably.
+       *
+       * A probe absent from one sheet is a gap in coverage, not a disagreement —
+       * counting it would report the day a probe was added as instability. And a
+       * round answering `no-scratch-slide`, `unreadable` or `silent` did not
+       * give a DIFFERENT answer; it gave none. Reading `yes` against
+       * `unreadable` as the host contradicting itself is the same mistake
+       * `stabilityOf` carried until 2026-08-31, and it is precisely how
+       * `UNSTABLE_ANSWERS` would fill up with rows describing our own read
+       * failures as host non-determinism.
+       */
+      const seen = sheets
+        .map((s) => s[id])
+        .filter((v) => v !== undefined && !NOT_ASKED_ANSWERS.has(v) && !UNINFORMATIVE_ANSWERS.has(v));
+      if (seen.length < 2) continue;
+      slots++;
+      if (new Set(seen).size === 1) continue;
+      differing++;
+      const row = flips.get(id) ?? { id, builds: 0, answers: new Set() };
+      row.builds++;
+      for (const v of seen) row.answers.add(v);
+      flips.set(id, row);
+    }
+  }
+  return {
+    builds,
+    slots,
+    differing,
+    flips: [...flips.values()]
+      .sort((a, b) => b.builds - a.builds)
+      .map((f) => ({ id: f.id, builds: f.builds, answers: [...f.answers].sort() })),
+  };
 }
 
 export function poolProfileDisagreements(logs) {

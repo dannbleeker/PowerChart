@@ -55,6 +55,7 @@ import * as pooled from "../scripts/triage.mjs";
 const {
   poolEveryDraw,
   poolProfileDisagreements,
+  probeFlipsWithinBuild,
   poolPairPosition,
   roundSpanSeconds,
   paneAgeAtStartSeconds,
@@ -636,6 +637,42 @@ describe("triage — logs that are not inserts", () => {
     );
     const onlyDriver = poolProfileDisagreements([{ build: "x y", driverSlideSize: "16:9" }]);
     expect(onlyDriver, "a round with no pane reading is not a disagreement either").toEqual([]);
+
+    // ── the half of a round that nothing gated ───────────────────────────────
+    /**
+     * `rounds-gate.mjs` compared scenario verdicts and slide-size divergence and
+     * contained ZERO references to `hostAnswers` — while 14 of 15 scenarios pass
+     * in every round and seven have never failed in 322. Measured over the 82
+     * builds with two or more archived rounds, 163 of 2,542 comparable probe
+     * slots (6.4%) differ between rounds of the SAME commit.
+     *
+     * A NON-ANSWER IS NOT A DIFFERENT ANSWER, and that is most of the number:
+     * counting `no-scratch-slide`, `unreadable` and `silent` as dissent gives
+     * 328 of 3,147 (10.4%) and fills the list with our own read failures dressed
+     * up as host non-determinism.
+     */
+    const sheet = (build: string, answers: Record<string, string>) => ({
+      build,
+      hostAnswers: { answers: Object.entries(answers).map(([id, answer]) => ({ id, answer })) },
+    });
+    const f = probeFlipsWithinBuild([
+      // Same sha, different timestamp — `build` carries both, so the grouping
+      // has to take the sha alone or no two rounds ever pair up at all.
+      sheet("abc1234 · 2026-09-01 01:00Z", { steady: "yes", flipper: "yes", quiet: "yes" }),
+      sheet("abc1234 · 2026-09-01 02:00Z", { steady: "yes", flipper: "threw", quiet: "unreadable" }),
+      // A different build must never be compared against the first.
+      sheet("def5678 · 2026-09-01 03:00Z", { steady: "no" }),
+    ]);
+    expect(f.builds, "a build with only one round was treated as a pair").toBe(1);
+    expect(
+      f.flips.map((x: { id: string }) => x.id),
+      "the wrong probes were called unstable",
+    ).toEqual(["flipper"]);
+    expect(f.flips[0].answers).toEqual(["threw", "yes"]);
+    // `quiet` went yes -> unreadable: one round read it, one did not. That is
+    // not the host contradicting itself, and calling it so is the exact mistake
+    // `stabilityOf` carried until 2026-08-31.
+    expect(f.differing, "a failed read was counted as a dissenting answer").toBe(1);
 
     // THE GATE: a 4:3 round after three passing 16:9 rounds is not a regression.
     const ok: [string, boolean][] = [["same scale", true]];

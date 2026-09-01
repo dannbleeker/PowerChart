@@ -38,8 +38,9 @@ import {
   poolInPlaceUpdates,
   roundSpanSeconds,
   paneAgeAtStartSeconds,
+  probeFlipsWithinBuild,
 } from "./triage.mjs";
-import { pendingAlreadyAnswered } from "./host-baseline.mjs";
+import { pendingAlreadyAnswered, UNSTABLE_ANSWERS } from "./host-baseline.mjs";
 
 /**
  * Did the SHIPPED BUNDLE change between two archived rounds?
@@ -307,6 +308,31 @@ if (isMain(import.meta.url, process.argv[1])) {
     }
   } catch {
     /* the gate is not worth failing over its own footnote */
+  }
+
+  // THE HALF NOTHING GATED. This file compares scenario verdicts and slide-size
+  // divergence and, until 2026-09-01, contained no reference to `hostAnswers` at
+  // all — while 14 of 15 scenarios pass in every round and seven have never
+  // failed in 322. Two runs of the SAME COMMIT disagree on 10.4% of probe slots,
+  // and nothing looked.
+  const flips = probeFlipsWithinBuild(rounds);
+  if (flips.differing) {
+    console.log(`
+  THE SAME BUILD ANSWERED DIFFERENTLY — ${flips.differing} of ${flips.slots} probe slot(s) across ${flips.builds} build(s) with a pair`);
+    for (const f of flips.flips.slice(0, 8))
+      console.log(`      ${f.id.padEnd(44)} ${f.answers.join(" / ")}   (${f.builds} build(s))`);
+    if (flips.flips.length > 8) console.log(`      … and ${flips.flips.length - 8} more`);
+    // DERIVED AGAINST DECLARED. `UNSTABLE_ANSWERS` is hand-written, which is
+    // exactly why most of these are missing from it.
+    const undeclared = flips.flips.filter((f) => !(f.id in UNSTABLE_ANSWERS));
+    if (undeclared.length)
+      console.log(
+        `    ${undeclared.length} of ${flips.flips.length} are not in UNSTABLE_ANSWERS: ${undeclared
+          .slice(0, 6)
+          .map((f) => f.id)
+          .join(", ")}${undeclared.length > 6 ? ", …" : ""}`,
+      );
+    console.log("    Some of these were answer-ranking defects, not the host — re-derive, do not just declare.");
   }
 
   // THE REGISTER CANNOT AUDIT ITSELF AGAINST THE FIXTURE, so it is audited here
