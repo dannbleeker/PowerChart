@@ -80,6 +80,8 @@ import {
   settledSlideCount,
   slideSize,
   slideShapeList,
+  addSlideForChart,
+  deleteSlideById,
   shapeGeometryByName,
   deleteShapesById,
   timeShapeRounds,
@@ -1765,22 +1767,35 @@ const stopMidDraw: Scenario = async (prefix) => {
   const { found: hosts, blind, gap } = await probeCharts(prefix);
   const [host] = hosts;
   if (!host)
-    return blind
-      ? blindSkip(gap)
-      : { ok: false, skipped: true, detail: "no probe chart to draw a stopped chart beside" };
-  const slideId = host.target.slideId;
+    return blind ? blindSkip(gap) : { ok: false, skipped: true, detail: "no probe chart, so the deck is not ready" };
 
-  // WHAT WAS THERE BEFORE, so the cleanup can be exact rather than by name. A
-  // partial draw's shapes carry the ordinary names — `seg-0-0`, `category-1` —
-  // and deleting by name would take the probe chart's shapes with them.
-  const before = await slideShapeList(slideId);
-  if (!before)
-    return {
-      ok: false,
-      skipped: true,
-      detail: "the host would not list the slide's shapes, so nothing could be cleaned up after",
-    };
-  const beforeIds = new Set(before.map((s) => s.id));
+  /**
+   * ITS OWN SLIDE, AND THE FIRST VERSION OF THIS DID NOT HAVE ONE.
+   *
+   * That version drew beside a probe chart and cleaned up by diffing the slide's
+   * shape ids before and after, deleting whatever was new. It ran once against a
+   * real host, on 2026-09-01 in round 353, and reported `10 of 10 shape(s) from
+   * the aborted draw could not be cleaned up` — the ten shapes stayed on the
+   * deck.
+   *
+   * The reason is a host fact this repo already had written down and I did not
+   * join up: ids read back from a slide LISTING are not ids this host will
+   * accept in `getItemOrNullObject`. `host-probe.ts` records the two id spaces
+   * side by side — scratch ids reading `4123571114#123571113` while the deck
+   * listed `256#109857222`, "both from the SAME `slideIds()` projection minutes
+   * apart". `deleteShapesById` resolves each id that way, so every delete
+   * refused. The sibling rotation scenario cleans up fine because its ids come
+   * from the INSERT's own return value, not from a listing.
+   *
+   * So this draws on a slide of its own and removes the SLIDE, which is the
+   * deletion route the whole harness already leans on. It also makes the
+   * scenario strictly safer: no id diff, so no chance of the ids churning under
+   * it and taking a probe chart with them, and any wreckage that does survive is
+   * on a slide nothing else reads.
+   */
+  const slideId = await addSlideForChart();
+  if (!slideId)
+    return { ok: false, skipped: true, detail: "the host would not add a slide to draw the stopped chart on" };
   const slideCountBefore = await slideCount();
 
   // Big enough to need several batches at SHAPES_PER_SYNC — a chart that fits in
@@ -1804,45 +1819,17 @@ const stopMidDraw: Scenario = async (prefix) => {
     resetStop();
   }
 
+  // What landed before the abort, purely to report it. Nothing is deleted by
+  // these ids — see the note above the slide add for why that does not work
+  // here.
   const after = await slideShapeList(slideId);
-  const added = (after ?? []).filter((s) => !beforeIds.has(s.id));
-  /**
-   * A CEILING ON WHAT THIS MAY DELETE, because the id diff is not as safe as it
-   * looks on THIS host.
-   *
-   * The cleanup takes every shape whose id was not there before. That is right
-   * only while ids are stable across two reads, and this host is documented not
-   * to be: `host-probe.ts` records scratch ids reading `4123571115#123571113`
-   * while the deck listed `256#109857222`, "both from the SAME `slideIds()`
-   * projection minutes apart". If ids churn between the two calls here, every
-   * shape on the slide looks new — including the PROBE CHART this scenario drew
-   * beside — and a blind delete would take it, contaminating the rest of the
-   * round far worse than the wreckage it was cleaning.
-   *
-   * So the abort cannot have added more shapes than the chart HAS. Beyond that
-   * the diff is not describing this draw, and the honest move is to delete
-   * nothing and say so — a repair that quietly does the wrong thing is how a
-   * clamp hides an internal error, which this file has been bitten by before.
-   */
-  const ceiling = scene.nodes.length;
-  const runaway = added.length > ceiling;
-  // CLEAN UP FIRST, REPORT SECOND. Whatever this scenario decides, the deck must
-  // be left as it was found — every scenario after this one reads it.
-  const removed =
-    added.length && !runaway
-      ? await deleteShapesById(
-          slideId,
-          added.map((s) => s.id),
-        )
-      : 0;
-  const leftBehind = runaway ? 0 : added.length - removed;
+  const landed = after?.length;
 
-  if (!after)
-    return {
-      ok: false,
-      skipped: true,
-      detail: `the host would not list the slide's shapes after the stop (${commits} batch(es) committed)`,
-    };
+  // CLEAN UP FIRST, REPORT SECOND. Whatever this scenario decides, the deck must
+  // be left as it was found — every scenario after this one reads it. One slide
+  // delete, not N shape deletes.
+  const sweptSlide = await deleteSlideById(slideId);
+  const slideCountAfter = await slideCount();
   /**
    * A stop that landed before any shape did is the case `stop a run part-way`
    * already covers, and it cannot answer the mid-draw question — so it SKIPS
@@ -1864,22 +1851,23 @@ const stopMidDraw: Scenario = async (prefix) => {
   const stillClaimsToBeAChart = await probeCharts(`${prefix} mid-draw`);
   const problems = [
     outcome !== "stopped" && outcome,
-    (await slideCount()) !== slideCountBefore && "a stopped insert changed the slide count",
     // The one that matters: half a chart must not present itself as a whole one.
     stillClaimsToBeAChart.found.length > 0 && "the aborted draw left a re-editable chart behind",
-    leftBehind > 0 && `${leftBehind} of ${added.length} shape(s) from the aborted draw could not be cleaned up`,
-    // NAMED, NOT CLEANED. See the ceiling above: more new ids than the chart has
-    // shapes means the ids moved under us, not that the draw added them, and
-    // deleting on that reading could take the probe chart with it.
-    runaway &&
-      `${added.length} shape(s) read as new against a chart of ${ceiling} — the ids moved, so nothing was deleted`,
+    // THE SLIDE MUST GO. Its shapes cannot be deleted by a listed id on this
+    // host — round 353 proved that, 10 of 10 refused — so the slide is the unit
+    // of cleanup, and a slide that will not go is wreckage every later scenario
+    // reads.
+    !sweptSlide && "the slide this drew on could not be deleted, so the aborted draw is still in the deck",
+    sweptSlide &&
+      slideCountAfter >= slideCountBefore &&
+      `the slide was reported deleted but the deck still holds ${slideCountAfter} of ${slideCountBefore}`,
   ].filter(Boolean);
   return {
     ok: problems.length === 0,
     detail: problems.length
       ? problems.join("; ")
-      : `stopped inside the draw after ${commits} batch(es); ${added.length} shape(s) had landed and were removed, ` +
-        `nothing left claiming to be a chart`,
+      : `stopped inside the draw after ${commits} batch(es) with ${landed ?? "?"} shape(s) down; ` +
+        `the slide went with them, nothing left claiming to be a chart`,
   };
 };
 

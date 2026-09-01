@@ -775,77 +775,65 @@ describe("the scenarios the selection API unlocked", () => {
      */
     vi.unstubAllGlobals();
     // The DECK, held by reference. `installHost` mutates the array it is given
-    // as slides are added, and the draw this scenario aborts lands beside a
-    // probe chart — on a slide the probe setup created, not on `s1`. Watching
-    // one slide is how the first version of this assertion came to prove
-    // nothing at all.
+    // as slides are added and removed, which is what makes the cleanup
+    // observable rather than merely claimed.
     const deck = [makeSlide("s1")];
     installHost(deck);
     const r = byName(await runSelfTest("probe", "stop a run mid-draw"))["stop a run mid-draw"];
     expect(r.skipped, `could not run at all: ${r.detail}`).toBeFalsy();
     expect(r.ok, r.detail).toBe(true);
     expect(r.detail, "passed without ever getting inside the draw").toMatch(/stopped inside the draw after [1-9]/);
-    expect(r.detail, "did not say what it removed").toMatch(/shape\(s\) had landed and were removed/);
+    expect(r.detail, "did not say how much had landed").toMatch(/with [1-9]\d* shape\(s\) down/);
+    expect(r.detail).toContain("the slide went with them");
     expect(r.detail).toContain("nothing left claiming to be a chart");
     /**
-     * READ THE SLIDE, NOT THE SCENARIO'S OWN ACCOUNT OF IT.
+     * READ THE DECK, and be exact about what this can and cannot prove.
      *
-     * The wreckage is the whole reason this is a separate scenario: a partly
-     * drawn slide would contaminate `same scale across the deck`, which reads
-     * its chart population from that same deck. Asserting only the detail string
-     * tests what the scenario CLAIMS, and a version that skipped the delete
-     * while reporting a successful one passed every assertion above it.
+     * Measured both ways on this fixture: when the slide delete succeeds the
+     * deck ends at 7 slides, and with `refuseSlideDelete` it ends at 10 — the
+     * scenario's own slide plus two the probe cleanup could not take either. So
+     * the deck size DOES move with the cleanup, but it does not move by exactly
+     * one, and pinning 7 would be pinning the probe's behaviour as much as this
+     * scenario's.
      *
-     * THE CLAIM IS TIED TO THE OBSERVATION. Counting live shapes cannot do it:
-     * the fake keeps deleted shapes in `created` behind a `deleted` flag so the
-     * array never shrinks, the aborted draw lands on a PROBE slide rather than
-     * the one installed, and re-running to look for growth also re-runs the
-     * probe setup, which legitimately adds more. All three made an earlier
-     * version of this assertion pass against a scenario that deleted nothing.
+     * What it can say honestly is that the deck did not grow past what a working
+     * run leaves. The failure path is covered separately and discriminates
+     * properly: under `refuseSlideDelete` this scenario reports ok=false.
      *
-     * So: read the number the scenario says it removed, and require that many
-     * shapes across the whole deck to actually carry the host's `deleted` flag.
-     * A version that skips the delete and reports a successful one fails here,
-     * because nothing on the deck was ever marked.
+     * Four earlier versions of this assertion proved nothing at all — live shape
+     * counts (the fake never shrinks `created`), the installed slide (the draw
+     * lands elsewhere), and growth across two runs (the probe setup adds more
+     * each time). Each passed against a scenario that deleted nothing.
      */
-    const removedSays = Number(/(\d+) shape\(s\) had landed and were removed/.exec(r.detail ?? "")?.[1]);
-    expect(removedSays, "the detail did not say how many shapes it removed").toBeGreaterThan(0);
-    const deleted = deck.reduce((n, s) => n + s.created.filter((x: { deleted?: boolean }) => x.deleted).length, 0);
     expect(
-      deleted,
-      `claimed to remove ${removedSays} shape(s) but the deck shows ${deleted} deleted`,
-    ).toBeGreaterThanOrEqual(removedSays);
+      deck.length,
+      `the deck grew to ${deck.length} slides — the scenario's slide was not taken back`,
+    ).toBeLessThan(10);
   });
 
   it("fails loudly when it cannot clear the wreckage, rather than reporting a clean stop", async () => {
     /**
      * THE CLEANUP IS THE POINT OF THIS SCENARIO, so a cleanup that does not
      * happen has to be a failure and not a footnote. A partly drawn chart left
-     * on the slide is read by `same scale across the deck` as part of its chart
-     * population, which is precisely the contamination this design exists to
-     * avoid.
+     * in the deck is read by `same scale across the deck` as part of its chart
+     * population, which is precisely the contamination this design avoids.
      *
-     * `unmatchedIdReads` models a host that listed the slide before its shape
-     * ids settled — the documented behaviour that makes an id-diff cleanup risky
-     * in the first place. Here it makes the delete refuse every id.
-     *
-     * (The scenario also carries a CEILING for the other face of the same
-     * hazard: if more shapes read as new than the chart even has, the ids moved
-     * rather than the draw adding them, and it deletes nothing and says so.
-     * That branch is defensive and this fake cannot reach it — the fault breaks
-     * the delete rather than inflating the diff — so it is recorded here as
-     * reasoned-but-unexercised rather than left looking tested.)
+     * `refuseSlideDelete` is the fault that matters now that the slide is the
+     * unit of cleanup. The first version of this scenario cleaned up by deleting
+     * SHAPES by id, and round 353 showed what that is worth on a real host: 10
+     * of 10 refused, ten shapes left in the deck. Ids read from a slide listing
+     * are not ids this host accepts in `getItemOrNullObject`, which is written
+     * down in `host-probe.ts` and which I did not join up until the round said
+     * so.
      */
     installHost([makeSlide("s1")]);
-    faults.unmatchedIdReads = 500;
+    faults.refuseSlideDelete = true;
     try {
       const r = byName(await runSelfTest("probe", "stop a run mid-draw"))["stop a run mid-draw"];
-      expect(r.ok, "reported a clean stop while its wreckage was still on the slide").toBe(false);
-      expect(r.detail, "did not say the cleanup failed").toMatch(
-        /shape\(s\) from the aborted draw could not be cleaned up/,
-      );
+      expect(r.ok, "reported a clean stop while its slide was still in the deck").toBe(false);
+      expect(r.detail, "did not say the slide survived").toMatch(/could not be deleted|still holds/);
     } finally {
-      faults.unmatchedIdReads = 0;
+      faults.refuseSlideDelete = false;
     }
   });
 
