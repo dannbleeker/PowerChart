@@ -3458,7 +3458,15 @@ export interface SlideInventory {
   slideId: string;
   /** Position in the deck at scan time — how a reader finds it by clicking. */
   index: number;
-  shapes: { id: string; name?: string; left?: number; top?: number }[];
+  /**
+   * `width`/`height` are what let a reader ask whether a shape landed INSIDE the
+   * slide and whether two of them collide. Optional like the rest: a host that
+   * answers the collection has not necessarily answered every property on it,
+   * and every one is read through `loadedValue` for that reason. Added
+   * 2026-09-01 — no archived round carries them, so any consumer has to treat
+   * their absence as "not measured" rather than as zero.
+   */
+  shapes: { id: string; name?: string; left?: number; top?: number; width?: number; height?: number }[];
   /** The slide's own count, when the host gave one — `shapes.length` short of it means a partial answer. */
   count?: number;
 }
@@ -3512,7 +3520,11 @@ async function readChartsPage(
     for (let i = from; i < to; i++) {
       const slide = context.presentation.slides.getItemAt(i);
       slide.load("id");
-      slide.shapes.load(withInventory ? "items/id,items/left,items/top,items/name" : "items/id,items/left,items/top");
+      slide.shapes.load(
+        withInventory
+          ? "items/id,items/left,items/top,items/name,items/width,items/height"
+          : "items/id,items/left,items/top",
+      );
       // The slide's own count, queued in the same sync, purely to catch a
       // collection that answers SHORT without throwing. A scalar rather than a
       // load, so it does not count against the >50-item load ceiling
@@ -3565,6 +3577,18 @@ async function readChartsPage(
               name: loadedValue(() => (shape as unknown as { name: string }).name),
               left: loadedValue(() => shape.left),
               top: loadedValue(() => shape.top),
+              // EXTENT, WITHOUT WHICH THE INVENTORY CANNOT WITNESS THE ONE CLASS
+              // OF DEFECT IT BACKSTOPS. With only an origin, a chart that landed
+              // 200pt off the right edge is recorded identically to one that
+              // fits, and two charts drawn over each other identically to two
+              // side by side. Across all 322 archived rounds 10,362 shapes carry
+              // a numeric left/top and not one carries a size — so the only
+              // geometry fault the archive can express is an origin outside the
+              // slide, and the off-slide chart found on 2026-09-01 was visible
+              // only because that failure happened to move the origin rather
+              // than the extent.
+              width: loadedValue(() => shape.width),
+              height: loadedValue(() => shape.height),
             };
           }),
           ...(typeof n === "number" ? { count: n } : {}),

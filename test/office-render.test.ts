@@ -2004,8 +2004,58 @@ describe("listChartsInDeck", () => {
     expect(second?.index, "the inventory has to say where in the deck a slide is").toBe(1);
     expect(second?.shapes.map((s) => s.name)).toContain("not a chart");
     expect(second?.shapes[0].left).toBe(3);
+    /**
+     * AND ITS EXTENT, which is what turns the inventory from a list of origins
+     * into something that can witness a geometry fault.
+     *
+     * Without a size, a chart that landed 200pt off the right edge is recorded
+     * identically to one that fits, and two charts drawn over each other
+     * identically to two side by side. Across all 322 archived rounds 10,362
+     * shapes carry a numeric left/top and NOT ONE carries a size — so the only
+     * geometry fault the archive can express is an origin outside the slide.
+     * The off-slide chart found on 2026-09-01 was visible solely because that
+     * failure happened to move the origin rather than the extent.
+     */
+    expect(second?.shapes[0].width, "the inventory cannot see how big anything is").toBe(1);
+    expect(second?.shapes[0].height).toBe(1);
+    // ASKED FOR, not merely read. The fake answers every property whether it was
+    // loaded or not, so the assertions above pass even if the load spec never
+    // requests a size — while a real host throws PropertyNotLoaded on exactly
+    // that. The request is the half only this can check.
+    expect(lastShapeLoadSpec(), "the inventory scan never asked the host for a size").toContain("items/width");
+    expect(lastShapeLoadSpec()).toContain("items/height");
     // Charts are unaffected — the inventory rides along, it does not replace.
     expect(scan.charts).toHaveLength(0);
+  });
+
+  it("still describes a shape whose size the host will not answer", async () => {
+    /**
+     * Every inventory property goes through `loadedValue` because a host that
+     * answered the collection has not necessarily answered every property on it
+     * — "a diagnostic that throws while describing the deck is worse than one
+     * that reports a shape with no name". Size is no different, and this host
+     * refuses geometry often enough that it is the likely case, not the corner.
+     *
+     * The shape must still be listed with the size simply ABSENT, so a consumer
+     * reads "not measured" rather than a zero it would treat as a fact.
+     */
+    const s1 = makeSlide("s1");
+    installHost([s1]);
+    const shape = s1.shapes.addGeometricShape("rectangle", { left: 5, top: 6, width: 7, height: 8 });
+    shape.name = "sizeless";
+    for (const prop of ["width", "height"])
+      Object.defineProperty(shape, prop, {
+        get() {
+          throw new Error("PropertyNotLoaded");
+        },
+      });
+
+    const scan = await listChartsInDeck({ withInventory: true });
+    const only = scan.inventory?.[0]?.shapes.find((s) => s.name === "sizeless");
+    expect(only, "a shape vanished from the inventory because its size would not read").toBeTruthy();
+    expect(only?.left, "the properties that DID answer were thrown away too").toBe(5);
+    expect(only?.width, "an unreadable size was invented rather than left absent").toBeUndefined();
+    expect(only?.height).toBeUndefined();
   });
 
   it("costs nothing on the paths that did not ask for it", async () => {
