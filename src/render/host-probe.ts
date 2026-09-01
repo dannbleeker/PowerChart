@@ -575,8 +575,18 @@ export function scratchReplacementWhy(result: { why?: string; answer: string }):
  * whoever next remembers: see "the failure vocabulary is classified on purpose"
  * in `test/host-probe.test.ts`, which fails when a new non-answer word is
  * emitted without being classified here.
+ *
+ * ── AND TWO THAT ARE ONLY NON-ANSWERS FOR THE QUESTION THAT ASKS THEM ──
+ *
+ * `not-a-short-read` and `none-of-ours` belong to `which-end-a-short-read-drops`
+ * and mean its precondition never occurred. They were `all` and `none` until
+ * 2026-09-01, which could not be listed here: `scratch-slides-returned` answers
+ * `all`, `some` and `none` and means every one of them. The SAME WORD IS A REAL
+ * ANSWER TO ONE QUESTION AND A SHRUG AT ANOTHER, so the words were made specific
+ * before they were made weak. A probe that needs a non-answer of its own should
+ * name it for its own question rather than reach for a generic one.
  */
-export const UNINFORMATIVE = new Set(["other", "unreadable", "silent"]);
+export const UNINFORMATIVE = new Set(["other", "unreadable", "silent", "not-a-short-read", "none-of-ours"]);
 
 /** Weak enough to be replaced by a named answer: never asked, or asked and unnameable. */
 export function weakAnswer(a: string): boolean {
@@ -2423,8 +2433,34 @@ const PROBES: Probe[] = [
         if (!Array.isArray(items)) return { answer: "unreadable", detail: "the collection would not list its items" };
         const seen = items.map((s) => s.left).filter((l) => typeof l === "number");
         const mine = seen.filter((l) => lefts.includes(l));
-        if (!mine.length) return { answer: "none", detail: `${seen.length} shape(s) listed, none of them ours` };
-        if (mine.length === lefts.length) return { answer: "all", detail: "nothing was dropped — not a short read" };
+        /**
+         * NEITHER OF THESE IS AN ANSWER, AND BOTH USED TO READ LIKE ONE.
+         *
+         * The question is which END a short read drops. Only `keeps-head`,
+         * `keeps-tail` and `scattered` answer it. These two say the question
+         * did not arise: nothing was dropped, or the collection listed shapes
+         * that were not ours at all.
+         *
+         * They were `all` and `none`, which are perfectly good words —
+         * `scratch-slides-returned` uses both as genuine answers, which is why
+         * neither could simply join `UNINFORMATIVE` under those names. Here they
+         * ranked as named answers and LOCKED the row, so a later pass that did
+         * see a short read could never displace them.
+         *
+         * Measured over 304 archived rounds and 908 samples: `keeps-head`,
+         * `keeps-tail` and `scattered` appear ZERO times, while 87 rounds lock
+         * on `all`. `FAKE_BASELINE` holds `all` too, and `host-diff` compares
+         * only the answer — so the sheet has recorded 87 rounds of agreement
+         * with the fake on a question this host has never once been in a
+         * position to answer.
+         *
+         * Renamed so the word cannot be misread, and so it can be ranked weak
+         * without dragging another probe's real answers down with it.
+         */
+        if (!mine.length)
+          return { answer: "none-of-ours", detail: `${seen.length} shape(s) listed, none of them ours` };
+        if (mine.length === lefts.length)
+          return { answer: "not-a-short-read", detail: "nothing was dropped — the question did not arise" };
         // Which of OUR shapes came back, in the order we drew them.
         const kept = lefts.filter((l) => mine.includes(l));
         const head = lefts.slice(0, kept.length);

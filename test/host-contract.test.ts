@@ -3,7 +3,8 @@ import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
 // @ts-expect-error — a plain .mjs tool with no types. The tables live THERE so
 // the diff tool and this gate cannot drift apart.
-import { FAKE_BASELINE, KNOWN_DIVERGENCES, PENDING_QUESTIONS, answersOf, diffAnswers } from "../scripts/host-diff.mjs";
+// prettier-ignore
+import { FAKE_BASELINE, KNOWN_DIVERGENCES, PENDING_QUESTIONS, answersOf, diffAnswers, RENAMED_ANSWERS, pendingAlreadyAnswered } from "../scripts/host-diff.mjs";
 import { isHostAnswersKind } from "../src/render/host-probe";
 
 /**
@@ -125,5 +126,73 @@ describe("the fake, against the real host it stands for", () => {
     const unknown = new Set([...onlyFake, ...notAsked.map((n: { id: string }) => n.id)]);
     const answered = Object.keys(PENDING_QUESTIONS).filter((id) => !unknown.has(id));
     expect(answered, "declared as unanswered, but the committed sheet answers it").toEqual([]);
+  });
+
+  it("reads a pre-rename capture as the same observation, without rewriting it", async () => {
+    /**
+     * `all` was `which-end-a-short-read-drops`'s way of saying its question did
+     * not arise. It is `not-a-short-read` now, because as `all` it ranked as a
+     * real answer, locked the row, and MATCHED the fake's `all` — so `host-diff`
+     * recorded 87 rounds of the host agreeing with the fake about which end a
+     * short read drops, on a question neither had ever answered.
+     *
+     * The committed sheet still says `all`, and must. The rule is one screen up
+     * in this file, about the 2026-08-27 `kind` rename: "Rewriting a captured
+     * artefact to match a rename falsifies the evidence." So the old word is
+     * RECOGNISED on the way in and the artefact is left alone — otherwise a
+     * rename manufactures a host divergence that never happened, and
+     * `KNOWN_DIVERGENCES` gains an entry calling a vocabulary change a
+     * behavioural one.
+     */
+    const read = answersOf;
+    expect(RENAMED_ANSWERS["which-end-a-short-read-drops"].all).toBe("not-a-short-read");
+    const seen = read({
+      kind: realSheet.kind,
+      answers: [
+        { id: "which-end-a-short-read-drops", answer: "all" },
+        { id: "scratch-slides-returned", answer: "all" },
+      ],
+    });
+    expect(seen["which-end-a-short-read-drops"], "the pre-rename word was not recognised").toBe("not-a-short-read");
+    // THE SAME WORD, AND IT MUST NOT MOVE HERE. `scratch-slides-returned`
+    // answers `all` and means it — every scratch slide came back. The table is
+    // keyed by question for exactly this reason.
+    expect(seen["scratch-slides-returned"], "translated another probe's real answer").toBe("all");
+  });
+
+  it("catches a pending question the ARCHIVE has already answered", async () => {
+    /**
+     * The register says to delete an entry once the host answers, and calls an
+     * id left behind "the fixture going stale in writing". The gate above cannot
+     * see that: it compares against the committed sheet, where a pending id is
+     * absent precisely BECAUSE the fixture predates it — green whether the
+     * question is unanswered or answered fifty times.
+     *
+     * Measured 2026-09-01: `named-preset-resolves` had answered `draws` in 11 of
+     * 11 rounds, 33 of 33 samples, across five builds, while every gate stayed
+     * green. The archive can see what the fixture cannot.
+     */
+    const round = (id: string, answer: string) => ({
+      hostAnswers: { kind: realSheet.kind, answers: [{ id, answer }] },
+    });
+    const pending = { "a-real-question": "why it is pending" };
+
+    const found = pendingAlreadyAnswered([round("a-real-question", "draws")], pending);
+    expect(
+      found.map((f: { id: string }) => f.id),
+      "the archive answered it and nothing said so",
+    ).toEqual(["a-real-question"]);
+    expect(found[0].answers).toEqual([{ answer: "draws", n: 1 }]);
+
+    // A WEAK WORD IS NOT AN ANSWER. Retiring a question because one round said
+    // `unreadable` or `silent` would be the forgetting this register exists to
+    // prevent, arriving through the door marked "the archive says so". It is
+    // also exactly the state `rotation-keeps-the-unrotated-box` sits in until a
+    // round runs on a build that stopped letting `unreadable` lock its row.
+    for (const quiet of ["unreadable", "silent", "no-scratch-slide", "other"])
+      expect(
+        pendingAlreadyAnswered([round("a-real-question", quiet)], pending),
+        `"${quiet}" retired a question`,
+      ).toEqual([]);
   });
 });

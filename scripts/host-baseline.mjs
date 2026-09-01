@@ -61,7 +61,14 @@ export const FAKE_BASELINE = {
   "how-many-collection-reads-a-context-survives": "survives-12",
   // The fake's collection read drops from the TAIL (`faults.readsMissing`), but
   // unarmed it drops nothing, so a healthy fake keeps every shape.
-  "which-end-a-short-read-drops": "all",
+  //
+  // AND THAT WAS NEVER AGREEMENT, IT WAS TWO SHRUGS MATCHING. This read `all`
+  // until 2026-09-01 and so did the host, in 87 rounds, and `host-diff` compares
+  // only the answer — so the sheet recorded 87 rounds of host-agrees-with-fake
+  // about which end a short read drops, on a question neither had ever been in a
+  // position to answer. The renamed word says what it always meant: the
+  // precondition did not arise. It is weak now, so a real answer displaces it.
+  "which-end-a-short-read-drops": "not-a-short-read",
   // The fake DOES refuse a group through a slide handle two syncs old — that is
   // `parentWindowOk`, modelled from a real host naming the parent — and the tag
   // written afterwards still lands. So the fake's answer is "the context
@@ -583,10 +590,36 @@ export function sheetOf(file) {
 }
 
 /** Read a sheet, whichever shape it arrived in. */
+/**
+ * Answers this project has RENAMED, keyed by the question that used to give them.
+ *
+ * READ, NEVER WRITTEN BACK. A captured sheet is evidence, and this file already
+ * settles the principle one screen away, about the 2026-08-27 `kind` rename:
+ * "Rewriting a captured artefact to match a rename falsifies the evidence." So
+ * an old capture keeps saying `all`, and this table is how today's code
+ * RECOGNISES that as the same observation rather than a disagreement.
+ *
+ * Without it, renaming an answer silently reports a host divergence that never
+ * happened — the fake would claim `not-a-short-read` against a fixture saying
+ * `all` and `KNOWN_DIVERGENCES` would gain an entry describing a rename as a
+ * behavioural difference, which is worse than the staleness it replaced.
+ *
+ * Entries can be dropped once no committed or archived sheet still carries the
+ * old word. Nothing depends on that happening.
+ */
+export const RENAMED_ANSWERS = {
+  // 2026-09-01. `all` and `none` were this probe's way of saying its question
+  // did not arise — nothing was dropped, or the collection listed shapes that
+  // were not ours. They ranked as named answers and locked the row, and `all`
+  // matched the fake's `all`, so 87 rounds recorded agreement about which end a
+  // short read drops on a question neither side had answered.
+  "which-end-a-short-read-drops": { all: "not-a-short-read", none: "none-of-ours" },
+};
+
 export function answersOf(file) {
   const sheet = sheetOf(file);
   if (isHostAnswersKind(sheet?.kind) && Array.isArray(sheet.answers)) {
-    return Object.fromEntries(sheet.answers.map((a) => [a.id, a.answer]));
+    return Object.fromEntries(sheet.answers.map((a) => [a.id, RENAMED_ANSWERS[a.id]?.[a.answer] ?? a.answer]));
   }
   // A bare map, e.g. the committed baseline.
   if (sheet && typeof sheet === "object" && !Array.isArray(sheet)) return sheet;
@@ -615,6 +648,18 @@ export function answersOf(file) {
 export const NEVER_ASKED = new Set(["no-scratch-slide", "no-scratch-shape", "no-named-slide", "not-asked"]);
 
 /**
+ * Answers that mean the question WAS put and produced nothing to name.
+ *
+ * The second tier, and the same arrangement as `NEVER_ASKED` above for the same
+ * reason: this is a plain .mjs tool that imports nothing from the TypeScript, so
+ * the vocabulary is copied and a test asserts the copies stay equal rather than
+ * trusting anyone to remember. `UNINFORMATIVE` in `src/render/host-probe.ts` is
+ * the original; each of these words cost this project rounds of real answers
+ * before it was classified there.
+ */
+export const UNINFORMATIVE_ANSWERS = new Set(["other", "unreadable", "silent", "not-a-short-read", "none-of-ours"]);
+
+/**
  * Compare two answer sheets.
  *
  * Three ways a question can fail to be a match, and all three used to be one:
@@ -627,6 +672,54 @@ export const NEVER_ASKED = new Set(["no-scratch-slide", "no-scratch-shape", "no-
  *   nobody had asked.
  * - `differ` — the only one that is actually a finding.
  */
+/**
+ * Which pending questions the ARCHIVE says the host has already answered.
+ *
+ * `PENDING_QUESTIONS` instructs, in its own comment, that an entry be deleted
+ * once the host answers — "an id left here after the host has answered is the
+ * fixture going stale in writing, which is the failure this register exists to
+ * make impossible to do quietly". Its enforcing gate could never notice: it
+ * compares against the committed fixture, and an id is legitimately pending
+ * precisely BECAUSE the fixture predates it. So the gate is green while the
+ * question is unanswered AND while it has been answered fifty times, and cannot
+ * tell those apart — the verified-versus-not-attempted failure again, in the one
+ * register built to prevent it.
+ *
+ * Measured 2026-09-01: `named-preset-resolves` had answered `draws` in 11 of 11
+ * rounds, 33 of 33 samples, stable in every one, across five builds — as settled
+ * as anything in the archive — while the register still called it unanswered and
+ * every gate stayed green.
+ *
+ * The archive can see what the fixture cannot, so it is asked here. A `stable`
+ * answer is not required: this reports what the host SAID, and whether it said
+ * it consistently is the reader's next question, not a reason to stay quiet.
+ */
+export function pendingAlreadyAnswered(rounds, pending = PENDING_QUESTIONS) {
+  const seen = new Map();
+  for (const round of rounds ?? []) {
+    const answers = answersOf(round?.hostAnswers);
+    if (!answers) continue;
+    for (const id of Object.keys(pending)) {
+      const a = answers[id];
+      // A weak word is not an answer — `unreadable` and `silent` mean the
+      // question was put and produced nothing, which is why they were made
+      // displaceable in the first place. Retiring a question on one of those
+      // would be the forgetting this register exists to prevent, arriving
+      // through the door marked "the archive says so".
+      if (a === undefined || NEVER_ASKED.has(a) || UNINFORMATIVE_ANSWERS.has(a)) continue;
+      const row = seen.get(id) ?? { id, answers: new Map(), rounds: 0 };
+      row.rounds++;
+      row.answers.set(a, (row.answers.get(a) ?? 0) + 1);
+      seen.set(id, row);
+    }
+  }
+  return [...seen.values()].map((r) => ({
+    id: r.id,
+    rounds: r.rounds,
+    answers: [...r.answers].sort((a, b) => b[1] - a[1]).map(([answer, n]) => ({ answer, n })),
+  }));
+}
+
 export function diffAnswers(real, fake) {
   const ids = [...new Set([...Object.keys(real), ...Object.keys(fake)])].sort();
   const agree = [];

@@ -35,7 +35,8 @@ import { UNSTABLE_ANSWERS, PENDING_QUESTIONS } from "../scripts/host-baseline.mj
 // @ts-expect-error — a plain .mjs tool with no types. The baseline lives THERE
 // rather than here, so the diff tool and this test cannot drift apart: two
 // copies of the same table is how a claim quietly stops matching its check.
-import { FAKE_BASELINE, diffAnswers, answersOf, sheetOf, NEVER_ASKED } from "../scripts/host-diff.mjs";
+// prettier-ignore
+import { FAKE_BASELINE, diffAnswers, answersOf, sheetOf, NEVER_ASKED, UNINFORMATIVE_ANSWERS } from "../scripts/host-diff.mjs";
 import { setTracing, trace, traceLog } from "../src/core/trace";
 
 /**
@@ -2466,6 +2467,16 @@ describe("what a probe says when it could not set itself up", () => {
     const src = readFileSync("src/render/host-probe.ts", "utf8");
     for (const word of NEVER_ASKED)
       expect(src, `the probe never emits "${word}", so the gate's vocabulary has drifted`).toContain(`"${word}"`);
+  });
+
+  it("keeps the .mjs tools' second tier in step with UNINFORMATIVE", async () => {
+    // The same arrangement as NEVER_ASKED above and for the same reason: the
+    // .mjs tools import nothing from the TypeScript, so the words are copied,
+    // and the copies are pinned here rather than to anyone's memory. Each of
+    // these cost rounds of real answers before it was classified at all.
+    expect([...UNINFORMATIVE_ANSWERS].sort(), "the tools and the probe disagree about what is not an answer").toEqual(
+      [...UNINFORMATIVE].sort(),
+    );
   });
 });
 

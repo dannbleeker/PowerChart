@@ -39,6 +39,7 @@ import {
   roundSpanSeconds,
   paneAgeAtStartSeconds,
 } from "./triage.mjs";
+import { pendingAlreadyAnswered } from "./host-baseline.mjs";
 
 /**
  * Did the SHIPPED BUNDLE change between two archived rounds?
@@ -306,6 +307,23 @@ if (isMain(import.meta.url, process.argv[1])) {
     }
   } catch {
     /* the gate is not worth failing over its own footnote */
+  }
+
+  // THE REGISTER CANNOT AUDIT ITSELF AGAINST THE FIXTURE, so it is audited here
+  // against the archive. `PENDING_QUESTIONS` says to delete an entry once the
+  // host answers, and its own gate compares to the committed sheet — where the
+  // id is legitimately absent precisely BECAUSE the fixture predates it. Green
+  // whether the question is unanswered or answered fifty times. The archive can
+  // tell.
+  const answered = pendingAlreadyAnswered(rounds);
+  if (answered.length) {
+    console.log(`
+  DECLARED UNANSWERED, BUT THE ARCHIVE ANSWERS IT — ${answered.length} question(s)`);
+    for (const q of answered)
+      console.log(
+        `      ${q.id} — ${q.answers.map((a) => `${a.answer} in ${a.n}`).join(", ")} of ${q.rounds} round(s) that asked`,
+      );
+    console.log("    Refresh test/fixtures/host-answers-web.json from a recent round, then delete the entry.");
   }
 
   const starts = poolDriverRuns(rounds);

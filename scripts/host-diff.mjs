@@ -30,13 +30,27 @@ import {
   diffAnswers,
   sheetOf,
   NEVER_ASKED,
+  UNINFORMATIVE_ANSWERS,
+  RENAMED_ANSWERS,
+  pendingAlreadyAnswered,
 } from "./host-baseline.mjs";
 import { isMain } from "./is-main.mjs";
 
 // Re-exported so the tables have ONE home and every existing importer keeps
 // working: two copies of this data is how a claim quietly stops matching its
 // check, which is the failure this whole file exists to prevent.
-export { FAKE_BASELINE, KNOWN_DIVERGENCES, PENDING_QUESTIONS, answersOf, diffAnswers, sheetOf, NEVER_ASKED };
+export {
+  FAKE_BASELINE,
+  KNOWN_DIVERGENCES,
+  PENDING_QUESTIONS,
+  answersOf,
+  diffAnswers,
+  sheetOf,
+  NEVER_ASKED,
+  UNINFORMATIVE_ANSWERS,
+  RENAMED_ANSWERS,
+  pendingAlreadyAnswered,
+};
 
 if (isMain(import.meta.url, process.argv[1])) {
   const [realPath, fakePath] = process.argv.slice(2).filter((a) => !a.startsWith("--"));
