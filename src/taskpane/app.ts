@@ -3559,6 +3559,16 @@ function describeLitter(deck: RunLogFile["deck"]): string {
  * by a host that is merely slow, which is the only way a bound like this can be
  * wrong. (The tail has only 31 completions because per-phase tracing landed on
  * 2026-08-27; the scan figure is the whole archive.)
+ *
+ * WHAT IT CANNOT DO, said here so nobody credits it with more. This bound
+ * catches ONE thing: a `PowerPoint.run` that never settles while every verdict
+ * is already in hand. It does not catch the crash. Of the 77 crash reports on
+ * file, 10 carry an ErrorName and it is the same one every time —
+ * `errorLocalChangeLostSingleUser`, PowerPoint's SERVER-side lost edit — and the
+ * other 67 carry none at all. A lost edit is not a hang, so a client-side
+ * deadline has nothing to wait out: the dialog is already up and the round is
+ * already over. Reading this bound as crash protection would be reading a
+ * timeout as a cure for the one failure it cannot reach.
  */
 export const DECK_EVIDENCE_TIMEOUT_DEFAULT_MS = 45_000;
 let DECK_EVIDENCE_TIMEOUT_MS = DECK_EVIDENCE_TIMEOUT_DEFAULT_MS;
