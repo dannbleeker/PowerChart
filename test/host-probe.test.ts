@@ -1939,6 +1939,45 @@ describe("stabilityOf", () => {
     expect(stabilityOf([at("other"), at("overwrites"), at("overwrites")])).toBe(true);
   });
 
+  it("tells a host that changed its mind from a run that fell over", async () => {
+    /**
+     * `stable: false` reads as "the host changed its answer mid-round" and
+     * drives both that line and whether a sheet is worth sending at all. On the
+     * three collection questions it is mostly reporting OUR decay.
+     *
+     * Every sample carries the regime it was taken in. Of the archived rounds
+     * where these report `stable: false`, the share whose every dissenting
+     * sample came under `collection-refused`:
+     *
+     *     which-end-a-short-read-drops        112 of 127   (88%)
+     *     shapes-items-count-honest           114 of 118   (97%)
+     *     shapes-items-via-positional-slide   118 of 122   (97%)
+     *
+     * Pass 1 answers while the host is healthy; passes 2 and 3 answer once it
+     * has started refusing collections, and answer differently. That is the host
+     * in a state we already named, not the host being unpredictable.
+     */
+    const { dissentIsDegradation } = await import("../src/render/host-probe");
+    const s = (answer: string, regime: string) => ({ ...at(answer), regime: regime as "healthy" });
+
+    expect(
+      dissentIsDegradation([s("all", "healthy"), s("none", "collection-refused"), s("none", "collection-refused")]),
+      "the archived shape of these three questions was not recognised",
+    ).toBe(true);
+
+    // A HOST THAT REALLY DID CHANGE ITS MIND still counts. One dissenting sample
+    // taken while healthy is enough to make it the host's business, whatever the
+    // others were doing.
+    expect(
+      dissentIsDegradation([s("all", "healthy"), s("none", "healthy"), s("none", "collection-refused")]),
+      "a disagreement from a HEALTHY pass was excused as degradation",
+    ).toBe(false);
+    // Agreement is not dissent, however degraded the run was.
+    expect(dissentIsDegradation([s("all", "healthy"), s("all", "collection-refused")])).toBe(false);
+    // And one sample cannot disagree with anything.
+    expect(dissentIsDegradation([s("all", "collection-refused")])).toBe(false);
+  });
+
   it("still reports a host that is CONSISTENTLY unreadable as consistent", () => {
     /**
      * The half that must not move, and the reason this rule has two tiers rather

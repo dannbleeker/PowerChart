@@ -4686,6 +4686,38 @@ export const FOLLOW_UP_IDS: readonly string[] = PROBES.flatMap((p) =>
  * undeclared answer is the only kind worth anyone's attention, and it should
  * not have to be found by eye in a seventeen-row JSON file.
  */
+/**
+ * Whether a question's disagreement is explained by the run falling over.
+ *
+ * `stable: false` reads as "the host changed its answer mid-round", and drives
+ * both the `CHANGED ITS ANSWER MID-ROUND` line and whether a sheet is worth
+ * sending on at all. For the three collection questions it is mostly reporting
+ * OUR run's decay instead.
+ *
+ * Every sample carries the `regime` the host was in when it was taken. Measured
+ * across the archive, of the rounds where these report `stable: false`, the
+ * share whose every dissenting sample was taken under `collection-refused`:
+ *
+ *     which-end-a-short-read-drops        112 of 127   (88%)
+ *     shapes-items-count-honest           114 of 118   (97%)
+ *     shapes-items-via-positional-slide   118 of 122   (97%)
+ *
+ * Pass 1 answers while the host is healthy; passes 2 and 3 answer once it has
+ * started refusing collections, and answer differently. That is not the host
+ * being non-deterministic, it is the host being in a state we already named.
+ *
+ * NOT DISCARDED, SEPARATED. The disagreement is real and stays on the sheet —
+ * it just stops counting as the unexplained kind, which is the kind that asks
+ * for someone's attention and the kind `UNSTABLE_ANSWERS` is curated from.
+ */
+export function dissentIsDegradation(samples: ProbeSample[] | undefined): boolean {
+  const real = (samples ?? []).filter((s) => !NOT_ASKED.has(s.answer));
+  if (real.length < 2) return false;
+  const first = real[0].answer;
+  const dissent = real.filter((s) => s.answer !== first);
+  return dissent.length > 0 && dissent.every((s) => s.regime === "collection-refused");
+}
+
 export function summariseHostSheet(sheet: HostAnswerSheet): {
   asked: number;
   neverPut: string[];
@@ -4700,6 +4732,17 @@ export function summariseHostSheet(sheet: HostAnswerSheet): {
    * looks.
    */
   unstable: string[];
+  /**
+   * The same disagreement, but every dissenting sample was taken while the host
+   * had already started refusing collections.
+   *
+   * Kept apart from `unstable` rather than dropped: it is a real difference and
+   * it stays on the sheet, but it is OUR run decaying rather than the host being
+   * non-deterministic, and it does not merit anyone's attention. See
+   * `dissentIsDegradation` for the numbers — 88-97% of the instability on the
+   * three collection questions is this.
+   */
+  whileDegraded: string[];
   /**
    * Answers the host gave FEWER times than it was asked.
    *
@@ -4726,9 +4769,11 @@ export function summariseHostSheet(sheet: HostAnswerSheet): {
   const declared = (id: string) => id in KNOWN_DIVERGENCES || id in UNSTABLE_ANSWERS;
   const known = differ.filter((d) => declared(d.id)).map((d) => d.id);
   const fresh = differ.filter((d) => !declared(d.id)).map((d) => d.id);
-  const unstable = sheet.answers.filter((a) => a.stable === false).map((a) => a.id);
+  const disagreed = sheet.answers.filter((a) => a.stable === false);
+  const unstable = disagreed.filter((a) => !dissentIsDegradation(a.samples)).map((a) => a.id);
+  const whileDegraded = disagreed.filter((a) => dissentIsDegradation(a.samples)).map((a) => a.id);
   const thin = sheet.answers.filter((a) => a.support && a.support.asked === 1).map((a) => a.id);
-  return { asked: sheet.answers.length - neverPut.length, neverPut, known, fresh, unstable, thin };
+  return { asked: sheet.answers.length - neverPut.length, neverPut, known, fresh, unstable, whileDegraded, thin };
 }
 
 /** Whether a probe run is worth sending on — anything unexplained in it. */
@@ -4744,7 +4789,7 @@ export function sheetNeedsAttention(sheet: HostAnswerSheet): boolean {
 
 /** The same summary, in the words the pane shows. */
 export function describeHostSheet(sheet: HostAnswerSheet): string {
-  const { asked, neverPut, known, fresh, unstable } = summariseHostSheet(sheet);
+  const { asked, neverPut, known, fresh, unstable, whileDegraded } = summariseHostSheet(sheet);
   const parts = [`${asked} of ${sheet.answers.length} questions answered`];
   if (neverPut.length) parts.push(`${neverPut.length} never put (${neverPut.join(", ")})`);
   if (known.length) parts.push(`${known.length} known divergence${known.length === 1 ? "" : "s"}`);
@@ -4752,6 +4797,13 @@ export function describeHostSheet(sheet: HostAnswerSheet): string {
   // A question that changed its answer mid-round is worth sending whatever the
   // diff says: it is the one thing a single sheet could never report before.
   if (unstable.length) parts.push(`CHANGED ITS ANSWER MID-ROUND: ${unstable.join(", ")}`);
+  // SAID, BUT NOT AS THE SAME THING. Every dissenting sample here was taken
+  // after the host had started refusing collections, so the disagreement is this
+  // run decaying rather than the host changing its mind. Reported so it is not
+  // invisible, worded so it does not read as a finding, and deliberately absent
+  // from the send/don't-send verdict below.
+  if (whileDegraded.length)
+    parts.push(`differed only once the host was refusing collections: ${whileDegraded.join(", ")}`);
   // The verdict the owner actually needs: send it, or don't.
   parts.push(
     fresh.length || neverPut.length || unstable.length
