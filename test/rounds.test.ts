@@ -10,6 +10,9 @@ import { poolRasteriseArms } from "../scripts/triage.mjs";
 // Its own line, same trap as every other single import in this file.
 // @ts-expect-error — as above.
 import { loadRounds } from "../scripts/rounds-gate.mjs";
+// And its own line again, for the same reason.
+// @ts-expect-error — as above.
+import { countCrashReports } from "../scripts/rounds-gate.mjs";
 
 /**
  * The archive is evidence, so it has to stay readable and honestly labelled.
@@ -138,6 +141,31 @@ describe("reading an archive with a bad file in it", () => {
     // round left out of the comparison is a round whose fall cannot be seen.
     const rounds = loadRounds("rounds", list as never, read as never) as unknown as { unreadable: string[] };
     expect(rounds.unreadable).toEqual(["081-bbbbbbb.json"]);
+  });
+
+  it("counts the crashes that left no round file, so a rate is not read as complete", () => {
+    /**
+     * A round the driver never recovered archives NOTHING. `round.mjs` states
+     * the mechanism outright: "A crashed round archives nothing: it never
+     * reaches the download button." So `rounds/` holds only the crashes that
+     * were survived, and every crash rate computed from it is a FLOOR.
+     *
+     * Measured 2026-09-01: 77 reports in `crashes/` against 46 crash events in
+     * archived `driverRun.recovered` — 40% of the crashes this project has seen
+     * left no round file to be counted in. That caveat belongs beside the
+     * 4:3-versus-16:9 rate, which is computed from exactly that denominator.
+     */
+
+    const dir = ["2026-08-29-a.md", "2026-08-29-b.md", "notes.txt", "README"];
+    expect(countCrashReports("crashes", (() => dir) as never)).toBe(2);
+    // A missing directory is not a claim of zero crashes, but there is nothing
+    // to report from it either — and it must not take the gate down.
+    expect(
+      countCrashReports("nope", (() => {
+        throw new Error("ENOENT");
+      }) as never),
+      "an absent crashes/ directory took the gate down with it",
+    ).toBe(0);
   });
 });
 

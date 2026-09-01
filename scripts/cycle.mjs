@@ -90,6 +90,28 @@ export function cyclePlan({ wide = "Presentation64", tall = "Presentation70" } =
 export function roundArgs(leg, dir, retry) {
   const args = ["scripts/round.mjs", "--dir", dir, "--retry", retry];
   if (leg.leg > 1) args.push("--fresh");
+  /**
+   * AND LEG 1 WAITS FOR PAGES, because leg 1 is the one that follows a merge.
+   *
+   * `driverRun.waitedForDeploy` was true in 37 of 195 archived rounds, all
+   * between 166 and 240, and false in every one of the 104 since that carry the
+   * field — because this function never passed the flag, and this is the only
+   * sanctioned way to run a pair. The driver has implemented the wait the whole
+   * time.
+   *
+   * The readiness gate is not the problem: it refuses `site-behind` when the
+   * site is not serving HEAD, and no archived round has ever run against a stale
+   * deployment. The problem is what that refusal COSTS. `site-behind` sits
+   * outside the recoverable set on purpose — `round.mjs` says a reload does not
+   * make Pages deploy faster, and it is right — so the leg stops and takes the
+   * cycle with it, and a stop leaves no archived trace behind. Waiting is the
+   * correct answer to "the deploy has not landed yet". Retrying is not, and
+   * ending the night is not either.
+   *
+   * Legs 2 and 3 do not need it: they run back to back after leg 1, by which
+   * time the deploy under test has necessarily landed.
+   */
+  if (leg.leg === 1) args.push("--wait-for-deploy");
   return args;
 }
 

@@ -84,6 +84,31 @@ export function bundleChanged(fromBuild, toBuild, run = execFileSync) {
  * the caller is told which files were dropped and decides what that is worth.
  * `triage.mjs` already takes exactly this line for the same reason.
  */
+/**
+ * How many crash reports the driver wrote, whether or not a round survived.
+ *
+ * THE HALF OF THE CRASH RECORD THAT IS NOT IN `rounds/`. A round the driver
+ * never recovered archives nothing — `round.mjs` says so in as many words: "A
+ * crashed round archives nothing: it never reaches the download button" — so
+ * every crash rate computed from the round files is conditional on recovery
+ * having succeeded, and is a floor rather than a rate.
+ *
+ * Measured 2026-09-01: 77 reports in `crashes/` against 46 crash events in
+ * archived `driverRun.recovered`. Forty per cent of the crashes this project has
+ * seen left no round file to be counted in.
+ *
+ * Counted rather than parsed: the reports are prose for a person, and all this
+ * needs from them is how many there are.
+ */
+export function countCrashReports(dir = "crashes", list = readdirSync) {
+  try {
+    return list(dir).filter((f) => f.endsWith(".md")).length;
+  } catch {
+    // No crashes directory is not zero crashes, but it is nothing to report.
+    return 0;
+  }
+}
+
 export function loadRounds(dir = "rounds", list = readdirSync, read = readFileSync) {
   const unreadable = [];
   const rounds = list(dir)
@@ -363,6 +388,7 @@ if (isMain(import.meta.url, process.argv[1])) {
     // for months and nothing divided one by the other; `docs/BACKLOG.md` says as
     // much in as many words. The gap it prints is sixteen-fold, and invisible
     // until something printed it.
+    const s0Crashes = (starts.bySize ?? []).reduce((n, s) => n + s.crashes, 0);
     if (starts.bySize?.length > 1) {
       console.log("    crashes per ATTEMPT, by slide size — the arm that is failing, not the round count:");
       for (const s of starts.bySize)
@@ -372,6 +398,19 @@ if (isMain(import.meta.url, process.argv[1])) {
             `   (${s.roundsWithCrash} of ${s.rounds} round(s) hit one)`,
         );
       console.log("      Aspect ratio and deck file are CONFOUNDED — cyclePlan has never crossed them.");
+      // AND THE DENOMINATOR IS CONDITIONAL ON RECOVERY, which the rate above
+      // cannot say for itself. A round the driver never recovered writes no
+      // round file at all — `round.mjs` states the mechanism outright: "A
+      // crashed round archives nothing: it never reaches the download button."
+      // So `rounds/` holds only the crashes that were survived, and every crash
+      // rate computed from it is a FLOOR. The crash reports are the other half
+      // of the record, and they are on disk already.
+      const reports = countCrashReports();
+      if (reports > s0Crashes)
+        console.log(
+          `      FLOOR, not a rate: crashes/ holds ${reports} report(s) against ${s0Crashes} archived event(s)` +
+            ` — ${Math.round((100 * (reports - s0Crashes)) / reports)}% of crashes left no round file to count.`,
+        );
     }
     // THE ARM, SPLIT ON THE PANE RATHER THAN ON THE FLAG. Round 166 ran without
     // `--fresh` and started on a 69-second pane anyway, because a merge preceded

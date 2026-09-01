@@ -151,14 +151,44 @@ describe("a night's cycle", () => {
     const { roundArgs } = cycle as unknown as {
       roundArgs: (leg: { leg: number }, dir: string, retry: string) => string[];
     };
-    expect(roundArgs({ leg: 1 }, ".pw", "6"), "the FIRST leg follows a merge, so its pane is already fresh").toEqual([
+    expect(
+      roundArgs({ leg: 1 }, ".pw", "6"),
+      "the FIRST leg follows a merge, so its pane is already fresh",
+    ).not.toContain("--fresh");
+    expect(roundArgs({ leg: 1 }, ".pw", "6").slice(0, 5)).toEqual([
       "scripts/round.mjs",
       "--dir",
       ".pw",
       "--retry",
       "6",
     ]);
+    /**
+     * AND FOR THE SAME REASON IT WAITS FOR PAGES: leg 1 follows a merge, so it
+     * is the leg whose deploy may not have landed yet.
+     *
+     * `driverRun.waitedForDeploy` was true in 37 of 195 archived rounds, all
+     * between 166 and 240, and false in every one of the 104 since that carry
+     * the field — because this function never passed the flag, while the driver
+     * had implemented the wait the whole time.
+     *
+     * The readiness gate already keeps stale builds out, and no archived round
+     * has ever run against one. What that refusal COSTS is the issue:
+     * `site-behind` is deliberately not recoverable, so the leg stops and takes
+     * the cycle with it, and a stop leaves no archived trace behind. Waiting is
+     * the right answer to a deploy that has not landed; retrying is not, and
+     * ending the night is not either.
+     */
+    expect(
+      roundArgs({ leg: 1 }, ".pw", "6"),
+      "the leg that follows a merge does not wait for the deploy it is testing",
+    ).toContain("--wait-for-deploy");
     expect(roundArgs({ leg: 2 }, ".pw", "6")).toContain("--fresh");
+    // Legs 2 and 3 run back to back after leg 1, so the deploy has necessarily
+    // landed and waiting again would only spend the night's time.
+    expect(roundArgs({ leg: 2 }, ".pw", "6"), "a later leg waited for a deploy that had already landed").not.toContain(
+      "--wait-for-deploy",
+    );
+    expect(roundArgs({ leg: 3 }, ".pw", "6")).not.toContain("--wait-for-deploy");
     // LEG 3 TOO. It is a second-in-sequence round with the same aged pane; only
     // its deck differs, and the 4:3 validation is compared against the 16:9
     // pair, so letting it run on a stale pane reintroduces the confound the
