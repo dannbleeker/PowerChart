@@ -1806,15 +1806,36 @@ const stopMidDraw: Scenario = async (prefix) => {
 
   const after = await slideShapeList(slideId);
   const added = (after ?? []).filter((s) => !beforeIds.has(s.id));
+  /**
+   * A CEILING ON WHAT THIS MAY DELETE, because the id diff is not as safe as it
+   * looks on THIS host.
+   *
+   * The cleanup takes every shape whose id was not there before. That is right
+   * only while ids are stable across two reads, and this host is documented not
+   * to be: `host-probe.ts` records scratch ids reading `4123571115#123571113`
+   * while the deck listed `256#109857222`, "both from the SAME `slideIds()`
+   * projection minutes apart". If ids churn between the two calls here, every
+   * shape on the slide looks new — including the PROBE CHART this scenario drew
+   * beside — and a blind delete would take it, contaminating the rest of the
+   * round far worse than the wreckage it was cleaning.
+   *
+   * So the abort cannot have added more shapes than the chart HAS. Beyond that
+   * the diff is not describing this draw, and the honest move is to delete
+   * nothing and say so — a repair that quietly does the wrong thing is how a
+   * clamp hides an internal error, which this file has been bitten by before.
+   */
+  const ceiling = scene.nodes.length;
+  const runaway = added.length > ceiling;
   // CLEAN UP FIRST, REPORT SECOND. Whatever this scenario decides, the deck must
   // be left as it was found — every scenario after this one reads it.
-  const removed = added.length
-    ? await deleteShapesById(
-        slideId,
-        added.map((s) => s.id),
-      )
-    : 0;
-  const leftBehind = added.length - removed;
+  const removed =
+    added.length && !runaway
+      ? await deleteShapesById(
+          slideId,
+          added.map((s) => s.id),
+        )
+      : 0;
+  const leftBehind = runaway ? 0 : added.length - removed;
 
   if (!after)
     return {
@@ -1847,6 +1868,11 @@ const stopMidDraw: Scenario = async (prefix) => {
     // The one that matters: half a chart must not present itself as a whole one.
     stillClaimsToBeAChart.found.length > 0 && "the aborted draw left a re-editable chart behind",
     leftBehind > 0 && `${leftBehind} of ${added.length} shape(s) from the aborted draw could not be cleaned up`,
+    // NAMED, NOT CLEANED. See the ceiling above: more new ids than the chart has
+    // shapes means the ids moved under us, not that the draw added them, and
+    // deleting on that reading could take the probe chart with it.
+    runaway &&
+      `${added.length} shape(s) read as new against a chart of ${ceiling} — the ids moved, so nothing was deleted`,
   ].filter(Boolean);
   return {
     ok: problems.length === 0,

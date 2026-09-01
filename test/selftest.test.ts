@@ -817,6 +817,38 @@ describe("the scenarios the selection API unlocked", () => {
     ).toBeGreaterThanOrEqual(removedSays);
   });
 
+  it("fails loudly when it cannot clear the wreckage, rather than reporting a clean stop", async () => {
+    /**
+     * THE CLEANUP IS THE POINT OF THIS SCENARIO, so a cleanup that does not
+     * happen has to be a failure and not a footnote. A partly drawn chart left
+     * on the slide is read by `same scale across the deck` as part of its chart
+     * population, which is precisely the contamination this design exists to
+     * avoid.
+     *
+     * `unmatchedIdReads` models a host that listed the slide before its shape
+     * ids settled — the documented behaviour that makes an id-diff cleanup risky
+     * in the first place. Here it makes the delete refuse every id.
+     *
+     * (The scenario also carries a CEILING for the other face of the same
+     * hazard: if more shapes read as new than the chart even has, the ids moved
+     * rather than the draw adding them, and it deletes nothing and says so.
+     * That branch is defensive and this fake cannot reach it — the fault breaks
+     * the delete rather than inflating the diff — so it is recorded here as
+     * reasoned-but-unexercised rather than left looking tested.)
+     */
+    installHost([makeSlide("s1")]);
+    faults.unmatchedIdReads = 500;
+    try {
+      const r = byName(await runSelfTest("probe", "stop a run mid-draw"))["stop a run mid-draw"];
+      expect(r.ok, "reported a clean stop while its wreckage was still on the slide").toBe(false);
+      expect(r.detail, "did not say the cleanup failed").toMatch(
+        /shape\(s\) from the aborted draw could not be cleaned up/,
+      );
+    } finally {
+      faults.unmatchedIdReads = 0;
+    }
+  });
+
   it("will not call a mid-draw stop clean when the wreckage claims to be a chart", async () => {
     // The half that matters. Partial shapes are allowed — the pane's own message
     // says "anything already drawn was kept". What is not allowed is half a
