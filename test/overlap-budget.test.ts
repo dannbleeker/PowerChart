@@ -162,6 +162,64 @@ const OPTIONS: Record<string, Record<string, unknown>> = {
   title: { title: "A rather long chart title that names the measure and the period" },
 };
 
+/**
+ * THE DECORATIONS, WHICH THIS SWEEP HAS NEVER ONCE VARIED.
+ *
+ * `overlap-budget`, `shape-budget` and `showcase-overlap` contained ZERO
+ * references to `decorations` between them. The sweep varied chart kind, frame,
+ * font size, orientation and a cross-product of options — and never the segment
+ * labels, series labels, column totals, grand total, category axis, value axis
+ * or the `100% =` note.
+ *
+ * Those are precisely the nodes that collide. Every text-over-text defect this
+ * project has fixed was a label against another label, so the budget that guards
+ * text-over-text was measured on charts drawn with most of their text turned
+ * OFF. `sampleConfig` gives each kind a small default set — `clustered` gets
+ * `categoryAxis`, `stacked` gets `seriesLabels` — and a user who ticks three
+ * more boxes in the pane produces a chart this sweep had never drawn.
+ *
+ * MERGED, NOT REPLACED, and that is the whole reason these are not in `OPTIONS`
+ * beside everything else. `OPTIONS` is applied with a shallow spread, so a
+ * `decorations` key there would REPLACE each kind's defaults and quietly narrow
+ * the sweep while appearing to widen it. These merge on top, which is also what
+ * the pane does when a user ticks a box.
+ *
+ * ── AND THE ANSWER, WHICH IS THAT THE ENGINE IS FINE HERE ──
+ *
+ * Recorded because a negative result nobody writes down gets re-investigated.
+ * At the frames these run at, turning EVERY decoration on adds no text overlap
+ * the budget did not already carry: the total stayed at 785. The variants are
+ * not idle — each builds 100 charts with zero refusals and adds real text, up to
+ * +232 nodes for `everything labelled` — they simply collide with nothing.
+ *
+ * Nor is there a shape-budget risk, which is the other thing more labels could
+ * have cost: across 25 kinds at a full-slide frame, full decoration is +18
+ * shapes at worst and the heaviest decorated chart is `area` at 195, against the
+ * ~300 where this host starts dying. Zero kinds cross it.
+ *
+ * So the blind spot was real and what it was hiding was nothing. That is worth
+ * one paragraph and no further work.
+ */
+const DECOR: Record<string, Record<string, unknown>> = {
+  // The ordinary "just show me the numbers" case.
+  "labels on": { segmentLabels: true, seriesLabels: true, categoryAxis: true, valueAxis: true },
+  // Totals, which land above a column and next to whatever else is up there.
+  "totals on": { totals: true, grandTotal: true, segmentLabels: true },
+  // Gridlines and both axes, the case where the frame fills with rules.
+  "axes and gridlines": { categoryAxis: true, valueAxis: true, gridlines: true },
+  // The maximal text case: everything a user can turn on that draws a string.
+  "everything labelled": {
+    segmentLabels: true,
+    seriesLabels: true,
+    totals: true,
+    grandTotal: true,
+    categoryAxis: true,
+    valueAxis: true,
+    gridlines: true,
+    hundredPercentNote: true,
+  },
+};
+
 /** And the data shapes, likewise: a user's data is none of the sample's shapes. */
 const DATA_SHAPES: Record<string, (c: any) => any> = {
   "long category names": (c) => ({
@@ -368,6 +426,19 @@ function measure(): { total: number; byShape: Map<string, number> } {
     ...Object.entries(OPTIONS).map(
       ([k, o]) => [k, (c: unknown) => ({ ...(c as object), ...o })] as [string, (c: unknown) => unknown],
     ),
+    // MERGED onto whatever the kind already sets — see `DECOR`. A shallow spread
+    // here would replace each kind's defaults and narrow the sweep while looking
+    // like it widened it.
+    ...Object.entries(DECOR).map(
+      ([k, d]) =>
+        [
+          `decor ${k}`,
+          (c: unknown) => ({
+            ...(c as object),
+            decorations: { ...((c as { decorations?: object }).decorations ?? {}), ...d },
+          }),
+        ] as [string, (c: unknown) => unknown],
+    ),
   ];
   for (const ok of CROSS_OPTIONS)
     for (const sk of CROSS_SHAPES) {
@@ -376,11 +447,35 @@ function measure(): { total: number; byShape: Map<string, number> } {
       if (!o || !fn) throw new Error(`CROSS names a variant that does not exist: ${ok} x ${sk}`);
       variants.push([`${ok} × ${sk}`, (c: unknown) => ({ ...(fn(c as never) as object), ...o })]);
     }
-  for (const [, fn] of variants)
+  for (const [name, fn] of variants)
     for (const { kind } of CHART_KINDS)
       for (const [w, h] of FRAMES)
         for (const fontSize of [10, 18])
           for (const horizontal of [false, true]) {
+            /**
+             * DECORATIONS ARE MEASURED WHERE THEIR TEXT COULD FIT, and nowhere
+             * else. This is the one variant family with a frame restriction, so
+             * it needs its reason in writing.
+             *
+             * Turning every decoration on across every frame counts 2,748
+             * overlaps against 785 — but the split by frame says what that is:
+             *
+             *     80x60  97   60x300 95   120x90 86   160x120 61
+             *     200x150 42  300x60 20   480x300 2   960x540 0
+             *
+             * (measured on the sample data alone, without the punishing shapes).
+             * An 80x60pt box asked to label twenty-four categories individually
+             * cannot draw them anywhere, and counting that says nothing about the
+             * engine. Recording ~2,000 impossible-frame collisions would also
+             * blunt the ratchet: a real regression of ten at a readable size
+             * would disappear inside a tolerated bucket of 1,243.
+             *
+             * So the decoration family is swept at frames where the text has room
+             * to be placed, which is where an overlap is a defect rather than a
+             * consequence of the frame. Every other option keeps the full frame
+             * list exactly as before.
+             */
+            if (name.startsWith("decor ") && w * h < 480 * 300) continue;
             let ts: TextNode[];
             try {
               // A kind that refuses an option throws, and that is not an overlap.

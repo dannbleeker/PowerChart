@@ -81,6 +81,8 @@ import { poolScenarioPopulations } from "../scripts/triage.mjs";
 import { poolGroupingOutcome } from "../scripts/triage.mjs";
 // @ts-expect-error — as above. One directive per import, one import per line.
 import { poolScenarioFriction } from "../scripts/triage.mjs";
+// @ts-expect-error — as above. One directive per import, one import per line.
+import { deckGeometryFaults } from "../scripts/triage.mjs";
 import { buildDeckBase64 } from "../src/render/pptx-deck";
 import { buildChart } from "../src/core/chart";
 import { sampleConfig } from "../src/core/samples";
@@ -2793,6 +2795,73 @@ describe("what it took to start each round", () => {
     ]);
     expect(pooled.rounds, "counted a round that never reported").toBe(3);
     expect(pooled.clean, "an absent reading was counted as a clean start").toBe(1);
+  });
+
+  it("says whether the charts landed on the slide, and off each other", () => {
+    /**
+     * UNANSWERABLE FROM THE ARCHIVE UNTIL 2026-09-01. The deck inventory carried
+     * a shape's ORIGIN and no extent, so across 322 rounds and 10,362 shapes the
+     * only geometry fault it could express was an origin outside the slide.
+     * Whether a chart landed INSIDE the slide, and whether two landed on top of
+     * each other, could be answered only by a person opening the deck — which is
+     * how both were found: the owner opened what the battery left him and saw one
+     * full-size chart drawn over another, then three in a heap.
+     *
+     * GROUPS ONLY. A grouped chart is one shape named `PowerChart`; an ungrouped
+     * one is its loose parts, and those overlap by design because a label sits on
+     * the segment it names. Comparing everything would call every ungrouped chart
+     * a collision — and round 347 is exactly that mix, 13 groups and 7 parts.
+     */
+
+    const round = (shapes: Record<string, unknown>[]) => ({
+      slideSize: { width: 960, height: 540 },
+      deck: { inventory: [{ slideId: "s1", index: 0, shapes }] },
+    });
+    const chart = (id: string, left: number, top: number, width = 100, height = 80) => ({
+      id,
+      name: "PowerChart",
+      left,
+      top,
+      width,
+      height,
+    });
+
+    const clean = deckGeometryFaults(round([chart("a", 10, 10), chart("b", 200, 10)]));
+    expect(clean.offSlide, "a chart well inside the slide was called off it").toEqual([]);
+    expect(clean.collisions, "two charts side by side were called a collision").toEqual([]);
+    expect(clean.measured).toBe(2);
+
+    // Off the right edge — the case the inventory could never see before.
+    const spilled = deckGeometryFaults(round([chart("a", 900, 10)]));
+    expect(spilled.offSlide).toHaveLength(1);
+    expect(spilled.offSlide[0].off).toBe("right");
+
+    // One chart drawn over another: what the owner actually found on a slide.
+    const stacked = deckGeometryFaults(round([chart("a", 100, 100), chart("b", 150, 120)]));
+    expect(stacked.collisions, "one chart drawn over another went unreported").toHaveLength(1);
+    expect(stacked.collisions[0].area).toBeGreaterThan(0);
+
+    // LOOSE PARTS ARE NOT CHARTS. A label sitting on its own segment is the
+    // engine working, and counting it would make every ungrouped chart a fault.
+    const parts = deckGeometryFaults(
+      round([
+        { id: "t", name: "title", left: 0, top: 0, width: 300, height: 20 },
+        { id: "s", name: "seg-0-0", left: 10, top: 5, width: 50, height: 40 },
+      ]),
+    );
+    expect(parts.collisions, "a chart's own parts were reported as colliding charts").toEqual([]);
+    expect(parts.measured, "loose parts still count as measured shapes").toBe(2);
+
+    // A SHAPE WITH NO SIZE IS NOT A CLEAN SHAPE. Every round archived before this
+    // landed carries origins only — 5,995 of them — and none of that may read as
+    // a deck with nothing wrong with it.
+    const old = deckGeometryFaults(round([{ id: "a", name: "PowerChart", left: 10, top: 10 }]));
+    expect(old.measured, "a shape with no extent was counted as measured").toBe(0);
+    expect(old.unmeasured).toBe(1);
+    expect(old.offSlide, "a shape that could not be measured was judged anyway").toEqual([]);
+
+    // And a round with no slide size answers nothing at all, rather than "clean".
+    expect(deckGeometryFaults({ deck: { inventory: [] } }), "a round with no slide size was judged").toBeNull();
   });
 
   it("divides crashes by ATTEMPTS per slide size — the number nobody had computed", () => {

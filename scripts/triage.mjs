@@ -2492,6 +2492,80 @@ export function poolPairPosition(logs) {
 }
 
 /**
+ * Charts that landed off the slide, or on top of each other.
+ *
+ * NEWLY ANSWERABLE, AND NEVER ASKED BEFORE. Until 2026-09-01 the deck inventory
+ * recorded a shape's ORIGIN and no extent, so across 322 rounds and 10,362
+ * archived shapes the only geometry fault it could express was an origin outside
+ * the slide. "Did this chart land inside the slide" and "did two charts land on
+ * top of each other" were unanswerable from the archive — and the second is not
+ * hypothetical: the owner opened the deck the battery left him and found one
+ * full-size chart drawn over another, then three in a heap. Both times a person
+ * looking at a slide was the instrument.
+ *
+ * `items/width,items/height` ride along now, so both questions can be asked of
+ * every round from here on.
+ *
+ * GROUPS ONLY, and that is not a shortcut. A chart the host grouped is ONE
+ * top-level shape named `PowerChart`; a chart it refused to group is its loose
+ * parts — `title`, `seg-0-0`, `category-1` — and those overlap each other by
+ * design, because a label sits on the segment it names. Comparing everything
+ * would report every ungrouped chart as a collision. Round 347 is exactly that
+ * mix: 13 `PowerChart` groups and 7 loose parts.
+ *
+ * A shape with no size counts as UNMEASURED rather than clean: a round archived
+ * before this landed, or a host that will not answer the two properties, must
+ * never read as a deck with nothing wrong with it.
+ */
+export function deckGeometryFaults(log) {
+  const slide = log?.slideSize;
+  const inventory = log?.deck?.inventory;
+  if (!slide || typeof slide.width !== "number" || typeof slide.height !== "number" || !Array.isArray(inventory))
+    return null;
+  // Half a point, for float noise off the host. A chart flush against the edge
+  // is placed, not spilled.
+  const TOL = 0.5;
+  const offSlide = [];
+  const collisions = [];
+  let measured = 0;
+  let unmeasured = 0;
+  for (const s of inventory) {
+    const groups = [];
+    for (const sh of s.shapes ?? []) {
+      if (typeof sh.width !== "number" || typeof sh.height !== "number") {
+        unmeasured++;
+        continue;
+      }
+      measured++;
+      if (sh.name !== "PowerChart") continue;
+      const box = { id: sh.id, x0: sh.left, y0: sh.top, x1: sh.left + sh.width, y1: sh.top + sh.height };
+      const spill = [];
+      if (box.x0 < -TOL) spill.push("left");
+      if (box.y0 < -TOL) spill.push("top");
+      if (box.x1 > slide.width + TOL) spill.push("right");
+      if (box.y1 > slide.height + TOL) spill.push("bottom");
+      if (spill.length)
+        offSlide.push({
+          slideId: s.slideId,
+          id: sh.id,
+          off: spill.join("+"),
+          box: `${Math.round(sh.left)},${Math.round(sh.top)} ${Math.round(sh.width)}x${Math.round(sh.height)}`,
+        });
+      groups.push(box);
+    }
+    for (let i = 0; i < groups.length; i++)
+      for (let j = i + 1; j < groups.length; j++) {
+        const a = groups[i];
+        const b = groups[j];
+        const w = Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0);
+        const h = Math.min(a.y1, b.y1) - Math.max(a.y0, b.y0);
+        if (w > TOL && h > TOL) collisions.push({ slideId: s.slideId, a: a.id, b: b.id, area: Math.round(w * h) });
+      }
+  }
+  return { measured, unmeasured, offSlide, collisions };
+}
+
+/**
  * Probes that gave two runs of the SAME COMMIT different answers.
  *
  * NOTHING IN THE GATE CHAIN HAS EVER READ `hostAnswers`. `rounds-gate.mjs`

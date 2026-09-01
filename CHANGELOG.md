@@ -122,6 +122,48 @@ surface as a browser error naming a URL. It now says SSF Charts has been
 updated, that closing and reopening the pane fixes it, and that your slides are
 untouched.
 
+### A paste from a Danish, German or Nordic Excel is read correctly
+
+Continental Excel writes `1.234` for a thousand two hundred and thirty-four, and
+`987,5` for nine hundred and eighty-seven and a half. Pasting that gave you
+`1.234` read as one-and-a-bit, `2.500` read as two-and-a-half, and `987,5`
+refused outright — two cells silently wrong by a factor of a thousand and one
+visibly empty, out of a single ordinary paste.
+
+The convention is now inferred once per paste and written **into the sheet**, so
+you watch `1.234` become `1234` in the cell and can correct it if the guess is
+ever wrong. It fires only when nothing in the block contradicts it: a US-style
+`1,234` anywhere, or a decimal that cannot be a thousands group, and the paste is
+left exactly as it came. The pane says how many cells it rewrote.
+
+### A chart this PowerPoint cannot draw arrives as a picture, not as a gap
+
+Below PowerPoint API 1.10 — most often desktop Windows and Mac — a wedge cannot
+be built, so pies, doughnuts and sunbursts inserted with no slices at all: a
+legend and a title around an empty space. Such a chart now arrives as a complete
+picture, with a message naming what would otherwise have been missing. Where no
+picture is possible it still draws and still says what is absent, and Explode
+refuses rather than handing back the version that cannot be drawn.
+
+### An empty cell is no longer reported as a zero
+
+A blank in a funnel, waffle or cascade was drawn and labelled `0`, and cascade
+went further and computed a 100% drop from it — a slide asserting something
+untrue about your business from a cell you had simply not filled in. A blank is
+now left out, the way it always was in clustered and line charts.
+
+### Stop means stop
+
+Pressing **Stop** during a slow insert and then touching any other control used
+to clear the stop, letting the cancelled insert finish and write its chart onto
+the slide. The stop now survives whatever you click next.
+
+### Labels in Chinese, Japanese and Korean are measured at their real width
+
+Every CJK character was measured at roughly half its true width, so labels in
+those scripts were laid out as though they needed half the room they do — which
+is how text ends up drawn over other text.
+
 ## 0.4.0 — 2026-08-27
 
 ### Renamed to SSF Charts — **this breaks existing installs**

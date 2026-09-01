@@ -23,6 +23,7 @@ import {
   marksThisHostWillDrop,
   isPowerPointHost,
   listChartsInDeck,
+  scanIsComplete,
   listChartsInSelection,
   loadChartFromSelection,
   onLateSync,
@@ -5208,6 +5209,57 @@ describe("what a deck scan says about itself", () => {
    * grow worst — it reads every slide's shapes, on a deck the battery keeps
    * adding to — and it was the one operation never measured.
    */
+  it("scans a deck DEEPER than one page, and says so when a page is lost", async () => {
+    /**
+     * THE PAGED LOOP IN THE DECK SCAN HAD NEVER RUN TWICE — NOT EVEN HERE.
+     *
+     * `listChartsInDeck` reads the deck `READBACK_PAGE` slides at a time and is
+     * what Same Scale, the repair pass and five self-test scenarios all go
+     * through. It appears in 44 tests in this file and every one of them
+     * installed a deck of a handful of slides, so `start += READBACK_PAGE` never
+     * came round a second time. On a real host it never has either: the deepest
+     * deck in 322 archived rounds is NINE slides, and 305 of them scanned seven.
+     *
+     * The other paged readers — `snapshotAddedSlides`, `readAddedSlides` — are
+     * covered past the boundary, including a refused second page. The one a USER
+     * reaches was not. Anyone pressing Same scale on an ordinary 40-slide deck
+     * is the first to run it.
+     *
+     * Two halves, and the second is the one that matters. A scan that loses a
+     * page must SAY it lost one: if it silently returns page 1, Same Scale
+     * rescales a subset of the deck and reports success, which is the exact
+     * shape of "no charts here" being indistinguishable from "I could not look".
+     */
+    const n = READBACK_PAGE + 5;
+    const deck = Array.from({ length: n }, (_, i) => makeSlide(`s${i}`));
+    // A named shape on the LAST slide — the one only a second page can reach.
+    const far = deck[n - 1].shapes.addGeometricShape("rectangle", { left: 7, top: 8, width: 9, height: 10 });
+    far.name = "beyond the first page";
+    installHost(deck);
+
+    const whole = await listChartsInDeck({ withInventory: true });
+    expect(whole.unread, "a deck of 25 did not scan cleanly").toBe(0);
+    expect(scanIsComplete(whole), "a complete scan did not report itself complete").toBe(true);
+    expect(whole.inventory, "the inventory stopped at the page boundary").toHaveLength(n);
+    // The slides BEYOND the first page are the ones this test exists for.
+    expect(whole.inventory?.[n - 1]?.slideId, "the last slide of the second page went missing").toBe(`s${n - 1}`);
+    expect(
+      whole.inventory?.[n - 1]?.shapes.map((s) => s.name),
+      "a shape on the second page never reached the inventory",
+    ).toContain("beyond the first page");
+
+    // Now lose the second page. The count comes back, the charts on it do not,
+    // and the scan has to be honest about which.
+    failSyncsOn.add(trips.syncs + 2);
+    try {
+      const partial = await listChartsInDeck({ withInventory: true });
+      expect(partial.unread, "a lost page was reported as nothing to read").toBeGreaterThan(0);
+      expect(scanIsComplete(partial), "a scan that lost a page called itself complete").toBe(false);
+    } finally {
+      failSyncsOn.clear();
+    }
+  });
+
   it("reports a CLEAN scan, not only a short one", async () => {
     installHost([makeSlide("s1"), makeSlide("s2")]);
     setTracing(true);

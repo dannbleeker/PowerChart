@@ -39,6 +39,7 @@ import {
   roundSpanSeconds,
   paneAgeAtStartSeconds,
   probeFlipsWithinBuild,
+  deckGeometryFaults,
 } from "./triage.mjs";
 import { pendingAlreadyAnswered, UNSTABLE_ANSWERS } from "./host-baseline.mjs";
 
@@ -333,6 +334,25 @@ if (isMain(import.meta.url, process.argv[1])) {
     }
   } catch {
     /* the gate is not worth failing over its own footnote */
+  }
+
+  // DID ANY CHART LAND OFF THE SLIDE, OR ON ANOTHER ONE? Unanswerable from the
+  // archive until 2026-09-01, because the inventory carried origins and no
+  // extent. Reported on the NEWEST round rather than pooled: it is a question
+  // about the deck this round left behind, and older rounds cannot answer it at
+  // all — which the unmeasured count says out loud rather than passing quietly.
+  const geom = newest ? deckGeometryFaults(newest) : null;
+  if (geom && (geom.measured || geom.offSlide.length || geom.collisions.length)) {
+    console.log(`
+  WHERE THE CHARTS LANDED — ${geom.measured} shape(s) measured on the newest round`);
+    for (const o of geom.offSlide.slice(0, 6))
+      console.log(`      OFF THE SLIDE  ${o.off.padEnd(12)} shape ${o.id} at ${o.box} (slide ${o.slideId})`);
+    for (const c of geom.collisions.slice(0, 6))
+      console.log(`      TWO CHARTS OVERLAP  ${c.a} and ${c.b} share ${c.area}pt² (slide ${c.slideId})`);
+    if (!geom.offSlide.length && !geom.collisions.length)
+      console.log("      every chart group inside the slide, none overlapping another");
+    if (geom.unmeasured)
+      console.log(`      ${geom.unmeasured} shape(s) carried no size — not measured, and not counted as clean`);
   }
 
   // THE HALF NOTHING GATED. This file compares scenario verdicts and slide-size

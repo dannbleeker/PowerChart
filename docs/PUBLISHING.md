@@ -723,13 +723,24 @@ while the published release stayed wrong.
 
 - Requirement sets: shapes need PowerPointApi **1.4+** (Win 2207+, Mac
   16.62+, web; not iPad); grouping 1.8, re-edit tags 1.3, pie rotation 1.10,
-  theme colors 1.10. The pane degrades gracefully below each **except 1.10**:
-  below that the pie family (pie, doughnut, sunburst, gauge) inserts with no
-  slices at all, because a wedge cannot be built without rotation. Diagonal
-  lines used to fail there too — drawn as flat rectangles — and that is fixed
-  (2026-08-30). Microsoft's validator states a store submission is tested on
-  Windows and Mac desktop, which is exactly where 1.10 is most often missing, so
-  this is a submission concern and not only a user one.
+  theme colors 1.10. The pane degrades gracefully below each. **This paragraph
+  said otherwise until 2026-09-01** — that below 1.10 the pie family "inserts
+  with no slices at all" — and that stopped being true when the warn-and-picture
+  decision shipped on 2026-08-31. A chart carrying marks the host cannot draw
+  now inserts as a **picture**, complete, with a message naming what would
+  otherwise be missing; where no picture is possible it still draws and still
+  says what is absent; and Explode refuses on the same test rather than handing
+  back the version that cannot be drawn. Measured then: 18 of 123 shipped charts
+  lose ink below 1.10 and 8 lose their subject entirely (pie 4/4, doughnut 2/2,
+  sunburst 2/2). Diagonal lines used to fail there too, drawn as flat
+  rectangles, and that was fixed on 2026-08-30.
+
+  It still matters for a submission, but as something to describe rather than
+  fear. Microsoft's validator confirms this add-in is tested on PowerPoint on
+  the web, on Windows (Microsoft 365), and on Mac (2019+ and Microsoft 365) —
+  exactly where 1.10 is most often absent. Both prod manifests validate clean:
+  `npx office-addin-manifest validate manifest-prod.xml` and the same for
+  `manifest-excel-prod.xml`, run 2026-09-01, "The manifest is valid".
 - Pages is static HTTPS — exactly what an add-in needs; no server code, no
   auth, no cost. If the repo must stay private instead, any static HTTPS
   host works (Azure Static Web Apps free tier, Cloudflare Pages) — only the
