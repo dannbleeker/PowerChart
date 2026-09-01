@@ -2915,10 +2915,54 @@ describe("whose fault a red scenario was", () => {
   });
 
   it("blames the HOST when it refused something inside the scenario", () => {
-    // Round `89675b6`, `same scale across the deck`.
+    // Round `89675b6`, `same scale across the deck` — the case this rule was
+    // built on, and it still reads the same way.
     expect(scenarioBlame(res({ friction: { ...clean, errors: 6, idRefusals: 6, emptyReReads: 4 } }))).toBe("host");
     expect(scenarioBlame(res({ friction: { ...clean, emptyReReads: 1 } }))).toBe("host");
-    expect(scenarioBlame(res({ friction: { ...clean, generalExceptions: 1 } }))).toBe("host");
+    // An id refusal the code could NOT repair is still the host.
+    expect(scenarioBlame(res({ friction: { ...clean, idRefusals: 2, reReadsRepaired: 1 } }))).toBe("host");
+  });
+
+  it("does not blame the host for a refusal the code recovered from", () => {
+    /**
+     * THE RULE WAS RIGHT ABOUT ONE SCENARIO AND MEANINGLESS ABOUT ANOTHER.
+     * Measured over all 322 archived rounds:
+     *
+     *     same scale across the deck    14% of passes carry the signature, 100% of failures
+     *     explode a degraded picture    99% of passes,                       98% of failures
+     *
+     * For `explode` the condition is simply always true, so every failure of
+     * the add-in's most-failing update path was written off as the host's
+     * weather on a reading a passing round shows just as often. Getting the
+     * right answer from a signal that carries no information is luck.
+     *
+     * A refusal the renderer re-read and RECOVERED from is not what defeated
+     * the run — `reReadsRepaired` counts the times that worked. With repaired
+     * refusals discounted, `explode` moves to 48% of passes against 98% of
+     * failures, a 50-point gap, while `same scale` does not move at all.
+     */
+    expect(
+      scenarioBlame(res({ friction: { ...clean, idRefusals: 1, reReadsRepaired: 1 } })),
+      "a refusal the code recovered from was blamed on the host",
+    ).toBe("ours");
+
+    /**
+     * AND `generalExceptions` LEAVES THE TEST, which reverses an assertion this
+     * file used to make.
+     *
+     * It read as principled — a general exception is the host misbehaving — and
+     * for `explode a degraded picture` it is exactly 1 in every single round.
+     * The friction report names it in as many words: "a constant, not a signal".
+     * A constant cannot be evidence, and leaving it in is what made the whole
+     * rule ambient for that scenario.
+     *
+     * Checked before changing: no archived verdict moves. All 109 recorded
+     * failures carrying friction are blamed identically by both rules.
+     */
+    expect(
+      scenarioBlame(res({ friction: { ...clean, generalExceptions: 1 } })),
+      "a counter that is 1 in every round, pass or fail, was treated as evidence",
+    ).toBe("ours");
   });
 
   it("defaults to US when there is no evidence either way", () => {

@@ -258,7 +258,47 @@ export function scenarioBlame(r: ScenarioResult): "passed" | "not-run" | "ours" 
   if (r.skipped) return "not-run";
   if (r.ok) return "passed";
   const f = r.friction;
-  const refused = !!f && (f.idRefusals > 0 || f.emptyReReads > 0 || f.generalExceptions > 0);
+  /**
+   * A REFUSAL THE CODE RECOVERED FROM IS NOT WHAT DEFEATED THE RUN.
+   *
+   * The rule above is sound and the round it was checked against proves it — for
+   * `same scale across the deck`, whose failures carry this signature 100% of
+   * the time and whose passes carry it 14%. That is a discriminator.
+   *
+   * For `explode a degraded picture` it discriminates NOTHING. Measured over all
+   * 322 archived rounds: 265 of 269 passes (99%) and 46 of 47 failures (98%).
+   * A condition that is simply always true there cannot be evidence of anything,
+   * so every failure of the add-in's most-failing update path was being written
+   * off as the host's weather on a reading a passing round shows just as often.
+   * Getting the right answer from a signal that carries no information is luck,
+   * and it runs out silently.
+   *
+   * Two changes, chosen by measuring candidates against the archive rather than
+   * by reasoning:
+   *
+   * - A refusal that was REPAIRED does not count. The renderer already re-reads
+   *   the slides when a by-id lookup refuses, and `reReadsRepaired` counts the
+   *   times that worked. If the run recovered, that refusal is not what beat it.
+   * - `generalExceptions` drops out of the test. For `explode` it is a CONSTANT
+   *   — exactly 1 in every round the friction report names as "a constant, not a
+   *   signal" — and a constant is not evidence by definition.
+   *
+   * The result on the two scenarios that actually fail:
+   *
+   *     explode a degraded picture   99% pass / 98% fail  ->  48% / 98%
+   *     same scale across the deck   14% pass / 100% fail ->  14% / 100%
+   *
+   * The broken one gains a 50-point gap; the working one is untouched.
+   *
+   * HONEST LIMIT: this changes no archived verdict. All 109 recorded failures
+   * carrying friction are blamed the same way by both rules, because every
+   * `explode` failure so far had an UNREPAIRED refusal as well. The case this
+   * catches — an `explode` failure whose only refusal was repaired — has not
+   * happened yet. The point is that when it does, the old rule would still have
+   * said "host", and nothing in the archive could have shown that it was wrong.
+   */
+  const unrepaired = !!f && (f.idRefusals ?? 0) > (f.reReadsRepaired ?? 0);
+  const refused = !!f && (unrepaired || (f.emptyReReads ?? 0) > 0 || (f.unmatchedReReads ?? 0) > 0);
   return refused ? "host" : "ours";
 }
 
