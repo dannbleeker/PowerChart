@@ -1,0 +1,4263 @@
+{
+  "build": "2934204 · 2026-09-02 13:42Z",
+  "host": "PowerPoint · OfficeOnline · 0.0.0.0",
+  "slideSize": {
+    "width": 960,
+    "height": 540,
+    "source": "documentFile"
+  },
+  "runs": [],
+  "hostAnswers": {
+    "kind": "ssf-charts-host-answers",
+    "source": "PowerPoint · OfficeOnline · 0.0.0.0",
+    "build": "2934204 · 2026-09-02 13:42Z",
+    "requirementSets": [
+      "1.1",
+      "1.2",
+      "1.3",
+      "1.4",
+      "1.5",
+      "1.6",
+      "1.7",
+      "1.8",
+      "1.9",
+      "1.10"
+    ],
+    "opened": {
+      "ms": 3,
+      "answered": false
+    },
+    "answers": [
+      {
+        "id": "load-isnullobject-populates",
+        "question": "Does load('isNullObject') make isNullObject readable after a sync?",
+        "ms": 1130,
+        "answer": "no-scratch-slide",
+        "detail": "the host would not add a slide to work on",
+        "samples": [
+          {
+            "answer": "no-scratch-slide",
+            "pass": 1,
+            "atMs": 68340,
+            "regime": "slide-trouble",
+            "scratch": "no-slide"
+          }
+        ]
+      },
+      {
+        "id": "load-id-populates-isnullobject",
+        "question": "Does loading a REAL property make isNullObject readable?",
+        "ms": 1000,
+        "answer": "no-scratch-slide",
+        "detail": "the host would not add a slide to work on",
+        "samples": [
+          {
+            "answer": "no-scratch-slide",
+            "pass": 1,
+            "atMs": 69341,
+            "regime": "slide-trouble",
+            "scratch": "no-slide"
+          }
+        ]
+      },
+      {
+        "id": "getitemornullobject-missing",
+        "question": "What does getItemOrNullObject give for an id that does not exist?",
+        "ms": 647,
+        "answer": "unreadable",
+        "detail": "the probe returned no answer at all",
+        "samples": [
+          {
+            "answer": "unreadable",
+            "pass": 1,
+            "atMs": 69988,
+            "regime": "slide-trouble",
+            "scratch": "no-slide"
+          }
+        ]
+      },
+      {
+        "id": "shape-add-fresh-slide-proxy",
+        "question": "Can a shape be added through a slide proxy resolved in THIS sync?",
+        "ms": 693,
+        "answer": "no-scratch-slide",
+        "detail": "the host would not add a slide to work on",
+        "samples": [
+          {
+            "answer": "no-scratch-slide",
+            "pass": 1,
+            "atMs": 70681,
+            "regime": "slide-trouble",
+            "scratch": "no-slide"
+          }
+        ]
+      },
+      {
+        "id": "shape-add-held-slide-proxy",
+        "question": "Can a shape be added through a slide proxy resolved a sync ago?",
+        "ms": 1102,
+        "answer": "no-scratch-slide",
+        "detail": "the host would not add a slide to work on",
+        "samples": [
+          {
+            "answer": "no-scratch-slide",
+            "pass": 1,
+            "atMs": 71784,
+            "regime": "slide-trouble",
+            "scratch": "no-slide"
+          },
+          {
+            "answer": "no-scratch-slide",
+            "pass": 2,
+            "atMs": 108367,
+            "regime": "slide-trouble",
+            "scratch": "no-slide"
+          },
+          {
+            "answer": "no-scratch-slide",
+            "pass": 3,
+            "atMs": 125762,
+            "regime": "slide-trouble",
+            "scratch": "no-slide"
+          }
+        ]
+      },
+      {
+        "id": "binding-names-shape-later",
+        "question": "Can a binding made in a shape's CREATING sync still name that shape afterwards?",
+        "ms": 884,
+        "answer": "no-scratch-slide",
+        "detail": "the host would not add a slide to work on",
+        "samples": [
+          {
+            "answer": "no-scratch-slide",
+            "pass": 1,
+            "atMs": 72668,
+            "regime": "slide-trouble",
+            "scratch": "no-slide"
+          },
+          {
+            "answer": "no-scratch-slide",
+            "pass": 2,
+            "atMs": 111407,
+            "regime": "slide-trouble",
+            "scratch": "no-slide"
+          },
+          {
+            "answer": "no-scratch-slide",
+            "pass": 3,
+            "atMs": 127300,
+            "regime": "slide-trouble",
+            "scratch": "no-slide"
+          }
+        ]
+      },
+      {
+        "id": "shape-resolve-held-slide-proxy",
+        "question": "Can a shape be RESOLVED (not added) through a slide proxy resolved a sync ago?",
+        "ms": 719,
+        "answer": "no-scratch-slide",
+        "detail": "the host would not add a slide to work on",
+        "samples": [
+          {
+            "answer": "no-scratch-slide",
+            "pass": 1,
+            "atMs": 73387,
+            "regime": "slide-trouble",
+            "scratch": "no-slide"
+          }
+        ]
+      },
+      {
+        "id": "shape-add-fresh-getitem-slide",
+        "question": "Can a shape be added through slides.getItem(id) on a freshly-added slide?",
+        "ms": 842,
+        "answer": "no-scratch-slide",
+        "detail": "the host would not add a slide to work on",
+        "samples": [
+          {
+            "answer": "no-scratch-slide",
+            "pass": 1,
+            "atMs": 74229,
+            "regime": "slide-trouble",
+            "scratch": "no-slide"
+          }
+        ]
+      },
+      {
+        "id": "shape-add-positional-slide-proxy",
+        "question": "Can a shape be added through slides.getItemAt(index) rather than by id?",
+        "ms": 770,
+        "answer": "no-scratch-slide",
+        "detail": "the host would not add a slide to work on",
+        "samples": [
+          {
+            "answer": "no-scratch-slide",
+            "pass": 1,
+            "atMs": 74999,
+            "regime": "slide-trouble",
+            "scratch": "no-slide"
+          },
+          {
+            "answer": "no-scratch-slide",
+            "pass": 2,
+            "atMs": 112762,
+            "regime": "slide-trouble",
+            "scratch": "no-slide"
+          },
+          {
+            "answer": "no-scratch-slide",
+            "pass": 3,
+            "atMs": 128164,
+            "regime": "slide-trouble",
+            "scratch": "no-slide"
+          }
+        ]
+      },
+      {
+        "id": "shape-proxy-survives-one-sync",
+        "question": "Is a shape proxy still usable one sync after it was created?",
+        "ms": 416,
+        "answer": "no-scratch-slide",
+        "detail": "the host would not add a slide to work on",
+        "samples": [
+          {
+            "answer": "no-scratch-slide",
+            "pass": 1,
+            "atMs": 75415,
+            "regime": "slide-trouble",
+            "scratch": "no-slide"
+          },
+          {
+            "answer": "no-scratch-slide",
+            "pass": 2,
+            "atMs": 113815,
+            "regime": "slide-trouble",
+            "scratch": "no-slide"
+          },
+          {
+            "answer": "no-scratch-slide",
+            "pass": 3,
+            "atMs": 129713,
+            "regime": "slide-trouble",
+            "scratch": "no-slide"
+          }
+        ]
+      },
+      {
+        "id": "shapes-items-count-honest",
+        "question": "After adding 5 shapes, how many does the collection report?",
+        "ms": 825,
+        "answer": "no-scratch-slide",
+        "detail": "the host would not add a slide to work on",
+        "samples": [
+          {
+            "answer": "no-scratch-slide",
+            "pass": 1,
+            "atMs": 76240,
+            "regime": "slide-trouble",
+            "scratch": "no-slide"
+          },
+          {
+            "answer": "no-scratch-slide",
+            "pass": 2,
+            "atMs": 115284,
+            "regime": "slide-trouble",
+            "scratch": "no-slide"
+          },
+          {
+            "answer": "no-scratch-slide",
+            "pass": 3,
+            "atMs": 132037,
+            "regime": "slide-trouble",
+            "scratch": "no-slide"
+          }
+        ]
+      },
+      {
+        "id": "shapes-items-via-positional-slide",
+        "question": "Same collection read, but through slides.getItemAt(index) — any different?",
+        "ms": 1037,
+        "answer": "no-scratch-slide",
+        "detail": "the host would not add a slide to work on",
+        "samples": [
+          {
+            "answer": "no-scratch-slide",
+            "pass": 1,
+            "atMs": 77277,
+            "regime": "slide-trouble",
+            "scratch": "no-slide"
+          },
+          {
+            "answer": "no-scratch-slide",
+            "pass": 2,
+            "atMs": 116251,
+            "regime": "slide-trouble",
+            "scratch": "no-slide"
+          },
+          {
+            "answer": "no-scratch-slide",
+            "pass": 3,
+            "atMs": 133441,
+            "regime": "slide-trouble",
+            "scratch": "no-slide"
+          }
+        ]
+      },
+      {
+        "id": "getcount-populates-same-sync",
+        "question": "Does getCount()'s value arrive on the sync that queued it?",
+        "ms": 1110,
+        "answer": "unreadable",
+        "detail": "the probe returned no answer at all",
+        "samples": [
+          {
+            "answer": "unreadable",
+            "pass": 1,
+            "atMs": 78387,
+            "regime": "slide-trouble",
+            "scratch": "no-slide"
+          }
+        ]
+      },
+      {
+        "id": "tags-add-same-key-twice",
+        "question": "Does writing the same tag key twice overwrite, or duplicate?",
+        "ms": 423,
+        "answer": "no-scratch-slide",
+        "detail": "the host would not add a slide to work on",
+        "samples": [
+          {
+            "answer": "no-scratch-slide",
+            "pass": 1,
+            "atMs": 78810,
+            "regime": "slide-trouble",
+            "scratch": "no-slide"
+          }
+        ]
+      },
+      {
+        "id": "tags-on-fresh-shape",
+        "question": "Does a shape added THIS sync already have a .tags collection?",
+        "ms": 846,
+        "answer": "no-scratch-slide",
+        "detail": "the host would not add a slide to work on",
+        "samples": [
+          {
+            "answer": "no-scratch-slide",
+            "pass": 1,
+            "atMs": 79656,
+            "regime": "slide-trouble",
+            "scratch": "no-slide"
+          }
+        ]
+      },
+      {
+        "id": "tag-through-refetched-shape",
+        "question": "Can a fresh shape be tagged through a handle re-fetched by its own id?",
+        "ms": 758,
+        "answer": "no-scratch-slide",
+        "detail": "the host would not add a slide to work on",
+        "samples": [
+          {
+            "answer": "no-scratch-slide",
+            "pass": 1,
+            "atMs": 80414,
+            "regime": "slide-trouble",
+            "scratch": "no-slide"
+          },
+          {
+            "answer": "no-scratch-slide",
+            "pass": 2,
+            "atMs": 117466,
+            "regime": "slide-trouble",
+            "scratch": "no-slide"
+          },
+          {
+            "answer": "no-scratch-slide",
+            "pass": 3,
+            "atMs": 135576,
+            "regime": "slide-trouble",
+            "scratch": "no-slide"
+          }
+        ]
+      },
+      {
+        "id": "how-many-syncs-a-creation-handle-survives",
+        "question": "How many syncs can a creation handle be carried before .tags goes?",
+        "ms": 1518,
+        "answer": "no-scratch-slide",
+        "detail": "the host would not add a slide to work on",
+        "samples": [
+          {
+            "answer": "no-scratch-slide",
+            "pass": 1,
+            "atMs": 81932,
+            "regime": "slide-trouble",
+            "scratch": "no-slide"
+          },
+          {
+            "answer": "no-scratch-slide",
+            "pass": 2,
+            "atMs": 118499,
+            "regime": "slide-trouble",
+            "scratch": "no-slide"
+          },
+          {
+            "answer": "no-scratch-slide",
+            "pass": 3,
+            "atMs": 137193,
+            "regime": "slide-trouble",
+            "scratch": "no-slide"
+          }
+        ]
+      },
+      {
+        "id": "how-many-collection-reads-a-context-survives",
+        "question": "How many times can one context re-read a slide's shapes before the answer goes short?",
+        "ms": 806,
+        "answer": "no-scratch-slide",
+        "detail": "the host would not add a slide to work on",
+        "samples": [
+          {
+            "answer": "no-scratch-slide",
+            "pass": 1,
+            "atMs": 82738,
+            "regime": "slide-trouble",
+            "scratch": "no-slide"
+          },
+          {
+            "answer": "no-scratch-slide",
+            "pass": 2,
+            "atMs": 120043,
+            "regime": "slide-trouble",
+            "scratch": "no-slide"
+          },
+          {
+            "answer": "no-scratch-slide",
+            "pass": 3,
+            "atMs": 138323,
+            "regime": "slide-trouble",
+            "scratch": "no-slide"
+          }
+        ]
+      },
+      {
+        "id": "collection-read-poisons-the-creation-handle",
+        "question": "After re-reading the slide's shapes, does the handle that CREATED a shape still take a tag?",
+        "ms": 1946,
+        "answer": "no-scratch-slide",
+        "detail": "the host would not add a slide to work on",
+        "samples": [
+          {
+            "answer": "no-scratch-slide",
+            "pass": 1,
+            "atMs": 84684,
+            "regime": "slide-trouble",
+            "scratch": "no-slide"
+          }
+        ]
+      },
+      {
+        "id": "does-a-failed-group-poison-the-tag",
+        "question": "After addGroup is refused, can a tag still be written in that same context?",
+        "ms": 640,
+        "answer": "no-scratch-slide",
+        "detail": "the host would not add a slide to work on",
+        "samples": [
+          {
+            "answer": "no-scratch-slide",
+            "pass": 1,
+            "atMs": 85324,
+            "regime": "slide-trouble",
+            "scratch": "no-slide"
+          }
+        ]
+      },
+      {
+        "id": "which-end-a-short-read-drops",
+        "question": "When a shape collection reads short, which end of it survives?",
+        "ms": 803,
+        "answer": "no-scratch-slide",
+        "detail": "the host would not add a slide to work on",
+        "samples": [
+          {
+            "answer": "no-scratch-slide",
+            "pass": 1,
+            "atMs": 86128,
+            "regime": "slide-trouble",
+            "scratch": "no-slide"
+          }
+        ]
+      },
+      {
+        "id": "delete-then-lookup",
+        "question": "Right after delete()+sync, does getItemOrNullObject report it gone?",
+        "ms": 803,
+        "answer": "no-scratch-slide",
+        "detail": "the host would not add a slide to work on",
+        "samples": [
+          {
+            "answer": "no-scratch-slide",
+            "pass": 1,
+            "atMs": 86931,
+            "regime": "slide-trouble",
+            "scratch": "no-slide"
+          }
+        ]
+      },
+      {
+        "id": "addgroup-returns-usable",
+        "question": "Is a group proxy usable in the same sync that created it?",
+        "ms": 635,
+        "answer": "no-scratch-slide",
+        "detail": "the host would not add a slide to work on",
+        "samples": [
+          {
+            "answer": "no-scratch-slide",
+            "pass": 1,
+            "atMs": 87566,
+            "regime": "slide-trouble",
+            "scratch": "no-slide"
+          }
+        ]
+      },
+      {
+        "id": "group-children-via-getcount",
+        "question": "Does a group report its child COUNT, where it will not list them?",
+        "ms": 666,
+        "answer": "no-scratch-slide",
+        "detail": "the host would not add a slide to work on",
+        "samples": [
+          {
+            "answer": "no-scratch-slide",
+            "pass": 1,
+            "atMs": 88232,
+            "regime": "slide-trouble",
+            "scratch": "no-slide"
+          },
+          {
+            "answer": "no-scratch-slide",
+            "pass": 2,
+            "atMs": 121226,
+            "regime": "slide-trouble",
+            "scratch": "no-slide"
+          },
+          {
+            "answer": "no-scratch-slide",
+            "pass": 3,
+            "atMs": 140279,
+            "regime": "slide-trouble",
+            "scratch": "no-slide"
+          }
+        ]
+      },
+      {
+        "id": "group-reports-its-children",
+        "question": "After grouping two shapes, does the group report two children?",
+        "ms": 680,
+        "answer": "no-scratch-slide",
+        "detail": "the host would not add a slide to work on",
+        "samples": [
+          {
+            "answer": "no-scratch-slide",
+            "pass": 1,
+            "atMs": 88912,
+            "regime": "slide-trouble",
+            "scratch": "no-slide"
+          }
+        ]
+      },
+      {
+        "id": "getitemat-past-end",
+        "question": "What does slides.getItemAt() past the end of the deck do?",
+        "ms": 2247,
+        "answer": "unreadable",
+        "detail": "the probe returned no answer at all",
+        "samples": [
+          {
+            "answer": "unreadable",
+            "pass": 1,
+            "atMs": 91159,
+            "regime": "slide-trouble",
+            "scratch": "no-slide"
+          }
+        ]
+      },
+      {
+        "id": "picture-then-shape-read",
+        "question": "After a picture is added, does re-reading the slide's shapes still answer?",
+        "ms": 892,
+        "answer": "no-scratch-slide",
+        "detail": "the host would not add a slide to work on",
+        "samples": [
+          {
+            "answer": "no-scratch-slide",
+            "pass": 1,
+            "atMs": 92051,
+            "regime": "slide-trouble",
+            "scratch": "no-slide"
+          },
+          {
+            "answer": "no-scratch-slide",
+            "pass": 2,
+            "atMs": 121954,
+            "regime": "slide-trouble",
+            "scratch": "no-slide"
+          },
+          {
+            "answer": "no-scratch-slide",
+            "pass": 3,
+            "atMs": 155453,
+            "regime": "slide-trouble",
+            "scratch": "no-slide"
+          }
+        ]
+      },
+      {
+        "id": "group-of-existing-shape-readable",
+        "question": "Can a group found in a later batch report its children?",
+        "ms": 1914,
+        "answer": "no-scratch-slide",
+        "detail": "the host would not add a slide to work on",
+        "samples": [
+          {
+            "answer": "no-scratch-slide",
+            "pass": 1,
+            "atMs": 93965,
+            "regime": "slide-trouble",
+            "scratch": "no-slide"
+          }
+        ]
+      },
+      {
+        "id": "slide-layout-readable",
+        "question": "Can a slide's layout shapes be read?",
+        "ms": 748,
+        "answer": "unreadable",
+        "detail": "the probe returned no answer at all",
+        "samples": [
+          {
+            "answer": "unreadable",
+            "pass": 1,
+            "atMs": 94713,
+            "regime": "slide-trouble",
+            "scratch": "no-slide"
+          }
+        ]
+      },
+      {
+        "id": "layouts-readable",
+        "question": "Can the deck's slide masters and their layouts be read?",
+        "ms": 2525,
+        "answer": "unreadable",
+        "detail": "the probe returned no answer at all",
+        "samples": [
+          {
+            "answer": "unreadable",
+            "pass": 1,
+            "atMs": 97238,
+            "regime": "slide-trouble",
+            "scratch": "no-slide"
+          }
+        ]
+      },
+      {
+        "id": "untrack-available",
+        "question": "Do proxies expose untrack()?",
+        "ms": 1474,
+        "answer": "unreadable",
+        "detail": "the probe returned no answer at all",
+        "samples": [
+          {
+            "answer": "unreadable",
+            "pass": 1,
+            "atMs": 98712,
+            "regime": "slide-trouble",
+            "scratch": "no-slide"
+          }
+        ]
+      },
+      {
+        "id": "shapes-by-index-vs-items",
+        "question": "Can the shapes be enumerated by getCount + getItemAt where `items` will not answer?",
+        "ms": 802,
+        "answer": "no-scratch-slide",
+        "detail": "the host would not add a slide to work on",
+        "samples": [
+          {
+            "answer": "no-scratch-slide",
+            "pass": 1,
+            "atMs": 99514,
+            "regime": "slide-trouble",
+            "scratch": "no-slide"
+          },
+          {
+            "answer": "no-scratch-slide",
+            "pass": 2,
+            "atMs": 122775,
+            "regime": "slide-trouble",
+            "scratch": "no-slide"
+          },
+          {
+            "answer": "no-scratch-slide",
+            "pass": 3,
+            "atMs": 170611,
+            "regime": "slide-trouble",
+            "scratch": "no-slide"
+          }
+        ]
+      },
+      {
+        "id": "creationid-on-fresh-shape",
+        "question": "Does a shape this run just added report a creationId, or null?",
+        "ms": 1000,
+        "answer": "no-scratch-slide",
+        "detail": "the host would not add a slide to work on",
+        "samples": [
+          {
+            "answer": "no-scratch-slide",
+            "pass": 1,
+            "atMs": 100514,
+            "regime": "slide-trouble",
+            "scratch": "no-slide"
+          }
+        ]
+      },
+      {
+        "id": "creationid-survives-a-sync",
+        "question": "Does a shape's creationId still read the same a sync later, when its id may not?",
+        "ms": 1651,
+        "answer": "no-scratch-slide",
+        "detail": "the host would not add a slide to work on",
+        "samples": [
+          {
+            "answer": "no-scratch-slide",
+            "pass": 1,
+            "atMs": 102165,
+            "regime": "slide-trouble",
+            "scratch": "no-slide"
+          }
+        ]
+      },
+      {
+        "id": "creationid-survives-grouping",
+        "question": "Does a shape keep its creationId after it is absorbed into a group?",
+        "ms": 3252,
+        "answer": "no-scratch-slide",
+        "detail": "the host would not add a slide to work on",
+        "samples": [
+          {
+            "answer": "no-scratch-slide",
+            "pass": 1,
+            "atMs": 105417,
+            "regime": "slide-trouble",
+            "scratch": "no-slide"
+          }
+        ]
+      },
+      {
+        "id": "rotation-keeps-the-unrotated-box",
+        "question": "After setting `rotation`, do left/top/width/height still describe the box BEFORE the turn?",
+        "ms": 963,
+        "answer": "no-scratch-slide",
+        "detail": "the host would not add a slide to work on",
+        "samples": [
+          {
+            "answer": "no-scratch-slide",
+            "pass": 1,
+            "atMs": 106380,
+            "regime": "slide-trouble",
+            "scratch": "no-slide"
+          },
+          {
+            "answer": "no-scratch-slide",
+            "pass": 2,
+            "atMs": 124084,
+            "regime": "slide-trouble",
+            "scratch": "no-slide"
+          },
+          {
+            "answer": "no-scratch-slide",
+            "pass": 3,
+            "atMs": 185834,
+            "regime": "slide-trouble",
+            "scratch": "no-slide"
+          }
+        ]
+      },
+      {
+        "id": "named-preset-resolves",
+        "question": "Does a GeometricShapeType named from our own table actually draw?",
+        "ms": 1160,
+        "answer": "no-scratch-slide",
+        "detail": "the host would not add a slide to work on",
+        "samples": [
+          {
+            "answer": "no-scratch-slide",
+            "pass": 1,
+            "atMs": 107540,
+            "regime": "slide-trouble",
+            "scratch": "no-slide"
+          }
+        ]
+      },
+      {
+        "id": "scratch-slides-returned",
+        "question": "Does the host give back the scratch slides this probe added?",
+        "answer": "none-added",
+        "ms": 259,
+        "detail": "0 of 0 scratch slide(s) deleted"
+      }
+    ]
+  },
+  "selftest": [
+    {
+      "name": "insert on top of an earlier run",
+      "ok": false,
+      "detail": "deck grew by NaN (want 4); 0 of 4 charts re-editable",
+      "ms": 8903,
+      "friction": {
+        "errors": 0,
+        "idRefusals": 0,
+        "generalExceptions": 0,
+        "emptyReReads": 0,
+        "shortReReads": 0,
+        "unmatchedReReads": 0,
+        "reReadsRepaired": 0
+      }
+    },
+    {
+      "name": "two slides claiming one slot",
+      "ok": false,
+      "detail": "4 slides inserted, NaN kept, 0 of 2 still re-editable; 0 queued as duplicates",
+      "ms": 12927,
+      "friction": {
+        "errors": 0,
+        "idRefusals": 0,
+        "generalExceptions": 0,
+        "emptyReReads": 0,
+        "shortReReads": 0,
+        "unmatchedReReads": 0,
+        "reReadsRepaired": 0
+      }
+    },
+    {
+      "name": "edit a chart on the visible slide",
+      "ok": false,
+      "skipped": true,
+      "detail": "no probe chart in the deck to edit",
+      "ms": 172,
+      "friction": {
+        "errors": 0,
+        "idRefusals": 0,
+        "generalExceptions": 0,
+        "emptyReReads": 0,
+        "shortReReads": 0,
+        "unmatchedReReads": 0,
+        "reReadsRepaired": 0
+      }
+    },
+    {
+      "name": "insert onto a slide that already has content",
+      "ok": false,
+      "skipped": true,
+      "detail": "no probe chart to insert alongside",
+      "ms": 200,
+      "friction": {
+        "errors": 0,
+        "idRefusals": 0,
+        "generalExceptions": 0,
+        "emptyReReads": 0,
+        "shortReReads": 0,
+        "unmatchedReReads": 0,
+        "reReadsRepaired": 0
+      }
+    },
+    {
+      "name": "same scale across the deck",
+      "ok": false,
+      "skipped": true,
+      "detail": "fewer than two probe charts to scale together",
+      "ms": 75,
+      "friction": {
+        "errors": 0,
+        "idRefusals": 0,
+        "generalExceptions": 0,
+        "emptyReReads": 0,
+        "shortReReads": 0,
+        "unmatchedReReads": 0,
+        "reReadsRepaired": 0
+      }
+    },
+    {
+      "name": "one chart alone on a warm deck",
+      "ok": false,
+      "skipped": true,
+      "detail": "no probe chart to update on its own",
+      "ms": 93,
+      "friction": {
+        "errors": 0,
+        "idRefusals": 0,
+        "generalExceptions": 0,
+        "emptyReReads": 0,
+        "shortReReads": 0,
+        "unmatchedReReads": 0,
+        "reReadsRepaired": 0
+      }
+    },
+    {
+      "name": "an update follows a moved chart",
+      "ok": false,
+      "skipped": true,
+      "detail": "no probe chart in the deck to move",
+      "ms": 108,
+      "friction": {
+        "errors": 0,
+        "idRefusals": 0,
+        "generalExceptions": 0,
+        "emptyReReads": 0,
+        "shortReReads": 0,
+        "unmatchedReReads": 0,
+        "reReadsRepaired": 0
+      }
+    },
+    {
+      "name": "explode a degraded picture",
+      "ok": false,
+      "skipped": true,
+      "detail": "no probe chart in the deck to explode",
+      "ms": 116,
+      "friction": {
+        "errors": 0,
+        "idRefusals": 0,
+        "generalExceptions": 0,
+        "emptyReReads": 0,
+        "shortReReads": 0,
+        "unmatchedReReads": 0,
+        "reReadsRepaired": 0
+      }
+    },
+    {
+      "name": "which selection call wedges the host",
+      "ok": false,
+      "skipped": true,
+      "detail": "no probe chart in the deck to select",
+      "ms": 68,
+      "friction": {
+        "errors": 0,
+        "idRefusals": 0,
+        "generalExceptions": 0,
+        "emptyReReads": 0,
+        "shortReReads": 0,
+        "unmatchedReReads": 0,
+        "reReadsRepaired": 0
+      }
+    },
+    {
+      "name": "a selected shape survives an insert",
+      "ok": false,
+      "skipped": true,
+      "detail": "no probe chart to select",
+      "ms": 107,
+      "friction": {
+        "errors": 0,
+        "idRefusals": 0,
+        "generalExceptions": 0,
+        "emptyReReads": 0,
+        "shortReReads": 0,
+        "unmatchedReReads": 0,
+        "reReadsRepaired": 0
+      }
+    },
+    {
+      "name": "edit the chart the user selected",
+      "ok": false,
+      "skipped": true,
+      "detail": "no probe chart in the deck to select",
+      "ms": 71,
+      "friction": {
+        "errors": 0,
+        "idRefusals": 0,
+        "generalExceptions": 0,
+        "emptyReReads": 0,
+        "shortReReads": 0,
+        "unmatchedReReads": 0,
+        "reReadsRepaired": 0
+      }
+    },
+    {
+      "name": "stop a run part-way",
+      "ok": true,
+      "detail": "stopped before the first batch — no shape was ever queued, nothing added, nothing left claiming to be a chart",
+      "ms": 265,
+      "friction": {
+        "errors": 1,
+        "idRefusals": 0,
+        "generalExceptions": 0,
+        "emptyReReads": 0,
+        "shortReReads": 0,
+        "unmatchedReReads": 0,
+        "reReadsRepaired": 0
+      }
+    },
+    {
+      "name": "stop a run mid-draw",
+      "ok": false,
+      "skipped": true,
+      "detail": "no probe chart, so the deck is not ready",
+      "ms": 93,
+      "friction": {
+        "errors": 0,
+        "idRefusals": 0,
+        "generalExceptions": 0,
+        "emptyReReads": 0,
+        "shortReReads": 0,
+        "unmatchedReReads": 0,
+        "reReadsRepaired": 0
+      }
+    },
+    {
+      "name": "the chart is actually visible",
+      "ok": false,
+      "skipped": true,
+      "detail": "no slide from this run to draw a chart on",
+      "ms": 113,
+      "friction": {
+        "errors": 0,
+        "idRefusals": 0,
+        "generalExceptions": 0,
+        "emptyReReads": 0,
+        "shortReReads": 0,
+        "unmatchedReReads": 0,
+        "reReadsRepaired": 0
+      }
+    },
+    {
+      "name": "does a rasterise poison the next draw",
+      "ok": false,
+      "skipped": true,
+      "detail": "no probe chart to draw beside",
+      "ms": 68,
+      "friction": {
+        "errors": 0,
+        "idRefusals": 0,
+        "generalExceptions": 0,
+        "emptyReReads": 0,
+        "shortReReads": 0,
+        "unmatchedReReads": 0,
+        "reReadsRepaired": 0
+      }
+    },
+    {
+      "name": "a chart of rotated shapes",
+      "ok": false,
+      "skipped": true,
+      "detail": "no probe chart to place a line chart beside",
+      "ms": 52,
+      "friction": {
+        "errors": 0,
+        "idRefusals": 0,
+        "generalExceptions": 0,
+        "emptyReReads": 0,
+        "shortReReads": 0,
+        "unmatchedReReads": 0,
+        "reReadsRepaired": 0
+      }
+    }
+  ],
+  "trace": {
+    "summary": {
+      "steps": [
+        {
+          "scope": "host",
+          "message": "scratch slide: the deck would not list its slides",
+          "n": 64
+        },
+        {
+          "scope": "probe",
+          "message": "asking",
+          "n": 63
+        },
+        {
+          "scope": "probe",
+          "message": "answered",
+          "n": 63
+        },
+        {
+          "scope": "pane",
+          "message": "deck scan — asking how many slides",
+          "n": 18
+        },
+        {
+          "scope": "pane",
+          "message": "scanned the deck for charts",
+          "n": 18
+        },
+        {
+          "scope": "selftest",
+          "message": "scenario starting",
+          "n": 16
+        },
+        {
+          "scope": "selftest",
+          "message": "scenario skipped",
+          "n": 13
+        },
+        {
+          "scope": "host",
+          "message": "gave up waiting",
+          "n": 4
+        },
+        {
+          "scope": "insert",
+          "message": "handed the host a generated deck",
+          "n": 4
+        },
+        {
+          "scope": "host",
+          "message": "no answer — asking the document what actually happened",
+          "n": 3
+        },
+        {
+          "scope": "probe",
+          "message": "starting another pass over the questions",
+          "n": 2
+        },
+        {
+          "scope": "selftest",
+          "message": "scenario FAILED",
+          "n": 2
+        },
+        {
+          "scope": "deck-style",
+          "message": "the deck-style read answered",
+          "n": 1
+        },
+        {
+          "scope": "host",
+          "message": "environment",
+          "n": 1
+        },
+        {
+          "scope": "selftest",
+          "message": "round starting",
+          "n": 1
+        },
+        {
+          "scope": "host",
+          "message": "did not answer before the first question",
+          "n": 1
+        },
+        {
+          "scope": "probe",
+          "message": "second pass over the questions that were never put",
+          "n": 1
+        },
+        {
+          "scope": "probe",
+          "message": "stopping the second pass — the host is not answering",
+          "n": 1
+        },
+        {
+          "scope": "probe",
+          "message": "second pass finished",
+          "n": 1
+        },
+        {
+          "scope": "probe",
+          "message": "gave the scratch slides back",
+          "n": 1
+        },
+        {
+          "scope": "host",
+          "message": "the deck's count came back short — re-reading after a settle",
+          "n": 1
+        },
+        {
+          "scope": "host",
+          "message": "the deck's count after a settle",
+          "n": 1
+        },
+        {
+          "scope": "repair",
+          "message": "read the deck back",
+          "n": 1
+        },
+        {
+          "scope": "pane",
+          "message": "stop requested",
+          "n": 1
+        },
+        {
+          "scope": "error",
+          "message": "drawing the chart's shapes",
+          "n": 1
+        },
+        {
+          "scope": "selftest",
+          "message": "scenario passed",
+          "n": 1
+        },
+        {
+          "scope": "pane",
+          "message": "collecting deck evidence — scanning",
+          "n": 1
+        },
+        {
+          "scope": "pane",
+          "message": "collecting deck evidence — listing slide ids",
+          "n": 1
+        },
+        {
+          "scope": "pane",
+          "message": "collecting deck evidence — shooting slides",
+          "n": 1
+        },
+        {
+          "scope": "pane",
+          "message": "collecting deck evidence — done",
+          "n": 1
+        }
+      ],
+      "problems": [
+        {
+          "text": "31 of 37 were never put last pass — shortlist only",
+          "n": 1
+        },
+        {
+          "text": "13 of 13 were never put last pass — shortlist only",
+          "n": 1
+        },
+        {
+          "text": "Stopped. | at=drawing the chart's shapes",
+          "n": 1
+        }
+      ]
+    },
+    "entries": [
+      {
+        "ms": 66801,
+        "scope": "deck-style",
+        "message": "the deck-style read answered",
+        "data": {
+          "parts": 0,
+          "at": "counting the deck's style parts",
+          "observedBeforeTheRound": true
+        }
+      },
+      {
+        "ms": 66801,
+        "scope": "host",
+        "message": "environment",
+        "data": {
+          "build": "2934204 · 2026-09-02 13:42Z",
+          "host": "PowerPoint",
+          "platform": "OfficeOnline",
+          "version": "0.0.0.0",
+          "extendedErrors": true,
+          "requirementSets": [
+            "1.1",
+            "1.2",
+            "1.3",
+            "1.4",
+            "1.5",
+            "1.6",
+            "1.7",
+            "1.8",
+            "1.9",
+            "1.10"
+          ],
+          "canInsertSlidesFromBase64": true,
+          "canInsertPicture": true
+        }
+      },
+      {
+        "ms": 66823,
+        "scope": "selftest",
+        "message": "round starting",
+        "data": {
+          "deckSlides": "unreadable",
+          "env": {
+            "requirementSets": [
+              "1.1",
+              "1.2",
+              "1.3",
+              "1.4",
+              "1.5",
+              "1.6",
+              "1.7",
+              "1.8",
+              "1.9",
+              "1.10"
+            ],
+            "host": "PowerPoint",
+            "platform": "OfficeOnline",
+            "officeVersion": "0.0.0.0",
+            "tabAgeMs": 67414,
+            "heapUsedMb": 10,
+            "heapLimitMb": 4192,
+            "viewport": "318x1298"
+          }
+        }
+      },
+      {
+        "ms": 66891,
+        "scope": "host",
+        "message": "did not answer before the first question",
+        "data": {
+          "ms": 3
+        }
+      },
+      {
+        "ms": 67210,
+        "scope": "host",
+        "message": "scratch slide: the deck would not list its slides",
+        "data": {
+          "before": false,
+          "after": false
+        }
+      },
+      {
+        "ms": 67210,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "load-isnullobject-populates"
+        }
+      },
+      {
+        "ms": 68305,
+        "scope": "host",
+        "message": "gave up waiting",
+        "data": {
+          "what": "reading the slide size",
+          "afterMs": 1500,
+          "afterAnswering": "adding a scratch slide",
+          "afterAnsweringMs": 1051,
+          "idleMs": -1487,
+          "shape": "THIS CALL ALONE is stuck — the host answered something else 1487ms AFTER this call was issued, while it was still waiting"
+        }
+      },
+      {
+        "ms": 68340,
+        "scope": "host",
+        "message": "scratch slide: the deck would not list its slides",
+        "data": {
+          "before": false,
+          "after": false
+        }
+      },
+      {
+        "ms": 68341,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "load-isnullobject-populates",
+          "answer": "no-scratch-slide",
+          "ms": 1130,
+          "pass": 1
+        }
+      },
+      {
+        "ms": 68341,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "load-id-populates-isnullobject"
+        }
+      },
+      {
+        "ms": 69341,
+        "scope": "host",
+        "message": "scratch slide: the deck would not list its slides",
+        "data": {
+          "before": false,
+          "after": false
+        }
+      },
+      {
+        "ms": 69341,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "load-id-populates-isnullobject",
+          "answer": "no-scratch-slide",
+          "ms": 1000,
+          "pass": 1
+        }
+      },
+      {
+        "ms": 69341,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "getitemornullobject-missing"
+        }
+      },
+      {
+        "ms": 69967,
+        "scope": "host",
+        "message": "scratch slide: the deck would not list its slides",
+        "data": {
+          "before": false,
+          "after": false
+        }
+      },
+      {
+        "ms": 69988,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "getitemornullobject-missing",
+          "answer": "unreadable",
+          "ms": 647,
+          "pass": 1
+        }
+      },
+      {
+        "ms": 69988,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "shape-add-fresh-slide-proxy"
+        }
+      },
+      {
+        "ms": 70681,
+        "scope": "host",
+        "message": "scratch slide: the deck would not list its slides",
+        "data": {
+          "before": false,
+          "after": false
+        }
+      },
+      {
+        "ms": 70682,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "shape-add-fresh-slide-proxy",
+          "answer": "no-scratch-slide",
+          "ms": 693,
+          "pass": 1
+        }
+      },
+      {
+        "ms": 70682,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "shape-add-held-slide-proxy"
+        }
+      },
+      {
+        "ms": 71783,
+        "scope": "host",
+        "message": "scratch slide: the deck would not list its slides",
+        "data": {
+          "before": false,
+          "after": false
+        }
+      },
+      {
+        "ms": 71784,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "shape-add-held-slide-proxy",
+          "answer": "no-scratch-slide",
+          "ms": 1102,
+          "pass": 1
+        }
+      },
+      {
+        "ms": 71784,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "binding-names-shape-later"
+        }
+      },
+      {
+        "ms": 72668,
+        "scope": "host",
+        "message": "scratch slide: the deck would not list its slides",
+        "data": {
+          "before": false,
+          "after": false
+        }
+      },
+      {
+        "ms": 72668,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "binding-names-shape-later",
+          "answer": "no-scratch-slide",
+          "ms": 884,
+          "pass": 1
+        }
+      },
+      {
+        "ms": 72668,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "shape-resolve-held-slide-proxy"
+        }
+      },
+      {
+        "ms": 73387,
+        "scope": "host",
+        "message": "scratch slide: the deck would not list its slides",
+        "data": {
+          "before": false,
+          "after": false
+        }
+      },
+      {
+        "ms": 73387,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "shape-resolve-held-slide-proxy",
+          "answer": "no-scratch-slide",
+          "ms": 719,
+          "pass": 1
+        }
+      },
+      {
+        "ms": 73387,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "shape-add-fresh-getitem-slide"
+        }
+      },
+      {
+        "ms": 74229,
+        "scope": "host",
+        "message": "scratch slide: the deck would not list its slides",
+        "data": {
+          "before": false,
+          "after": false
+        }
+      },
+      {
+        "ms": 74229,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "shape-add-fresh-getitem-slide",
+          "answer": "no-scratch-slide",
+          "ms": 842,
+          "pass": 1
+        }
+      },
+      {
+        "ms": 74229,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "shape-add-positional-slide-proxy"
+        }
+      },
+      {
+        "ms": 74998,
+        "scope": "host",
+        "message": "scratch slide: the deck would not list its slides",
+        "data": {
+          "before": false,
+          "after": false
+        }
+      },
+      {
+        "ms": 74999,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "shape-add-positional-slide-proxy",
+          "answer": "no-scratch-slide",
+          "ms": 770,
+          "pass": 1
+        }
+      },
+      {
+        "ms": 74999,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "shape-proxy-survives-one-sync"
+        }
+      },
+      {
+        "ms": 75415,
+        "scope": "host",
+        "message": "scratch slide: the deck would not list its slides",
+        "data": {
+          "before": false,
+          "after": false
+        }
+      },
+      {
+        "ms": 75415,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "shape-proxy-survives-one-sync",
+          "answer": "no-scratch-slide",
+          "ms": 416,
+          "pass": 1
+        }
+      },
+      {
+        "ms": 75415,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "shapes-items-count-honest"
+        }
+      },
+      {
+        "ms": 76240,
+        "scope": "host",
+        "message": "scratch slide: the deck would not list its slides",
+        "data": {
+          "before": false,
+          "after": false
+        }
+      },
+      {
+        "ms": 76240,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "shapes-items-count-honest",
+          "answer": "no-scratch-slide",
+          "ms": 825,
+          "pass": 1
+        }
+      },
+      {
+        "ms": 76240,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "shapes-items-via-positional-slide"
+        }
+      },
+      {
+        "ms": 77277,
+        "scope": "host",
+        "message": "scratch slide: the deck would not list its slides",
+        "data": {
+          "before": false,
+          "after": false
+        }
+      },
+      {
+        "ms": 77277,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "shapes-items-via-positional-slide",
+          "answer": "no-scratch-slide",
+          "ms": 1037,
+          "pass": 1
+        }
+      },
+      {
+        "ms": 77277,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "getcount-populates-same-sync"
+        }
+      },
+      {
+        "ms": 78336,
+        "scope": "host",
+        "message": "scratch slide: the deck would not list its slides",
+        "data": {
+          "before": false,
+          "after": false
+        }
+      },
+      {
+        "ms": 78387,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "getcount-populates-same-sync",
+          "answer": "unreadable",
+          "ms": 1110,
+          "pass": 1
+        }
+      },
+      {
+        "ms": 78387,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "tags-add-same-key-twice"
+        }
+      },
+      {
+        "ms": 78810,
+        "scope": "host",
+        "message": "scratch slide: the deck would not list its slides",
+        "data": {
+          "before": false,
+          "after": false
+        }
+      },
+      {
+        "ms": 78810,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "tags-add-same-key-twice",
+          "answer": "no-scratch-slide",
+          "ms": 423,
+          "pass": 1
+        }
+      },
+      {
+        "ms": 78810,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "tags-on-fresh-shape"
+        }
+      },
+      {
+        "ms": 79656,
+        "scope": "host",
+        "message": "scratch slide: the deck would not list its slides",
+        "data": {
+          "before": false,
+          "after": false
+        }
+      },
+      {
+        "ms": 79656,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "tags-on-fresh-shape",
+          "answer": "no-scratch-slide",
+          "ms": 846,
+          "pass": 1
+        }
+      },
+      {
+        "ms": 79656,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "tag-through-refetched-shape"
+        }
+      },
+      {
+        "ms": 80414,
+        "scope": "host",
+        "message": "scratch slide: the deck would not list its slides",
+        "data": {
+          "before": false,
+          "after": false
+        }
+      },
+      {
+        "ms": 80414,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "tag-through-refetched-shape",
+          "answer": "no-scratch-slide",
+          "ms": 758,
+          "pass": 1
+        }
+      },
+      {
+        "ms": 80414,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "how-many-syncs-a-creation-handle-survives"
+        }
+      },
+      {
+        "ms": 81932,
+        "scope": "host",
+        "message": "scratch slide: the deck would not list its slides",
+        "data": {
+          "before": false,
+          "after": false
+        }
+      },
+      {
+        "ms": 81932,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "how-many-syncs-a-creation-handle-survives",
+          "answer": "no-scratch-slide",
+          "ms": 1518,
+          "pass": 1
+        }
+      },
+      {
+        "ms": 81932,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "how-many-collection-reads-a-context-survives"
+        }
+      },
+      {
+        "ms": 82738,
+        "scope": "host",
+        "message": "scratch slide: the deck would not list its slides",
+        "data": {
+          "before": false,
+          "after": false
+        }
+      },
+      {
+        "ms": 82738,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "how-many-collection-reads-a-context-survives",
+          "answer": "no-scratch-slide",
+          "ms": 806,
+          "pass": 1
+        }
+      },
+      {
+        "ms": 82738,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "collection-read-poisons-the-creation-handle"
+        }
+      },
+      {
+        "ms": 84684,
+        "scope": "host",
+        "message": "scratch slide: the deck would not list its slides",
+        "data": {
+          "before": false,
+          "after": false
+        }
+      },
+      {
+        "ms": 84684,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "collection-read-poisons-the-creation-handle",
+          "answer": "no-scratch-slide",
+          "ms": 1946,
+          "pass": 1
+        }
+      },
+      {
+        "ms": 84684,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "does-a-failed-group-poison-the-tag"
+        }
+      },
+      {
+        "ms": 85324,
+        "scope": "host",
+        "message": "scratch slide: the deck would not list its slides",
+        "data": {
+          "before": false,
+          "after": false
+        }
+      },
+      {
+        "ms": 85324,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "does-a-failed-group-poison-the-tag",
+          "answer": "no-scratch-slide",
+          "ms": 640,
+          "pass": 1
+        }
+      },
+      {
+        "ms": 85325,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "which-end-a-short-read-drops"
+        }
+      },
+      {
+        "ms": 86128,
+        "scope": "host",
+        "message": "scratch slide: the deck would not list its slides",
+        "data": {
+          "before": false,
+          "after": false
+        }
+      },
+      {
+        "ms": 86128,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "which-end-a-short-read-drops",
+          "answer": "no-scratch-slide",
+          "ms": 803,
+          "pass": 1
+        }
+      },
+      {
+        "ms": 86128,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "delete-then-lookup"
+        }
+      },
+      {
+        "ms": 86931,
+        "scope": "host",
+        "message": "scratch slide: the deck would not list its slides",
+        "data": {
+          "before": false,
+          "after": false
+        }
+      },
+      {
+        "ms": 86931,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "delete-then-lookup",
+          "answer": "no-scratch-slide",
+          "ms": 803,
+          "pass": 1
+        }
+      },
+      {
+        "ms": 86931,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "addgroup-returns-usable"
+        }
+      },
+      {
+        "ms": 87565,
+        "scope": "host",
+        "message": "scratch slide: the deck would not list its slides",
+        "data": {
+          "before": false,
+          "after": false
+        }
+      },
+      {
+        "ms": 87566,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "addgroup-returns-usable",
+          "answer": "no-scratch-slide",
+          "ms": 635,
+          "pass": 1
+        }
+      },
+      {
+        "ms": 87566,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "group-children-via-getcount"
+        }
+      },
+      {
+        "ms": 88231,
+        "scope": "host",
+        "message": "scratch slide: the deck would not list its slides",
+        "data": {
+          "before": false,
+          "after": false
+        }
+      },
+      {
+        "ms": 88232,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "group-children-via-getcount",
+          "answer": "no-scratch-slide",
+          "ms": 666,
+          "pass": 1
+        }
+      },
+      {
+        "ms": 88232,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "group-reports-its-children"
+        }
+      },
+      {
+        "ms": 88912,
+        "scope": "host",
+        "message": "scratch slide: the deck would not list its slides",
+        "data": {
+          "before": false,
+          "after": false
+        }
+      },
+      {
+        "ms": 88912,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "group-reports-its-children",
+          "answer": "no-scratch-slide",
+          "ms": 680,
+          "pass": 1
+        }
+      },
+      {
+        "ms": 88912,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "getitemat-past-end"
+        }
+      },
+      {
+        "ms": 91098,
+        "scope": "host",
+        "message": "scratch slide: the deck would not list its slides",
+        "data": {
+          "before": false,
+          "after": false
+        }
+      },
+      {
+        "ms": 91159,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "getitemat-past-end",
+          "answer": "unreadable",
+          "ms": 2247,
+          "pass": 1
+        }
+      },
+      {
+        "ms": 91159,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "picture-then-shape-read"
+        }
+      },
+      {
+        "ms": 92051,
+        "scope": "host",
+        "message": "scratch slide: the deck would not list its slides",
+        "data": {
+          "before": false,
+          "after": false
+        }
+      },
+      {
+        "ms": 92051,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "picture-then-shape-read",
+          "answer": "no-scratch-slide",
+          "ms": 892,
+          "pass": 1
+        }
+      },
+      {
+        "ms": 92051,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "group-of-existing-shape-readable"
+        }
+      },
+      {
+        "ms": 93965,
+        "scope": "host",
+        "message": "scratch slide: the deck would not list its slides",
+        "data": {
+          "before": false,
+          "after": false
+        }
+      },
+      {
+        "ms": 93965,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "group-of-existing-shape-readable",
+          "answer": "no-scratch-slide",
+          "ms": 1914,
+          "pass": 1
+        }
+      },
+      {
+        "ms": 93965,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "slide-layout-readable"
+        }
+      },
+      {
+        "ms": 94667,
+        "scope": "host",
+        "message": "scratch slide: the deck would not list its slides",
+        "data": {
+          "before": false,
+          "after": false
+        }
+      },
+      {
+        "ms": 94713,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "slide-layout-readable",
+          "answer": "unreadable",
+          "ms": 748,
+          "pass": 1
+        }
+      },
+      {
+        "ms": 94713,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "layouts-readable"
+        }
+      },
+      {
+        "ms": 96531,
+        "scope": "host",
+        "message": "scratch slide: the deck would not list its slides",
+        "data": {
+          "before": false,
+          "after": false
+        }
+      },
+      {
+        "ms": 97238,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "layouts-readable",
+          "answer": "unreadable",
+          "ms": 2525,
+          "pass": 1
+        }
+      },
+      {
+        "ms": 97238,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "untrack-available"
+        }
+      },
+      {
+        "ms": 98664,
+        "scope": "host",
+        "message": "scratch slide: the deck would not list its slides",
+        "data": {
+          "before": false,
+          "after": false
+        }
+      },
+      {
+        "ms": 98712,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "untrack-available",
+          "answer": "unreadable",
+          "ms": 1474,
+          "pass": 1
+        }
+      },
+      {
+        "ms": 98712,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "shapes-by-index-vs-items"
+        }
+      },
+      {
+        "ms": 99514,
+        "scope": "host",
+        "message": "scratch slide: the deck would not list its slides",
+        "data": {
+          "before": false,
+          "after": false
+        }
+      },
+      {
+        "ms": 99514,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "shapes-by-index-vs-items",
+          "answer": "no-scratch-slide",
+          "ms": 802,
+          "pass": 1
+        }
+      },
+      {
+        "ms": 99514,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "creationid-on-fresh-shape"
+        }
+      },
+      {
+        "ms": 100514,
+        "scope": "host",
+        "message": "scratch slide: the deck would not list its slides",
+        "data": {
+          "before": false,
+          "after": false
+        }
+      },
+      {
+        "ms": 100514,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "creationid-on-fresh-shape",
+          "answer": "no-scratch-slide",
+          "ms": 1000,
+          "pass": 1
+        }
+      },
+      {
+        "ms": 100514,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "creationid-survives-a-sync"
+        }
+      },
+      {
+        "ms": 102165,
+        "scope": "host",
+        "message": "scratch slide: the deck would not list its slides",
+        "data": {
+          "before": false,
+          "after": false
+        }
+      },
+      {
+        "ms": 102165,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "creationid-survives-a-sync",
+          "answer": "no-scratch-slide",
+          "ms": 1651,
+          "pass": 1
+        }
+      },
+      {
+        "ms": 102165,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "creationid-survives-grouping"
+        }
+      },
+      {
+        "ms": 105417,
+        "scope": "host",
+        "message": "scratch slide: the deck would not list its slides",
+        "data": {
+          "before": false,
+          "after": false
+        }
+      },
+      {
+        "ms": 105417,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "creationid-survives-grouping",
+          "answer": "no-scratch-slide",
+          "ms": 3252,
+          "pass": 1
+        }
+      },
+      {
+        "ms": 105417,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "rotation-keeps-the-unrotated-box"
+        }
+      },
+      {
+        "ms": 106379,
+        "scope": "host",
+        "message": "scratch slide: the deck would not list its slides",
+        "data": {
+          "before": false,
+          "after": false
+        }
+      },
+      {
+        "ms": 106380,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "rotation-keeps-the-unrotated-box",
+          "answer": "no-scratch-slide",
+          "ms": 963,
+          "pass": 1
+        }
+      },
+      {
+        "ms": 106380,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "named-preset-resolves"
+        }
+      },
+      {
+        "ms": 107540,
+        "scope": "host",
+        "message": "scratch slide: the deck would not list its slides",
+        "data": {
+          "before": false,
+          "after": false
+        }
+      },
+      {
+        "ms": 107540,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "named-preset-resolves",
+          "answer": "no-scratch-slide",
+          "ms": 1160,
+          "pass": 1
+        }
+      },
+      {
+        "ms": 107541,
+        "scope": "probe",
+        "message": "starting another pass over the questions",
+        "data": {
+          "pass": 2,
+          "asking": 13,
+          "of": 37,
+          "why": "31 of 37 were never put last pass — shortlist only"
+        }
+      },
+      {
+        "ms": 107541,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "shape-add-held-slide-proxy"
+        }
+      },
+      {
+        "ms": 108367,
+        "scope": "host",
+        "message": "scratch slide: the deck would not list its slides",
+        "data": {
+          "before": false,
+          "after": false
+        }
+      },
+      {
+        "ms": 108367,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "shape-add-held-slide-proxy",
+          "answer": "no-scratch-slide",
+          "ms": 826,
+          "pass": 2
+        }
+      },
+      {
+        "ms": 108367,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "binding-names-shape-later"
+        }
+      },
+      {
+        "ms": 111407,
+        "scope": "host",
+        "message": "scratch slide: the deck would not list its slides",
+        "data": {
+          "before": false,
+          "after": false
+        }
+      },
+      {
+        "ms": 111407,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "binding-names-shape-later",
+          "answer": "no-scratch-slide",
+          "ms": 3040,
+          "pass": 2
+        }
+      },
+      {
+        "ms": 111407,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "shape-add-positional-slide-proxy"
+        }
+      },
+      {
+        "ms": 112762,
+        "scope": "host",
+        "message": "scratch slide: the deck would not list its slides",
+        "data": {
+          "before": false,
+          "after": false
+        }
+      },
+      {
+        "ms": 112762,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "shape-add-positional-slide-proxy",
+          "answer": "no-scratch-slide",
+          "ms": 1355,
+          "pass": 2
+        }
+      },
+      {
+        "ms": 112762,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "shape-proxy-survives-one-sync"
+        }
+      },
+      {
+        "ms": 113815,
+        "scope": "host",
+        "message": "scratch slide: the deck would not list its slides",
+        "data": {
+          "before": false,
+          "after": false
+        }
+      },
+      {
+        "ms": 113815,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "shape-proxy-survives-one-sync",
+          "answer": "no-scratch-slide",
+          "ms": 1053,
+          "pass": 2
+        }
+      },
+      {
+        "ms": 113815,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "shapes-items-count-honest"
+        }
+      },
+      {
+        "ms": 115284,
+        "scope": "host",
+        "message": "scratch slide: the deck would not list its slides",
+        "data": {
+          "before": false,
+          "after": false
+        }
+      },
+      {
+        "ms": 115284,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "shapes-items-count-honest",
+          "answer": "no-scratch-slide",
+          "ms": 1469,
+          "pass": 2
+        }
+      },
+      {
+        "ms": 115284,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "shapes-items-via-positional-slide"
+        }
+      },
+      {
+        "ms": 116250,
+        "scope": "host",
+        "message": "scratch slide: the deck would not list its slides",
+        "data": {
+          "before": false,
+          "after": false
+        }
+      },
+      {
+        "ms": 116251,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "shapes-items-via-positional-slide",
+          "answer": "no-scratch-slide",
+          "ms": 967,
+          "pass": 2
+        }
+      },
+      {
+        "ms": 116251,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "tag-through-refetched-shape"
+        }
+      },
+      {
+        "ms": 117466,
+        "scope": "host",
+        "message": "scratch slide: the deck would not list its slides",
+        "data": {
+          "before": false,
+          "after": false
+        }
+      },
+      {
+        "ms": 117466,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "tag-through-refetched-shape",
+          "answer": "no-scratch-slide",
+          "ms": 1215,
+          "pass": 2
+        }
+      },
+      {
+        "ms": 117466,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "how-many-syncs-a-creation-handle-survives"
+        }
+      },
+      {
+        "ms": 118499,
+        "scope": "host",
+        "message": "scratch slide: the deck would not list its slides",
+        "data": {
+          "before": false,
+          "after": false
+        }
+      },
+      {
+        "ms": 118499,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "how-many-syncs-a-creation-handle-survives",
+          "answer": "no-scratch-slide",
+          "ms": 1033,
+          "pass": 2
+        }
+      },
+      {
+        "ms": 118499,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "how-many-collection-reads-a-context-survives"
+        }
+      },
+      {
+        "ms": 120043,
+        "scope": "host",
+        "message": "scratch slide: the deck would not list its slides",
+        "data": {
+          "before": false,
+          "after": false
+        }
+      },
+      {
+        "ms": 120043,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "how-many-collection-reads-a-context-survives",
+          "answer": "no-scratch-slide",
+          "ms": 1544,
+          "pass": 2
+        }
+      },
+      {
+        "ms": 120043,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "group-children-via-getcount"
+        }
+      },
+      {
+        "ms": 121226,
+        "scope": "host",
+        "message": "scratch slide: the deck would not list its slides",
+        "data": {
+          "before": false,
+          "after": false
+        }
+      },
+      {
+        "ms": 121226,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "group-children-via-getcount",
+          "answer": "no-scratch-slide",
+          "ms": 1183,
+          "pass": 2
+        }
+      },
+      {
+        "ms": 121226,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "picture-then-shape-read"
+        }
+      },
+      {
+        "ms": 121954,
+        "scope": "host",
+        "message": "scratch slide: the deck would not list its slides",
+        "data": {
+          "before": false,
+          "after": false
+        }
+      },
+      {
+        "ms": 121954,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "picture-then-shape-read",
+          "answer": "no-scratch-slide",
+          "ms": 728,
+          "pass": 2
+        }
+      },
+      {
+        "ms": 121954,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "shapes-by-index-vs-items"
+        }
+      },
+      {
+        "ms": 122775,
+        "scope": "host",
+        "message": "scratch slide: the deck would not list its slides",
+        "data": {
+          "before": false,
+          "after": false
+        }
+      },
+      {
+        "ms": 122775,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "shapes-by-index-vs-items",
+          "answer": "no-scratch-slide",
+          "ms": 821,
+          "pass": 2
+        }
+      },
+      {
+        "ms": 122775,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "rotation-keeps-the-unrotated-box"
+        }
+      },
+      {
+        "ms": 124084,
+        "scope": "host",
+        "message": "scratch slide: the deck would not list its slides",
+        "data": {
+          "before": false,
+          "after": false
+        }
+      },
+      {
+        "ms": 124084,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "rotation-keeps-the-unrotated-box",
+          "answer": "no-scratch-slide",
+          "ms": 1309,
+          "pass": 2
+        }
+      },
+      {
+        "ms": 124084,
+        "scope": "probe",
+        "message": "starting another pass over the questions",
+        "data": {
+          "pass": 3,
+          "asking": 13,
+          "of": 37,
+          "why": "13 of 13 were never put last pass — shortlist only"
+        }
+      },
+      {
+        "ms": 124084,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "shape-add-held-slide-proxy"
+        }
+      },
+      {
+        "ms": 125762,
+        "scope": "host",
+        "message": "scratch slide: the deck would not list its slides",
+        "data": {
+          "before": false,
+          "after": false
+        }
+      },
+      {
+        "ms": 125762,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "shape-add-held-slide-proxy",
+          "answer": "no-scratch-slide",
+          "ms": 1678,
+          "pass": 3
+        }
+      },
+      {
+        "ms": 125762,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "binding-names-shape-later"
+        }
+      },
+      {
+        "ms": 127300,
+        "scope": "host",
+        "message": "scratch slide: the deck would not list its slides",
+        "data": {
+          "before": false,
+          "after": false
+        }
+      },
+      {
+        "ms": 127300,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "binding-names-shape-later",
+          "answer": "no-scratch-slide",
+          "ms": 1538,
+          "pass": 3
+        }
+      },
+      {
+        "ms": 127300,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "shape-add-positional-slide-proxy"
+        }
+      },
+      {
+        "ms": 128164,
+        "scope": "host",
+        "message": "scratch slide: the deck would not list its slides",
+        "data": {
+          "before": false,
+          "after": false
+        }
+      },
+      {
+        "ms": 128164,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "shape-add-positional-slide-proxy",
+          "answer": "no-scratch-slide",
+          "ms": 864,
+          "pass": 3
+        }
+      },
+      {
+        "ms": 128165,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "shape-proxy-survives-one-sync"
+        }
+      },
+      {
+        "ms": 129712,
+        "scope": "host",
+        "message": "scratch slide: the deck would not list its slides",
+        "data": {
+          "before": false,
+          "after": false
+        }
+      },
+      {
+        "ms": 129713,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "shape-proxy-survives-one-sync",
+          "answer": "no-scratch-slide",
+          "ms": 1548,
+          "pass": 3
+        }
+      },
+      {
+        "ms": 129713,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "shapes-items-count-honest"
+        }
+      },
+      {
+        "ms": 132037,
+        "scope": "host",
+        "message": "scratch slide: the deck would not list its slides",
+        "data": {
+          "before": false,
+          "after": false
+        }
+      },
+      {
+        "ms": 132037,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "shapes-items-count-honest",
+          "answer": "no-scratch-slide",
+          "ms": 2324,
+          "pass": 3
+        }
+      },
+      {
+        "ms": 132037,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "shapes-items-via-positional-slide"
+        }
+      },
+      {
+        "ms": 133441,
+        "scope": "host",
+        "message": "scratch slide: the deck would not list its slides",
+        "data": {
+          "before": false,
+          "after": false
+        }
+      },
+      {
+        "ms": 133441,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "shapes-items-via-positional-slide",
+          "answer": "no-scratch-slide",
+          "ms": 1404,
+          "pass": 3
+        }
+      },
+      {
+        "ms": 133442,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "tag-through-refetched-shape"
+        }
+      },
+      {
+        "ms": 135576,
+        "scope": "host",
+        "message": "scratch slide: the deck would not list its slides",
+        "data": {
+          "before": false,
+          "after": false
+        }
+      },
+      {
+        "ms": 135576,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "tag-through-refetched-shape",
+          "answer": "no-scratch-slide",
+          "ms": 2134,
+          "pass": 3
+        }
+      },
+      {
+        "ms": 135576,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "how-many-syncs-a-creation-handle-survives"
+        }
+      },
+      {
+        "ms": 137193,
+        "scope": "host",
+        "message": "scratch slide: the deck would not list its slides",
+        "data": {
+          "before": false,
+          "after": false
+        }
+      },
+      {
+        "ms": 137193,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "how-many-syncs-a-creation-handle-survives",
+          "answer": "no-scratch-slide",
+          "ms": 1617,
+          "pass": 3
+        }
+      },
+      {
+        "ms": 137193,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "how-many-collection-reads-a-context-survives"
+        }
+      },
+      {
+        "ms": 138323,
+        "scope": "host",
+        "message": "scratch slide: the deck would not list its slides",
+        "data": {
+          "before": false,
+          "after": false
+        }
+      },
+      {
+        "ms": 138323,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "how-many-collection-reads-a-context-survives",
+          "answer": "no-scratch-slide",
+          "ms": 1130,
+          "pass": 3
+        }
+      },
+      {
+        "ms": 138324,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "group-children-via-getcount"
+        }
+      },
+      {
+        "ms": 140279,
+        "scope": "host",
+        "message": "scratch slide: the deck would not list its slides",
+        "data": {
+          "before": false,
+          "after": false
+        }
+      },
+      {
+        "ms": 140280,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "group-children-via-getcount",
+          "answer": "no-scratch-slide",
+          "ms": 1955,
+          "pass": 3
+        }
+      },
+      {
+        "ms": 140280,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "picture-then-shape-read"
+        }
+      },
+      {
+        "ms": 155383,
+        "scope": "host",
+        "message": "gave up waiting",
+        "data": {
+          "what": "adding a scratch slide",
+          "afterMs": 15000,
+          "afterAnswering": "listing the deck's slides",
+          "afterAnsweringMs": 96,
+          "idleMs": 0,
+          "shape": "issued immediately after the previous answer — an ordinary sequential gap, says little"
+        }
+      },
+      {
+        "ms": 155383,
+        "scope": "host",
+        "message": "no answer — asking the document what actually happened",
+        "data": {
+          "what": "adding a scratch slide",
+          "waitedMs": 15000
+        }
+      },
+      {
+        "ms": 155453,
+        "scope": "host",
+        "message": "scratch slide: the deck would not list its slides",
+        "data": {
+          "before": false,
+          "after": false
+        }
+      },
+      {
+        "ms": 155453,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "picture-then-shape-read",
+          "answer": "no-scratch-slide",
+          "ms": 15173,
+          "pass": 3
+        }
+      },
+      {
+        "ms": 155453,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "shapes-by-index-vs-items"
+        }
+      },
+      {
+        "ms": 170539,
+        "scope": "host",
+        "message": "gave up waiting",
+        "data": {
+          "what": "adding a scratch slide",
+          "afterMs": 15000,
+          "afterAnswering": "listing the deck's slides",
+          "afterAnsweringMs": 86,
+          "idleMs": 0,
+          "shape": "issued immediately after the previous answer — an ordinary sequential gap, says little"
+        }
+      },
+      {
+        "ms": 170539,
+        "scope": "host",
+        "message": "no answer — asking the document what actually happened",
+        "data": {
+          "what": "adding a scratch slide",
+          "waitedMs": 15000
+        }
+      },
+      {
+        "ms": 170611,
+        "scope": "host",
+        "message": "scratch slide: the deck would not list its slides",
+        "data": {
+          "before": false,
+          "after": false
+        }
+      },
+      {
+        "ms": 170611,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "shapes-by-index-vs-items",
+          "answer": "no-scratch-slide",
+          "ms": 15158,
+          "pass": 3
+        }
+      },
+      {
+        "ms": 170611,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "rotation-keeps-the-unrotated-box"
+        }
+      },
+      {
+        "ms": 185763,
+        "scope": "host",
+        "message": "gave up waiting",
+        "data": {
+          "what": "adding a scratch slide",
+          "afterMs": 15000,
+          "afterAnswering": "listing the deck's slides",
+          "afterAnsweringMs": 145,
+          "idleMs": 0,
+          "shape": "issued immediately after the previous answer — an ordinary sequential gap, says little"
+        }
+      },
+      {
+        "ms": 185763,
+        "scope": "host",
+        "message": "no answer — asking the document what actually happened",
+        "data": {
+          "what": "adding a scratch slide",
+          "waitedMs": 15000
+        }
+      },
+      {
+        "ms": 185834,
+        "scope": "host",
+        "message": "scratch slide: the deck would not list its slides",
+        "data": {
+          "before": false,
+          "after": false
+        }
+      },
+      {
+        "ms": 185834,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "rotation-keeps-the-unrotated-box",
+          "answer": "no-scratch-slide",
+          "ms": 15223,
+          "pass": 3
+        }
+      },
+      {
+        "ms": 185834,
+        "scope": "probe",
+        "message": "second pass over the questions that were never put",
+        "data": {
+          "count": 31
+        }
+      },
+      {
+        "ms": 185834,
+        "scope": "probe",
+        "message": "stopping the second pass — the host is not answering",
+        "data": {
+          "at": "load-isnullobject-populates"
+        }
+      },
+      {
+        "ms": 185834,
+        "scope": "probe",
+        "message": "second pass finished",
+        "data": {
+          "of": 31,
+          "rescued": 0
+        }
+      },
+      {
+        "ms": 186093,
+        "scope": "probe",
+        "message": "gave the scratch slides back",
+        "data": {
+          "returned": 0,
+          "swept": 0,
+          "left": 0,
+          "heldIds": [],
+          "deckIds": []
+        }
+      },
+      {
+        "ms": 186193,
+        "scope": "selftest",
+        "message": "scenario starting",
+        "data": {
+          "name": "insert on top of an earlier run",
+          "deckSlides": "unreadable",
+          "atMs": 186193
+        }
+      },
+      {
+        "ms": 190640,
+        "scope": "insert",
+        "message": "handed the host a generated deck",
+        "data": {
+          "expectedSlides": 2,
+          "landed": null,
+          "base64Bytes": 112852,
+          "formatting": "KeepSourceFormatting"
+        }
+      },
+      {
+        "ms": 194909,
+        "scope": "insert",
+        "message": "handed the host a generated deck",
+        "data": {
+          "expectedSlides": 2,
+          "landed": null,
+          "base64Bytes": 112852,
+          "formatting": "KeepSourceFormatting"
+        }
+      },
+      {
+        "ms": 195033,
+        "scope": "pane",
+        "message": "deck scan — asking how many slides",
+        "data": {
+          "withInventory": false,
+          "syncs": 492
+        }
+      },
+      {
+        "ms": 195096,
+        "scope": "pane",
+        "message": "scanned the deck for charts",
+        "data": {
+          "ms": 63,
+          "charts": 0,
+          "unread": 0,
+          "short": 0,
+          "tagsUnread": 0,
+          "complete": true
+        }
+      },
+      {
+        "ms": 195200,
+        "scope": "selftest",
+        "message": "scenario FAILED",
+        "data": {
+          "name": "insert on top of an earlier run",
+          "detail": "deck grew by NaN (want 4); 0 of 4 charts re-editable",
+          "ms": 8903,
+          "deckSlides": "unreadable",
+          "friction": {
+            "errors": 0,
+            "idRefusals": 0,
+            "generalExceptions": 0,
+            "emptyReReads": 0,
+            "shortReReads": 0,
+            "unmatchedReReads": 0,
+            "reReadsRepaired": 0
+          }
+        }
+      },
+      {
+        "ms": 195358,
+        "scope": "selftest",
+        "message": "scenario starting",
+        "data": {
+          "name": "two slides claiming one slot",
+          "deckSlides": "unreadable",
+          "atMs": 195358
+        }
+      },
+      {
+        "ms": 199907,
+        "scope": "insert",
+        "message": "handed the host a generated deck",
+        "data": {
+          "expectedSlides": 2,
+          "landed": null,
+          "base64Bytes": 112832,
+          "formatting": "KeepSourceFormatting"
+        }
+      },
+      {
+        "ms": 204031,
+        "scope": "insert",
+        "message": "handed the host a generated deck",
+        "data": {
+          "expectedSlides": 2,
+          "landed": null,
+          "base64Bytes": 112832,
+          "formatting": "KeepSourceFormatting"
+        }
+      },
+      {
+        "ms": 204101,
+        "scope": "host",
+        "message": "the deck's count came back short — re-reading after a settle",
+        "data": {
+          "wanted": null,
+          "settleMs": 4000
+        }
+      },
+      {
+        "ms": 208138,
+        "scope": "host",
+        "message": "the deck's count after a settle",
+        "data": {
+          "wanted": null
+        }
+      },
+      {
+        "ms": 208138,
+        "scope": "repair",
+        "message": "read the deck back",
+        "data": {
+          "range": [
+            null,
+            null
+          ],
+          "read": 0,
+          "unread": 0,
+          "withSlotTag": 0
+        }
+      },
+      {
+        "ms": 208209,
+        "scope": "pane",
+        "message": "deck scan — asking how many slides",
+        "data": {
+          "withInventory": false,
+          "syncs": 524
+        }
+      },
+      {
+        "ms": 208285,
+        "scope": "pane",
+        "message": "scanned the deck for charts",
+        "data": {
+          "ms": 76,
+          "charts": 0,
+          "unread": 0,
+          "short": 0,
+          "tagsUnread": 0,
+          "complete": true
+        }
+      },
+      {
+        "ms": 208418,
+        "scope": "selftest",
+        "message": "scenario FAILED",
+        "data": {
+          "name": "two slides claiming one slot",
+          "detail": "4 slides inserted, NaN kept, 0 of 2 still re-editable; 0 queued as duplicates",
+          "ms": 12927,
+          "deckSlides": "unreadable",
+          "friction": {
+            "errors": 0,
+            "idRefusals": 0,
+            "generalExceptions": 0,
+            "emptyReReads": 0,
+            "shortReReads": 0,
+            "unmatchedReReads": 0,
+            "reReadsRepaired": 0
+          }
+        }
+      },
+      {
+        "ms": 208521,
+        "scope": "selftest",
+        "message": "scenario starting",
+        "data": {
+          "name": "edit a chart on the visible slide",
+          "deckSlides": "unreadable",
+          "atMs": 208521
+        }
+      },
+      {
+        "ms": 208522,
+        "scope": "pane",
+        "message": "deck scan — asking how many slides",
+        "data": {
+          "withInventory": false,
+          "syncs": 530
+        }
+      },
+      {
+        "ms": 208692,
+        "scope": "pane",
+        "message": "scanned the deck for charts",
+        "data": {
+          "ms": 170,
+          "charts": 0,
+          "unread": 0,
+          "short": 0,
+          "tagsUnread": 0,
+          "complete": true
+        }
+      },
+      {
+        "ms": 208802,
+        "scope": "selftest",
+        "message": "scenario skipped",
+        "data": {
+          "name": "edit a chart on the visible slide",
+          "detail": "no probe chart in the deck to edit",
+          "ms": 172,
+          "deckSlides": "unreadable",
+          "friction": {
+            "errors": 0,
+            "idRefusals": 0,
+            "generalExceptions": 0,
+            "emptyReReads": 0,
+            "shortReReads": 0,
+            "unmatchedReReads": 0,
+            "reReadsRepaired": 0
+          },
+          "skipped": true
+        }
+      },
+      {
+        "ms": 209007,
+        "scope": "selftest",
+        "message": "scenario starting",
+        "data": {
+          "name": "insert onto a slide that already has content",
+          "deckSlides": "unreadable",
+          "atMs": 209007
+        }
+      },
+      {
+        "ms": 209007,
+        "scope": "pane",
+        "message": "deck scan — asking how many slides",
+        "data": {
+          "withInventory": false,
+          "syncs": 536
+        }
+      },
+      {
+        "ms": 209207,
+        "scope": "pane",
+        "message": "scanned the deck for charts",
+        "data": {
+          "ms": 200,
+          "charts": 0,
+          "unread": 0,
+          "short": 0,
+          "tagsUnread": 0,
+          "complete": true
+        }
+      },
+      {
+        "ms": 209273,
+        "scope": "selftest",
+        "message": "scenario skipped",
+        "data": {
+          "name": "insert onto a slide that already has content",
+          "detail": "no probe chart to insert alongside",
+          "ms": 200,
+          "deckSlides": "unreadable",
+          "friction": {
+            "errors": 0,
+            "idRefusals": 0,
+            "generalExceptions": 0,
+            "emptyReReads": 0,
+            "shortReReads": 0,
+            "unmatchedReReads": 0,
+            "reReadsRepaired": 0
+          },
+          "skipped": true
+        }
+      },
+      {
+        "ms": 209417,
+        "scope": "selftest",
+        "message": "scenario starting",
+        "data": {
+          "name": "same scale across the deck",
+          "deckSlides": "unreadable",
+          "atMs": 209417
+        }
+      },
+      {
+        "ms": 209418,
+        "scope": "pane",
+        "message": "deck scan — asking how many slides",
+        "data": {
+          "withInventory": false,
+          "syncs": 542
+        }
+      },
+      {
+        "ms": 209492,
+        "scope": "pane",
+        "message": "scanned the deck for charts",
+        "data": {
+          "ms": 73,
+          "charts": 0,
+          "unread": 0,
+          "short": 0,
+          "tagsUnread": 0,
+          "complete": true
+        }
+      },
+      {
+        "ms": 209616,
+        "scope": "selftest",
+        "message": "scenario skipped",
+        "data": {
+          "name": "same scale across the deck",
+          "detail": "fewer than two probe charts to scale together",
+          "ms": 75,
+          "deckSlides": "unreadable",
+          "friction": {
+            "errors": 0,
+            "idRefusals": 0,
+            "generalExceptions": 0,
+            "emptyReReads": 0,
+            "shortReReads": 0,
+            "unmatchedReReads": 0,
+            "reReadsRepaired": 0
+          },
+          "skipped": true
+        }
+      },
+      {
+        "ms": 209749,
+        "scope": "selftest",
+        "message": "scenario starting",
+        "data": {
+          "name": "one chart alone on a warm deck",
+          "deckSlides": "unreadable",
+          "atMs": 209749
+        }
+      },
+      {
+        "ms": 209749,
+        "scope": "pane",
+        "message": "deck scan — asking how many slides",
+        "data": {
+          "withInventory": false,
+          "syncs": 548
+        }
+      },
+      {
+        "ms": 209842,
+        "scope": "pane",
+        "message": "scanned the deck for charts",
+        "data": {
+          "ms": 93,
+          "charts": 0,
+          "unread": 0,
+          "short": 0,
+          "tagsUnread": 0,
+          "complete": true
+        }
+      },
+      {
+        "ms": 209929,
+        "scope": "selftest",
+        "message": "scenario skipped",
+        "data": {
+          "name": "one chart alone on a warm deck",
+          "detail": "no probe chart to update on its own",
+          "ms": 93,
+          "deckSlides": "unreadable",
+          "friction": {
+            "errors": 0,
+            "idRefusals": 0,
+            "generalExceptions": 0,
+            "emptyReReads": 0,
+            "shortReReads": 0,
+            "unmatchedReReads": 0,
+            "reReadsRepaired": 0
+          },
+          "skipped": true
+        }
+      },
+      {
+        "ms": 210067,
+        "scope": "selftest",
+        "message": "scenario starting",
+        "data": {
+          "name": "an update follows a moved chart",
+          "deckSlides": "unreadable",
+          "atMs": 210067
+        }
+      },
+      {
+        "ms": 210067,
+        "scope": "pane",
+        "message": "deck scan — asking how many slides",
+        "data": {
+          "withInventory": false,
+          "syncs": 554
+        }
+      },
+      {
+        "ms": 210174,
+        "scope": "pane",
+        "message": "scanned the deck for charts",
+        "data": {
+          "ms": 107,
+          "charts": 0,
+          "unread": 0,
+          "short": 0,
+          "tagsUnread": 0,
+          "complete": true
+        }
+      },
+      {
+        "ms": 210265,
+        "scope": "selftest",
+        "message": "scenario skipped",
+        "data": {
+          "name": "an update follows a moved chart",
+          "detail": "no probe chart in the deck to move",
+          "ms": 108,
+          "deckSlides": "unreadable",
+          "friction": {
+            "errors": 0,
+            "idRefusals": 0,
+            "generalExceptions": 0,
+            "emptyReReads": 0,
+            "shortReReads": 0,
+            "unmatchedReReads": 0,
+            "reReadsRepaired": 0
+          },
+          "skipped": true
+        }
+      },
+      {
+        "ms": 210395,
+        "scope": "selftest",
+        "message": "scenario starting",
+        "data": {
+          "name": "explode a degraded picture",
+          "deckSlides": "unreadable",
+          "atMs": 210395
+        }
+      },
+      {
+        "ms": 210395,
+        "scope": "pane",
+        "message": "deck scan — asking how many slides",
+        "data": {
+          "withInventory": false,
+          "syncs": 560
+        }
+      },
+      {
+        "ms": 210511,
+        "scope": "pane",
+        "message": "scanned the deck for charts",
+        "data": {
+          "ms": 116,
+          "charts": 0,
+          "unread": 0,
+          "short": 0,
+          "tagsUnread": 0,
+          "complete": true
+        }
+      },
+      {
+        "ms": 210622,
+        "scope": "selftest",
+        "message": "scenario skipped",
+        "data": {
+          "name": "explode a degraded picture",
+          "detail": "no probe chart in the deck to explode",
+          "ms": 116,
+          "deckSlides": "unreadable",
+          "friction": {
+            "errors": 0,
+            "idRefusals": 0,
+            "generalExceptions": 0,
+            "emptyReReads": 0,
+            "shortReReads": 0,
+            "unmatchedReReads": 0,
+            "reReadsRepaired": 0
+          },
+          "skipped": true
+        }
+      },
+      {
+        "ms": 210785,
+        "scope": "selftest",
+        "message": "scenario starting",
+        "data": {
+          "name": "which selection call wedges the host",
+          "deckSlides": "unreadable",
+          "atMs": 210785
+        }
+      },
+      {
+        "ms": 210786,
+        "scope": "pane",
+        "message": "deck scan — asking how many slides",
+        "data": {
+          "withInventory": false,
+          "syncs": 566
+        }
+      },
+      {
+        "ms": 210853,
+        "scope": "pane",
+        "message": "scanned the deck for charts",
+        "data": {
+          "ms": 67,
+          "charts": 0,
+          "unread": 0,
+          "short": 0,
+          "tagsUnread": 0,
+          "complete": true
+        }
+      },
+      {
+        "ms": 211029,
+        "scope": "selftest",
+        "message": "scenario skipped",
+        "data": {
+          "name": "which selection call wedges the host",
+          "detail": "no probe chart in the deck to select",
+          "ms": 68,
+          "deckSlides": "unreadable",
+          "friction": {
+            "errors": 0,
+            "idRefusals": 0,
+            "generalExceptions": 0,
+            "emptyReReads": 0,
+            "shortReReads": 0,
+            "unmatchedReReads": 0,
+            "reReadsRepaired": 0
+          },
+          "skipped": true
+        }
+      },
+      {
+        "ms": 211185,
+        "scope": "selftest",
+        "message": "scenario starting",
+        "data": {
+          "name": "a selected shape survives an insert",
+          "deckSlides": "unreadable",
+          "atMs": 211185
+        }
+      },
+      {
+        "ms": 211185,
+        "scope": "pane",
+        "message": "deck scan — asking how many slides",
+        "data": {
+          "withInventory": false,
+          "syncs": 572
+        }
+      },
+      {
+        "ms": 211292,
+        "scope": "pane",
+        "message": "scanned the deck for charts",
+        "data": {
+          "ms": 107,
+          "charts": 0,
+          "unread": 0,
+          "short": 0,
+          "tagsUnread": 0,
+          "complete": true
+        }
+      },
+      {
+        "ms": 211400,
+        "scope": "selftest",
+        "message": "scenario skipped",
+        "data": {
+          "name": "a selected shape survives an insert",
+          "detail": "no probe chart to select",
+          "ms": 107,
+          "deckSlides": "unreadable",
+          "friction": {
+            "errors": 0,
+            "idRefusals": 0,
+            "generalExceptions": 0,
+            "emptyReReads": 0,
+            "shortReReads": 0,
+            "unmatchedReReads": 0,
+            "reReadsRepaired": 0
+          },
+          "skipped": true
+        }
+      },
+      {
+        "ms": 211538,
+        "scope": "selftest",
+        "message": "scenario starting",
+        "data": {
+          "name": "edit the chart the user selected",
+          "deckSlides": "unreadable",
+          "atMs": 211538
+        }
+      },
+      {
+        "ms": 211539,
+        "scope": "pane",
+        "message": "deck scan — asking how many slides",
+        "data": {
+          "withInventory": false,
+          "syncs": 578
+        }
+      },
+      {
+        "ms": 211610,
+        "scope": "pane",
+        "message": "scanned the deck for charts",
+        "data": {
+          "ms": 71,
+          "charts": 0,
+          "unread": 0,
+          "short": 0,
+          "tagsUnread": 0,
+          "complete": true
+        }
+      },
+      {
+        "ms": 211738,
+        "scope": "selftest",
+        "message": "scenario skipped",
+        "data": {
+          "name": "edit the chart the user selected",
+          "detail": "no probe chart in the deck to select",
+          "ms": 71,
+          "deckSlides": "unreadable",
+          "friction": {
+            "errors": 0,
+            "idRefusals": 0,
+            "generalExceptions": 0,
+            "emptyReReads": 0,
+            "shortReReads": 0,
+            "unmatchedReReads": 0,
+            "reReadsRepaired": 0
+          },
+          "skipped": true
+        }
+      },
+      {
+        "ms": 211851,
+        "scope": "selftest",
+        "message": "scenario starting",
+        "data": {
+          "name": "stop a run part-way",
+          "deckSlides": "unreadable",
+          "atMs": 211851
+        }
+      },
+      {
+        "ms": 211960,
+        "scope": "pane",
+        "message": "stop requested",
+        "data": {}
+      },
+      {
+        "ms": 211963,
+        "scope": "error",
+        "message": "drawing the chart's shapes",
+        "data": {
+          "chart": "draw-1",
+          "error": "Stopped. | at=drawing the chart's shapes"
+        }
+      },
+      {
+        "ms": 212027,
+        "scope": "pane",
+        "message": "deck scan — asking how many slides",
+        "data": {
+          "withInventory": false,
+          "syncs": 588
+        }
+      },
+      {
+        "ms": 212116,
+        "scope": "pane",
+        "message": "scanned the deck for charts",
+        "data": {
+          "ms": 89,
+          "charts": 0,
+          "unread": 0,
+          "short": 0,
+          "tagsUnread": 0,
+          "complete": true
+        }
+      },
+      {
+        "ms": 212222,
+        "scope": "selftest",
+        "message": "scenario passed",
+        "data": {
+          "name": "stop a run part-way",
+          "detail": "stopped before the first batch — no shape was ever queued, nothing added, nothing left claiming to be a chart",
+          "ms": 265,
+          "deckSlides": "unreadable",
+          "friction": {
+            "errors": 1,
+            "idRefusals": 0,
+            "generalExceptions": 0,
+            "emptyReReads": 0,
+            "shortReReads": 0,
+            "unmatchedReReads": 0,
+            "reReadsRepaired": 0
+          }
+        }
+      },
+      {
+        "ms": 212354,
+        "scope": "selftest",
+        "message": "scenario starting",
+        "data": {
+          "name": "stop a run mid-draw",
+          "deckSlides": "unreadable",
+          "atMs": 212354
+        }
+      },
+      {
+        "ms": 212354,
+        "scope": "pane",
+        "message": "deck scan — asking how many slides",
+        "data": {
+          "withInventory": false,
+          "syncs": 594
+        }
+      },
+      {
+        "ms": 212447,
+        "scope": "pane",
+        "message": "scanned the deck for charts",
+        "data": {
+          "ms": 93,
+          "charts": 0,
+          "unread": 0,
+          "short": 0,
+          "tagsUnread": 0,
+          "complete": true
+        }
+      },
+      {
+        "ms": 212572,
+        "scope": "selftest",
+        "message": "scenario skipped",
+        "data": {
+          "name": "stop a run mid-draw",
+          "detail": "no probe chart, so the deck is not ready",
+          "ms": 93,
+          "deckSlides": "unreadable",
+          "friction": {
+            "errors": 0,
+            "idRefusals": 0,
+            "generalExceptions": 0,
+            "emptyReReads": 0,
+            "shortReReads": 0,
+            "unmatchedReReads": 0,
+            "reReadsRepaired": 0
+          },
+          "skipped": true
+        }
+      },
+      {
+        "ms": 212676,
+        "scope": "selftest",
+        "message": "scenario starting",
+        "data": {
+          "name": "the chart is actually visible",
+          "deckSlides": "unreadable",
+          "atMs": 212676
+        }
+      },
+      {
+        "ms": 212677,
+        "scope": "pane",
+        "message": "deck scan — asking how many slides",
+        "data": {
+          "withInventory": false,
+          "syncs": 600
+        }
+      },
+      {
+        "ms": 212790,
+        "scope": "pane",
+        "message": "scanned the deck for charts",
+        "data": {
+          "ms": 113,
+          "charts": 0,
+          "unread": 0,
+          "short": 0,
+          "tagsUnread": 0,
+          "complete": true
+        }
+      },
+      {
+        "ms": 212865,
+        "scope": "selftest",
+        "message": "scenario skipped",
+        "data": {
+          "name": "the chart is actually visible",
+          "detail": "no slide from this run to draw a chart on",
+          "ms": 113,
+          "deckSlides": "unreadable",
+          "friction": {
+            "errors": 0,
+            "idRefusals": 0,
+            "generalExceptions": 0,
+            "emptyReReads": 0,
+            "shortReReads": 0,
+            "unmatchedReReads": 0,
+            "reReadsRepaired": 0
+          },
+          "skipped": true
+        }
+      },
+      {
+        "ms": 213008,
+        "scope": "selftest",
+        "message": "scenario starting",
+        "data": {
+          "name": "does a rasterise poison the next draw",
+          "deckSlides": "unreadable",
+          "atMs": 213008
+        }
+      },
+      {
+        "ms": 213008,
+        "scope": "pane",
+        "message": "deck scan — asking how many slides",
+        "data": {
+          "withInventory": false,
+          "syncs": 606
+        }
+      },
+      {
+        "ms": 213076,
+        "scope": "pane",
+        "message": "scanned the deck for charts",
+        "data": {
+          "ms": 68,
+          "charts": 0,
+          "unread": 0,
+          "short": 0,
+          "tagsUnread": 0,
+          "complete": true
+        }
+      },
+      {
+        "ms": 213195,
+        "scope": "selftest",
+        "message": "scenario skipped",
+        "data": {
+          "name": "does a rasterise poison the next draw",
+          "detail": "no probe chart to draw beside",
+          "ms": 68,
+          "deckSlides": "unreadable",
+          "friction": {
+            "errors": 0,
+            "idRefusals": 0,
+            "generalExceptions": 0,
+            "emptyReReads": 0,
+            "shortReReads": 0,
+            "unmatchedReReads": 0,
+            "reReadsRepaired": 0
+          },
+          "skipped": true
+        }
+      },
+      {
+        "ms": 213318,
+        "scope": "selftest",
+        "message": "scenario starting",
+        "data": {
+          "name": "a chart of rotated shapes",
+          "deckSlides": "unreadable",
+          "atMs": 213318
+        }
+      },
+      {
+        "ms": 213319,
+        "scope": "pane",
+        "message": "deck scan — asking how many slides",
+        "data": {
+          "withInventory": false,
+          "syncs": 612
+        }
+      },
+      {
+        "ms": 213371,
+        "scope": "pane",
+        "message": "scanned the deck for charts",
+        "data": {
+          "ms": 52,
+          "charts": 0,
+          "unread": 0,
+          "short": 0,
+          "tagsUnread": 0,
+          "complete": true
+        }
+      },
+      {
+        "ms": 213514,
+        "scope": "selftest",
+        "message": "scenario skipped",
+        "data": {
+          "name": "a chart of rotated shapes",
+          "detail": "no probe chart to place a line chart beside",
+          "ms": 52,
+          "deckSlides": "unreadable",
+          "friction": {
+            "errors": 0,
+            "idRefusals": 0,
+            "generalExceptions": 0,
+            "emptyReReads": 0,
+            "shortReReads": 0,
+            "unmatchedReReads": 0,
+            "reReadsRepaired": 0
+          },
+          "skipped": true
+        }
+      },
+      {
+        "ms": 213514,
+        "scope": "pane",
+        "message": "deck scan — asking how many slides",
+        "data": {
+          "withInventory": false,
+          "syncs": 616
+        }
+      },
+      {
+        "ms": 213607,
+        "scope": "pane",
+        "message": "scanned the deck for charts",
+        "data": {
+          "ms": 93,
+          "charts": 0,
+          "unread": 0,
+          "short": 0,
+          "tagsUnread": 0,
+          "complete": true
+        }
+      },
+      {
+        "ms": 215466,
+        "scope": "pane",
+        "message": "collecting deck evidence — scanning",
+        "data": {
+          "knownBefore": null,
+          "syncs": 622
+        }
+      },
+      {
+        "ms": 215466,
+        "scope": "pane",
+        "message": "deck scan — asking how many slides",
+        "data": {
+          "withInventory": true,
+          "syncs": 622
+        }
+      },
+      {
+        "ms": 215530,
+        "scope": "pane",
+        "message": "scanned the deck for charts",
+        "data": {
+          "ms": 64,
+          "charts": 0,
+          "unread": 0,
+          "short": 0,
+          "tagsUnread": 0,
+          "complete": true
+        }
+      },
+      {
+        "ms": 215530,
+        "scope": "pane",
+        "message": "collecting deck evidence — listing slide ids",
+        "data": {
+          "charts": 0
+        }
+      },
+      {
+        "ms": 215628,
+        "scope": "pane",
+        "message": "collecting deck evidence — shooting slides",
+        "data": {
+          "slides": 0,
+          "max": 200
+        }
+      },
+      {
+        "ms": 215628,
+        "scope": "pane",
+        "message": "collecting deck evidence — done",
+        "data": {
+          "shots": 0
+        }
+      }
+    ],
+    "dropped": 0
+  },
+  "deck": {
+    "inventory": [],
+    "newSlides": [],
+    "beforeUnknown": true,
+    "shots": []
+  },
+  "syncs": 626,
+  "driverSlideSize": "4:3",
+  "driverDeck": "Presentation70.pptx",
+  "driverRun": {
+    "attempts": 2,
+    "recovered": [
+      "not-ready:pane-closed"
+    ],
+    "fresh": true,
+    "deep": false,
+    "waitedForDeploy": false,
+    "startedAt": "2026-09-02T13:42:03.704Z",
+    "sessionIndex": 1,
+    "sincePrevRoundMs": null,
+    "sessionStartedAt": "2026-09-02T13:42:03.704Z",
+    "sessionElapsedMs": 0,
+    "deck": "Presentation70"
+  }
+}

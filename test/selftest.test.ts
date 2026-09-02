@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "fs";
+import { deckGrowth } from "../src/taskpane/selftest";
 import {
   installHost,
   makeSlide,
@@ -3586,4 +3587,60 @@ describe("a chart of rotated shapes", () => {
   // the cleanup is removed, because it asserts the CONSEQUENCE (a chart left on
   // top of another) rather than the mechanism. Verified by mutating
   // `await clean()` away and watching that test, not this one, go red.
+});
+
+describe("a slide count nobody took", () => {
+  /**
+   * `slideCount()` RETURNS UNDEFINED ON A HOST THAT WILL NOT ANSWER, on
+   * purpose — its docstring says "No safe default here, deliberately … Not
+   * knowing has to stay distinguishable from knowing." Three scenarios
+   * subtracted the two numbers anyway, and unknown arrived dressed as a
+   * measurement in two opposite costumes.
+   */
+  it("is not a growth of NaN, and not a growth of zero either", () => {
+    expect(deckGrowth(3, 7)).toBe(4);
+    expect(deckGrowth(7, 7)).toBe(0);
+    expect(deckGrowth(7, 3), "a deck that shrank is still a measurement").toBe(-4);
+
+    /**
+     * ROUND 360, THE LOUD COSTUME. `insertTwice` filed **"deck grew by NaN
+     * (want 4); 0 of 4 charts re-editable"** as a hard FAILED verdict. That
+     * sentence reads as measured data loss and sends a maintainer after the
+     * insert path; nothing had been measured at all.
+     */
+    expect(deckGrowth(undefined, 7), "an unread `before` produced a number").toBeNull();
+    expect(deckGrowth(3, undefined), "an unread `after` produced a number").toBeNull();
+    expect(deckGrowth(undefined, undefined)).toBeNull();
+    // NaN is the shape the bug actually took — a subtraction that already
+    // happened — so it is pinned separately from undefined.
+    expect(deckGrowth(NaN, 7), "NaN was passed through as a growth").toBeNull();
+    expect(deckGrowth(3, NaN)).toBeNull();
+  });
+
+  it("fires the guards it used to silence", () => {
+    /**
+     * THE QUIET COSTUME, and the worse one. `after !== before` is FALSE when
+     * both are undefined, so an unreadable deck read as "it did not grow" —
+     * precisely the condition those two lines exist to detect — and the
+     * scenario passed on no evidence.
+     *
+     * One of them guards that Stop is non-destructive, which nothing else in
+     * this suite checks. A guard that cannot fire on no evidence is not a
+     * guard, and this is the same mistake `blindSkip` was written for one
+     * measurement over: the scan version was swept and the COUNT version was
+     * not, because at the call site they look nothing alike.
+     *
+     * Asserted as source because reaching those two lines needs a host that
+     * answers a scan and refuses a count, and the fake has no fault for it.
+     */
+    const src = readFileSync("src/taskpane/selftest.ts", "utf8");
+    const unguarded = src.match(/after !== before && `the deck grew by/g) ?? [];
+    expect(unguarded, "a scenario went back to reading an unread count as no growth").toHaveLength(0);
+    // Each of the three call sites goes through the helper.
+    expect((src.match(/deckGrowth\(before, after\)/g) ?? []).length).toBeGreaterThanOrEqual(3);
+    // And the loud one skips rather than failing.
+    expect(src, "an unread count no longer skips the scenario").toMatch(
+      /const grew = deckGrowth\(before, after\);\s*\n\s*if \(grew === null\) return countlessSkip\(\);/,
+    );
+  });
 });

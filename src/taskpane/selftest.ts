@@ -385,6 +385,45 @@ const blindSkip = (gap: string) => ({
   detail: `the deck scan could not see the whole deck (${gap}), so nothing it did not find means anything`,
 });
 
+/**
+ * How many slides the deck gained between two counts — or null when either
+ * count was never taken.
+ *
+ * `slideCount()` RETURNS UNDEFINED ON A HOST THAT WILL NOT ANSWER, and does so
+ * on purpose: its own docstring says "No safe default here, deliberately …
+ * Not knowing has to stay distinguishable from knowing." Three callers here
+ * subtracted the two numbers anyway, and unknown arrived dressed as a
+ * measurement in two different costumes.
+ *
+ * ROUND 360 IS THE FIRST COSTUME. `insertTwice` reported **"deck grew by NaN
+ * (want 4); 0 of 4 charts re-editable"** as a hard FAILED verdict — a sentence
+ * that reads as measured data loss and sends a maintainer after the insert
+ * path. Nothing had been measured; the host would not say how big the deck was.
+ *
+ * The other two are worse, because they are silent. `after !== before` is
+ * FALSE when both are undefined, so an unreadable count reads as "the deck did
+ * not grow" — the exact thing those lines exist to detect — and the scenario
+ * passes. A guard that cannot fire on no evidence is not a guard.
+ *
+ * THIS IS THE SWEEP THE SCAN VERSION NEVER GOT. `insertOntoUsedSlide` was
+ * fixed for precisely this shape — the comment inside `insertTwice` says so —
+ * and its siblings were left. That was about a blind SCAN; this is the same
+ * mistake one measurement over, in the COUNTS, and it survived the first sweep
+ * because the two look nothing alike at the call site.
+ */
+export function deckGrowth(before: number | undefined, after: number | undefined): number | null {
+  return typeof before === "number" && typeof after === "number" && Number.isFinite(before) && Number.isFinite(after)
+    ? after - before
+    : null;
+}
+
+/** What a scenario says when the host would not give it a slide count. */
+const countlessSkip = () => ({
+  ok: false,
+  skipped: true,
+  detail: "the host would not say how many slides the deck holds, so nothing about what it gained means anything",
+});
+
 type Scenario = (prefix: string) => Promise<{ ok: boolean; detail: string; skipped?: boolean; blind?: boolean }>;
 
 /**
@@ -414,10 +453,15 @@ const insertTwice: Scenario = async (prefix) => {
   // tag-write path; this repo has already spent rounds on that hunt.
   const { found, blind, gap } = await probeCharts(`${prefix} twice`);
   if (blind) return blindSkip(gap);
-  const ok = after - before === 4 && found.length === 4;
+  // An unread count is not a growth of NaN — see `deckGrowth`. Round 360 filed
+  // this scenario FAILED with "deck grew by NaN (want 4)", which reads as
+  // measured data loss and was nothing of the kind.
+  const grew = deckGrowth(before, after);
+  if (grew === null) return countlessSkip();
+  const ok = grew === 4 && found.length === 4;
   return {
     ok,
-    detail: `deck grew by ${after - before} (want 4); ${found.length} of 4 charts re-editable`,
+    detail: `deck grew by ${grew} (want 4); ${found.length} of 4 charts re-editable`,
   };
 };
 
@@ -1520,7 +1564,13 @@ const insertOntoUsedSlide: Scenario = async (prefix) => {
   if (mineBlind || rescan.blind) return blindSkip(rescan.blind ? rescan.gap : mineGap);
   const survivor = rescan.found.find((c) => c.cfg.title === host.cfg.title);
   const problems = [
-    after !== before && `the deck grew by ${after - before} — the charts did not go ON the slide`,
+    // `after !== before` was FALSE when the host answered neither, so an
+    // unreadable deck read as "it did not grow" — a clean pass on no evidence.
+    // See `deckGrowth`; unknown is now its own problem rather than a silence.
+    deckGrowth(before, after) === null
+      ? "the host would not say how many slides the deck holds, so nothing here proves the charts went ON the slide"
+      : deckGrowth(before, after) !== 0 &&
+        `the deck grew by ${deckGrowth(before, after)} — the charts did not go ON the slide`,
     mine.length !== added.length && `${mine.length} of ${added.length} new charts are re-editable`,
     !survivor && "the chart already on the slide is no longer re-editable",
   ].filter(Boolean);
@@ -1717,7 +1767,13 @@ const stopPartWay: Scenario = async (prefix) => {
   if (leftovers.blind && leftovers.found.length === 0) return blindSkip(leftovers.gap);
   const problems = [
     outcome !== "stopped" && outcome,
-    after !== before && `the deck grew by ${after - before} — a stopped insert added a slide`,
+    // Same silence as the sibling above, guarding a stronger promise: that Stop
+    // is non-destructive. `after !== before` cannot fire when neither count was
+    // taken, so the one assertion nothing else makes passed on no evidence.
+    deckGrowth(before, after) === null
+      ? "the host would not say how many slides the deck holds, so nothing here proves a stopped insert added none"
+      : deckGrowth(before, after) !== 0 &&
+        `the deck grew by ${deckGrowth(before, after)} — a stopped insert added a slide`,
     // A stop must not leave a chart the pane would offer to edit: half a chart
     // that claims to be whole is worse than a visible mess.
     leftovers.found.length > 0 && "a stopped insert left a re-editable chart behind",
