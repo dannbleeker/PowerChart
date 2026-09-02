@@ -2418,7 +2418,14 @@ export function recoveryLabel(reason, codes) {
   return Array.isArray(codes) && codes.length ? `${reason}:${[...codes].sort().join("+")}` : String(reason);
 }
 
-export async function keepCrashedRun(sh, sleep, copy = copyFileSync, exists = existsSync) {
+export async function keepCrashedRun(
+  sh,
+  sleep,
+  copy = copyFileSync,
+  exists = existsSync,
+  read = readFileSync,
+  write = writeFileSync,
+) {
   try {
     const ref = refFor(sh, "Download the crashed run", /button "Download the crashed run"/);
     // Nothing kept, or a previous attempt already saved it — `clearCrashLog`
@@ -2433,7 +2440,44 @@ export async function keepCrashedRun(sh, sleep, copy = copyFileSync, exists = ex
     }
     const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
     const to = `crashes/${stamp}-crashed-run.json`;
-    copy(from, to);
+    /**
+     * STAMPED WITH THE TAB IN FRONT, and named for exactly what that is.
+     *
+     * 160 crash records name no document, and they are the half of the archive
+     * that matters most: 61 of them are the 4:3 arm, which is the arm the whole
+     * enquiry is about. Without a document name, "4:3 crashes far more" and
+     * "that one file is sick" are the same sentence.
+     *
+     * BUT THIS IS NOT THE DECK THAT CRASHED, and calling it one would be worse
+     * than recording nothing. `keepCrashedRun` runs at the START of the next
+     * round — see the call site — rescuing the previous round's remains before
+     * they are overwritten. What is in front now is the NEXT round's starting
+     * state. On the ordinary path recovery has reopened the same document and
+     * the two agree; after a `--fresh` restart or a cycle changing legs they
+     * need not. A field called `driverDeck` here would be read as the crashed
+     * round's deck by every future query, including the ones that matter.
+     *
+     * So it is named for the reading actually taken. In a controlled run where
+     * `PW_DECK` is pinned for the leg it is exact; when mining the archive it is
+     * a strong hint that says so.
+     *
+     * PARSE-AND-WRITE, falling back to the byte copy on anything unexpected. A
+     * crash record that arrives malformed is still the only copy of a round that
+     * died, and losing it to a stamping error would be the worst trade in this
+     * file. Two-space JSON with a trailing newline, because `crashes/` is not in
+     * `.prettierignore` and the gate checks it.
+     */
+    let stamped = false;
+    try {
+      const log = JSON.parse(read(from, "utf8"));
+      log.frontedWhenRescued = frontedDeck(sh) ?? null;
+      log.deckAskedNextRound = process.env.PW_DECK ?? null;
+      write(to, JSON.stringify(log, null, 2) + "\n");
+      stamped = true;
+    } catch (err) {
+      console.error(`  (could not stamp the crashed run, keeping the bytes as they came: ${err?.message ?? err})`);
+    }
+    if (!stamped) copy(from, to);
     console.log(`  kept the steps of a round that never finished — ${to}`);
     return to;
   } catch (err) {
@@ -2494,7 +2538,22 @@ async function collectRound(sh, stamp, sleep, driverSize = null, driverRun = nul
     const logPath = found[0].p;
     if (found.length > 1 && found[0].p !== candidates[0])
       console.log(`  the run log landed in ${logPath}, not where this invocation looked — using the newer one`);
-    filed = archive(logPath, "rounds", readFileSync, writeFileSync, everyRoundEverFiled, stamp, driverSize, driverRun);
+    // `frontedDeck` READ HERE, not passed down from the readiness block, so the
+    // field says which document the evidence was collected FROM rather than
+    // which one was in front when the round was judged worth starting. On the
+    // ordinary path they are the same tab; when they are not, this is the one
+    // that describes the file being archived.
+    filed = archive(
+      logPath,
+      "rounds",
+      readFileSync,
+      writeFileSync,
+      everyRoundEverFiled,
+      stamp,
+      driverSize,
+      driverRun,
+      frontedDeck(sh) ?? null,
+    );
     console.log(`  archived as rounds/${filed}`);
   } catch (err) {
     // Named, never swallowed. A round whose log was not filed is a round that
@@ -3484,6 +3543,27 @@ async function main(argv, deps = {}) {
             sincePrevRoundMs: session.sincePrevMs,
             sessionStartedAt: session.startedAt,
             sessionElapsedMs: session.elapsedMs,
+            /**
+             * WHICH DOCUMENT THIS LEG WAS TOLD TO RUN AGAINST.
+             *
+             * The other half of `driverDeck`, and not the same fact. That one
+             * is a MEASUREMENT — the tab that was actually in front when the
+             * evidence was collected. This one is the INSTRUCTION, and it
+             * belongs beside `fresh`, `deep` and `waitedForDeploy` because like
+             * them it says what the caller asked for rather than what happened.
+             *
+             * The two disagree in exactly the state the driver already refuses
+             * on: `deck-missing`, where the named deck is not open and the round
+             * would otherwise measure whichever document was. Recording only the
+             * measurement would leave that disagreement invisible on every round
+             * that did NOT trip the refusal — including any run where a cycle's
+             * `PW_DECK` was misaimed and the right deck happened to be in front.
+             *
+             * Null when nothing was named, which is the ordinary path: the round
+             * runs against whatever is fronted, and saying so is honest where
+             * defaulting to `DECK_NAME` would invent an instruction nobody gave.
+             */
+            deck: process.env.PW_DECK ?? null,
           },
         },
         sh,
@@ -3634,8 +3714,16 @@ export function archive(
    * Recording the driver's reading beside the pane's is what makes the
    * comparison possible at all. Null when the driver could not read it — an
    * absent second opinion must never read as agreement.
+   *
+   * DEFAULTS TO `undefined`, NOT NULL, and the distinction is load-bearing
+   * rather than pedantic. Null is now WRITTEN to the round file — it is how a
+   * reader sees that the driver looked and the host would not answer — so a
+   * default of null would stamp that same claim onto every caller that never
+   * offered a reading, `--archive` by hand included. Passing null explicitly
+   * still means what it always meant; omitting the argument now means nobody
+   * asked, which is a third state the field did not used to have.
    */
-  driverSize = null,
+  driverSize = undefined,
   /**
    * WHAT THE DRIVER HAD TO DO TO GET THIS ROUND.
    *
@@ -3654,6 +3742,13 @@ export function archive(
    * Null when unknown — an absent reading must never read as "no recoveries".
    */
   driverRun = null,
+  /**
+   * WHICH DOCUMENT WAS IN FRONT when this round's evidence was collected.
+   *
+   * Left `undefined` by default rather than null, because the two mean
+   * different things and both will occur — see where it is written below.
+   */
+  driverDeck = undefined,
 ) {
   const round = stripImages(JSON.parse(read(logPath, "utf8")));
   const build = buildOf(round.build);
@@ -3739,7 +3834,54 @@ export function archive(
   // left exactly as the pane reported it — an archive that quietly corrected
   // itself would destroy the evidence that the two ever disagreed, which is the
   // only thing that makes the disagreement findable.
-  if (driverSize) round.driverSlideSize = driverSize;
+  //
+  // AND WRITTEN EVEN WHEN THE DRIVER COULD NOT READ IT. `if (driverSize)`
+  // dropped the field entirely on a failed read, so a round nobody had verified
+  // the arm of looked exactly like one from a build that never checked: 3 of the
+  // last 120 archived rounds carry no `driverSlideSize`, and nothing on disk
+  // says whether that means "looked and could not tell" or "never looked".
+  //
+  // That matters more here than almost anywhere, because the pane's own reading
+  // is the one known to be wrong: on rounds 115 and 116 the pane fell to its
+  // last rung and reported a saved 720x540 file for a deck the driver had twice
+  // measured live at 960x540. When the driver's reading is missing, the only
+  // number left is the one that has already lied once. A reader must be able to
+  // see that, so `null` is written and the third state — the field absent —
+  // keeps its own meaning: an older build, or `--archive` run by hand.
+  if (driverSize !== undefined) round.driverSlideSize = driverSize ?? null;
+  /**
+   * WHICH DOCUMENT THIS ROUND RAN AGAINST.
+   *
+   * Read from the tab that is actually in front rather than from `PW_DECK`,
+   * because `PW_DECK` says only what was ASKED for and is null on the ordinary
+   * path — and the whole point of this field is to be true on the days nobody
+   * was being careful.
+   *
+   * NOTHING IN THIS ARCHIVE HAS EVER RECORDED IT. 0 of 408 files under
+   * `rounds/` and `crashes/` name a document. So deck identity and slide
+   * profile are perfectly confounded: every 4:3 round ran one file and every
+   * 16:9 round another, and the strongest contrast this repo owns — 4:3
+   * crashing on 52 of 73 attempts against 0 of 51 at 16:9, over the 25 builds
+   * that ran both arms — is equally consistent with "that one file is sick".
+   * A whole line of enquiry cannot be settled from the archive for want of one
+   * string per round.
+   *
+   * No round already filed can be repaired. This exists so the next comparison
+   * is not born confounded too.
+   *
+   * WRITTEN EVEN WHEN NULL, against the `driverSlideSize` line above rather
+   * than with it. Absent and null are different facts here and both will occur:
+   * absent means a build that never looked, null means this build looked and
+   * the tab list would not say. Collapsing them is this repo's most repeated
+   * defect — unknown printed as nothing — and the field is new, so there is no
+   * back-compatibility reason to inherit it.
+   *
+   * `undefined` is the third state and it is why this is not a `?? null`: it
+   * means the caller never offered a reading. `--archive` by hand does not know
+   * which tab was in front, and stamping `null` there would claim a look that
+   * nobody took — the same collapse this field exists to avoid, one level up.
+   */
+  if (driverDeck !== undefined) round.driverDeck = driverDeck;
   if (driverRun) round.driverRun = driverRun;
   write(`${dir}/${name}`, JSON.stringify(round, null, 2) + "\n");
   return name;

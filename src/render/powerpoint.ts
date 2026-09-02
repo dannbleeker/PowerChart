@@ -27,6 +27,86 @@ import { DECK_STYLE_NS, isEmptyStyle, styleFromXml, styleToXml, type DeckStyle }
 
 /* global PowerPoint, Office */
 
+/**
+ * How many `context.sync()` calls this round has made.
+ *
+ * WHY COUNT SYNCS AND NOT SHAPES. office-js#6329 reports that on PowerPoint for
+ * the web every `context.sync()` forces a FULL PRESENTATION SAVE, read-only
+ * syncs included; its independent duplicate #6740 measured autosave firing once
+ * per iteration of a sync loop. Microsoft marked #6329 fixed on 2026-08-10 and
+ * the reporter rebutted it with video thirty minutes later; it still carries
+ * both "Status: fixed" and "Needs: author feedback".
+ *
+ * If that is true here, the load this add-in puts on the save channel is
+ * proportional to SYNCS, not to shapes — and every crash number this repo owns
+ * is indexed by shapes. The archive cannot answer "does crash risk track sync
+ * count" for a single round, because nothing has ever counted them.
+ *
+ * It also points `SHAPES_PER_SYNC` the wrong way if true: that constant is 10
+ * because the live canvas stops answering past roughly twenty shapes in one
+ * batch, which is a REPAINT limit — but a smaller batch means MORE syncs, and
+ * therefore more forced saves. The two failure modes pull in opposite
+ * directions and nothing has ever measured the second. This is that instrument.
+ */
+let SYNCS = 0;
+
+/** The round's sync count so far. Banked with the outcome; see `app.ts`. */
+export function syncsSoFar(): number {
+  return SYNCS;
+}
+
+/** Zero the counter at the top of a run, so a count belongs to one round. */
+export function resetSyncCount(): void {
+  SYNCS = 0;
+}
+
+/**
+ * `PowerPoint.run`, with the context's `sync` counted.
+ *
+ * EVERY run goes through here, and a test asserts that by allowing exactly one
+ * bare call to Office.js's own runner in this file — the one below, which the
+ * test matches literally, so do not name it in prose here or the count is two.
+ * That matters more than
+ * the usual amount: an instrument that misses a call site does not read low, it
+ * reads WRONG, and a sync count that silently omits one path would be used to
+ * exonerate the very path it cannot see.
+ *
+ * PATCHED ON THE CONTEXT rather than counted at each of the 90 call sites,
+ * because 90 edits is 90 chances to miss one and this is a single seam. All 90
+ * are `context.sync()` or `retryContext.sync()`, both handed to the callback by
+ * this function, and nothing destructures `sync` — so wrapping it here before
+ * the callback runs is complete by construction.
+ *
+ * The wrapper adds no host call and changes no behaviour: it increments a
+ * number and returns the original promise.
+ */
+function ppRun<T>(fn: (context: PowerPoint.RequestContext) => Promise<T>): Promise<T> {
+  return PowerPoint.run(async (context: PowerPoint.RequestContext) => {
+    /**
+     * IDEMPOTENT, because wrapping a wrapper counts twice.
+     *
+     * Real Office.js hands out a fresh context per run, so this never arises
+     * there — but nothing in the contract PROMISES that, and the moment a host
+     * reuses one, every sync through it is counted once more than the run
+     * before. A double-counting instrument is worse than none: it would make
+     * sync load look like it climbed through a session that was flat.
+     *
+     * The flag rides on the function so the check costs a property read.
+     */
+    type Counted = typeof context.sync & { counted?: true };
+    if (!(context.sync as Counted).counted) {
+      const sync = context.sync.bind(context);
+      const counted = (() => {
+        SYNCS++;
+        return sync();
+      }) as Counted;
+      counted.counted = true;
+      context.sync = counted;
+    }
+    return fn(context);
+  });
+}
+
 export interface InsertOptions {
   /** Top-left of the chart frame on the slide, in points. */
   left?: number;
@@ -1564,7 +1644,7 @@ async function insertSceneIntoSlideInner(
   // See `settleAndTagChart`: on PowerPoint web this is the difference between
   // an inserted chart and a re-editable one.
   const untagged: { key: string; slideId: string; tagData: string; shapeId?: string }[] = [];
-  const inserted = await PowerPoint.run(async (context) => {
+  const inserted = await ppRun(async (context) => {
     // Held for the whole draw, and that is a KNOWN, UNFIXED risk when the
     // caller names a freshly-added slide.
     //
@@ -1824,7 +1904,7 @@ export function _setCountSettleDelayForTest(ms: number): void {
 async function countSlideShapesOnce(ids: string[]): Promise<Map<string, number>> {
   const out = new Map<string, number>();
   try {
-    await PowerPoint.run(async (context) => {
+    await ppRun(async (context) => {
       const asked = ids.map((id) => ({ id, c: context.presentation.slides.getItemOrNullObject(id).shapes.getCount() }));
       await boundedSync(context, "counting a slide's shapes for the orphan check");
       for (const { id, c } of asked) {
@@ -1953,7 +2033,7 @@ export async function slideOccupancy(slideIds: string[]): Promise<Map<string, nu
  */
 export async function addSlideForChart(): Promise<string | null> {
   try {
-    return await PowerPoint.run(async (context) => {
+    return await ppRun(async (context) => {
       const thunks = await addSlides(context, 1, await blankLayoutId(context));
       if (!thunks.length) return null;
       const slide = thunks[0]();
@@ -2385,7 +2465,7 @@ export async function deleteShapesById(slideId: string, ids: string[]): Promise<
   // as office-js #2903. Rounds 242 and 243 are what that looks like.
   forgetNamedShape(ids);
   try {
-    return await PowerPoint.run(async (context) => {
+    return await ppRun(async (context) => {
       const slide = context.presentation.slides.getItemOrNullObject(slideId);
       queueNullCheck(slide);
       await context.sync();
@@ -2488,7 +2568,7 @@ export async function updateChartsInSlides(
    * `items` is not that space. See where this is filled, inside the map below.
    */
   const planned: (string | undefined)[] = [];
-  const updated = await PowerPoint.run(async (context) => {
+  const updated = await ppRun(async (context) => {
     // 1. Resolve every old shape — one sync for all of them.
     //
     // getItemOrNullObject, never getItem: a target names a slide that the user
@@ -3515,7 +3595,7 @@ async function readChartsPage(
   tagsUnread: number;
   inventory: SlideInventory[];
 }> {
-  return PowerPoint.run(async (context) => {
+  return ppRun(async (context) => {
     const perSlide = [];
     for (let i = from; i < to; i++) {
       const slide = context.presentation.slides.getItemAt(i);
@@ -3539,6 +3619,38 @@ async function readChartsPage(
       }
       perSlide.push({ slide, count, index: i });
     }
+    /**
+     * TRACED BEFORE THE SYNC, because after it there may be no host left.
+     *
+     * 41 of the last 60 4:3 crashes have `collecting deck evidence — scanning`
+     * as the final line in their record — the pane's announcement one statement
+     * before `listChartsInDeck` is called — and NOTHING inside the scan has ever
+     * appeared after it. `step` traces only on a thrown error, so a host that
+     * simply stops answering leaves the whole scan a hole, and every one of
+     * those 41 records says only "it died somewhere in here".
+     *
+     * "Somewhere in here" spans a slide count, a page of queued loads, and two
+     * separate syncs. These lines separate them.
+     *
+     * PER PAGE, NOT PER SLIDE, and that is a correction worth writing down: the
+     * obvious instrument is to name the slide the host died on, and this loader
+     * CANNOT — every slide in the page is queued as proxies and settled in the
+     * ONE sync below. There is no per-slide host call to sit between. What the
+     * page range and the queue size can say is how much was asked for in the
+     * call that did not come back, which is the question `READBACK_PAGE` is an
+     * answer to anyway.
+     *
+     * `syncs` rides along so a crashed record carries the count too; see
+     * `syncsSoFar` for why that number is the one office-js#6329 makes
+     * interesting.
+     */
+    trace("pane", "deck scan — settling a page of slides", {
+      from,
+      to: to - 1,
+      slides: to - from,
+      withInventory,
+      syncs: syncsSoFar(),
+    });
     await step(`reading slides ${from}-${to - 1} for charts`, () =>
       withTimeout(context.sync(), READBACK_TIMEOUT_MS, `reading slides ${from}-${to - 1} for charts`),
     );
@@ -3596,6 +3708,17 @@ async function readChartsPage(
       }
       for (const shape of shapes) lookups.push({ slideId, shape, ...chartTagsOf(shape) });
     }
+    // THE SECOND SYNC OF THE PAGE, and the heavier one: it settles a tag read
+    // per shape rather than per slide, so its payload grows with what the deck
+    // holds while the line above grows only with slide count. A record ending
+    // here rather than above says the slide loads came back and the tag reads
+    // did not, which are different failures and were indistinguishable.
+    trace("pane", "deck scan — settling chart tags", {
+      from,
+      to: to - 1,
+      shapes: lookups.length,
+      syncs: syncsSoFar(),
+    });
     await step(`reading chart tags on slides ${from}-${to - 1}`, () =>
       withTimeout(context.sync(), READBACK_TIMEOUT_MS, `reading chart tags on slides ${from}-${to - 1}`),
     );
@@ -3657,6 +3780,16 @@ async function readChartsPage(
  */
 export async function listChartsInDeck(opts: { withInventory?: boolean } = {}): Promise<DeckScan> {
   const t0 = Date.now();
+  /**
+   * THE FIRST HOST CALL OF THE SCAN, named before it is made.
+   *
+   * `slideCount()` is a sync of its own and it runs before any page does, so a
+   * record that stops between this line and the page line below died asking the
+   * deck how big it is — which is a different fault from dying while reading
+   * one. Without it those two are the same silence, and the silence is all 41
+   * of the recent 4:3 crash records have.
+   */
+  trace("pane", "deck scan — asking how many slides", { withInventory: !!opts.withInventory, syncs: syncsSoFar() });
   const total = await slideCount();
   const charts: { configJson: string; target: EditTarget }[] = [];
   const inventory: SlideInventory[] = [];
@@ -3816,7 +3949,7 @@ async function addSlides(
   trace("host", "slides added", { requested: count, landed: have, from: start });
   for (let round = 0; deficit > 0 && round < MAX_ADD_RETRY_ROUNDS; round++) {
     const toAdd = deficit;
-    await PowerPoint.run(async (retryContext) => {
+    await ppRun(async (retryContext) => {
       const retrySlides = retryContext.presentation.slides;
       for (let i = 0; i < toAdd; i++) retrySlides.add(layoutId ? { layoutId } : undefined);
       await retryContext.sync();
@@ -3864,7 +3997,7 @@ async function addSlides(
  * same as the demo deck. Requires PowerPointApi 1.3 (slides.add).
  */
 export async function insertAgendaSlides(scenes: Scene[]): Promise<void> {
-  await PowerPoint.run(async (context) => {
+  await ppRun(async (context) => {
     const layoutId = await blankLayoutId(context);
     const slideThunks = await addSlides(context, scenes.length, layoutId);
     // Batched like every other render: a slide's worth of shapes in one sync is
@@ -3985,7 +4118,7 @@ async function stampSlide(
 
 /** Stamp the LAST slide from a FRESH context — used after a render poisoned its own. */
 async function stampLastSlide(title: string, detail: string, ownedFrom = 0): Promise<void> {
-  await PowerPoint.run(async (context) => {
+  await ppRun(async (context) => {
     const count = context.presentation.slides.getCount();
     await context.sync();
     // "The last slide" is only OUR slide when this item's add actually landed.
@@ -4155,7 +4288,7 @@ export interface DemoReport {
 
 /** The current slide count, read in its own settled sync (reliable on web). */
 export async function slideCount(): Promise<number> {
-  return PowerPoint.run(async (context) => {
+  return ppRun(async (context) => {
     const c = context.presentation.slides.getCount();
     await boundedSync(context, "counting the deck's slides", READBACK_TIMEOUT_MS);
     // No safe default here, deliberately. Every caller uses this to measure a
@@ -4229,7 +4362,7 @@ export async function settledSlideCount(atLeast: number): Promise<number> {
 async function retagSlideChart(slideIndex: number, tagData: string | undefined): Promise<boolean> {
   if (!supports("1.3") || !tagData) return false;
   try {
-    return await PowerPoint.run(async (context) => {
+    return await ppRun(async (context) => {
       const shapes = context.presentation.slides.getItemAt(slideIndex).shapes;
       shapes.load("items/name");
       await context.sync();
@@ -4441,7 +4574,7 @@ function bindingShape(context: PowerPoint.RequestContext, bindingId: string): Po
 export async function moveShapeBy(slideId: string, shapeId: string, dx: number, dy: number): Promise<boolean> {
   if (!supports("1.3")) return false;
   try {
-    return await PowerPoint.run(async (context) => {
+    return await ppRun(async (context) => {
       const shape = context.presentation.slides.getItemOrNullObject(slideId).shapes.getItemOrNullObject(shapeId);
       shape.load("left,top");
       await boundedSync(context, "reading a shape's position before moving it");
@@ -4485,7 +4618,7 @@ async function settleAndTagChart(slideId: string, tagData: string, shapeId?: str
   if (shapeId) {
     let refusal: unknown;
     try {
-      const wrote = await PowerPoint.run(async (context) => {
+      const wrote = await ppRun(async (context) => {
         context.presentation.slides
           .getItemOrNullObject(slideId)
           .shapes.getItemOrNullObject(shapeId)
@@ -4574,7 +4707,7 @@ export function mayTakeConfig(o: { foundById: boolean; hasConfig?: boolean }): b
 
 async function settleByCollectionRead(slideId: string, tagData: string, shapeId?: string): Promise<boolean> {
   try {
-    return await PowerPoint.run(async (context) => {
+    return await ppRun(async (context) => {
       const shapes = context.presentation.slides.getItemOrNullObject(slideId).shapes;
       shapes.load("items/id,name");
       await boundedSync(context, "re-reading a slide to tag the chart it would not tag");
@@ -4718,7 +4851,7 @@ async function rescueGroupAndTag(
 ): Promise<boolean> {
   if (!supports("1.8")) return false;
   try {
-    return await PowerPoint.run(async (context) => {
+    return await ppRun(async (context) => {
       const slide = context.presentation.slides.getItemAt(slideIndex);
       const shapes = slide.shapes as unknown as PowerPoint.ShapeCollection & {
         items: PowerPoint.Shape[];
@@ -4805,7 +4938,7 @@ async function addAndRenderItem(
   let created = 0;
   let grouped = false;
   let tagged = false;
-  await PowerPoint.run(async (context) => {
+  await ppRun(async (context) => {
     if (!layout.resolved) {
       layout.id = await blankLayoutId(context);
       layout.resolved = true;
@@ -5841,7 +5974,7 @@ function boundedRun<T>(
   fn: (context: PowerPoint.RequestContext) => Promise<T>,
   budgetMs = READBACK_TIMEOUT_MS,
 ): Promise<T> {
-  return withTimeout(PowerPoint.run(fn), budgetMs, what);
+  return withTimeout(ppRun(fn), budgetMs, what);
 }
 
 /**
@@ -6086,7 +6219,7 @@ const REREAD_ATTEMPTS = 2;
  * when the host lacks Slide.tags (pre-1.3) or the tag write itself was lost.
  */
 async function readSlotTag(index: number): Promise<string | null> {
-  return PowerPoint.run(async (context) => {
+  return ppRun(async (context) => {
     const slide = context.presentation.slides.getItemAt(index) as unknown as {
       tags: { getItemOrNullObject(k: string): { isNullObject: boolean; value: string; load(): void } };
     };
@@ -6138,7 +6271,7 @@ async function findBlankAddedSlides(
   for (let start = 0; start < candidates.length; start += READBACK_PAGE) {
     const page = candidates.slice(start, start + READBACK_PAGE);
     try {
-      const again = await PowerPoint.run(async (context) => {
+      const again = await ppRun(async (context) => {
         const cs = page.map((i) => context.presentation.slides.getItemAt(i).shapes.getCount());
         await context.sync();
         return cs.map((c) => c.value);
@@ -6928,7 +7061,7 @@ export async function insertSlidesFromPptx(
 ): Promise<number> {
   const before = await slideCount();
   await withTimeoutOrVerify(
-    PowerPoint.run(async (context) => {
+    ppRun(async (context) => {
       const presentation = context.presentation as unknown as {
         insertSlidesFromBase64(b64: string, opts?: { formatting?: string; targetSlideId?: string }): void;
       };
@@ -7404,7 +7537,7 @@ export async function slideImageBase64(
     return undefined;
   }
   try {
-    return await PowerPoint.run(async (context) => {
+    return await ppRun(async (context) => {
       const slide = context.presentation.slides.getItemOrNullObject(slideId);
       queueNullCheck(slide);
       await context.sync();
@@ -7735,7 +7868,7 @@ export async function slideSize(opts: { refresh?: boolean } = {}): Promise<Slide
   // Rung 2 — export one slide and read what it declares.
   if (supports("1.8")) {
     try {
-      const base64 = await PowerPoint.run(async (context) => {
+      const base64 = await ppRun(async (context) => {
         const slide = context.presentation.slides.getItemAt(0);
         const out = (slide as unknown as { exportAsBase64(): { value: string } }).exportAsBase64();
         await context.sync();
@@ -7977,7 +8110,7 @@ export async function addScratchSlide(
     // misbehaving. Nothing is lost by not waiting: the before/after id diff
     // below is what names the slide, and it never trusted the promise anyway.
     await withTimeoutOrVerify(
-      PowerPoint.run(async (context) => {
+      ppRun(async (context) => {
         const layoutId = await blankLayoutId(context);
         context.presentation.slides.add(layoutId ? { layoutId } : undefined);
         await context.sync();
@@ -8108,7 +8241,7 @@ export async function addScratchSlide(
     // Prove the id is worth handing out. Every caller's next move is to resolve
     // it in a context of its own, so do that once here, where the answer is
     // still cheap and a `null` is survivable.
-    const usable = await PowerPoint.run(async (context) => {
+    const usable = await ppRun(async (context) => {
       const slide = context.presentation.slides.getItemOrNullObject(id);
       queueNullCheck(slide);
       await context.sync();
@@ -8146,7 +8279,7 @@ export async function addScratchSlide(
  * slide look brand new.
  */
 async function slideIds(): Promise<string[] | undefined> {
-  return PowerPoint.run(async (context) => {
+  return ppRun(async (context) => {
     const slides = context.presentation.slides;
     slides.load("items/id");
     await boundedSync(context, "listing the deck's slides", READBACK_TIMEOUT_MS);
@@ -8160,7 +8293,7 @@ async function slideIds(): Promise<string[] | undefined> {
 /** Delete one slide by id, best-effort. True when it is gone (or already was). */
 export async function deleteSlideById(slideId: string): Promise<boolean> {
   try {
-    const deleted = await PowerPoint.run(async (context) => {
+    const deleted = await ppRun(async (context) => {
       const slide = context.presentation.slides.getItemOrNullObject(slideId);
       queueNullCheck(slide);
       await context.sync();
@@ -8207,7 +8340,7 @@ async function slideIsGone(slideId: string): Promise<boolean> {
   const ids = await slideIds().catch(() => undefined);
   if (ids) return !ids.includes(slideId);
   try {
-    return await PowerPoint.run(async (context) => {
+    return await ppRun(async (context) => {
       const slide = context.presentation.slides.getItemOrNullObject(slideId);
       queueNullCheck(slide);
       await context.sync();
@@ -8243,7 +8376,7 @@ export async function deleteTrailingSlides(from: number, count: number): Promise
   if (count <= 0 || from < 0) return 0;
   const before = (await slideIds().catch(() => undefined))?.length;
   try {
-    await PowerPoint.run(async (context) => {
+    await ppRun(async (context) => {
       for (let i = from + count - 1; i >= from; i--) {
         context.presentation.slides.getItemAt(i).delete();
       }
@@ -8297,7 +8430,7 @@ async function deleteSlideByPosition(slideId: string): Promise<boolean> {
   // is what turns the honest false into an honest report.
   if (index < 0) return false;
   try {
-    await PowerPoint.run(async (context) => {
+    await ppRun(async (context) => {
       const slide = context.presentation.slides.getItemAt(index);
       slide.load("id");
       await context.sync();
@@ -8530,7 +8663,7 @@ export async function shapeGeometryByName(
   { name: string; left: number; top: number; width: number; height: number; rotation: number | null }[] | null
 > {
   try {
-    return await PowerPoint.run(async (context) => {
+    return await ppRun(async (context) => {
       const slide = context.presentation.slides.getItemOrNullObject(slideId);
       slide.load("id");
       await context.sync();
@@ -8626,7 +8759,7 @@ export async function shapeGeometryByName(
 
 export async function slideShapeList(slideId: string): Promise<{ id: string; name: string }[] | null> {
   try {
-    return await PowerPoint.run(async (context) => {
+    return await ppRun(async (context) => {
       const slide = context.presentation.slides.getItemOrNullObject(slideId);
       slide.load("id");
       await context.sync();
@@ -8761,7 +8894,7 @@ export async function replaceSlideWithDeck(slideId: string, base64: string): Pro
     // answering while the slide lands anyway. The count check below is what
     // decides, and it used to be unreachable on the runs that needed it most.
     await withTimeoutOrVerify(
-      PowerPoint.run(async (context) => {
+      ppRun(async (context) => {
         const presentation = context.presentation as unknown as {
           insertSlidesFromBase64(b64: string, opts?: { formatting?: string; targetSlideId?: string }): void;
         };
@@ -12092,7 +12225,7 @@ export function _resetDeckStyleVerdictForTest(): void {
 
 async function probeWhyDeckStyleFailed(failedAt: string): Promise<void> {
   try {
-    await PowerPoint.run(async (context) => {
+    await ppRun(async (context) => {
       const parts = (
         context.presentation as unknown as {
           customXmlParts: { getByNamespace(ns: string): { getCount(): { value: number } } };
@@ -12156,7 +12289,7 @@ async function probeWhyDeckStyleFailed(failedAt: string): Promise<void> {
 export async function warmCustomXmlSurface(): Promise<void> {
   if (!supports("1.7")) return;
   try {
-    await PowerPoint.run(async (context) => {
+    await ppRun(async (context) => {
       const parts = (
         context.presentation as unknown as {
           customXmlParts: { getByNamespace(ns: string): { getCount(): { value: number } } };
@@ -12227,7 +12360,7 @@ export async function readDeckStyleWithReason(): Promise<{ style: DeckStyle | nu
 
 async function attemptDeckStyleRead(): Promise<{ style: DeckStyle | null; unreadable: boolean }> {
   try {
-    return await PowerPoint.run(async (context) => {
+    return await ppRun(async (context) => {
       const parts = (
         context.presentation as unknown as {
           customXmlParts: {
@@ -12311,7 +12444,7 @@ async function attemptDeckStyleRead(): Promise<{ style: DeckStyle | null; unread
 export async function writeDeckStyle(style: DeckStyle | null): Promise<boolean> {
   if (!supports("1.7")) return false;
   try {
-    return await PowerPoint.run(async (context) => {
+    return await ppRun(async (context) => {
       const parts = (
         context.presentation as unknown as {
           customXmlParts: {
@@ -12343,7 +12476,7 @@ export async function writeDeckStyle(style: DeckStyle | null): Promise<boolean> 
  */
 export async function loadThemePalette(): Promise<string[] | null> {
   try {
-    return await PowerPoint.run(async (context) => {
+    return await ppRun(async (context) => {
       const slide = context.presentation.getSelectedSlides().getItemAt(0);
       const scheme = (slide as unknown as { themeColorScheme: { getThemeColor(c: string): { value: string } } })
         .themeColorScheme;

@@ -78,6 +78,7 @@ import {
  */
 const ADDS_TO_DEFEAT_ONE_SLIDE = 1 + MAX_ADD_RETRY_ROUNDS;
 import { readFileSync } from "fs";
+import { syncsSoFar, resetSyncCount, slideCount } from "../src/render/powerpoint";
 import { onTrace, setTracing, traceAbout, traceLog } from "../src/core/trace";
 import { planReconcile } from "../src/core/reconcile";
 import { planSceneUpdate, worthUpdating } from "../src/core/scene-diff";
@@ -7239,5 +7240,157 @@ describe("a host that cannot rotate", () => {
       .entries.slice(from)
       .some((e) => e.message === "cannot draw a pie wedge on this host");
     expect(said, "a pie inserted with no slices and nothing anywhere said why").toBe(true);
+  });
+});
+
+/**
+ * The sync counter, and the one property that makes it worth reading.
+ *
+ * office-js#6329 reports that on PowerPoint for the web every `context.sync()`
+ * forces a full presentation save, read-only syncs included. If that holds
+ * here, the load this add-in puts on the save channel is proportional to sync
+ * count — and every crash figure this repo owns is indexed by shapes instead,
+ * because nothing has ever counted syncs.
+ */
+describe("counting what the round asks of the host", () => {
+  const source = readFileSync("src/render/powerpoint.ts", "utf8");
+
+  it("routes every host run through the counting wrapper", () => {
+    /**
+     * THE ASSERTION THAT MAKES THE INSTRUMENT TRUSTWORTHY, and the reason it is
+     * a source scan rather than a behavioural test.
+     *
+     * A sync counter that misses a call site does not read LOW — it reads
+     * WRONG, and it would be used to exonerate the very path it cannot see. The
+     * 37 call sites were converted mechanically, and this repo has shipped a
+     * fix-with-one-call-site-left-behind four times.
+     *
+     * So completeness is asserted directly: exactly ONE bare `PowerPoint.run(`
+     * may exist in this file, the one inside `ppRun` itself. A new call site
+     * added by hand fails here on the day it is written, which is the only day
+     * it is cheap to fix.
+     */
+    const bare = source.match(/PowerPoint\.run\(/g) ?? [];
+    expect(bare, "a host run bypasses the sync counter — see ppRun").toHaveLength(1);
+    const inWrapper = /function ppRun<T>\([\s\S]{0,400}?PowerPoint\.run\(/.test(source);
+    expect(inWrapper, "the one remaining PowerPoint.run is not the wrapper's own").toBe(true);
+    // And the wrapper must actually be used: 37 sites were converted, so a
+    // number far below that means the replacement was reverted wholesale.
+    expect((source.match(/\bppRun\(/g) ?? []).length).toBeGreaterThanOrEqual(37);
+  });
+
+  it("counts on the context the callback is handed, not on a copy of it", () => {
+    /**
+     * All 90 syncs in this file are `context.sync()` or `retryContext.sync()`,
+     * both handed to the callback by `ppRun`. Patching the object BEFORE the
+     * callback runs is what makes the count complete by construction — a
+     * counter incremented at the call sites instead would need 90 edits and
+     * would drift on the next one written.
+     *
+     * Two things would silently break it, and both are cheap to pin: taking a
+     * reference to `sync` before the patch, and patching after `fn` is invoked.
+     */
+    const wrapper = source.slice(source.indexOf("function ppRun<T>"));
+    const body = wrapper.slice(0, wrapper.indexOf("\n}\n"));
+    expect(body, "the context is handed to the callback before its sync is patched").toMatch(
+      /context\.sync = [\s\S]*?return fn\(context\)/,
+    );
+    expect(body, "the counter stopped incrementing").toMatch(/SYNCS\+\+/);
+    // Nothing may destructure `sync` off a context anywhere, or that path
+    // escapes the patch entirely.
+    expect(source, "a destructured sync would bypass the counter").not.toMatch(/const\s*\{[^}]*\bsync\b[^}]*\}\s*=/);
+  });
+
+  it("actually counts, and counts each sync exactly once", async () => {
+    /**
+     * THE HALF A SOURCE SCAN CANNOT REACH. Everything above proves the wiring
+     * is present; only this proves the number moves, and a counter that reads
+     * zero forever would pass every assertion in this file but one.
+     *
+     * Two failure modes are pinned rather than one, because the second is the
+     * one that would go unnoticed. Under-counting reads as a quiet round;
+     * DOUBLE-counting reads as a busy one, and this suite's host hands the same
+     * context object to every run — so a wrapper that wraps itself would show
+     * sync load climbing across a session that was flat. `ppRun` marks the
+     * function it installs and refuses to wrap it twice; this is that guard.
+     */
+    installHost([makeSlide("s1")]);
+    resetSyncCount();
+    expect(syncsSoFar(), "the counter did not start at zero").toBe(0);
+
+    await slideCount();
+    const afterOne = syncsSoFar();
+    expect(afterOne, "a host call made no sync the counter could see").toBeGreaterThan(0);
+
+    await slideCount();
+    const afterTwo = syncsSoFar();
+    // The SAME call again must cost the same again — not more, which is what a
+    // wrapper wrapping a wrapper produces on the second run through a reused
+    // context.
+    expect(afterTwo - afterOne, "the second identical call counted a different number of syncs").toBe(afterOne);
+
+    resetSyncCount();
+    expect(syncsSoFar(), "the round-start reset does not reset").toBe(0);
+  });
+
+  it("names each stage of the deck scan before the sync that could end it", async () => {
+    /**
+     * THE HOLE THE 41 CRASH RECORDS ARE. Every one ends at the pane's
+     * `collecting deck evidence — scanning` line, emitted one statement BEFORE
+     * `listChartsInDeck` is called — and nothing from inside the scan has ever
+     * appeared after it. `step` traces only when something THROWS, so a host
+     * that simply stops answering leaves no trace, and all those records can
+     * say is "it died somewhere in the scan".
+     *
+     * "Somewhere" spans a slide count, a page of queued loads, and two syncs
+     * with very different payloads. Each stage announces itself first now.
+     *
+     * DRIVEN BY A FAILING SYNC rather than asserted from source, because
+     * ordering is the entire property: a line traced AFTER its sync is exactly
+     * as useless as no line, and reads identically in a healthy round.
+     */
+    installHost([makeSlide("s1"), makeSlide("s2")]);
+    setTracing(true);
+    const from = traceLog().entries.length;
+    failSyncsOn.add(2);
+    await listChartsInDeck({ withInventory: true });
+    failSyncsOn.clear();
+
+    const said = traceLog()
+      .entries.slice(from)
+      .map((e) => e.message);
+    expect(said, "a scan that died named no stage — the crash record is still a hole").toContain(
+      "deck scan — asking how many slides",
+    );
+    expect(said, "the page settle was not announced before the sync that swallowed it").toContain(
+      "deck scan — settling a page of slides",
+    );
+    // Ordering is the property under test: the announcement must PRECEDE the
+    // stage it announces, not merely exist somewhere in the log.
+    const count = said.indexOf("deck scan — asking how many slides");
+    const page = said.indexOf("deck scan — settling a page of slides");
+    expect(count, "the slide count was announced after the page it precedes").toBeLessThan(page);
+  });
+
+  it("zeroes the count per round and banks it with the outcome", () => {
+    /**
+     * A count that carries over from the pane's earlier life belongs to no
+     * round, and the driver reuses a pane across rounds far more often than it
+     * reloads one. The reset therefore sits with the trace mark, which exists
+     * for exactly the same reason.
+     *
+     * And the count has to reach BOTH files. `lastRunLog` is assembled after
+     * the deck scan, so a crashed round never writes `syncs` — but 41 of the
+     * last 60 4:3 crashes end inside that scan, which is precisely the
+     * population the number is for. Tracing it on the scan line puts it in the
+     * crash record too, where `traceLog` is a local array read and survives a
+     * host that has stopped answering.
+     */
+    const pane = readFileSync("src/taskpane/app.ts", "utf8");
+    expect(pane, "the counter is no longer zeroed per round").toMatch(/resetSyncCount\(\);\s*\n\s*const traceFrom/);
+    expect(pane, "the round file stopped carrying its sync count").toMatch(/syncs: syncsSoFar\(\)/);
+    expect(pane, "a crashed round can no longer report a sync count").toMatch(
+      /collecting deck evidence — scanning",\s*\{[\s\S]{0,200}?syncs: syncsSoFar\(\)/,
+    );
   });
 });

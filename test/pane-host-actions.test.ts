@@ -564,6 +564,12 @@ vi.mock("../src/render/powerpoint", () => ({
   // nothing, so a scan finds no chart and the round's re-ask has nothing to ask
   // with — which is the honest state rather than a stubbed convenience.
   refreshNamedShapeFromDeck: vi.fn(async () => null),
+  // The sync counter. A real number rather than a `vi.fn()` returning
+  // undefined, because `app.ts` writes `syncs: syncsSoFar()` straight into the
+  // round file — a mock answering undefined would let a round ship with the
+  // field silently missing and every test here still pass.
+  syncsSoFar: vi.fn(() => 0),
+  resetSyncCount: vi.fn(),
   deleteSlideById: vi.fn(async (id: string) => {
     host.deletedSlides.push(id);
     return !host.refuseSlideDelete.includes(id);

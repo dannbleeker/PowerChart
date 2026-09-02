@@ -169,6 +169,15 @@ export const KNOWN_ISSUES = {
     "it were. Recorded because the SHAPE matches what `what makes a long run slow down` measured here, and because it names a " +
     "cheap experiment nobody has run: if reloading the tab resets the per-slide cost curve, the accumulation is in the session " +
     "rather than in the deck. Closed `no recent activity`.",
+  6329:
+    "PowerPoint ON THE WEB forces a FULL PRESENTATION SAVE on every context.sync(), read-only syncs included; the independent " +
+    "duplicate #6740 measured autosave firing once per iteration of a sync loop. This is our host and our exact call, so it is " +
+    "live exposure rather than a recorded curiosity — the add-in draws in batches of SHAPES_PER_SYNC, which makes the number " +
+    "of forced saves proportional to shape count over ten, and the deck scan adds two more per page while writing nothing. " +
+    "STATUS IS CONTESTED AND THE LABEL SHOULD NOT BE TRUSTED: Microsoft marked it fixed on 2026-08-10 and the reporter " +
+    "rebutted it with video thirty minutes later; it carries both `Status: fixed` and `Needs: author feedback`. Cited by " +
+    "`syncsSoFar`, which exists to measure our own sync count per round — the archive indexes every crash figure by SHAPES, " +
+    "and if this issue is right the load that matters was never counted.",
   6867:
     "Slide.exportAsBase64 omits modern comments and ppt/authors.xml from the exported deck. NO EXPOSURE: the add-in calls it " +
     "through `slideImageBase64` to get a PICTURE of a slide for the round's deck evidence, and a round has no comments in it " +

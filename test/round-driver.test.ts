@@ -1980,6 +1980,74 @@ describe("what the driver had to do to get the round", () => {
     archive("log.json", "rounds", read, write, (() => []) as never);
     expect(JSON.parse(out), "invented a clean run for a round that never reported one").not.toHaveProperty("driverRun");
   });
+
+  it("names the document the round ran against, and separates a look from a silence", () => {
+    /**
+     * WHICH DECK. 0 of the 408 files under `rounds/` and `crashes/` named one,
+     * so deck identity and slide profile are perfectly confounded across the
+     * whole archive: every 4:3 round ran one document and every 16:9 round
+     * another. The sharpest contrast this repo owns — 4:3 crashing on 52 of 73
+     * attempts against 0 of 51 at 16:9, over the 25 builds that ran both arms —
+     * is therefore equally consistent with "that one file is sick", and no round
+     * already filed can settle it.
+     */
+    const filedWith = (...extra: unknown[]) => {
+      let out = "";
+      const write = ((_p: string, body: string) => {
+        out = body;
+      }) as never;
+      archive("log.json", "rounds", read, write, (() => []) as never, null as never, ...(extra as never[]));
+      return JSON.parse(out) as { driverDeck?: string | null; driverSlideSize?: string | null };
+    };
+
+    expect(filedWith(null, null, "Presentation70.pptx").driverDeck).toBe("Presentation70.pptx");
+
+    /**
+     * THREE STATES, NOT TWO, and this is the assertion that makes the field
+     * worth having. `null` means the driver looked at the tab list and it would
+     * not say; the field being ABSENT means nobody offered a reading at all —
+     * an older build, or `--archive` run by hand, which cannot know which tab
+     * was in front. Collapsing them is this repo's most repeated defect.
+     */
+    expect(filedWith(null, null, null).driverDeck, "a look that failed was erased").toBeNull();
+    expect(filedWith(), "invented a look nobody took").not.toHaveProperty("driverDeck");
+
+    /**
+     * THE SAME REPAIR ON THE SIZE BESIDE IT. `if (driverSize)` dropped the field
+     * on a failed read, so 3 of the last 120 archived rounds carry no
+     * `driverSlideSize` and nothing says whether that is "could not tell" or
+     * "never asked".
+     *
+     * It matters most here because the remaining reading is the untrustworthy
+     * one: on rounds 115 and 116 the pane fell to its last rung and reported a
+     * saved 720x540 file for a deck the driver had twice measured live at
+     * 960x540. When the driver's number is missing, the only number left has
+     * already lied once — and the reader has to be able to see that.
+     */
+    expect(filedWith("4:3").driverSlideSize).toBe("4:3");
+    expect(filedWith(null).driverSlideSize, "an unread size was erased rather than recorded").toBeNull();
+    expect(filedWith(), "invented a size reading for a round that never took one").not.toHaveProperty(
+      "driverSlideSize",
+    );
+
+    /**
+     * AND THE CALL SITE, which is the half that gets missed.
+     *
+     * Everything above proves `archive` records a deck it is GIVEN. None of it
+     * proves anything gives it one — and an argument nobody passes is a field
+     * that is always absent, which would look exactly like the archive we are
+     * trying to fix. This repo has shipped that shape four times: the fix
+     * written, one call site left behind, and an export nobody calls reading as
+     * a comment that compiles.
+     *
+     * Asserted as source because the alternative is standing up the whole
+     * download-and-sweep path for one argument.
+     */
+    const src = readFileSync(new URL("../scripts/round.mjs", import.meta.url), "utf8");
+    expect(src, "collectRound stopped telling archive which deck was in front").toMatch(
+      /archive\([\s\S]{0,400}frontedDeck\(sh\) \?\? null,/,
+    );
+  });
 });
 
 describe("the steps a crashed round managed to write", () => {
@@ -2019,6 +2087,71 @@ describe("the steps a crashed round managed to write", () => {
       calls.some((c) => c[0] === "eval"),
       "found the button and never clicked it",
     ).toBe(true);
+  });
+
+  it("names the tab in front, and does not pretend it is the deck that crashed", async () => {
+    /**
+     * 160 crash records name no document, and they are the half of the archive
+     * that matters: 61 of them are the 4:3 arm. Without a name, "4:3 crashes far
+     * more" and "that one file is sick" cannot be told apart.
+     *
+     * THE FIELD IS DELIBERATELY NOT CALLED `driverDeck`. This runs at the START
+     * of the next round, rescuing the previous one's remains before they are
+     * overwritten, so the tab in front is the NEXT round's starting state. It
+     * usually is the crashed round's deck and after a `--fresh` restart or a leg
+     * change it is not — and a query written against a field called `driverDeck`
+     * would never know the difference.
+     */
+    const fn = ((...args: string[]) => {
+      if (args[0] === "find") return OFFERED;
+      if (args[0] === "tab-list") return "0: https://x/ [Presentation70.pptx] (current)";
+      return "ok";
+    }) as unknown as ((...a: string[]) => string) & { dir?: string; state?: Record<string, unknown> };
+    fn.dir = ".pw";
+    fn.state = {};
+
+    let written = "";
+    const copied: string[][] = [];
+    await driver.keepCrashedRun(
+      fn,
+      sleep,
+      ((from: string, dest: string) => copied.push([from, dest])) as never,
+      (() => true) as never,
+      (() => JSON.stringify({ kind: "ssf-charts-crash-log", steps: ["  1s  x"] })) as never,
+      ((_p: string, body: string) => {
+        written = body;
+      }) as never,
+    );
+    const kept = JSON.parse(written) as Record<string, unknown>;
+    expect(kept.frontedWhenRescued, "the rescued crash record still names no document").toBe("Presentation70.pptx");
+    expect(kept, "renaming this to driverDeck would make every future query wrong").not.toHaveProperty("driverDeck");
+    // The evidence itself must survive the stamping untouched.
+    expect(kept.steps, "stamping the record cost it its steps").toEqual(["  1s  x"]);
+    expect(copied, "stamped it AND copied over it").toHaveLength(0);
+    // Two-space JSON with a trailing newline: `crashes/` is not in
+    // `.prettierignore`, so the gate reads what this writes.
+    expect(written.endsWith("\n"), "no trailing newline — prettier fails the directory").toBe(true);
+    expect(written).toContain('\n  "kind"');
+  });
+
+  it("keeps the bytes exactly as they came when the record will not parse", async () => {
+    // A CRASH RECORD IS THE ONLY COPY OF A ROUND THAT DIED. Losing one to a
+    // stamping error would be the worst trade in this file, so anything
+    // unexpected falls back to the byte copy that has always worked.
+    const { fn } = shWith(OFFERED);
+    const copied: string[][] = [];
+    const to = await driver.keepCrashedRun(
+      fn,
+      sleep,
+      ((from: string, dest: string) => copied.push([from, dest])) as never,
+      (() => true) as never,
+      (() => "{ this is not json") as never,
+      (() => {
+        throw new Error("must not write a half-stamped record");
+      }) as never,
+    );
+    expect(copied, "a record that would not parse was dropped instead of copied").toHaveLength(1);
+    expect(to).toMatch(/^crashes\/.*-crashed-run\.json$/);
   });
 
   it("does nothing when no crashed run is offered", async () => {

@@ -62,6 +62,8 @@ import {
   type UpdateWreckage,
   namedShape,
   refreshNamedShapeFromDeck,
+  syncsSoFar,
+  resetSyncCount,
 } from "../render/powerpoint";
 import { placeChart, type Placement } from "../core/placement";
 import { buildAgendaScene } from "../core/agenda";
@@ -3108,6 +3110,19 @@ interface RunLogFile {
    * `docs/ROUNDS.md` states it once so no reader has to infer it.
    */
   slideSize?: { width: number; height: number; source: string };
+  /**
+   * How many `context.sync()` calls the round made, end to end.
+   *
+   * Optional because every round archived before 2026-09-02 predates the
+   * counter — and absent must read as "never counted", never as zero, which is
+   * a number this field can genuinely take on a round that did nothing.
+   *
+   * See `syncsSoFar` in `src/render/powerpoint.ts` for why syncs rather than
+   * shapes: office-js#6329 reports that each one forces a full presentation
+   * save on the web host, which would make this the load figure that matters
+   * and every shape count in this archive the wrong index.
+   */
+  syncs?: number;
   runs: RunLog[];
   /**
    * The host self-test's verdicts, when that is what produced this log.
@@ -3769,7 +3784,24 @@ async function collectDeckEvidenceUnbounded(idsBefore: string[] | undefined): Pr
     //
     // Cheap: three lines on a path that already takes seconds and runs once per
     // round, after every verdict is in.
-    trace("pane", "collecting deck evidence — scanning", { knownBefore: idsBefore?.length ?? null });
+    /**
+     * THE SYNC COUNT GOES IN THE LINE THE ROUND DIES ON.
+     *
+     * 41 of the last 60 4:3 crashes have this trace line as their final entry —
+     * the host never reaches the one below. `lastRunLog` is assembled after the
+     * scan, so a crashed round's `syncs` field never exists; the trace does,
+     * because `traceLog` is a local array read and survives a dead host.
+     *
+     * That makes this the only place a crashed round can report how much it had
+     * asked of the save channel before it went, which is the whole question
+     * office-js#6329 raises. Putting it on the same line as the scan
+     * announcement rather than a line of its own keeps the crash-log tail
+     * comparable with the 160 records already on file.
+     */
+    trace("pane", "collecting deck evidence — scanning", {
+      knownBefore: idsBefore?.length ?? null,
+      syncs: syncsSoFar(),
+    });
     const scan = await listChartsInDeck({ withInventory: true });
     trace("pane", "collecting deck evidence — listing slide ids", { charts: scan.charts?.length ?? null });
     const idsAfter = await deckSlideIds();
@@ -4517,6 +4549,11 @@ function wireInsert() {
         lastRunLog = undefined;
         ($("demo-log") as HTMLButtonElement).disabled = true;
         beginCrashLog({ build: buildStamp, host, label: "the whole round" });
+        // ZEROED WITH THE ROUND, beside the trace mark and for the same reason:
+        // a count that carries over from the pane's earlier life belongs to no
+        // round, and the pane is reused across rounds far more often than it is
+        // reloaded. See `syncsSoFar`.
+        resetSyncCount();
         const traceFrom = traceMark();
         // AFTER THE MARK, OR IT IS NOT IN THE ROUND. `traceEnvironment` has been
         // called at pane-wiring time since #228 and its output has reached
@@ -4765,6 +4802,22 @@ function wireInsert() {
         lastRunLog = {
           ...lastRunLog,
           ...(deck ? { deck } : {}),
+          /**
+           * HOW MANY TIMES THIS ROUND ASKED THE HOST TO SYNC.
+           *
+           * Taken here, after the deck scan, so it covers the whole round —
+           * including the phase 41 of the last 60 4:3 crashes die in. See
+           * `syncsSoFar` for why it is worth having: if office-js#6329 is right
+           * that every sync forces a full presentation save, then the load this
+           * add-in puts on the save channel is proportional to THIS number and
+           * not to any shape count, and every crash figure this repo owns is
+           * indexed by shapes.
+           *
+           * A crashed round never reaches this line, which is why the count is
+           * traced before the scan as well: the trace survives into the crash
+           * record, so a round that died still reports one.
+           */
+          syncs: syncsSoFar(),
           ...(tracing() ? { trace: traceLog(traceFrom) } : {}),
         };
         // NOW the round is over, and only now may the button say so — it is the
