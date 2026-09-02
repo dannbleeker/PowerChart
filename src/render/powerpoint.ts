@@ -127,10 +127,19 @@ function ppRun<T>(fn: (context: PowerPoint.RequestContext) => Promise<T>): Promi
        * WHY NOTHING CAUGHT IT. A grep of this repo for `.sync(` with an
        * argument finds nothing — all 197 of OUR calls are argless, which is
        * what made the omission look safe. The caller that passes one lives
-       * inside Office.js. And the test fake's `run` simply returns the
-       * callback's value with no final auto-sync at all, so the suite could
-       * not see it; that is fixed in `test/helpers/office-host.ts`, which now
-       * models the pass-through the way the real host does.
+       * inside Office.js. And the shared test fake's `run` simply returns the
+       * callback's value with no final auto-sync at all, so the suite could not
+       * see it.
+       *
+       * THAT IS STILL TRUE — do not read this paragraph as coverage. The fake's
+       * `sync` now forwards its argument, but its `run` still has no final
+       * auto-sync, so the shared suite remains blind to a wrapper that drops
+       * the pass-through. Adopting the faithful version turns this bug into 123
+       * failing tests and is worth doing; it also renumbers every fault index
+       * and breaks 11 tests pinning wedge behaviour, so it is filed rather than
+       * rushed. Until then ONE test guards this, and it brings its own host:
+       * "lets the value a batch returns ride out through one last sync" in
+       * `test/office-render.test.ts`.
        */
       const counted = (<T>(passThroughValue?: T) => {
         SYNCS++;

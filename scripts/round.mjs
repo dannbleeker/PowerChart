@@ -861,6 +861,49 @@ export function frontedDeck(sh) {
   return m ? m[1] : null;
 }
 
+/**
+ * The fronted deck's name IF THIS ARCHIVE IS ALLOWED TO PUBLISH IT.
+ *
+ * `rounds/*.json` and `crashes/*.json` are committed, and this repository is
+ * public. `.gitignore` already says what that means, and says it about exactly
+ * this field: crash reports are excluded because they carry "request URLs,
+ * session ids, the document name. This repo is public. ... the reports never
+ * leave the machine." The `.md` dumps were held back for it; the `.json` files
+ * beside them were not, because until 2026-09-02 they never carried a name.
+ *
+ * Then `driverDeck` was added to break the deck/geometry confound and wrote
+ * whatever `frontedDeck` read straight into a tracked file. On the test decks
+ * that is harmless. The hazard is the ordinary path: with no `PW_DECK` the
+ * driver runs against WHATEVER TAB IS IN FRONT, so one round started beside a
+ * real presentation publishes its filename to a public repository.
+ *
+ * SO ONLY NAMES THE OPERATOR HIMSELF NAMED ARE PUBLISHED. `PW_DECK`,
+ * `PW_DECK_16_9`, `PW_DECK_4_3` and the cycle's own defaults are decks somebody
+ * configured on purpose; anything else is a document this archive has no
+ * business naming, and is recorded as `undisclosed`.
+ *
+ * `undisclosed` is deliberately not null. Null already means "the tab list
+ * would not say", and collapsing "we could not look" into "we looked and will
+ * not tell" is the same defect this file spent the day removing from slide
+ * counts. A reader can tell all three apart.
+ */
+export function archivableDeck(name) {
+  if (!name) return null;
+  const configured = [
+    process.env.PW_DECK,
+    process.env.PW_DECK_16_9,
+    process.env.PW_DECK_4_3,
+    // The cycle's own defaults, so an unconfigured nightly run still records
+    // which arm it was on. Kept in step with `cyclePlan` in `cycle.mjs`.
+    "Presentation64",
+    "Presentation70",
+  ].filter(Boolean);
+  // Matched with and without the extension: `PW_DECK` carries a bare name
+  // (`Presentation70`) and the tab list reports a filename.
+  const base = name.replace(/\.pptx$/i, "").toLowerCase();
+  return configured.some((d) => d.replace(/\.pptx$/i, "").toLowerCase() === base) ? name : "undisclosed";
+}
+
 export function selectDeck(sh, deckName) {
   if (!deckName) return true;
   const line = sh("tab-list")
@@ -2470,7 +2513,7 @@ export async function keepCrashedRun(
     let stamped = false;
     try {
       const log = JSON.parse(read(from, "utf8"));
-      log.frontedWhenRescued = frontedDeck(sh) ?? null;
+      log.frontedWhenRescued = archivableDeck(frontedDeck(sh));
       log.deckAskedNextRound = process.env.PW_DECK ?? null;
       write(to, JSON.stringify(log, null, 2) + "\n");
       stamped = true;
@@ -2552,7 +2595,7 @@ async function collectRound(sh, stamp, sleep, driverSize = null, driverRun = nul
       stamp,
       driverSize,
       driverRun,
-      frontedDeck(sh) ?? null,
+      archivableDeck(frontedDeck(sh)),
     );
     console.log(`  archived as rounds/${filed}`);
   } catch (err) {

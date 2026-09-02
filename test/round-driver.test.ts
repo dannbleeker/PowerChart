@@ -28,6 +28,7 @@ const {
   readPing,
   refFor,
   frontedDeck,
+  archivableDeck,
   roundConfigArg,
   waitForRef,
   refreshPane,
@@ -2045,8 +2046,70 @@ describe("what the driver had to do to get the round", () => {
      */
     const src = readFileSync(new URL("../scripts/round.mjs", import.meta.url), "utf8");
     expect(src, "collectRound stopped telling archive which deck was in front").toMatch(
-      /archive\([\s\S]{0,400}frontedDeck\(sh\) \?\? null,/,
+      /archive\([\s\S]{0,400}archivableDeck\(frontedDeck\(sh\)\),/,
     );
+    // AND IT GOES THROUGH THE FILTER, not straight from the tab list. See
+    // `archivableDeck`: these files are committed to a public repository, and
+    // an unconfigured round runs against whatever document happens to be in
+    // front.
+    expect(src, "the fronted name reaches a tracked file unfiltered").not.toMatch(
+      /archive\([\s\S]{0,400}[^(]frontedDeck\(sh\) \?\? null,/,
+    );
+  });
+
+  it("publishes only the deck names the operator himself configured", () => {
+    /**
+     * `rounds/*.json` and `crashes/*.json` ARE COMMITTED, and this repository is
+     * public. `.gitignore` already draws that line and draws it about this
+     * exact field — crash reports are excluded because they carry "request
+     * URLs, session ids, the document name. This repo is public." The `.md`
+     * dumps were held back for it; the `.json` files beside them were not,
+     * because until 2026-09-02 they carried no name.
+     *
+     * Then `driverDeck` was added and wrote whatever was fronted into a tracked
+     * file. On the test decks that is harmless. The hazard is the ordinary
+     * path: with no `PW_DECK` the driver runs against whatever tab is in front,
+     * so one round started beside a real presentation publishes its filename.
+     */
+    const saved = { deck: process.env.PW_DECK, wide: process.env.PW_DECK_16_9, tall: process.env.PW_DECK_4_3 };
+    try {
+      delete process.env.PW_DECK;
+      delete process.env.PW_DECK_16_9;
+      delete process.env.PW_DECK_4_3;
+
+      // A real document nobody configured is never named.
+      expect(archivableDeck("Q3 Board Review FINAL.pptx"), "published a document nobody asked for").toBe("undisclosed");
+      // The cycle's own decks are named — somebody chose them on purpose, and
+      // the whole point of the field is telling the two arms apart.
+      expect(archivableDeck("Presentation70.pptx")).toBe("Presentation70.pptx");
+      expect(archivableDeck("Presentation64.pptx")).toBe("Presentation64.pptx");
+
+      // A deck named through the environment is the operator naming it.
+      process.env.PW_DECK = "Presentation71";
+      expect(archivableDeck("Presentation71.pptx"), "the deck this round was told to use was withheld").toBe(
+        "Presentation71.pptx",
+      );
+      // Matched with and without the extension, because `PW_DECK` carries a
+      // bare name and the tab list reports a filename.
+      process.env.PW_DECK = "Weekly Numbers.pptx";
+      expect(archivableDeck("Weekly Numbers.pptx")).toBe("Weekly Numbers.pptx");
+
+      /**
+       * THREE STATES, and null keeps its own meaning. Null is "the tab list
+       * would not say"; `undisclosed` is "we looked and will not publish it".
+       * Collapsing those is the same defect this driver spent the day removing
+       * from slide counts.
+       */
+      expect(archivableDeck(null), "an unread tab list became a withheld name").toBeNull();
+      expect(archivableDeck(""), "an empty name became a withheld name").toBeNull();
+    } finally {
+      if (saved.deck === undefined) delete process.env.PW_DECK;
+      else process.env.PW_DECK = saved.deck;
+      if (saved.wide === undefined) delete process.env.PW_DECK_16_9;
+      else process.env.PW_DECK_16_9 = saved.wide;
+      if (saved.tall === undefined) delete process.env.PW_DECK_4_3;
+      else process.env.PW_DECK_4_3 = saved.tall;
+    }
   });
 });
 
