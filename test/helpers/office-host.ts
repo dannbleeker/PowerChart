@@ -2835,7 +2835,16 @@ export function installHost(
         pendingDecks.push(b64);
       },
     },
-    sync: async () => {
+    /**
+     * `passThroughValue` is part of the contract, not decoration:
+     * `sync<T>(passThroughValue?: T): Promise<T>` resolves with what it was
+     * handed, and `PowerPoint.run` relies on that to carry a batch's result
+     * out. This fake took no argument and returned undefined, so nothing in
+     * the suite could see a wrapper that dropped it — and one did, on
+     * 2026-09-02, breaking every host read in the build while 3,831 tests
+     * stayed green. See the `run` stub below.
+     */
+    sync: async <T>(passThroughValue?: T): Promise<T | undefined> => {
       trips.syncs++;
       syncsInContext++;
       // Charged BEFORE anything else this sync does, and unconditionally, so
@@ -2984,7 +2993,7 @@ export function installHost(
         pendingCounts.length = 0;
         advanceCommitted();
         commit();
-        return;
+        return passThroughValue;
       }
       // A queued-command failure (e.g. drawing on a poisoned getItemAt handle)
       // surfaces here, at the sync, exactly as Office.js reports it.
@@ -3000,6 +3009,7 @@ export function installHost(
       pendingCounts.length = 0;
       advanceCommitted();
       commit();
+      return passThroughValue;
     },
   };
   trips.syncs = 0;
@@ -3103,6 +3113,39 @@ export function installHost(
       // add()ed past here is fresh, and its getItemAt handle is window-limited.
       contextBaseCount = slides.length;
       syncsInContext = 0;
+      /**
+       * THE FINAL AUTO-SYNC, which this fake did not have and which is how the
+       * real host returns a value at all.
+       *
+       * Office.js's `_runCommon` ends every batch with
+       * `.then(runBodyResult => ctx.sync(runBodyResult))`, and
+       * `ClientRequestContext.sync(passThroughValue)` resolves with exactly
+       * what it was handed. So the batch's result rides out through one last
+       * sync rather than being returned directly.
+       *
+       * This fake used to `return cb(context)` — correct-looking, and blind to
+       * the entire class of bug where something wraps or replaces `sync`. On
+       * 2026-09-02 a sync-counting wrapper did exactly that, took no
+       * parameters, and made EVERY `PowerPoint.run` in the build resolve
+       * undefined. The whole suite stayed green: 3,831 tests, every one of them
+       * passing against a fake that could not express the defect. It took two
+       * real-host rounds, an abandoned experiment and a wrong diagnosis of a
+       * "damaged deck" to find it.
+       *
+       * A fake that cannot fail the way the real thing fails is not a test
+       * double, it is a second implementation that agrees with you.
+       *
+       * MEASURED, NOT ASSUMED, and not yet adopted. Routing the return value
+       * through `context.sync(await cb(context))` makes 123 tests in
+       * `office-render` go red the moment the argument is dropped again — so
+       * the faithful version earns its place. It also adds one sync to every
+       * run, which renumbers every fault index in the suite and breaks 11
+       * tests that pin wedge and stall behaviour to a specific sync. Those
+       * encode real host behaviour and deserve a careful pass rather than a
+       * hurried one at the end of a long day, so the upgrade is filed and the
+       * contract is guarded directly instead — see the pass-through test in
+       * `test/office-render.test.ts`.
+       */
       return cb(context);
     },
     // Real Office.js exposes all 177 presets. A plain object listing only the

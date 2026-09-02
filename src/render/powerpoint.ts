@@ -96,9 +96,45 @@ function ppRun<T>(fn: (context: PowerPoint.RequestContext) => Promise<T>): Promi
     type Counted = typeof context.sync & { counted?: true };
     if (!(context.sync as Counted).counted) {
       const sync = context.sync.bind(context);
-      const counted = (() => {
+      /**
+       * THE ARGUMENT IS FORWARDED, AND DROPPING IT BROKE THE WHOLE ADD-IN.
+       *
+       * `sync` is declared `sync<T>(passThroughValue?: T): Promise<T>` and that
+       * parameter is not decoration — it is how `PowerPoint.run` returns a
+       * value at all. Office.js's `_runCommon` ends every batch with
+       * `.then(runBodyResult => ctx.sync(runBodyResult))`, and
+       * `ClientRequestContext.sync` resolves with exactly what it was handed.
+       * The batch callback's result rides OUT through one last sync.
+       *
+       * The first version of this wrapper took no parameters and called
+       * `sync()`, so that final auto-sync resolved undefined and EVERY
+       * `ppRun` in the build returned undefined. Not some — every one.
+       *
+       * WHAT THAT COST, on 2026-09-02, in one afternoon: `slideCount()` gave
+       * undefined, so `deckSlides` read `unreadable` and the self-test's
+       * counts became `deck grew by NaN`; `slideSize()`'s top rung threw on an
+       * undefined result and fell through to the saved file, so the pane
+       * reported the deck's OLD profile and looked like it was disagreeing
+       * with the driver; the probe harness got undefined where an answer
+       * belonged and aborted a round with `Cannot read properties of undefined
+       * (reading 'answer')`. Rounds 360 and 361 measured none of what they
+       * claimed to. The crossed-deck experiment they were run for was written
+       * up as void, blamed on a damaged document, and the document was fine.
+       *
+       * The signature is the whole story: `deckSlides` reads 1 in round 359
+       * and `unreadable` in 360 and 361, and `ppRun` landed between them.
+       *
+       * WHY NOTHING CAUGHT IT. A grep of this repo for `.sync(` with an
+       * argument finds nothing — all 197 of OUR calls are argless, which is
+       * what made the omission look safe. The caller that passes one lives
+       * inside Office.js. And the test fake's `run` simply returns the
+       * callback's value with no final auto-sync at all, so the suite could
+       * not see it; that is fixed in `test/helpers/office-host.ts`, which now
+       * models the pass-through the way the real host does.
+       */
+      const counted = (<T>(passThroughValue?: T) => {
         SYNCS++;
-        return sync();
+        return sync(passThroughValue);
       }) as Counted;
       counted.counted = true;
       context.sync = counted;
@@ -106,6 +142,17 @@ function ppRun<T>(fn: (context: PowerPoint.RequestContext) => Promise<T>): Promi
     return fn(context);
   });
 }
+
+/**
+ * `ppRun` itself, for the one test that has to exercise the REAL wrapper.
+ *
+ * Exported only for `test/office-render.test.ts`'s pass-through guard. That
+ * test brings its own minimal host because the shared fake cannot express the
+ * defect, and a test that reimplemented this function would have passed
+ * happily while the shipped one returned undefined for every host call — which
+ * is exactly how the bug it guards reached a real round.
+ */
+export const _ppRunForTest = ppRun;
 
 export interface InsertOptions {
   /** Top-left of the chart frame on the slide, in points. */

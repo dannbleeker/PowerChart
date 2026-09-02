@@ -979,12 +979,14 @@ describe("scene node mapping", () => {
       const slide = makeSlide("s-old");
       const ctx = installHost([slide], [], slide, (v) => v !== "1.10");
       const realSync = ctx.sync;
-      ctx.sync = async () => {
+      ctx.sync = async <T>(passThroughValue?: T) => {
         // Any rotation assigned on a host without 1.10 poisons the whole batch.
         if (slide.created.some((sh) => sh.rotation !== undefined)) {
           throw new Error("PropertyNotSupported: Shape.rotation requires PowerPointApi 1.10");
         }
-        return realSync();
+        // Forwarded, like the real thing — see the `sync` stub in
+        // `test/helpers/office-host.ts` for what dropping it cost.
+        return realSync(passThroughValue);
       };
       const scene = buildChart(sampleConfig(kind as never));
       // Must not reject: the chart degrades (no wedges) instead of failing.
@@ -3466,10 +3468,14 @@ describe("the wait budget scales with the work", () => {
     const perSync: number[] = [];
     let last = 0;
     const ctx = installHost([slide]);
-    ctx.sync = async () => {
+    ctx.sync = async <T>(passThroughValue?: T) => {
       trips.syncs++;
       perSync.push(slide.created.length - last);
       last = slide.created.length;
+      // Forwarded, like the real thing: PowerPoint.run carries a batch result
+      // out through one last sync, and a stub that swallows it makes every run
+      // in the file resolve undefined.
+      return passThroughValue;
     };
     const scene = buildChart(config);
     expect(scene.nodes.length).toBeGreaterThan(10); // must actually span batches
@@ -3487,10 +3493,11 @@ describe("the wait budget scales with the work", () => {
       const perSync: number[] = [];
       let last = 0;
       const ctx = installHost([slide]);
-      ctx.sync = async () => {
+      ctx.sync = async <T>(passThroughValue?: T) => {
         trips.syncs++;
         perSync.push(slide.created.length - last);
         last = slide.created.length;
+        return passThroughValue;
       };
       const scene = buildChart(sampleConfig(kind as never));
       await insertSceneIntoSlide(scene, { tagData: "{}" });
@@ -3535,10 +3542,13 @@ describe("EVERY insert path batches its shapes", () => {
     // starves insertAgendaSlides/insertDemoDeck of slides to render onto.
     const realSync = ctx.sync;
     const count = () => slides.reduce((a, s) => a + s.created.length, 0);
-    ctx.sync = async () => {
+    ctx.sync = async <T>(passThroughValue?: T) => {
       worst.n = Math.max(worst.n, count() - last);
       last = count();
-      await realSync();
+      // RETURNED, not merely awaited — the real `sync` resolves with what it
+      // was handed, and `PowerPoint.run` carries the batch's result out that
+      // way. A spy that awaits and returns nothing breaks every run it wraps.
+      return await realSync(passThroughValue);
     };
     await run();
     return worst.n;
@@ -7254,6 +7264,77 @@ describe("a host that cannot rotate", () => {
  */
 describe("counting what the round asks of the host", () => {
   const source = readFileSync("src/render/powerpoint.ts", "utf8");
+
+  it("lets the value a batch returns ride out through one last sync", async () => {
+    /**
+     * THE BUG THIS WHOLE BLOCK NEARLY SHIPPED, and the most expensive mistake
+     * in this file's history.
+     *
+     * `sync` is declared `sync<T>(passThroughValue?: T): Promise<T>`, and that
+     * parameter is how `PowerPoint.run` returns anything at all: Office.js
+     * ends every batch with `.then(r => ctx.sync(r))` and
+     * `ClientRequestContext.sync` resolves with exactly what it was handed.
+     *
+     * The first `ppRun` took no parameters and called `sync()`. So that final
+     * auto-sync resolved undefined, and EVERY host run in the build resolved
+     * undefined with it: `slideCount()` gave nothing, `deckSlides` read
+     * `unreadable`, the self-test's arithmetic became `deck grew by NaN`,
+     * `slideSize()`'s live rung threw and fell through to the saved file so the
+     * pane reported the deck's old profile, and the probe harness aborted a
+     * round on `Cannot read properties of undefined (reading 'answer')`.
+     * Rounds 360 and 361 measured none of what they claimed; the crossed-deck
+     * experiment was written up as void and a healthy document was blamed.
+     *
+     * NOTHING IN THIS SUITE COULD SEE IT. All 197 `.sync()` calls in this repo
+     * are argless — the only caller that passes a value lives inside Office.js
+     * — and the shared fake's `run` returns the callback's value directly with
+     * no final sync at all. 3,831 tests passed with the add-in fully broken.
+     *
+     * So this test brings its own host, modelled on the real one in the single
+     * respect that matters: the batch's result comes back THROUGH sync.
+     */
+    const seen: unknown[] = [];
+    const ctx = {
+      sync: async <T>(passThroughValue?: T) => {
+        seen.push(passThroughValue);
+        return passThroughValue;
+      },
+    };
+    vi.stubGlobal("PowerPoint", {
+      /**
+       * Office.js's `_runCommon`, reduced to its value-carrying role — and the
+       * LOOKUP ORDER is load-bearing, which cost this test its first draft.
+       *
+       * Written as `ctx.sync(await cb(ctx))` it passes against the bug. In
+       * `obj.method(arg)` JavaScript resolves the member reference BEFORE
+       * evaluating the argument, so that form captures the sync that existed
+       * before the batch ran — the unpatched one — and the wrapper under test
+       * is never invoked at all. The real host resolves it inside a `.then`
+       * callback, after the batch and after any patch. So must this.
+       */
+      run: async <T>(cb: (c: typeof ctx) => Promise<T>) => {
+        const runBodyResult = await cb(ctx);
+        return ctx.sync(runBodyResult);
+      },
+    });
+
+    // Exercised through the real wrapper rather than a copy of it: `ppRun` is
+    // module-private, and a test that reimplemented it would pass while the
+    // shipped one stayed broken — which is precisely how this got out.
+    const { _ppRunForTest } = (await import("../src/render/powerpoint")) as unknown as {
+      _ppRunForTest: <T>(fn: (c: unknown) => Promise<T>) => Promise<T>;
+    };
+    const got = await _ppRunForTest(async (c) => {
+      await (c as typeof ctx).sync();
+      return 42;
+    });
+
+    expect(got, "the batch's return value did not survive the run — see the docstring").toBe(42);
+    // And the LAST sync is the one carrying it, which is the mechanism rather
+    // than the symptom: an inner argless sync must not be mistaken for the
+    // auto-sync that matters.
+    expect(seen[seen.length - 1], "the final auto-sync was handed nothing to carry").toBe(42);
+  });
 
   it("routes every host run through the counting wrapper", () => {
     /**
