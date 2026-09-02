@@ -9,6 +9,13 @@ fact would produce a document nobody could trust.
 
 ## Unreleased
 
+## 0.5.0 — 2026-09-02
+
+The release the European paste fix has been waiting in. Eleven user-facing
+changes since 0.4.0; the two worth reading first are that a paste out of a
+Danish, German or Nordic Excel is finally read correctly, and that a chart this
+PowerPoint cannot draw now arrives as a picture rather than as a gap.
+
 ### Charts stop drawing text over text
 
 A sweep of every chart kind under twenty-four options and ten data shapes — at
