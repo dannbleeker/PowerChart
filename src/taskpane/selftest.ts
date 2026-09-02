@@ -421,6 +421,15 @@ export function deckGrowth(before: number | undefined, after: number | undefined
 const countlessSkip = () => ({
   ok: false,
   skipped: true,
+  /**
+   * BLIND, exactly as a lost scan is — and the first version of this omitted
+   * the flag. `blind`'s own docstring says what that costs: a skip without it
+   * reads as "host cannot run them", a feature gap someone files and moves on
+   * from, when what happened is that we lost sight of the deck. An unread COUNT
+   * and an unread SCAN are the same loss of visibility and have to reach a
+   * reader as the same thing.
+   */
+  blind: true,
   detail: "the host would not say how many slides the deck holds, so nothing about what it gained means anything",
 });
 
@@ -498,7 +507,15 @@ const duplicateSlot: Scenario = async (prefix) => {
    */
   const wanted = titles.length * 2;
   const afterInsert = await settledSlideCount(before + wanted);
-  if (afterInsert - before < wanted)
+  // THE FOURTH SITE, missed by the first sweep of this exact defect — the
+  // "fix written, one call site left behind" shape, committed the same day the
+  // other three were repaired. `deckGrowth` returns null when either count was
+  // never taken, and `null < wanted` is FALSE in JS, so an unread deck sailed
+  // past this guard and into the arithmetic below. Round 360 filed the result:
+  // "4 slides inserted, NaN kept".
+  const landedCount = deckGrowth(before, afterInsert);
+  if (landedCount === null) return countlessSkip();
+  if (landedCount < wanted)
     // A SKIP, not a failure. This scenario asks whether the reconcile
     // deduplicates two slides claiming one slot; if the slides are not there to
     // be deduplicated then it has not been asked, and "failed" blames the dedup
@@ -509,7 +526,7 @@ const duplicateSlot: Scenario = async (prefix) => {
       ok: false,
       skipped: true,
       detail:
-        `only ${afterInsert - before} of ${wanted} slides landed even after a settle ` +
+        `only ${landedCount} of ${wanted} slides landed even after a settle ` +
         `(the two inserts reported ${landedA} and ${landedB}), so there was nothing to deduplicate`,
     };
   const outcome = await reconcileDeck(
@@ -536,10 +553,15 @@ const duplicateSlot: Scenario = async (prefix) => {
   // Four slides in, two out, and both survivors still charts. A pass that
   // deleted both copies of one item would leave two slides and read as
   // success on the count alone — hence the second half of this.
-  const ok = settled - before === 2 && kept.length === 2;
+  // The same guard again on the closing count: this is the line that produced
+  // round 360's "4 slides inserted, NaN kept", and a verdict is exactly as
+  // unfounded on an unread count here as it was on the opening one.
+  const keptCount = deckGrowth(before, settled);
+  if (keptCount === null) return countlessSkip();
+  const ok = keptCount === 2 && kept.length === 2;
   return {
     ok,
-    detail: `4 slides inserted, ${settled - before} kept, ${kept.length} of 2 still re-editable; ${outcome.plan.summary.duplicates} queued as duplicates`,
+    detail: `4 slides inserted, ${keptCount} kept, ${kept.length} of 2 still re-editable; ${outcome.plan.summary.duplicates} queued as duplicates`,
   };
 };
 
@@ -1562,15 +1584,23 @@ const insertOntoUsedSlide: Scenario = async (prefix) => {
   // costs a whole real-host round to chase.
   const rescan = await probeCharts(prefix);
   if (mineBlind || rescan.blind) return blindSkip(rescan.blind ? rescan.gap : mineGap);
+  /**
+   * A SKIP, matching the rule three lines above rather than inventing a third
+   * answer. `after !== before` was FALSE when the host answered neither, so an
+   * unreadable deck read as "it did not grow" — a clean pass on no evidence.
+   *
+   * The first repair reported it as a PROBLEM instead, which makes a FAILED
+   * verdict: unknown dressed as a measurement, the same costume in a new
+   * colour, and against this scenario's own doctrine — "a blind scan is
+   * reported as SKIPPED, not as a pass and not as a failure: nobody has
+   * evidence either way, and a verdict that cannot be attributed costs a whole
+   * real-host round to chase." An unread COUNT is that, exactly.
+   */
+  const grew = deckGrowth(before, after);
+  if (grew === null) return countlessSkip();
   const survivor = rescan.found.find((c) => c.cfg.title === host.cfg.title);
   const problems = [
-    // `after !== before` was FALSE when the host answered neither, so an
-    // unreadable deck read as "it did not grow" — a clean pass on no evidence.
-    // See `deckGrowth`; unknown is now its own problem rather than a silence.
-    deckGrowth(before, after) === null
-      ? "the host would not say how many slides the deck holds, so nothing here proves the charts went ON the slide"
-      : deckGrowth(before, after) !== 0 &&
-        `the deck grew by ${deckGrowth(before, after)} — the charts did not go ON the slide`,
+    grew !== 0 && `the deck grew by ${grew} — the charts did not go ON the slide`,
     mine.length !== added.length && `${mine.length} of ${added.length} new charts are re-editable`,
     !survivor && "the chart already on the slide is no longer re-editable",
   ].filter(Boolean);
@@ -1765,15 +1795,16 @@ const stopPartWay: Scenario = async (prefix) => {
   // non-destructive — which nothing else checks.
   const leftovers = await probeCharts(`${prefix} stopped`);
   if (leftovers.blind && leftovers.found.length === 0) return blindSkip(leftovers.gap);
+  // Same silence as the sibling above, guarding a stronger promise: that Stop
+  // is non-destructive, which nothing else in this suite checks. `after !==
+  // before` cannot fire when neither count was taken, so the one assertion
+  // nobody else makes passed on no evidence. A SKIP for the same reason as
+  // there — a verdict nobody can attribute is worse than no verdict.
+  const grew = deckGrowth(before, after);
+  if (grew === null) return countlessSkip();
   const problems = [
     outcome !== "stopped" && outcome,
-    // Same silence as the sibling above, guarding a stronger promise: that Stop
-    // is non-destructive. `after !== before` cannot fire when neither count was
-    // taken, so the one assertion nothing else makes passed on no evidence.
-    deckGrowth(before, after) === null
-      ? "the host would not say how many slides the deck holds, so nothing here proves a stopped insert added none"
-      : deckGrowth(before, after) !== 0 &&
-        `the deck grew by ${deckGrowth(before, after)} — a stopped insert added a slide`,
+    grew !== 0 && `the deck grew by ${grew} — a stopped insert added a slide`,
     // A stop must not leave a chart the pane would offer to edit: half a chart
     // that claims to be whole is worse than a visible mess.
     leftovers.found.length > 0 && "a stopped insert left a re-editable chart behind",

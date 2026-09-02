@@ -3632,6 +3632,13 @@ describe("a slide count nobody took", () => {
      *
      * Asserted as source because reaching those two lines needs a host that
      * answers a scan and refuses a count, and the fake has no fault for it.
+     *
+     * AND EVERY SITE ANSWERS THE SAME WAY. The first repair made two of them
+     * report a PROBLEM instead — which is a FAILED verdict, so unknown came
+     * back as a measurement in a fresh costume, against the rule those very
+     * scenarios state: "a blind scan is reported as SKIPPED, not as a pass and
+     * not as a failure: nobody has evidence either way, and a verdict that
+     * cannot be attributed costs a whole real-host round to chase."
      */
     const src = readFileSync("src/taskpane/selftest.ts", "utf8");
     const unguarded = src.match(/after !== before && `the deck grew by/g) ?? [];
@@ -3642,5 +3649,53 @@ describe("a slide count nobody took", () => {
     expect(src, "an unread count no longer skips the scenario").toMatch(
       /const grew = deckGrowth\(before, after\);\s*\n\s*if \(grew === null\) return countlessSkip\(\);/,
     );
+
+    /**
+     * THE FOURTH SITE, and the reason this assertion counts rather than spot-
+     * checks. The first sweep of this defect repaired three scenarios and left
+     * `duplicateSlot` — which owns BOTH of round 360's failing sentences, and
+     * whose opening guard `afterInsert - before < wanted` sailed through on an
+     * unread deck because `null < wanted` is false in JavaScript.
+     *
+     * That is the "fix written, one call site left behind" shape this repo has
+     * now shipped five times, committed on the same day as the fix it belongs
+     * to. Counting every site is what a spot-check cannot do.
+     */
+    const subtractions = src.match(/\b(?:after|afterInsert|settled) - before\b/g) ?? [];
+    expect(subtractions, `a raw slide-count subtraction survived: ${subtractions.join(", ")}`).toHaveLength(1);
+    // The one survivor is inside `deckGrowth` itself, which is where the
+    // subtraction is supposed to live.
+    expect(src).toMatch(/Number\.isFinite\(after\)\s*\n?\s*\?\s*after - before/);
+    expect((src.match(/deckGrowth\(/g) ?? []).length, "not every site goes through the helper").toBeGreaterThanOrEqual(
+      6,
+    );
+
+    // ONE ANSWER TO UNKNOWN, everywhere. Every scenario that reads a growth
+    // reaches `countlessSkip` when the count is missing — none of them turns it
+    // into a problem string, which would file a FAILED verdict on no evidence.
+    const skips = src.match(/if \(\w+ === null\) return countlessSkip\(\);/g) ?? [];
+    expect(skips.length, "a site answers an unread count some other way").toBeGreaterThanOrEqual(4);
+    expect(src, "an unread count is being reported as a problem — that is a FAILED verdict, not a skip").not.toMatch(
+      /deckGrowth\([^)]*\) === null\s*\n?\s*\?/,
+    );
+  });
+
+  it("reports a lost count as lost sight, not as a missing feature", () => {
+    /**
+     * `blind` exists to keep those two apart, and its own docstring says what
+     * omitting it costs: the run reports "N skipped (host cannot run them)",
+     * "a total loss of deck visibility reported as a feature gap, which is the
+     * sort of line someone files and moves on from".
+     *
+     * `countlessSkip` shipped without the flag. An unread COUNT and an unread
+     * SCAN are the same loss of visibility, and a reader has to see them as the
+     * same thing — so it carries `blind` exactly as `blindSkip` does.
+     */
+    const src = readFileSync("src/taskpane/selftest.ts", "utf8");
+    const body = src.slice(src.indexOf("const countlessSkip"), src.indexOf("type Scenario"));
+    expect(body.length, "could not find countlessSkip").toBeGreaterThan(50);
+    expect(body, "a lost count is reported as a feature gap, not as lost visibility").toMatch(/blind:\s*true/);
+    expect(body, "a countless skip stopped being a skip").toMatch(/skipped:\s*true/);
+    expect(body, "a countless skip started claiming success").toMatch(/ok:\s*false/);
   });
 });
