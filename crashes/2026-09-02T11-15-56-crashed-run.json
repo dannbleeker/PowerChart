@@ -1,0 +1,32 @@
+{
+  "kind": "ssf-charts-crash-log",
+  "build": "b5c534a · 2026-09-02 10:35Z",
+  "host": "PowerPoint · OfficeOnline · 0.0.0.0",
+  "label": "the whole round",
+  "seq": 2,
+  "startedAt": "2026-09-02T10:42:27.355Z",
+  "dropped": 0,
+  "steps": [
+    "    66s  deck-style  the deck-style read answered  parts=0 at=counting the deck's style parts observedBeforeTheRound=true",
+    "    66s  host  environment  build=b5c534a · 2026-09-02 10:35Z host=PowerPoint platform=OfficeOnline version=0.0.0.0 extendedErrors=true requirementSets=[\"1.1\",\"1.2\",\"1.3\",\"1.4\",\"1.5\",\"1.6\",\"1.7\",\"1.8\",\"1.9\",\"1.10\"] canInsertSlidesFromBase64=true canInsertPicture=true",
+    "    66s  selftest  round starting  deckSlides=unreadable env={\"requirementSets\":[\"1.1\",\"1.2\",\"1.3\",\"1.4\",\"1.5\",\"1.6\",\"1.7\",\"1.8\",\"1.9\",\"1.10\"],\"host\":\"PowerPoint\",\"platform\":\"OfficeOnline\",\"officeVers…",
+    "    66s  host  did not answer before the first question  ms=31",
+    "  66.2s  host  scratch slide: the deck would not list its slides  before=false after=false",
+    "  66.2s  probe  asking  id=load-isnullobject-populates",
+    "  67.4s  host  scratch slide: the deck would not list its slides  before=false after=false",
+    "  67.4s  probe  answered  id=load-isnullobject-populates answer=no-scratch-slide ms=1141 pass=1",
+    "  67.4s  probe  asking  id=load-id-populates-isnullobject",
+    "  67.5s  host  gave up waiting  what=reading the slide size afterMs=1500 afterAnswering=listing the deck's slides afterAnsweringMs=18 idleMs=-1436 shape=THIS CALL ALONE is stuck — the host answered something else 1436ms AFTER this call was issued, while it was still waiting",
+    "  68.1s  host  slide size  width=720 height=540 source=documentFile",
+    "  82.4s  host  gave up waiting  what=adding a scratch slide afterMs=15000 afterAnswering=listing the deck's slides afterAnsweringMs=18 idleMs=0 shape=issued immediately after the previous answer — an ordinary sequential gap, says little",
+    "  82.4s  host  no answer — asking the document what actually happened  what=adding a scratch slide waitedMs=15000",
+    "  82.4s  host  scratch slide: the deck would not list its slides  before=false after=false",
+    "  82.4s  probe  answered  id=load-id-populates-isnullobject answer=no-scratch-slide ms=15030 pass=1",
+    "  82.4s  probe  asking  id=getitemornullobject-missing",
+    "  83.1s  host  scratch slide: the deck would not list its slides  before=false after=false",
+    "  83.1s  probe  gave the scratch slides back  returned=0 swept=0 left=0 heldIds=[] deckIds=[]",
+    "  83.1s  pane  action failed  action=demo-round ms=17163 error=Cannot read properties of undefined (reading 'answer')"
+  ],
+  "frontedWhenRescued": "Presentation70.pptx",
+  "deckAskedNextRound": "Presentation70"
+}

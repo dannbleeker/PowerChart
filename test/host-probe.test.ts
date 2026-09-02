@@ -307,6 +307,52 @@ describe("`unreadable` is the same trap as `other`, and cost eight questions the
   });
 });
 
+describe("a host run that resolves nothing at all", () => {
+  it("costs one question, not the whole round", async () => {
+    /**
+     * THE ROUND THIS COST. On 2026-09-02 the crossed-deck experiment's first
+     * two attempts each died at ~83s with `Cannot read properties of undefined
+     * (reading 'answer')`, and the driver — whose completion signal is a button
+     * the dead round never enables — then waited out its full 30-minute wedge
+     * budget on each. Two hours of host time for a fault in this file, and the
+     * only "30 minutes with no finish" records in an archive of 161.
+     *
+     * WHERE IT THREW. `ask`'s caller does `record({ …, ...result })` and then
+     * `trace("probe", "answered", { answer: result.answer })`. The spread
+     * swallows `undefined` — `{...undefined}` is `{}` — so `record` survives
+     * and the trace is what dies. The crash record shows exactly that: an
+     * `asking` line for `getitemornullobject-missing` with no `answered` line
+     * after it.
+     *
+     * WHY `ask` returned undefined on the real host is still unknown, and this
+     * test does not claim to reproduce that cause — it reproduces the SHAPE, a
+     * host whose `run` resolves with nothing, which is the only way the value
+     * can get through `withProbeContext` and `withTimeout` without either
+     * throwing. What is asserted is the property that matters either way: one
+     * unanswerable question costs one question.
+     */
+    installHost([makeSlide("s1")]);
+    const real = (globalThis as unknown as { PowerPoint: Record<string, unknown> }).PowerPoint;
+    // Everything else about the host is left exactly as it was — only the one
+    // thing that hands back a value is emptied.
+    vi.stubGlobal("PowerPoint", { ...real, run: async () => undefined });
+
+    const sheet = await runHostProbes("fake", "test");
+
+    // IT CAME BACK AT ALL. Before the guard this rejected, and the round with
+    // it — the whole point is that a sheet arrives.
+    expect(sheet.answers.length, "the run threw instead of returning a sheet").toBeGreaterThan(0);
+    // And every question is ANSWERED, with a word the sheet already knows.
+    // `unreadable` is in `UNINFORMATIVE`, so it ranks below any named answer
+    // and cannot lock a row against a later pass that succeeds.
+    const empty = sheet.answers.filter((a) => a.answer === "unreadable");
+    expect(empty.length, "a host answering nothing produced no `unreadable` rows").toBeGreaterThan(0);
+    for (const a of sheet.answers) {
+      expect(typeof a.answer, `${a.id} came back with no answer at all`).toBe("string");
+    }
+  });
+});
+
 const probeSheet = async () => {
   const answers = await runHostProbes("fake", "test");
   return Object.fromEntries(answers.answers.map((a) => [a.id, a.answer]));

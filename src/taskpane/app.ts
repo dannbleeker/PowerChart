@@ -4197,7 +4197,43 @@ function wireInsert() {
             trace("pane", "action stopped", { action, ms: Date.now() - startedAt });
             note("Stopped — anything already drawn was kept.", "err");
           } else {
-            trace("pane", "action failed", { action, ms: Date.now() - startedAt, error: errorText(err) });
+            /**
+             * THE STACK, FOR THE ONE CLASS OF FAILURE THIS TRACE CANNOT PLACE.
+             *
+             * A host refusal names itself — `errorText` digs the Office.js code
+             * and `debugInfo` out, and the trace line before it says which call
+             * was in flight. A fault in OUR OWN code says only what it tripped
+             * over, and on 2026-09-02 that was `Cannot read properties of
+             * undefined (reading 'answer')`: a whole round abandoned at 83s,
+             * the first occurrence in 161 crash records, on a host so sick that
+             * `deckSlides` was unreadable from the first line and the deck
+             * refused to list its slides four times before the throw.
+             *
+             * It cost an afternoon and was not found. `withTimeout` rejects
+             * rather than resolving empty, `withProbeContext` always returns
+             * `fn(...)` or throws, and the probe that was in flight returns on
+             * every path — so reading the code ruled out the three obvious
+             * sites and named none. There are 49 `.answer` reads in
+             * `host-probe.ts` and no way to tell which one it was.
+             *
+             * One frame would have. It is recorded only for a native `Error`
+             * with a stack, and only the first few frames: a RichApi.Error's
+             * stack is Office.js's own plumbing and says nothing, and the whole
+             * record is capped at what a crash log can carry.
+             *
+             * NOT A FIX. The fault is still there and still unlocated; this is
+             * so the next occurrence is the last one that has to be guessed at.
+             */
+            const stack =
+              err instanceof Error && typeof err.stack === "string"
+                ? err.stack.split("\n").slice(0, 6).join(" | ").slice(0, 600)
+                : null;
+            trace("pane", "action failed", {
+              action,
+              ms: Date.now() - startedAt,
+              error: errorText(err),
+              ...(stack ? { stack } : {}),
+            });
             // errorText, not err.message: a RichApi.Error's message is generic
             // ("An internal error has occurred") and the useful part is in code
             // and debugInfo, which String(err) throws away.

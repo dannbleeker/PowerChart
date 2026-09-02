@@ -4355,7 +4355,39 @@ async function ask(
 ): Promise<{ answer: string; detail?: string; why?: "gone" | "silent" }> {
   awaitingSetupShapes = false;
   try {
-    return await withProbeContext(scratchId, PROBE_BUDGET_MS, probe.ask, durableSlideId, probe.noSlideNeeded);
+    const answered = await withProbeContext(scratchId, PROBE_BUDGET_MS, probe.ask, durableSlideId, probe.noSlideNeeded);
+    /**
+     * AN ANSWER, ALWAYS. The return type promises one; on 2026-09-02 it did
+     * not deliver, and the round it killed cost half an experiment.
+     *
+     * WHERE IT THREW, established from the record rather than guessed: the
+     * caller does `record({ …, ...result })` and then
+     * `trace("probe", "answered", { answer: result.answer })`. The spread
+     * tolerates `undefined` silently — `{...undefined}` is `{}` — so `record`
+     * survives and the TRACE is what dies. Round 360's attempt 2 shows exactly
+     * that shape: `probe asking id=getitemornullobject-missing` with no
+     * matching `answered` line, then `Cannot read properties of undefined
+     * (reading 'answer')`. `result` was undefined, and only this function can
+     * have made it so.
+     *
+     * WHY IT WAS UNDEFINED IS STILL UNKNOWN, and this comment will not pretend
+     * otherwise. `withTimeout` rejects rather than resolving empty,
+     * `withProbeContext` returns `fn(...)` or throws, and the probe in flight
+     * returns on every path — the three obvious explanations are all refuted by
+     * reading them. Something below still resolves empty on a host sick enough,
+     * and this is the first host in 161 crash records that was.
+     *
+     * SO THE BOUNDARY IS DEFENDED RATHER THAN THE CAUSE FIXED. That is worth
+     * doing on its own terms: one unanswerable question should cost one
+     * question, which is the whole reason the catch below exists. It caught
+     * throwing and not silence, and this file's oldest lesson is that those are
+     * different. `action failed` now records a stack, so the next occurrence
+     * names the frame this one could not.
+     *
+     * `unreadable`, not a new word — it is already in `UNINFORMATIVE`, so the
+     * sheet ranks it below any named answer and the vocabulary ratchet holds.
+     */
+    return answered ?? { answer: "unreadable", detail: "the probe returned no answer at all" };
   } catch (err) {
     // WHY the slide was unavailable, carried out rather than flattened into
     // prose. The two causes want opposite fixes and the archive cannot tell them

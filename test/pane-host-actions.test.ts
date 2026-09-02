@@ -162,6 +162,16 @@ const host = vi.hoisted(() => ({
    */
   slideCountThrowsAfter: null as null | number,
   slideCountCalls: 0,
+  /**
+   * Make the round's very first statement throw a NATIVE Error.
+   *
+   * Every other fault in this file models the HOST refusing — politely, at a
+   * call the trace already names. This one models OUR OWN code failing, which
+   * is the case the record could not place: `resetSyncCount` runs at the top of
+   * the round with nothing wrapping it but the outer handler, so a throw here
+   * arrives there and nowhere else.
+   */
+  syncResetThrows: false,
   /** What a deck scan reports holding, when the caller asked for the inventory. */
   deckInventory: [] as { slideId: string; index: number; shapes: { id: string; name?: string }[] }[],
   /**
@@ -569,7 +579,9 @@ vi.mock("../src/render/powerpoint", () => ({
   // round file — a mock answering undefined would let a round ship with the
   // field silently missing and every test here still pass.
   syncsSoFar: vi.fn(() => 0),
-  resetSyncCount: vi.fn(),
+  resetSyncCount: vi.fn(() => {
+    if (host.syncResetThrows) throw new Error("the pane's own code fell over");
+  }),
   deleteSlideById: vi.fn(async (id: string) => {
     host.deletedSlides.push(id);
     return !host.refuseSlideDelete.includes(id);
@@ -667,6 +679,7 @@ async function bootHostPane(opts?: { deckStyle?: Record<string, unknown> | null;
   host.insertGate = null;
   host.slideCountThrowsAfter = null;
   host.slideCountCalls = 0;
+  host.syncResetThrows = false;
   host.insertFileLands = null;
   host.insertFileError = null;
   host.buildFileError = null;
@@ -2395,6 +2408,64 @@ describe("demo-insert one-shot deck insert", () => {
     } finally {
       setTracing(false);
       host.deckSlideIds = undefined;
+    }
+  });
+
+  it("records a stack when the round dies in OUR code, not the host's", async () => {
+    /**
+     * A HOST REFUSAL NAMES ITSELF; A BUG IN THIS PANE DOES NOT.
+     *
+     * `errorText` digs an Office.js code and `debugInfo` out of a RichApi
+     * error, and the trace line before it says which call was in flight. When
+     * the fault is our own, the record carries a message and nothing else.
+     *
+     * 2026-09-02 is what that costs. Round 360's second attempt died at 83s
+     * with `Cannot read properties of undefined (reading 'answer')` — the first
+     * occurrence in 161 crash records, on a host so sick that `deckSlides` was
+     * unreadable from the first line. Reading the code ruled out the three
+     * obvious sites and named none: `withTimeout` rejects rather than resolving
+     * empty, `withProbeContext` always returns `fn(...)` or throws, and the
+     * probe in flight returns on every path. There are 49 `.answer` reads in
+     * `host-probe.ts` and nothing to say which one it was. It is still
+     * unlocated.
+     *
+     * One frame would have settled it. This does not fix the fault — it makes
+     * the next occurrence the last one anybody has to guess at.
+     */
+    const { setTracing, traceLog } = await import("../src/core/trace");
+    // The round's first statement throws a native Error: our own code failing,
+    // not the host refusing at a call the trace already names.
+    host.syncResetThrows = true;
+    setTracing(true);
+    try {
+      $("demo-round").click();
+      await settle();
+      const failed = traceLog().entries.filter((e) => e.message === "action failed");
+      expect(failed.length, "a round died and nothing traced the failure").toBeGreaterThan(0);
+      const stack = failed[0].data?.stack;
+      expect(stack, "the round died in our own code and recorded no frame").toBeTruthy();
+      /**
+       * THE FRAMES, not merely a truthy field. `err.stack` opens with the
+       * message, so a stack trimmed to its first line is a field that exists
+       * and names nothing — and the first version of this assertion, matching
+       * `/\bat\b/` on the joined string, PASSED against exactly that mutant.
+       * The message it is built from ("the pane's own code fell over") has no
+       * standalone "at" in it, so the regex was matching a frame that a
+       * one-line slice would still have contained: `String(stack)` of a
+       * single-element join is the message alone, and the match came from the
+       * word boundary landing inside the file path Vitest appends. Either way
+       * it did not test the property it claimed.
+       *
+       * Counting segments does. The handler joins frames with " | ", so a slice
+       * of one produces no separator at all, and a stack worth recording has at
+       * least the throw site plus one caller.
+       */
+      const frames = String(stack).split(" | ");
+      expect(frames.length, "the stack was trimmed to its message and names no call site").toBeGreaterThanOrEqual(2);
+      expect(frames.slice(1).join(" "), "the frames carry no call site").toMatch(/\bat\b/);
+    } finally {
+      setTracing(false);
+      host.syncResetThrows = false;
     }
   });
 
