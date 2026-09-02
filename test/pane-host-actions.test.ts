@@ -604,7 +604,7 @@ const settle = () => new Promise((r) => setTimeout(r, 0));
  * inside `Office.onReady`, so the stub must both look like a host (mocked
  * `isPowerPointHost`) and fire onReady synchronously at import.
  */
-async function bootHostPane(opts?: { deckStyle?: Record<string, unknown> | null }) {
+async function bootHostPane(opts?: { deckStyle?: Record<string, unknown> | null; keepPicturePref?: boolean }) {
   host.selectionBounds = null;
   host.slideShapes = [];
   host.deckCharts = [];
@@ -679,6 +679,33 @@ async function bootHostPane(opts?: { deckStyle?: Record<string, unknown> | null 
   host.updateChartsDrops = 0;
   host.stopRequested = false;
   host.slideSize = { width: 960, height: 540, source: "pageSetup" };
+
+  /**
+   * A FRESH BROWSER'S PREFERENCES, not the previous test's.
+   *
+   * `Insert as picture` became a REMEMBERED default on 2026-09-02, so
+   * `tickPicture()` now writes to localStorage and every later boot reads it
+   * back. That is exactly the behaviour asked for — tick it once and new charts
+   * stay pictures — and it leaks straight through a shared jsdom localStorage
+   * into every test that runs after it.
+   *
+   * It surfaced as eleven failures in tests with nothing to do with pictures:
+   * `insertScene` came back empty, or carried a payload nothing had asked for,
+   * because the pane they booted had inherited a preference from a test earlier
+   * in the file. Every one of them passed when run alone.
+   *
+   * Only this key is cleared. Templates and the deck style live in localStorage
+   * too, and their own tests set those up deliberately.
+   *
+   * `keepPicturePref` is the opt-out, for the one test whose SUBJECT is that the
+   * preference survives a reload — it needs the leak this prevents.
+   */
+  if (!opts?.keepPicturePref)
+    try {
+      localStorage.removeItem("ssf-charts-render-image");
+    } catch {
+      /* a jsdom without storage is still a valid pane */
+    }
 
   window.history.replaceState({}, "", "/taskpane.html");
   const parsed = new DOMParser().parseFromString(readFileSync("src/taskpane/taskpane.html", "utf8"), "text/html");
@@ -995,6 +1022,57 @@ describe("image render mode", () => {
       ).toBe(true);
       expect($("host-note").textContent ?? "").not.toMatch(/fell back to native shapes/i);
       expect($("host-note").className, "a successful rescue was reported in red").not.toMatch(/status-err/);
+    } finally {
+      raster.restore();
+    }
+  });
+
+  it("remembers the choice for the NEXT chart, and does not impose it on an existing one", async () => {
+    /**
+     * THE STANDING HALF OF THE CHOICE. `Insert as picture` has always been a
+     * per-chart tick that reset on every new chart, so anyone who wanted
+     * pictures had to remember every single time. It is a remembered default
+     * now — and a DEFAULT is all it is.
+     *
+     * The second half is the one that could do damage. `stateFromConfig` also
+     * runs when a chart is loaded off a slide, so seeding the preference there
+     * would silently rewrite somebody's existing shapes chart into a picture the
+     * moment they opened it to change a label. A chart's own `render` is a fact
+     * about that chart; the preference is a wish about the next one.
+     */
+    const raster = stubRaster();
+    try {
+      tickPicture();
+      expect(localStorage.getItem("ssf-charts-render-image"), "the choice was not remembered").toBe("1");
+
+      // A NEW pane, as if the add-in were reopened tomorrow.
+      await bootHostPane({ keepPicturePref: true });
+      expect(
+        ($("render-image") as HTMLInputElement).checked,
+        "the remembered preference did not survive a reload",
+      ).toBe(true);
+
+      // And a chart that went in as SHAPES still opens as shapes, preference or
+      // not — this is the assertion that stops the default becoming an override.
+      // Imported through the JSON box, which is the same `stateFromConfig` path
+      // that opening a chart off a slide takes.
+      ($("json-io") as HTMLTextAreaElement).value = JSON.stringify({
+        kind: "clustered",
+        data: { categories: ["A", "B"], series: [{ name: "S", values: [1, 2] }] },
+        title: "a chart that went in as shapes",
+      });
+      $("json-import").click();
+      await settle();
+      expect(
+        ($("render-image") as HTMLInputElement).checked,
+        "opening a shapes chart silently turned it into a picture",
+      ).toBe(false);
+
+      // Unticking is remembered too, or the preference would be one-way.
+      const box = $("render-image") as HTMLInputElement;
+      box.checked = false;
+      box.dispatchEvent(new Event("change"));
+      expect(localStorage.getItem("ssf-charts-render-image")).toBe("0");
     } finally {
       raster.restore();
     }

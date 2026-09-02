@@ -118,8 +118,56 @@ describe("when the pane offers a slide of its own", () => {
     // The sentence is only honest if the pane feeds it the real pair: what this
     // insert costs HERE, and what the same chart costs on a blank slide.
     const src = readFileSync("src/taskpane/app.ts", "utf8");
-    expect(src).toMatch(/estimateInsertMs\(sceneShapes, occupied\.length\)/);
-    expect(src, "the new-slide figure became a constant").toMatch(/estimateInsertMs\(sceneShapes, 0\)/);
+    expect(src).toMatch(/estimateInsertMs\(pricedShapes, occupied\.length\)/);
+    expect(src, "the new-slide figure became a constant").toMatch(/estimateInsertMs\(pricedShapes, 0\)/);
+  });
+
+  it("prices what will actually be inserted, not what the scene contains", () => {
+    /**
+     * THE SENTENCE WAS DESCRIBING AN INSERT THE PANE HAD DECIDED NOT TO PERFORM.
+     *
+     * `Insert as picture` has shipped as a checkbox for some time, and it makes
+     * an insert ONE shape and one sync. But `chartPicture` ran twenty lines
+     * BELOW this question, so the offer priced the chart at its native shape
+     * count either way: a violin of 253 shapes onto a sixty-shape slide was
+     * quoted "about 7 minutes" when what followed was a single `setImage`.
+     *
+     * The picture is decided first now, and the count reaching the estimate is
+     * what the renderer will really draw. `png` is the honest test rather than
+     * `cfg.render`, because the renderer's own `wantsPicture` keys off the
+     * PAYLOAD — a config asking for a picture whose rasterise failed still
+     * inserts shapes, and would otherwise be priced as one.
+     *
+     * The offer is NOT suppressed for a picture, and that is deliberate: one
+     * batch onto a slide holding 36 or more shapes already costs more than
+     * SLOW_INSERT_MS on this archive's curve, so "put it on its own slide"
+     * remains a real question. Only the number had to stop lying.
+     */
+    const src = readFileSync("src/taskpane/app.ts", "utf8");
+    expect(src, "the picture is still decided after the offer").toMatch(
+      /let pic = await chartPicture\(cfg, scene\);[\s\S]{0,600}worthOwnSlide\(pricedShapes/,
+    );
+    expect(src, "the priced count does not come from the payload").toMatch(
+      /const pricedShapes = pic\.png \? 1 : sceneShapes/,
+    );
+    /**
+     * And it must not rasterise the same scene twice for ONE insert — the old
+     * second call was 700ms spent producing bytes it already had.
+     *
+     * Scoped to the insert path deliberately. `chartPicture` is called four
+     * times in this file — the update path, this one, Same Scale, and the JSON
+     * batch — so counting them all reads a healthy file as a fault, which is
+     * what the first version of this assertion did.
+     */
+    const insertPath = src.slice(src.indexOf("const pricedShapes"), src.indexOf("const inserted = await"));
+    expect(insertPath.length, "could not find the insert path to scope the count to").toBeGreaterThan(200);
+    expect(
+      (insertPath.match(/await chartPicture\(/g) ?? []).length,
+      "the insert path rasterises more than the one re-render the third button needs",
+    ).toBeLessThanOrEqual(1);
+    expect(insertPath, "the picture is re-rendered without the config being changed first").toMatch(
+      /cfg\.render = "image";[\s\S]{0,200}await chartPicture\(/,
+    );
   });
 
   it("falls back to the original slide when the add is lost", () => {

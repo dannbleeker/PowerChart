@@ -206,7 +206,58 @@ interface AppState {
   editTarget: EditTarget | null;
 }
 
-const state: AppState = { ...stateFromConfig(sampleConfig("stacked")), editTarget: null };
+/**
+ * Whether NEW charts default to a picture — the standing half of the choice.
+ *
+ * `Insert as picture` has always existed as a per-chart tick, and it still is
+ * one: loading a chart that went in as a picture shows it ticked, because that
+ * is a fact about that chart rather than a preference. What was missing was
+ * anywhere to say "I always want this", so the box reset on every new chart and
+ * anyone who wanted pictures had to remember, every time.
+ *
+ * A DEFAULT, NOT AN OVERRIDE, and that distinction is the design. It seeds a new
+ * chart's state and nothing else: open an existing chart and that chart's own
+ * `render` still wins, because otherwise the preference would silently rewrite
+ * work already sitting on a slide.
+ *
+ * Default OFF, because a picture is not editable in PowerPoint and a preference
+ * that quietly turns every chart into a flat image is not one to acquire by
+ * accident.
+ *
+ * DECLARED HERE, ABOVE ITS FIRST USE, and not down with the other storage keys.
+ * `rememberedPicturePref` runs at module init while building `state`; a `const`
+ * defined 2,400 lines lower is in its temporal dead zone at that moment, and the
+ * `catch` below would have swallowed the ReferenceError and returned `false`
+ * every time — a preference that silently never loaded, which is worse than one
+ * that never existed.
+ */
+const PICTURE_PREF_KEY = "ssf-charts-render-image";
+
+/**
+ * The remembered "insert as picture" default, for a NEW chart only.
+ *
+ * Read here rather than inside `stateFromConfig`, and that placement is the
+ * whole point: `stateFromConfig` also runs when a chart is LOADED off a slide or
+ * out of a JSON config, and seeding the preference there would silently rewrite
+ * an existing shapes chart into a picture the moment its owner opened it.
+ *
+ * Storage can throw outright — a private window, or a browser set to block site
+ * data — and the pane must open regardless. An unreadable preference is simply
+ * the default, which is off.
+ */
+function rememberedPicturePref(): boolean {
+  try {
+    return localStorage.getItem(PICTURE_PREF_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+const state: AppState = {
+  ...stateFromConfig(sampleConfig("stacked")),
+  renderImage: rememberedPicturePref(),
+  editTarget: null,
+};
 
 function stateFromConfig(cfg: ChartConfig): Omit<AppState, "editTarget"> {
   // ONE ordering for the sheet and for the two positional side-channels below.
@@ -503,26 +554,45 @@ const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as 
  * are removed on the way out so a second slow insert cannot resolve the first
  * one's promise.
  */
-function offerOwnSlide(estimateMs: number, freshMs: number, present: number): Promise<"own-slide" | "here"> {
+function offerOwnSlide(
+  estimateMs: number,
+  freshMs: number,
+  present: number,
+  /**
+   * Whether to show the third button.
+   *
+   * FALSE means "not available", never "not worth it". Two reasons it is
+   * withheld: a host that cannot rasterise has no picture to offer, and a chart
+   * ALREADY going in as a picture has nothing to switch to — offering it there
+   * would be a button that does nothing, on the one screen where the user is
+   * being asked to make a decision under time pressure.
+   */
+  canPicture = false,
+): Promise<"own-slide" | "here" | "picture"> {
   const box = $("slow-offer");
   const text = $("slow-offer-text");
   const own = $<HTMLButtonElement>("slow-offer-own");
   const here = $<HTMLButtonElement>("slow-offer-here");
+  const picture = $<HTMLButtonElement>("slow-offer-picture");
   // The wording lives in `insert-cost.ts` beside the numbers it quotes, where a
   // test can read what it actually says rather than grep for what it must not.
   text.textContent = offerSentence(present, estimateMs, freshMs);
+  picture.hidden = !canPicture;
   box.hidden = false;
   return new Promise((resolve) => {
-    const done = (choice: "own-slide" | "here") => () => {
+    const done = (choice: "own-slide" | "here" | "picture") => () => {
       own.removeEventListener("click", onOwn);
       here.removeEventListener("click", onHere);
+      picture.removeEventListener("click", onPicture);
       box.hidden = true;
       resolve(choice);
     };
     const onOwn = done("own-slide");
     const onHere = done("here");
+    const onPicture = done("picture");
     own.addEventListener("click", onOwn);
     here.addEventListener("click", onHere);
+    picture.addEventListener("click", onPicture);
   });
 }
 
@@ -1695,6 +1765,22 @@ wireTabs();
 wireActionsMenu();
 document.getElementById("type-search-input")?.addEventListener("input", applyTypeFilter);
 optionsHost.addEventListener("change", updateGroupCounts);
+/**
+ * THE REMEMBERED PICTURE PREFERENCE, SHOWN.
+ *
+ * `state.renderImage` is seeded from storage when the pane boots, but the only
+ * place the checkbox is synced from state is `applyConfig` — which runs when a
+ * chart is LOADED, not at startup. Without this line the pane would open with
+ * the preference on and the box unticked: it would insert pictures while
+ * telling the user it was drawing shapes, which is a worse fault than not
+ * remembering the choice at all.
+ *
+ * Found by the test for the preference, not by reading the code.
+ */
+{
+  const renderBox = document.getElementById("render-image") as HTMLInputElement | null;
+  if (renderBox) renderBox.checked = state.renderImage;
+}
 renderGallery();
 renderOptions();
 renderPreview();
@@ -2188,12 +2274,42 @@ async function runInsert(asNew: boolean) {
    */
   let ownSlideId: string | undefined;
   const sceneShapes = estimateOfficeShapes(scene);
-  if (occupied && worthOwnSlide(sceneShapes, occupied.length)) {
+  /**
+   * THE PICTURE IS DECIDED BEFORE THE OFFER, because the offer quotes a TIME and
+   * the time depends on it.
+   *
+   * `chartPicture` used to run twenty lines below this, after the question had
+   * already been asked and answered. So a user who had ticked "Insert as
+   * picture" — a checkbox that has shipped for some time — was told a violin
+   * onto a sixty-shape slide "takes about 7 minutes", when what was about to
+   * happen was one `setImage` and one sync. The sentence was describing an
+   * insert the pane had already decided not to perform.
+   *
+   * Rasterising first costs about 700ms before the question appears. That is the
+   * price of the number being true.
+   */
+  let pic = await chartPicture(cfg, scene);
+  // WHAT WILL ACTUALLY BE INSERTED, not what the scene contains. A picture is
+  // one shape and one sync — `wantsPicture` in the renderer takes that path on
+  // the PAYLOAD, so `png` being present is the honest test, not `cfg.render`.
+  const pricedShapes = pic.png ? 1 : sceneShapes;
+  if (occupied && worthOwnSlide(pricedShapes, occupied.length)) {
     const choice = await offerOwnSlide(
-      estimateInsertMs(sceneShapes, occupied.length),
-      estimateInsertMs(sceneShapes, 0),
+      estimateInsertMs(pricedShapes, occupied.length),
+      estimateInsertMs(pricedShapes, 0),
       occupied.length,
+      // Offer the switch only when there is something to switch TO: a host that
+      // can rasterise, and a chart not already going in as one.
+      !pic.png && canInsertPicture(),
     );
+    if (choice === "picture") {
+      // The user chose it here rather than in the pane, so the CONFIG changes —
+      // both auto-picture guards downstream test `cfg.render === "image"`
+      // literally, and a sibling flag would slip past them.
+      cfg.render = "image";
+      pic = await chartPicture(cfg, scene);
+      if (!pic.png) note("Could not render a picture — inserting native shapes instead.", "err");
+    }
     if (choice === "own-slide") {
       note("Adding a slide…", "busy");
       // `null` when the host dropped the add even after `addSlides` retried. The
@@ -2208,7 +2324,10 @@ async function runInsert(asNew: boolean) {
   // a corner of a blank one for no reason — offset from obstacles that are not
   // there.
   const place = ownSlideId ? { left: 60, top: 90 } : { left: at.left, top: at.top };
-  const { png, warn } = await chartPicture(cfg, scene);
+  // Rendered ABOVE, before the offer, so the time it quoted could be true. Not
+  // re-rendered here: a second rasterise of the same scene is 700ms spent to
+  // produce the same bytes.
+  const { png, warn } = pic;
   const inserted = await insertSceneIntoSlide(
     scene,
     { tagData: JSON.stringify(cfg), ...place, pictureBase64: png, ...(ownSlideId ? { slideId: ownSlideId } : {}) },
@@ -2840,6 +2959,19 @@ $("auto-update").addEventListener("change", () => {
 // insert hands PowerPoint, which is why this touches state and nothing else.
 $("render-image").addEventListener("change", () => {
   state.renderImage = ($("render-image") as HTMLInputElement).checked;
+  // REMEMBERED, so it is a preference rather than something to re-tick on every
+  // chart. It seeds a NEW chart only — see `PICTURE_PREF_KEY`; a chart loaded
+  // off a slide still shows its own `render`, because that is a fact about that
+  // chart and not a wish about the next one.
+  //
+  // Wrapped, because a browser with storage blocked must not take the pane down
+  // over a checkbox. Failing to remember the choice is a small loss; failing to
+  // make it is not.
+  try {
+    localStorage.setItem(PICTURE_PREF_KEY, state.renderImage ? "1" : "0");
+  } catch {
+    /* a pane that cannot remember still works */
+  }
 });
 
 /**
