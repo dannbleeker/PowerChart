@@ -5107,9 +5107,24 @@ describe("the scenario that killed the host", () => {
    * inside TEN times. `rounds-salvaged/` cannot help either: a salvaged round
    * carries verdicts, and a killed scenario has none.
    */
+  /**
+   * THE SPELLINGS ARE COPIED FROM `selftest.ts:3962`, NOT INVENTED HERE, and
+   * that line is the whole reason these helpers carry a comment.
+   *
+   * `failed` used to read `scenario failed`, lowercase. The host has never
+   * written that: it emits `scenario FAILED`, shouted, so a failure is legible
+   * in a wall of trace. Across `crashes/` the counts are 905 `scenario passed`,
+   * 10 `scenario skipped`, 5 `scenario FAILED` and ZERO lowercase `failed`.
+   *
+   * So the double could not fail the way the real thing fails. Every test below
+   * passed, the matcher shipped knowing one spelling of three, and it invented
+   * three deaths in the live budget. A fake that cannot reproduce the host's
+   * own casing is not a fake, it is a different host.
+   */
   const started = (name: string) => `  10.0s  selftest  scenario starting  name=${name} deckSlides=1 atMs=10000`;
   const passed = (name: string) => `  20.0s  selftest  scenario passed  name=${name} detail=fine`;
-  const failed = (name: string) => `  20.0s  selftest  scenario failed  name=${name} detail=nope`;
+  const failed = (name: string) => `  20.0s  selftest  scenario FAILED  name=${name} detail=nope`;
+  const skipped = (name: string) => `  20.0s  selftest  scenario skipped  name=${name} detail=host busy`;
 
   it("credits the death to the scenario that was still open", async () => {
     // @ts-expect-error - plain .mjs tool, no types.
@@ -5161,6 +5176,87 @@ describe("the scenario that killed the host", () => {
     const { fatalScenarios } = await import("../scripts/triage.mjs");
     const r = fatalScenarios([{ steps: [started("two"), failed("two"), "  30.0s  error  gone"] }]);
     expect(r.deaths).toEqual({});
+  });
+
+  it("closes on the host's OWN three spellings, one of which shouts", async () => {
+    /**
+     * THE BUG THIS SUITE SHIPPED. The matcher read `passed|failed`,
+     * case-sensitively, against a host that writes `scenario FAILED` and
+     * `scenario skipped`. Either one left the scenario open forever and the
+     * record's death was credited to it.
+     *
+     * It invented three: `a chart of rotated shapes` was given 2 and `where a
+     * rotated shape lands` 1, and both went into `FATAL_SCENARIO_BUDGET` as
+     * scenarios that had killed the host. Neither ever has. Worse than a wrong
+     * number — an absent name is what makes a first death a rise from zero, so
+     * a fabricated entry silently absorbs a real first kill.
+     *
+     * Asserted one spelling per case rather than in a loop, so a regression
+     * names the spelling it lost.
+     */
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { fatalScenarios } = await import("../scripts/triage.mjs");
+    const died = "  30.0s  error  the host went";
+
+    const shouted = fatalScenarios([{ steps: [started("two"), failed("two"), started("three"), died] }]);
+    expect(shouted.deaths, "`scenario FAILED` did not close it").toEqual({ three: 1 });
+
+    const skip = fatalScenarios([{ steps: [started("two"), skipped("two"), started("three"), died] }]);
+    expect(skip.deaths, "`scenario skipped` did not close it").toEqual({ three: 1 });
+
+    // A skip closes it because the scenario ENDED and the host outlived it —
+    // the opposite of the thing being counted.
+    const skipAlone = fatalScenarios([{ steps: [started("two"), skipped("two"), died] }]);
+    expect(skipAlone.deaths, "a skipped scenario was blamed for a later death").toEqual({});
+    expect(skipAlone.unattributed).toBe(1);
+
+    // And the spelling that always worked still does.
+    const plain = fatalScenarios([{ steps: [started("two"), passed("two"), started("three"), died] }]);
+    expect(plain.deaths).toEqual({ three: 1 });
+  });
+
+  it("counts one crash filed twice as one crash", async () => {
+    /**
+     * `2026-08-29T03-32-07-crashed-run.json` and `…T08-27-00-crashed-run.json`
+     * are the same event: same build, same `startedAt` to the millisecond, 392
+     * byte-identical steps, re-archived five hours later. Counted twice it put
+     * `same scale across the deck` at 10 when it has 9.
+     *
+     * Deduped at READ time. The archive is append-only and what it means is the
+     * owner's call — a reader that counts an event once is not a reader that
+     * edits history.
+     */
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { loadCrashRecords } = await import("../scripts/rounds-gate.mjs");
+    const twice = {
+      "a-crashed-run.json": JSON.stringify({ build: "4275306", startedAt: "T0", steps: [started("x")] }),
+      "b-crashed-run.json": JSON.stringify({ build: "4275306", startedAt: "T0", steps: [started("x")] }),
+      // Same build and start, DIFFERENT steps: a different run of one session,
+      // and it must survive. Keying on the steps too is what makes that hold.
+      "c-crashed-run.json": JSON.stringify({ build: "4275306", startedAt: "T0", steps: [started("y")] }),
+      // Same build, different start: two genuine crashes. Both count.
+      "d-crashed-run.json": JSON.stringify({ build: "4275306", startedAt: "T1", steps: [started("x")] }),
+    };
+    const recs = loadCrashRecords(
+      "crashes",
+      () => Object.keys(twice),
+      (p: string) => twice[p.split("/").pop() as keyof typeof twice],
+    );
+    expect(recs).toHaveLength(3);
+    expect(recs.duplicates, "the duplicate was not named").toEqual(["b-crashed-run.json"]);
+
+    // A record identifiable by NEITHER build nor start cannot be deduped, and
+    // must be kept rather than folded into the first other anonymous one.
+    const anon = {
+      "e-crashed-run.json": JSON.stringify({ steps: [] }),
+      "f-crashed-run.json": JSON.stringify({ steps: [] }),
+    };
+    const kept = loadCrashRecords(
+      "crashes",
+      () => Object.keys(anon),
+      (p: string) => anon[p.split("/").pop() as keyof typeof anon],
+    );
+    expect(kept, "two unidentifiable records were folded into one").toHaveLength(2);
   });
 
   it("catches a rise, and a scenario that has never killed before", async () => {

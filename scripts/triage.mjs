@@ -3186,8 +3186,8 @@ export function crashStepKey(line) {
  *
  * ATTRIBUTION IS DELIBERATELY NARROW. A scenario counts as fatal only when its
  * `scenario starting` line has no matching `scenario passed|failed` after it —
- * it was open when the record ends. 30 of 84 sound records attribute this way;
- * the other 54 died in the probe phase or the deck-evidence scan and are
+ * it was open when the record ends. 26 of 83 sound records attribute this way;
+ * the other 57 died in the probe phase or the deck-evidence scan and are
  * credited to NOTHING, which is correct and is why this returns counts rather
  * than a rate. A death with a scenario open is not proof that the scenario
  * caused it, and the budget in `host-baseline.mjs` is what turns the counts
@@ -3213,7 +3213,27 @@ export function fatalScenarios(crashes) {
       // CLOSED ONLY BY ITS OWN NAME. A nested or follow-up scenario line
       // closing someone else's would credit the death to whatever ran last
       // rather than to what was running.
-      const ended = /scenario (?:passed|failed)\s+name=(.+?)\s+detail=/.exec(String(step));
+      //
+      // ALL THREE SPELLINGS, AND ONE OF THEM SHOUTS. `selftest.ts:3962` emits
+      // `scenario skipped`, `scenario passed` or `scenario FAILED` — the last
+      // one capitalised so a failure is legible in a wall of trace. The first
+      // version of this line matched `passed|failed`, case-sensitively, which
+      // in `crashes/` matches 905 lines and misses 15: FAILED appears 5 times,
+      // skipped 10, and lowercase `failed` NEVER — zero occurrences in the
+      // whole archive. A scenario closing either way was left OPEN forever,
+      // and the record's death was credited to it.
+      //
+      // That was not hypothetical. It invented three deaths and put two
+      // scenarios into `FATAL_SCENARIO_BUDGET` that have never killed
+      // anything: `a chart of rotated shapes` (2) and `where a rotated shape
+      // lands` (1). Both are now absent from the table, which is the promise
+      // `host-baseline.mjs` makes about an absent name — that its FIRST death
+      // is a rise from zero and is caught. Carrying a free death defeats it.
+      //
+      // A skip closes the scenario too, and should: a skipped scenario ended
+      // and the host outlived it. That is the opposite of the thing being
+      // counted.
+      const ended = /scenario (?:passed|FAILED|failed|skipped)\s+name=(.+?)\s+detail=/.exec(String(step));
       if (ended && ended[1] === open) open = null;
     }
     if (open) {

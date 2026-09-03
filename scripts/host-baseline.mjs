@@ -318,32 +318,51 @@ export const KNOWN_DIVERGENCES = {
  * ranks EXPOSURE, not danger", has the measurement.
  *
  * Attribution is narrow on purpose: a scenario counts only when its
- * `scenario starting` line was never closed. 30 of 84 sound crash records
- * attribute this way and the other 54 died in the probe phase or the deck
+ * `scenario starting` line was never closed. 26 of 83 sound crash records
+ * attribute this way and the other 57 died in the probe phase or the deck
  * scan, credited to nothing. See `fatalScenarios` in `scripts/triage.mjs`.
  */
 export const FATAL_SCENARIO_BUDGET = {
   /**
-   * THE ONE THIS EXISTS FOR. Ten deaths and not one failed verdict in 282.
+   * THE ONE THIS EXISTS FOR. Nine deaths and not one failed verdict in 282.
    * Every reader of this archive, human and machine, has been told for weeks
    * that this scenario is among the safest in the suite.
+   *
+   * Was 10 until 2026-09-03. One of the ten was the same crash counted twice —
+   * `2026-08-29T03-32-07` and `…T08-27-00` are byte-identical — and
+   * `loadCrashRecords` now folds it. See its comment for why the fix is a
+   * reader that counts once, not a deleted file.
    */
-  "same scale across the deck": 10,
+  "same scale across the deck": 9,
   /**
    * Ours, and known: `ca138f8` moved it onto a freshly-added slide and it has
    * failed every round since. See `a big chart on a slide of its own`, which
    * isolates the cause — the two share it.
+   *
+   * Nine seconds long, and the most lethal thing here per second of exposure by
+   * roughly 30x. Do not read this table by size — see `docs/BACKLOG.md`, "The
+   * death ratchet ranks EXPOSURE, not danger".
    */
   "stop a run mid-draw": 8,
   /** Written on 2026-09-03 to isolate the above; same defect, same deaths. */
   "a big chart on a slide of its own": 4,
-  "a chart of rotated shapes": 2,
   "insert onto a slide that already has content": 1,
   "explode a degraded picture": 1,
-  "where a rotated shape lands": 1,
   "one chart alone on a warm deck": 1,
   "two slides claiming one slot": 1,
   "edit the chart the user selected": 1,
+  // TWO NAMES WERE HERE ON 2026-09-03 AND SHOULD NEVER HAVE BEEN.
+  //
+  // `a chart of rotated shapes` (2) and `where a rotated shape lands` (1) were
+  // credited three deaths by a matcher that knew one spelling of three: the
+  // host writes `scenario FAILED` and `scenario skipped`, and the close regex
+  // read `passed|failed`. The scenario that closed was left open and the
+  // record's death landed on it. Corrected in `fatalScenarios`; both scenarios
+  // have killed the host exactly zero times.
+  //
+  // Their ABSENCE is the point, and is load-bearing: an absent name has never
+  // killed the host, so its first death is a rise from zero and breaks the
+  // gate. A fabricated entry would have silently absorbed a real first kill.
 };
 
 export const UNSTABLE_ANSWERS = {

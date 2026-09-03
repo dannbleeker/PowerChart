@@ -133,29 +133,59 @@ export const POISONED_BUILDS = new Set(["b5c534a", "3eaab20", "2934204", "6421ba
  *
  * A record that will not parse is named and skipped, exactly as `loadRounds`
  * treats a truncated round — one bad file must not refuse the other eighty.
+ *
+ * ONE EVENT FILED TWICE IS ONE EVENT. `2026-08-29T03-32-07-crashed-run.json`
+ * and `2026-08-29T08-27-00-crashed-run.json` carry the same build, the same
+ * `startedAt` to the millisecond, and 392 byte-identical steps: one crash
+ * re-archived five hours later under a second name. Counted twice it put
+ * `same scale across the deck` at 10 deaths when it has 9.
+ *
+ * Deduped HERE, at read time, rather than by deleting a file. The archive is
+ * append-only and what it means is the owner's call; a reader that counts an
+ * event once is not a reader that edits history. The key is deliberately
+ * `build + startedAt + steps`, all three: two genuine crashes of the same
+ * build seconds apart have different `startedAt`, and a record that shares a
+ * start but diverges in steps is a different run of the same session and must
+ * still count. Exactly one pair in 86 records matches.
  */
 export function loadCrashRecords(dir = "crashes", list = readdirSync, read = readFileSync) {
   const unreadable = [];
+  const duplicates = [];
   let records;
   try {
+    const seen = new Set();
     records = list(dir)
       .filter((f) => f.endsWith("-crashed-run.json"))
       .sort()
       .map((f) => {
         try {
-          return JSON.parse(read(`${dir}/${f}`, "utf8"));
+          const parsed = JSON.parse(read(`${dir}/${f}`, "utf8"));
+          if (parsed && typeof parsed === "object") parsed._file = f;
+          return parsed;
         } catch {
           unreadable.push(f);
           return null;
         }
       })
       .filter(Boolean)
-      .filter((c) => !POISONED_BUILDS.has(String(c?.build ?? "").split(" ")[0]));
+      .filter((c) => !POISONED_BUILDS.has(String(c?.build ?? "").split(" ")[0]))
+      .filter((c) => {
+        const key = `${c?.build ?? ""}|${c?.startedAt ?? ""}|${JSON.stringify(c?.steps ?? [])}`;
+        // A record carrying NEITHER a build nor a start is not identifiable, so
+        // it is kept rather than folded into the first other anonymous one.
+        if (!c?.build && !c?.startedAt) return true;
+        if (seen.has(key)) {
+          duplicates.push(c._file);
+          return false;
+        }
+        seen.add(key);
+        return true;
+      });
   } catch {
     // No crashes directory at all is a fresh checkout, not a finding.
-    return Object.assign([], { unreadable });
+    return Object.assign([], { unreadable, duplicates });
   }
-  return Object.assign(records, { unreadable });
+  return Object.assign(records, { unreadable, duplicates });
 }
 
 export function loadRounds(dir = "rounds", list = readdirSync, read = readFileSync) {

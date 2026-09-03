@@ -3128,3 +3128,61 @@ host stability, because it is nine seconds long and kills the host eight times.
 Whether the abort path leaves a batch half-issued is answerable from the trace
 and has never been asked. Note it also just changed: `6438dd1` altered the slide
 targeting under it, so its next deaths are not comparable to its old ones.
+
+### The by-index fix works at 16:9 and cannot work at 4:3, because the slide is GONE — round 370, 2026-09-03
+
+I verified `6438dd1` on Presentation64 (round 369, 16:9), wrote that the fix was
+verified on a host, and generalised. Round 370 on Presentation70 (4:3) refutes
+the generalisation, and the reason is more interesting than the fix.
+
+At 4:3 both own-slide scenarios throw `GeneralException` again — but at a new
+place:
+
+    errorLocation: "SlideCollection.getItemAt"
+    fullStatements: ["var itemAt = slides.getItemAt(7);", "itemAt.load([\"id\"])", ...]
+
+That is MY call, so the first reading is "the fix is wrong". It is not. The
+resolution was correct and the trace proves it:
+
+    host    slides added                          requested=1 landed=1 from=7
+    insert  resolved the target slide to an index chart=draw-11 index=7
+    draw    batch issued                          chart=draw-11 total=103
+    error   drawing the chart's shapes            GeneralException @ getItemAt
+
+Deck of 7, one added, so the new slide is index 7 of 8. Correct. Then
+`getItemAt(7)` throws — and the NEXT scenario opens with `deckSlides=7`.
+
+**The slide does not persist.** It is listed, `landed=1` confirms it against a
+before/after diff of the deck's own listing, and moments later the deck is back
+to seven. This is the failure this repo already has receipts for — `slides.add()`
+acknowledged and absent under load, whole decks taken and never landed — and it
+is the one thing no targeting strategy can survive. By id or by index is a
+question about how to NAME a slide. There is no slide.
+
+So the two results are not in conflict:
+
+    16:9  the slide persists; targeting WAS the bug; by-index fixed it
+          (round 369: 103 of 103 shapes, 11 batches, grouped and tagged)
+    4:3   the slide evaporates; targeting is downstream of that
+          (round 370: same scenarios, same exception, new location)
+
+**What is proven and what is not.** Proven: the index resolved correctly; the
+add reported landed; `getItemAt` on that index threw; the deck was back to 7
+afterwards. NOT proven: that the slide vanished as opposed to `getItemAt`
+refusing a slide that is listed but not yet settled. Both fit the evidence. The
+distinguishing measurement is cheap and has never been run — after the add,
+read `slides.getCount()` in the SAME batch as the `getItemAt`, and record both.
+One number separates "the slide is gone" from "the host will not hand it over
+yet", and they need completely different fixes.
+
+**Do not revert `6438dd1`.** At 16:9 it turned 1 batch into 11 and it is the only
+reason a chart has ever drawn onto a slide this product added. At 4:3 it fails
+where the old code also failed. It is strictly better and it is not the cause.
+
+**Guard worth costing, not yet built.** `getItemAt` throwing takes down the
+whole `PowerPoint.run`, and it kills the host often enough to be one of the
+budget's top entries. A bounds check against `getCount()` in the same batch,
+falling back to the by-id path when the index is past the end, would convert a
+`GeneralException` into the older, survivable failure. That is a change to a
+draw path that four previous unit-green fixes have failed on, so it wants the
+measurement above FIRST — not a fifth guess.
