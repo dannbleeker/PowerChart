@@ -25,15 +25,32 @@ evidence; this list carries the state. Anything not on it is either shipped,
 refused, or a finding rather than a task.
 
 **Six of the eight closed on 2026-08-29; 11 and 12 closed on 2026-08-31; 18
-closed on 2026-09-01, 16 the same evening. Six are open now — four the owner's,
-two engineering, and both of those are waiting on a round rather than on work:**
+closed on 2026-09-01, 16 the same evening. 19 closed on 2026-09-03, by a round
+rather than by work. FIVE are open now — four the owner's, one engineering, and
+that one is waiting on a deck rather than on work:**
 
     3  whether a crowded slide should get a picture instead of native shapes
     5  filing this project's host measurements to the office-js tracker
    17  the deck scan's paging loop — now covered under the fake at 25
        slides; only the live-host half remains (engineering)
-   19  does the SHIPPED own-slide offer survive a multi-batch chart? The
-       scenario that answers it is written and has never run (engineering)
+
+**19 CLOSED 2026-09-03, and the answer is yes.** Round 374 drew a 103-shape
+chart in ELEVEN batches onto a slide the add-in had just added, on the deck
+that had never managed one: `upTo` 10, 20 ... 103 with `onSlide` climbing 0 to
+100, no crash, first attempt. The offer survives a multi-batch chart.
+
+It could not have been answered before because the add itself was broken — the
+slide was rejected by the server and rolled back before a shape reached it. See
+the two-master entry at the end of this file. What is left on that scenario is
+the CLEANUP, which is item 3028's add-time-id defect and is unrelated.
+
+**17 is still open, and now has a number.** Across 350 archived rounds carrying
+a trace, `deck scan — settling a page of slides` has NEVER been emitted with
+`from > 0`. Not once. The second page is unexercised on a live host, exactly as
+this item says, and no round can exercise it as things stand: the driver sweeps
+the deck between rounds, so the scan always runs against 7-9 slides against a
+page size of 20. Closing it needs a deck deliberately left holding 21+ slides
+at scan time, which is a deck-preparation step and not a code change.
 
 **13, 14 and 15 closed on 2026-09-03.** Each was closed by an answer rather
 than by a decision, and two of the answers were the opposite of what the item
@@ -3131,6 +3148,13 @@ targeting under it, so its next deaths are not comparable to its old ones.
 
 ### The by-index fix works at 16:9 and cannot work at 4:3, because the slide is GONE — round 370, 2026-09-03
 
+> **SUPERSEDED, and the title is wrong in the way that matters: it is not 4:3.**
+> Round 373 ran the SAME deck at 16:9 and lost the slide there too, and the
+> crash separates by deck shape rather than aspect ratio — 5% on a one-master
+> deck, 100% on a two-master one. The observations below are sound; every
+> inference from them to "4:3" is not. See "FIXED: the '4:3 crash' was a
+> two-master crash, and a documented API misuse" at the end of this file.
+
 I verified `6438dd1` on Presentation64 (round 369, 16:9), wrote that the fix was
 verified on a host, and generalised. Round 370 on Presentation70 (4:3) refutes
 the generalisation, and the reason is more interesting than the fix.
@@ -3265,6 +3289,14 @@ and the path it walks is one a user walks — accepting "put it on a slide of it
 own" — so this is the product's worst defect, not a harness problem.
 
 ### MEASURED: the slide is added, listed, and gone before the first batch — round 371, 2026-09-03
+
+> **The measurement stands; one conclusion in it does not.** This entry says the
+> vanish is "NOT the documented server-side lost edit ... zero steps of round
+> 371". That search was of the add-in's own step stream, which structurally
+> cannot carry PowerPoint's ULS. The ULS is in `crashes/*.md`, and
+> `errorLocalChangeLostSingleUser` is there in 17 of them — the only ErrorName
+> in all 109. It IS the lost edit, and the cause was sending a layout without
+> its slide master. Fixed; see the last entry in this file.
 
 The fork round 370 could not settle is settled. The diagnostic fired twice in
 round 371 and both samples agree:
