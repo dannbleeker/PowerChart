@@ -1988,6 +1988,46 @@ const stopMidDraw: Scenario = async (prefix) => {
  * is the open question, and it is open because nothing has ever asked.
  */
 const bigChartOnItsOwnSlide: Scenario = async (prefix) => {
+  /**
+   * ITS OWN CONTROL, TAKEN SECONDS BEFORE, because without one this scenario
+   * cannot tell what it thinks it can.
+   *
+   * Its first run failed on the first batch with `GeneralException` at
+   * `SlideCollection.getItem` — which would condemn the shipped `offerOwnSlide`
+   * path. But it runs fourteenth, ~1900 syncs into a round, on the deck that
+   * crashes 70% of its attempts, and "a fresh slide's id is unusable" and "the
+   * host was already going" predict exactly the same failure there. This
+   * project has been caught by that confound twice this week.
+   *
+   * Moving the scenario to run first would settle it and costs four battery
+   * tests — the single-batch draw, the scratch-slide accounting, the picker,
+   * and the announce-before-running guard — which are real invariants, not
+   * noise to be quieted.
+   *
+   * A CONTROL IS CHEAPER AND STRICTER. The same insert, the same size, onto the
+   * VISIBLE slide, in the same seconds. Both fail: the host was going, and this
+   * says nothing about slide ids. Control passes and the own-slide fails: the
+   * host was healthy and the ID is the difference, which is the whole question.
+   * Both pass: the offer is safe on this host at this point in a round.
+   *
+   * Small, because the control exists to prove the host is answering rather
+   * than to re-test batching — one commit is enough to establish that, and
+   * spending eleven more here would make the control the expensive half.
+   */
+  const controlCfg = { ...cfg(`${prefix} control`, "clustered"), width: 160, height: 120 };
+  let control: string;
+  try {
+    const t = await insertSceneIntoSlide(buildChart(controlCfg), { tagData: JSON.stringify(controlCfg) });
+    control = t ? "drew" : "finished without reporting a chart";
+    // Swept before the subject runs, so the deck this scenario leaves is the
+    // deck it found — every scenario after this one reads it. Same shape as
+    // `rotatedShapePlacement`'s cleanup: the group id plus its parts.
+    const ids = [t?.shapeId, ...(t?.partIds ?? [])].filter(Boolean) as string[];
+    if (t && ids.length) await deleteShapesById(t.slideId, ids);
+  } catch (err) {
+    control = `threw: ${errorText(err)}`;
+  }
+
   const slideId = await addSlideForChart();
   if (!slideId)
     // The host dropping the add is `addSlides`' own finding and not this
@@ -2028,6 +2068,25 @@ const bigChartOnItsOwnSlide: Scenario = async (prefix) => {
       skipped: true,
       detail: `the chart drew in ${batches} batch(es), so nothing crossed a sync boundary on the new slide`,
     };
+  /**
+   * THE CONTROL DECIDES WHAT A FAILURE MEANS, so it is read before anything
+   * else and it can turn this into a SKIP.
+   *
+   * If the same insert onto the VISIBLE slide also failed, seconds earlier,
+   * then the host was already going and this scenario has learned nothing about
+   * slide ids. Reporting that as a failure of the own-slide path would be the
+   * confound written down as a finding — which is exactly what one round of
+   * this scenario did before the control existed.
+   */
+  if (control !== "drew")
+    return {
+      ok: false,
+      skipped: true,
+      blind: true,
+      detail:
+        `the control insert onto the visible slide ${control} — the host was not answering, so nothing ` +
+        `here says anything about a freshly-added slide (subject: ${outcome})`,
+    };
   const problems = [
     outcome !== "drew" && outcome,
     !swept && "the scenario could not delete the slide it added",
@@ -2036,8 +2095,12 @@ const bigChartOnItsOwnSlide: Scenario = async (prefix) => {
   return {
     ok: problems.length === 0,
     detail: problems.length
-      ? `${problems.join("; ")} (${batches} batch(es), ${landed ?? "unreadable"} shape(s) landed)`
-      : `${batches} batches onto a slide added moments before, ${landed} shapes, slide swept`,
+      ? // THE CONTROL IS QUOTED IN THE VERDICT, because it is what makes the
+        // verdict mean anything: a failure beside a healthy control is a fact
+        // about the SLIDE ID, and that sentence is the whole finding.
+        `${problems.join("; ")} — while the control insert onto the visible slide DREW, seconds earlier ` +
+        `(${batches} batch(es), ${landed ?? "unreadable"} shape(s) landed)`
+      : `${batches} batches onto a slide added moments before, ${landed} shapes, slide swept; control also drew`,
   };
 };
 
