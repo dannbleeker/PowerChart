@@ -2217,28 +2217,37 @@ export async function addSlideForChart(): Promise<string | null> {
     });
     if (!added) return null;
     /**
-     * THE ID IS TESTED, NOT TRUSTED, AND THAT IS THE WHOLE FIX.
+     * THE ID IS REPORTED, NOT TESTED, AND THE CALLER RESOLVES IT TO AN INDEX.
      *
-     * Reading it from a fresh context was necessary and not sufficient: on
-     * build facdc84 this listed the deck exactly as intended and still got back
-     * `4123571153#123571113`, the add-time form, which `getItem` then refused.
-     * The deck's own listing does not carry a durable id for a slide added
-     * moments earlier.
+     * This comment used to open "THE ID IS TESTED, NOT TRUSTED, AND THAT IS THE
+     * WHOLE FIX" and went on to describe a `getItemOrNullObject` probe, a
+     * re-listing loop and a retry budget. `6438dd1` removed all of it and left
+     * the prose, which is worse than no comment: it told a reader the returned
+     * id had been validated. It has not been. What follows is one listing, one
+     * diff, and the single fresh id.
      *
-     * So the shape of the id is not consulted — it is not a reliable
-     * discriminator and guessing at it would be a guess about a host. The id is
-     * handed to `getItemOrNullObject` and asked to resolve, which is the same
-     * question the draw is about to ask and the only one that matters.
+     * The probe was removed because it asked an EASIER question than its
+     * caller. Four such fixes were tried and each was ruled out by a real
+     * round: a fresh-context listing, a `getItemOrNullObject` probe, a
+     * `getItem`+`load("id")` probe and a `getItem`+`shapes.getCount()` probe.
+     * A probe that resolves proves the host will answer about the slide, not
+     * that it will accept a hundred shapes onto it.
      *
-     * RE-LISTED EACH TIME, because the id does not merely become resolvable —
-     * it CHANGES. `4123571153#123571113` at add time against `256#2587447327`
-     * once settled are different ids for one slide, so polling the first would
-     * wait for something that will never happen. Each pass re-diffs the deck
-     * and tests whatever the new slide is called NOW.
+     * So the id is returned as-is and `insertSceneIntoSlide` turns it into an
+     * INDEX against the deck listing, because the id CHANGES:
+     * `4123571153#123571113` at add time and `256#2587447327` once settled are
+     * one slide under two names. That is what round 369 verified at 16:9 —
+     * 103 of 103 shapes onto a slide added seconds earlier.
      *
-     * No sleep: each pass is two round trips, which is the wait. The budget is
-     * small because the caller is a user who has just accepted an offer, and a
-     * null here is handled — `app.ts` falls back to the slide they were on.
+     * AND IT IS NOT ENOUGH AT 4:3. Round 370: the add reports `landed=1`, the
+     * listing puts the slide at index 7 of 8, `getItemAt(7)` throws
+     * `GeneralException`, and the next scenario sees a deck of 7. Either the
+     * slide did not persist or the host will not hand it over yet — the
+     * evidence fits both, and nothing here can tell them apart. See
+     * `docs/BACKLOG.md`, "The by-index fix works at 16:9 and cannot work at
+     * 4:3", for the one measurement that would.
+     *
+     * A null here is handled: `app.ts` falls back to the slide the user was on.
      */
     const after = await listOnce();
     if (!after) return null;
