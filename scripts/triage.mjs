@@ -3245,6 +3245,55 @@ export function fatalBudgetBreaches(deaths, budget) {
   return over.sort((a, b) => b.count - a.count);
 }
 
+/**
+ * Scenario pass/fail rates over a population, WITH A PER-SCENARIO DENOMINATOR.
+ *
+ * The denominator is the whole design. A crashed round ran scenarios 1..k and
+ * never reached k+1..n, so pooling its verdicts against a global count of rounds
+ * reads every scenario it never got to as a silent success — late scenarios look
+ * rarer and safer, early ones more common, and each one is measured against a
+ * different truth. That is why `rounds-salvaged/` has sat unread rather than
+ * simply being concatenated onto `rounds/`.
+ *
+ * So a scenario's denominator is the number of rounds that RECORDED A VERDICT
+ * for it, and nothing else. A round that never reached it contributes to
+ * neither side. `salvagedPartial.reached` says how far a salvaged round got and
+ * is reported alongside, so a reader can see how much of the population is
+ * partial before trusting a rate built on it.
+ *
+ * Returns counts rather than percentages on purpose: 1 of 2 and 50 of 100 are
+ * not the same claim and a percentage hides which one you have.
+ */
+export function scenarioRatesOver(rounds) {
+  const per = {};
+  let partial = 0;
+  for (const r of rounds ?? []) {
+    if (r?.salvagedPartial) partial++;
+    for (const s of r?.selftest ?? []) {
+      if (!s?.name || s.skipped) continue;
+      const row = (per[s.name] ??= { ran: 0, failed: 0 });
+      row.ran++;
+      if (!s.ok) row.failed++;
+    }
+  }
+  return { per, rounds: (rounds ?? []).length, partial };
+}
+
+/**
+ * The one line every number over a mixed population must carry.
+ *
+ * A rate pooled from completed AND salvaged rounds is a different claim from one
+ * pooled from completed rounds alone, and a reader cannot tell which they are
+ * holding unless it says so. This repo has already paid for an unlabelled
+ * population once — the 4:3 crash rate that turned out to be about a document —
+ * so the label travels with the number rather than beside it.
+ */
+export function populationLine(complete, salvaged, partial) {
+  const bits = [`${complete} complete round(s)`];
+  if (salvaged) bits.push(`${salvaged} salvaged (${partial} of them partial)`);
+  return bits.join(" + ");
+}
+
 function reportCrashes(dir = "crashes", list = readdirSync, read = readFileSync) {
   let files;
   try {

@@ -5202,3 +5202,67 @@ describe("the scenario that killed the host", () => {
     expect(src).toMatch(/loadCrashRecords\(\)/);
   });
 });
+
+describe("pooling salvaged rounds without lying about the denominator", () => {
+  /**
+   * WHY `rounds-salvaged/` SAT UNREAD. A crashed round ran scenarios 1..k and
+   * never reached k+1..n. Concatenate it onto `rounds/` and every scenario it
+   * never got to reads as a silent success — late scenarios look rarer and
+   * safer, early ones more common, and each is measured against a different
+   * truth.
+   *
+   * So a scenario's denominator is the number of rounds that RECORDED A VERDICT
+   * for it and nothing else. A round that never reached it contributes to
+   * neither side.
+   */
+  const round = (verdicts: Array<[string, boolean]>, partial?: boolean) => ({
+    ...(partial ? { salvagedPartial: { reached: verdicts.length, of: 3, missing: ["c"] } } : {}),
+    selftest: verdicts.map(([name, ok]) => ({ name, ok })),
+  });
+
+  it("counts a scenario only in the rounds that reached it", async () => {
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { scenarioRatesOver } = await import("../scripts/triage.mjs");
+    const r = scenarioRatesOver([
+      round([
+        ["a", true],
+        ["b", true],
+        ["c", true],
+      ]),
+      // Died after "b": "c" was never put, and must not read as a pass.
+      round(
+        [
+          ["a", true],
+          ["b", false],
+        ],
+        true,
+      ),
+    ]);
+    expect(r.per.a).toEqual({ ran: 2, failed: 0 });
+    expect(r.per.b, "the failure in the partial round was lost").toEqual({ ran: 2, failed: 1 });
+    expect(r.per.c, "a scenario that never ran was counted as having passed").toEqual({ ran: 1, failed: 0 });
+    expect(r.partial, "the reader cannot see how much of this is partial").toBe(1);
+  });
+
+  it("leaves skipped scenarios out of both sides", async () => {
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { scenarioRatesOver } = await import("../scripts/triage.mjs");
+    const r = scenarioRatesOver([{ selftest: [{ name: "a", ok: false, skipped: true }] }]);
+    expect(r.per.a, "a skip was counted as a failure").toBeUndefined();
+  });
+
+  it("makes every mixed number say which population it came from", async () => {
+    /**
+     * This repo has already paid for an unlabelled population once: the 4:3
+     * crash rate that turned out to be about a DOCUMENT. A rate pooled from
+     * completed and salvaged rounds is a different claim from one pooled from
+     * completed rounds alone, and the label has to travel with the number.
+     */
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { populationLine } = await import("../scripts/triage.mjs");
+    expect(populationLine(344, 69, 19)).toBe("344 complete round(s) + 69 salvaged (19 of them partial)");
+    // Complete-only stays exactly as it reads today — no salvaged clause at all,
+    // so every existing finding remains comparable.
+    expect(populationLine(344, 0, 0)).toBe("344 complete round(s)");
+  });
+});
