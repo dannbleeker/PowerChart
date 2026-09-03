@@ -7074,46 +7074,66 @@ describe("adding the slide a slow insert is offered", () => {
     }
   });
 
-  it("hands back an id the host will actually resolve, not the one it was given at add time", async () => {
+  it("draws onto a freshly-added slide on a host that refuses getItem for one", async () => {
     /**
-     * THE BUG THIS SHIPPED WITH, and the reason no test caught it for a
-     * fortnight.
+     * THE SHIPPED BUG, AND THE FIX, IN ONE TEST.
      *
-     * `addSlideForChart` read `.id` off a positional thunk inside the same
-     * `ppRun` that issued the add. That is the ADD-TIME id, and this host will
-     * not resolve it: `4123571152#123571113` at add time against
-     * `256#2587447327` once settled, two spaces rather than near-misses. Every
-     * caller passing it into `insertSceneIntoSlide` fails on its FIRST batch
-     * with GeneralException at `SlideCollection.getItem` — including
-     * `offerOwnSlide`, which SHIPS, so a user accepting "put it on a slide of
-     * its own" got an error and an empty slide.
+     * `offerOwnSlide` ships. It adds a slide and passes that id into
+     * `insertSceneIntoSlide`, which called `slides.getItem(id)` — and this host
+     * refuses that for a slide the run just added. The user accepting "put it
+     * on a slide of its own" got GeneralException at `SlideCollection.getItem`
+     * on the FIRST batch: an error and an empty slide.
      *
-     * Reading it from a fresh deck listing was tried and is not enough: on
-     * build facdc84 the listing itself returned the add-time form. So the id is
-     * TESTED rather than trusted — handed to `getItemOrNullObject` and asked to
-     * resolve, which is the same question the draw is about to ask.
+     * FOUR ATTEMPTS TRIED TO VALIDATE THE ID and every one was ruled out by a
+     * real round. None asked whether we should be using one. The archive had
+     * already answered that, twice over, for 342 rounds — over the 318 rounds
+     * where both probes replied cleanly:
      *
-     * `newSlideIdSettlesAfter` is what makes this testable, and it has been
-     * sitting in the fake unused: "the id works for the first N by-id lookups
-     * and is a different id afterwards", moving to a DIFFERENT SPACE so a buggy
-     * caller cannot succeed by accident. Exactly the host. Nothing had ever
-     * armed it against this function, which is how the defect reached a user.
+     *     by-id THREW while by-index WORKED   198   (62%)
+     *     by-index threw while by-id worked     3   (0.9%)
+     *
+     * and `shape-add-positional-slide-proxy` says the conclusion outright:
+     * "every write path that names a freshly-added slide by id needs an index
+     * instead."
+     *
+     * So the insert resolves the id to an INDEX through the deck listing — the
+     * one place the id does resolve — and targets `getItemAt`. Arming
+     * `refuseGetItemOnNewSlide` makes this test fail against every version of
+     * the code that reached a user.
      */
     const deck: FakeSlide[] = [makeSlide("s1")];
     installHost(deck);
-    faults.newSlideIdSettlesAfter = 1;
     faults.refuseGetItemOnNewSlide = true;
     try {
-      const id = await addSlideForChart();
-      expect(id, "no id came back at all").toBeTruthy();
-      // THE SETTLED SPACE, not the add-time one. Asserting merely "an id" would
-      // pass against the shipped bug, which is what every test here did.
-      expect(String(id), "handed back the add-time id the host refuses").toMatch(/^settled-/);
-      // And the deck really grew — this is the "landed and settled" case, not a
-      // dropped add wearing the same verdict.
-      expect(deck.length, "no slide landed, so this tested the wrong thing").toBe(2);
+      const slideId = await addSlideForChart();
+      expect(slideId, "no slide id came back").toBeTruthy();
+      const cfg = { ...sampleConfig("clustered"), ...DEFAULT_SIZE };
+      const target = await insertSceneIntoSlide(buildChart(cfg), {
+        slideId: slideId!,
+        tagData: JSON.stringify(cfg),
+      });
+      expect(target, "the insert produced no chart — the own-slide offer is still broken").toBeTruthy();
+      /**
+       * AND THE SHAPES ARE ON THAT SLIDE — asserted by COUNTING them, not by
+       * reading the id back.
+       *
+       * The id assertion alone is vacuous here and the mutation run proved it:
+       * reverting the thunk to `getTargetSlide(context, opts.slideId)` — the
+       * shipped bug — still passed, because `getTargetSlide` CATCHES the
+       * refusal and quietly falls back to the selected slide. The draw went to
+       * the wrong slide while the reported id, read from a different handle,
+       * stayed right. A user would get a chart on the slide they were already
+       * looking at and no error at all.
+       *
+       * Where the ink landed is the only thing that cannot lie.
+       */
+      expect(target?.slideId, "the chart reported a different slide than the one added").toBe(deck[1].id);
+      expect(deck[1].created.length, "nothing was drawn on the slide that was added for it").toBeGreaterThan(0);
+      expect(
+        deck[0].created.length,
+        "the draw fell back to the slide the user was already on — the offer silently did nothing",
+      ).toBe(0);
     } finally {
-      faults.newSlideIdSettlesAfter = null;
       faults.refuseGetItemOnNewSlide = false;
     }
   });

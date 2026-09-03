@@ -1743,9 +1743,66 @@ async function insertSceneIntoSlideInner(
     //
     // The hold below stays for the reason in the paragraph above it — the
     // per-batch thunk orphans grouping — not for this one.
-    const slide = getTargetSlide(context, opts.slideId);
+    /**
+     * A NAMED SLIDE IS TARGETED BY INDEX, AND THE ARCHIVE SAID SO FOR 342 ROUNDS.
+     *
+     * Two probes exist to answer exactly this, and `shape-add-positional-slide-proxy`
+     * states the conclusion in its own comment: "If by-index works where by-id
+     * does not, the id is what this host will not take, and every write path
+     * that names a freshly-added slide by id needs an index instead."
+     *
+     * It does, and we were the write path. Paired over the 318 rounds where
+     * both probes answered cleanly:
+     *
+     *     by-id THREW while by-index WORKED   198   (62%)
+     *     both worked                         104
+     *     both threw                           13
+     *     by-index threw while by-id worked     3   (0.9%)
+     *
+     * A 66:1 ratio. And `shape-add-held-slide-proxy-again` — a proxy re-used
+     * across syncs, which is precisely what the hold below does — THREW in 313
+     * of 342. So the old path did both of the things this host refuses: named a
+     * fresh slide by id, then held that one proxy for every batch of the draw.
+     *
+     * WHAT IT COST: `offerOwnSlide` ships. A user accepting "put it on a slide
+     * of its own" got GeneralException at `SlideCollection.getItem` on the
+     * FIRST batch — an error and an empty slide. Four attempts to VALIDATE the
+     * id were each ruled out by a real round; none of them asked whether we
+     * should be using one.
+     *
+     * The listing is where the id resolves. `getItem` refuses it and
+     * `items.findIndex` finds it, which is the same route the probe takes.
+     * Costs one sync on a path the user explicitly asked for.
+     *
+     * The thunk RE-ACQUIRES on every call rather than closing over a proxy,
+     * which is what `renderShapesChunked` asks of a thunk in the first place.
+     */
+    let index = -1;
+    if (opts.slideId) {
+      const all = context.presentation.slides;
+      all.load("items/id");
+      await context.sync();
+      const items = loadedItems(all);
+      index = items?.findIndex((s) => loadedValue(() => s.id) === opts.slideId) ?? -1;
+      trace("insert", "resolved the target slide to an index", { slideId: opts.slideId, index });
+    }
+    /**
+     * BOTH come from the index once it resolves, and the first draft got this
+     * half wrong in a way the suite caught in one run.
+     *
+     * It passed `undefined` here, so `getTargetSlide` fell through to the
+     * SELECTED slide: the thunk drew on the right slide while `slide.load("id")`
+     * read the id of whichever slide the user happened to be looking at, and
+     * THAT id went out on the `EditTarget`. The next update then hunted the
+     * chart on the wrong slide. `edits a chart on a slide added in this
+     * session` failed on precisely that.
+     *
+     * The thunk still RE-ACQUIRES on every call — the half that fixes the held
+     * proxy — while this single handle exists only to carry the id out.
+     */
+    const slide = index >= 0 ? context.presentation.slides.getItemAt(index) : getTargetSlide(context, opts.slideId);
     slide.load("id");
-    const getSlide: SlideThunk = () => slide;
+    const getSlide: SlideThunk = index >= 0 ? () => context.presentation.slides.getItemAt(index) : () => slide;
     onPhase?.("queue", `${scene.nodes.length} nodes`);
     // Committed in batches: the whole scene in one sync is what a live canvas
     // will not take. Each batch reports, so progress here is measured, not
@@ -2087,83 +2144,6 @@ export async function slideOccupancy(slideIds: string[]): Promise<Map<string, nu
  * throw — because the caller's fallback is to insert where the user originally
  * asked. Losing the offer is a nuisance; losing the chart is not acceptable.
  */
-/**
- * How many times to re-list the deck waiting for a new slide's id to settle.
- *
- * Each pass is two round trips and there is no sleep between them, so this is
- * about a second of host time on a path the user explicitly asked for. Small
- * because `null` is a good answer here — the caller falls back to the slide
- * they were already on, which is slower and correct.
- */
-const SETTLE_PASSES = 5;
-
-/**
- * Will this host resolve that slide id RIGHT NOW?
- *
- * The same question the draw is about to ask, asked cheaply first. Shape is not
- * consulted: `4123571153#123571113` and `256#2587447327` are both real ids for
- * the same slide at different moments, and no pattern separates a usable one
- * from a stale one. Resolution does.
- */
-async function slideIdResolves(id: string): Promise<boolean> {
-  try {
-    return await ppRun(async (context) => {
-      /**
-       * `getItem`, NOT `getItemOrNullObject`, and the first version of this got
-       * it wrong on a real host while passing its unit test.
-       *
-       * They are not the same question. This file already records the two
-       * behaving differently in the SAME BATCH — a `getItem` the host refused
-       * beside a `getItemOrNullObject` handle it was perfectly happy with — and
-       * the fake's own note says `getItem` being the harsh one is backwards but
-       * real. Build 2a6d37b probed with the lenient call, got `true` for an
-       * add-time id, handed it back, and the draw then failed on `getItem` the
-       * way it always had.
-       *
-       * `getTargetSlide` uses `getItem`. So does this. A probe that asks an
-       * easier question than the caller is a probe that certifies failures.
-       *
-       * The proxy comes back synchronously and the refusal arrives at the sync,
-       * which is why this cannot be a null check — the throw IS the answer.
-       */
-      const slide = context.presentation.slides.getItem(id);
-      slide.load("id");
-      /**
-       * AND A SHAPE READ, because loading the id is still too easy a question.
-       *
-       * Build 6891a20 probed with `getItem` + `load("id")` + sync, got `true`
-       * for an add-time id, and the draw failed on the same `getItem` moments
-       * later. The error's own `surroundingStatements` say why — the refusal
-       * surfaces when the batch touches SHAPES:
-       *
-       *     var slide = slides.getItem(...);
-       *     slide.load(["id"]);
-       *     var shapes = slide.shapes;
-       *     var addTextBox = shapes.addTextBox(...);
-       *
-       * A bare id load settles; reaching through the handle for its shape
-       * collection does not. `getCount` is the cheapest shape operation there
-       * is — a scalar, not a load, so it does not pay the >50-item ceiling —
-       * and it is the same reach the very next statement of a real draw makes.
-       *
-       * That is the third time this probe has been too lenient, each time
-       * because it asked a smaller question than its caller. The rule this
-       * function keeps failing and re-learning: probe with the operation the
-       * caller is about to perform, not with a cheaper cousin of it.
-       */
-      const count = slide.shapes.getCount();
-      await context.sync();
-      // Read it, or the load is a statement nothing depends on and a host is
-      // entitled to skip work nobody asked the answer of.
-      void count.value;
-      return true;
-    });
-  } catch {
-    // The host refusing the id, which is exactly what the caller needs to know.
-    return false;
-  }
-}
-
 export async function addSlideForChart(): Promise<string | null> {
   try {
     /**
@@ -2260,20 +2240,12 @@ export async function addSlideForChart(): Promise<string | null> {
      * small because the caller is a user who has just accepted an offer, and a
      * null here is handled — `app.ts` falls back to the slide they were on.
      */
-    for (let pass = 0; pass < SETTLE_PASSES; pass++) {
-      const after = await listOnce();
-      if (!after) continue;
-      const fresh = after.filter((id) => !known.has(id));
-      // Not exactly one means something else changed the deck underneath and
-      // the answer cannot be attributed to this add.
-      if (fresh.length !== 1) continue;
-      if (await slideIdResolves(fresh[0])) {
-        if (pass > 0) trace("insert", "the new slide's id took a moment to settle", { passes: pass + 1 });
-        return fresh[0];
-      }
-    }
-    trace("insert", "the new slide never produced an id this host would resolve", { passes: SETTLE_PASSES });
-    return null;
+    const after = await listOnce();
+    if (!after) return null;
+    const fresh = after.filter((id) => !known.has(id));
+    // Not exactly one means something else changed the deck underneath and the
+    // answer cannot be attributed to this add.
+    return fresh.length === 1 ? fresh[0] : null;
   } catch {
     return null;
   }
