@@ -36,7 +36,8 @@
     "issue-status": "node scripts/issue-status.mjs",
     "round": "node scripts/round.mjs",
     "cycle": "node scripts/cycle.mjs",
-    "await-deploy": "node scripts/await-deploy.mjs"
+    "await-deploy": "node scripts/await-deploy.mjs",
+    "salvage": "node scripts/salvage-crashed.mjs --into rounds-salvaged"
   },
   "dependencies": {
     "jszip": "^3.10.1",

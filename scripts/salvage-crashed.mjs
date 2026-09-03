@@ -100,7 +100,22 @@ export function slideSizeFrom(crash) {
   if (head?.slideSize?.width && head?.slideSize?.height) return head.slideSize;
   let found = null;
   for (const step of crash?.steps ?? []) {
-    const m = /slide size read\s+width=(\d+)\s+height=(\d+)(?:\s+source=(\S+))?/.exec(String(step));
+    /**
+     * BOTH SPELLINGS. The pane traces this line two ways — `slide size read`
+     * when the rung answers and `slide size` for the value it settled on — and
+     * matching only the first threw away every record that carried only the
+     * second. Across the corpus that is 64 lines against 60: half the evidence,
+     * lost to one optional word.
+     *
+     * Four recent records were refused as "nothing in it says what slide size
+     * it ran at" while saying it plainly. Same family as CHAR(11) and CHAR(10)
+     * in this project's notes: a matcher that names one spelling covers exactly
+     * that spelling, and the one nothing watches is the one that bites.
+     *
+     * Still the LAST match either way — the pane resolves the size at the end,
+     * and that is the reading a filed round would have carried.
+     */
+    const m = /slide size(?: read)?\s+width=(\d+)\s+height=(\d+)(?:\s+source=(\S+))?/.exec(String(step));
     if (m) found = { width: Number(m[1]), height: Number(m[2]), ...(m[3] ? { source: m[3] } : {}) };
   }
   return found;
@@ -120,13 +135,54 @@ export function slideSizeFrom(crash) {
  * driver's independent reading, recorded beside the pane's.
  *
  * A salvaged round has no driver reading to be caught by. Nobody was holding the
- * other end: the driver filed a crash, not a round. So the fallback rung is
- * refused outright rather than filed and hoped about — this repo's own rule is
- * that filing a round under the wrong profile is worse than not running it, and
- * 18 of 46 records here rest on that rung.
+ * other end: the driver filed a crash, not a round.
+ *
+ * SO THE PROFILE IS REFUSED AND THE READING IS KEPT — see `roundFromCrash`. This
+ * function still answers null for a fallback rung, and null still means "do not
+ * file a profile from this". What changed on 2026-09-03 is what the caller does
+ * next: it writes `slideSizeUnverified` instead of throwing the whole round
+ * away. Filing a round under the wrong profile is still worse than not running
+ * it — but that rule is satisfied by not CLAIMING a profile, and 27 of the 69
+ * salvageable records rest on this rung, every one of them a complete answer to
+ * every question that is not about profile.
  */
 export function trustedSlideSize(size) {
   return size?.source === "pageSetup" ? size : null;
+}
+
+/**
+ * Which crash records the target directory already holds a round for.
+ *
+ * SO RUNNING THIS TWICE IS NOT A WAY TO DOUBLE THE ARCHIVE. It ran once by hand
+ * on 2026-08-29 and filed 22 rounds; nothing called it again, 47 more records
+ * accumulated, and a second run would have re-filed the original 22 under fresh
+ * numbers beside the copies already there. `archive`'s twin check catches the
+ * byte-identical ones and nothing catches the rest.
+ *
+ * Keyed on `salvagedFrom`, which every salvaged round already carries and which
+ * names the record it came from — so the directory is its own ledger and no
+ * state lives anywhere else, exactly as the round archive is its own ledger.
+ *
+ * NOT BY CLEARING THE TARGET. `rounds-salvaged/` is tracked, and a script that
+ * deletes tracked files because it is about to rewrite them is one mis-typed
+ * `--into` away from deleting the real archive.
+ *
+ * A salvaged round that will not parse is skipped rather than fatal: it is not a
+ * reason to refuse the other sixty-eight, it simply cannot vouch for the record
+ * it came from — which at worst files that one twice, and never loses one.
+ */
+export function alreadySalvaged(into, exists = existsSync, list = readdirSync, read = readFileSync) {
+  const seen = new Set();
+  if (!exists(into)) return seen;
+  for (const f of list(into).filter((x) => x.endsWith(".json"))) {
+    try {
+      const from = JSON.parse(read(`${into}/${f}`, "utf8"))?.salvagedFrom;
+      if (from) seen.add(from);
+    } catch {
+      /* see above */
+    }
+  }
+  return seen;
 }
 
 /**
@@ -148,27 +204,48 @@ export function roundFromCrash(crash, expectedNames, source) {
     return { ok: false, why: `no archived round on build ${build.split(" ")[0]} to say what a complete round is` };
   const have = new Set(verdicts.map((v) => v.name));
   const missing = expectedNames.filter((n) => !have.has(n));
-  if (missing.length)
-    return { ok: false, why: `${missing.length} scenario(s) never reached a verdict: ${missing.join("; ")}` };
   const read = slideSizeFrom(crash);
   if (!read) return { ok: false, why: "nothing in it says what slide size it ran at" };
   const slideSize = trustedSlideSize(read);
-  if (!slideSize)
-    return {
-      ok: false,
-      why:
-        `its only slide-size reading came from \`${read.source ?? "an unnamed rung"}\`, the fallback the host ` +
-        "falls to after giving up — rounds 115 and 116 filed 720x540 while running at 960x540 that way, and a " +
-        "salvaged round has no driver reading to be caught by",
-    };
   const sheet = sheetFrom(crash);
+  /**
+   * THE TWO SOFT BARS NOW RECORD THEIR UNCERTAINTY INSTEAD OF DISCARDING THE
+   * ROUND, and that is a change of mind rather than a loosening.
+   *
+   * Both used to `return { ok: false }`, and both were right when written.
+   * Between them they refused 28 of the records that arrived after 2026-08-29 —
+   * every one holding real verdicts from a real host — while this file's own
+   * docstring says what such rounds are good for: "any question that does not
+   * care about order: what a build's verdicts were, how often a scenario has
+   * ever failed."
+   *
+   * A PARTIAL VERDICT SET is evidence about the scenarios that ran. What made it
+   * dangerous was pooling it against a global denominator: a round that reached
+   * 6 of 16 has not PASSED the other ten, and a naive rate reads ten silences as
+   * ten successes. So the reach is written down and anything pooling these must
+   * condition on it.
+   *
+   * AN UNTRUSTED SLIDE SIZE is refused as a PROFILE and kept as a READING. The
+   * rung really can lie — 115 and 116 filed 720x540 on a 960x540 deck that way —
+   * so `slideSize` is left ABSENT rather than filled in, because a present field
+   * is read as a measurement by everything downstream and no flag beside it
+   * survives being globbed. The reading goes in a field named for what it is:
+   * nothing thrown away, nothing claimed.
+   *
+   * That the profile matters less than it did is a fact from 2026-09-02 rather
+   * than an excuse. Width and deck are near-collinear across this archive, the
+   * "4:3 crashes more" framing turned out to be about the DOCUMENT, and a round
+   * whose profile is unverified still answers every question that is not about
+   * profile.
+   */
   return {
     ok: true,
     round: {
       build,
       host: String(crash.host ?? ""),
-      slideSize,
+      ...(slideSize ? { slideSize } : { slideSizeUnverified: read }),
       runs: [],
+      ...(missing.length ? { salvagedPartial: { reached: verdicts.length, of: expectedNames.length, missing } } : {}),
       ...(sheet ? { hostAnswers: sheet } : {}),
       selftest: verdicts,
       /**
@@ -220,12 +297,37 @@ if (isMain(import.meta.url, process.argv[1])) {
   }
   if (!dry && !existsSync(into)) mkdirSync(into, { recursive: true });
   const expected = expectedByBuild();
+  /**
+   * WHAT HAS ALREADY BEEN SALVAGED, so running this twice is not a way to
+   * double the archive.
+   *
+   * This script ran once by hand on 2026-08-29 and filed 22 rounds. Nothing
+   * called it again, so 47 more records accumulated — and running it a second
+   * time would have re-filed the original 22 under fresh numbers beside the
+   * copies already there. `archive`'s twin check would have caught the
+   * byte-identical ones and nothing would have caught the rest.
+   *
+   * Keyed on `salvagedFrom`, which every salvaged round already carries and
+   * which names the crash record it came from. So the directory is its own
+   * ledger and no state is kept anywhere else — the same reason the round
+   * archive is its own ledger.
+   *
+   * NOT by clearing the target. `rounds-salvaged/` is tracked, and a script
+   * that deletes tracked files because it is about to rewrite them is one
+   * mis-typed `--into` away from deleting the real archive.
+   */
+  const already = alreadySalvaged(into);
   const files = readdirSync("crashes")
     .filter((f) => f.endsWith("-crashed-run.json"))
     .sort();
   let filed = 0;
+  let skipped = 0;
   const refused = [];
   for (const f of files) {
+    if (already.has(f)) {
+      skipped++;
+      continue;
+    }
     let crash;
     try {
       crash = JSON.parse(readFileSync(`crashes/${f}`, "utf8"));
@@ -240,7 +342,16 @@ if (isMain(import.meta.url, process.argv[1])) {
       continue;
     }
     if (dry) {
-      console.log(`  would file  ${f}  ${build}  ${out.round.slideSize.width}x${out.round.slideSize.height}`);
+      // SAYS WHICH KIND, because two of these are no longer refusals but they
+      // are not clean rounds either, and a listing that hid that would be the
+      // reporting half of the same mistake the fields themselves avoid.
+      const size = out.round.slideSize
+        ? `${out.round.slideSize.width}x${out.round.slideSize.height}`
+        : `${out.round.slideSizeUnverified?.width}x${out.round.slideSizeUnverified?.height} UNVERIFIED (${out.round.slideSizeUnverified?.source ?? "?"})`;
+      const part = out.round.salvagedPartial
+        ? `  PARTIAL ${out.round.salvagedPartial.reached}/${out.round.salvagedPartial.of}`
+        : "";
+      console.log(`  would file  ${f}  ${build}  ${size}${part}`);
       filed++;
       continue;
     }
@@ -259,7 +370,9 @@ if (isMain(import.meta.url, process.argv[1])) {
       if (existsSync(tmp)) unlinkSync(tmp);
     }
   }
-  console.log(`\n  ${filed} salvaged, ${refused.length} refused, of ${files.length} crash record(s)`);
+  console.log(
+    `\n  ${filed} salvaged, ${skipped} already on file, ${refused.length} refused, of ${files.length} crash record(s)`,
+  );
   // NAMED, never a bare count. A refusal here is the interesting half: it says
   // which rounds died before they had anything worth keeping.
   for (const [f, why] of refused) console.log(`    ${f}: ${why}`);
