@@ -3646,6 +3646,63 @@ describe("what the driver went through, finally printed", () => {
     expect(driverRunLine(null)).toBe("");
   });
 
+  it("names the document, the profile and what the round asked of the host", async () => {
+    /**
+     * THREE FIELDS THAT LANDED AND NOTHING PRINTED. Exactly the state
+     * `driverRun` was in for its first fortnight — archived and invisible, so a
+     * round rescued from a crash read like one that never needed rescuing.
+     *
+     * `driverDeck` matters most: 0 of 408 archived files named a document
+     * before it, which is why "4:3 crashes more" and "that one file is sick"
+     * were the same sentence for a fortnight.
+     */
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { roundIdentityLine } = await import("../scripts/triage.mjs");
+    const line = roundIdentityLine({
+      driverDeck: "Presentation70.pptx",
+      driverSlideSize: "16:9",
+      syncs: 1848,
+      driverRun: { deck: "Presentation70" },
+    });
+    expect(line).toContain("Presentation70.pptx");
+    expect(line).toContain("16:9");
+    expect(line, "the sync count is archived and still invisible").toContain("1848 syncs");
+    // The instruction AGREES with what was in front, so it is not repeated —
+    // the ordinary case must stay quiet or the line stops being read.
+    expect(line, "shouted about an instruction that was obeyed").not.toContain("ASKED FOR");
+  });
+
+  it("says so when the deck in front is not the deck that was asked for", async () => {
+    /**
+     * `deck-missing` refuses the loud version of this. The quiet version is a
+     * round that ran against the right deck BY LUCK while the instruction named
+     * another — nothing refuses that, and nothing said it either.
+     */
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { roundIdentityLine } = await import("../scripts/triage.mjs");
+    const line = roundIdentityLine({
+      driverDeck: "Presentation64.pptx",
+      driverRun: { deck: "Presentation70" },
+    });
+    expect(line, "a round ran against a deck nobody asked for and the line was silent").toContain(
+      "ASKED FOR Presentation70",
+    );
+  });
+
+  it("keeps `undisclosed` and `unreadable` apart, and says nothing for the rounds that predate all three", async () => {
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { roundIdentityLine } = await import("../scripts/triage.mjs");
+    // A withheld name is a decision — see `archivableDeck`. A null is a reading
+    // that failed. Collapsing them is this repo's most repeated defect.
+    expect(roundIdentityLine({ driverDeck: "undisclosed" })).toContain("undisclosed");
+    expect(roundIdentityLine({ driverDeck: null })).toContain("unreadable");
+    // 400 files predate every one of these fields, and a row of question marks
+    // on each is noise rather than information — the same call `driverRunLine`
+    // makes.
+    expect(roundIdentityLine({ build: "abc1234" })).toBe("");
+    expect(roundIdentityLine(null)).toBe("");
+  });
+
   it("warns when a round sits deep in a session", async () => {
     // @ts-expect-error - plain .mjs tool, no types.
     const { driverRunLine } = await import("../scripts/triage.mjs");

@@ -30,13 +30,50 @@ two engineering, and both of those are waiting on a round rather than on work:**
 
     3  whether a crowded slide should get a picture instead of native shapes
     5  filing this project's host measurements to the office-js tracker
-   13  the 4:3 leg crashes on half its attempts — one round would say why
-   14  40% of crashes leave no round file; a stub would change what the
-       archive MEANS, so it is not an engineering call
-   15  the mid-draw stop scenario is built; it needs one round against a
-       real host before it can be trusted (engineering)
    17  the deck scan's paging loop — now covered under the fake at 25
        slides; only the live-host half remains (engineering)
+   19  does the SHIPPED own-slide offer survive a multi-batch chart? The
+       scenario that answers it is written and has never run (engineering)
+
+**13, 14 and 15 closed on 2026-09-03.** Each was closed by an answer rather
+than by a decision, and two of the answers were the opposite of what the item
+assumed.
+
+**13 — "the 4:3 leg crashes on half its attempts".** It is not the profile.
+Presentation70 held fixed and run at 960pt crashed 2 of 3 attempts, against
+52 of 73 at 720pt on the same deck; rounds 362 (4:3) and 363 (16:9) are
+near-identical, 15 passed / 1 failed / 0 skipped each. The archive's
+52-of-73-against-0-of-51 contrast was confounded: every 4:3 round ran
+Presentation70 and every 16:9 round ran Presentation64, and no file named
+either until `driverDeck` landed. Width and deck are near-collinear across
+the whole archive. What is wrong with that DOCUMENT is now the open question,
+and it is answerable because rounds name theirs.
+
+**14 — "40% of crashes leave no round file; may a stub be archived?"** The
+question dissolved: nothing needs fabricating, because the evidence was
+already there. `recordCrashFinding("selftest:<name>", r)` has been banking
+each verdict as it completes all along — 69 of 77 crash records carry them,
+50 of those a complete set, 837 verdicts in total, and `triage` referenced
+`crashes/` once. So no stub, and nothing enters `rounds/`: the number IS the
+chronology and the filename carries the build SHA. Two things instead —
+the driver now waits out the pane's own 45-second deck-evidence budget
+before giving a crashed round up (that timeout exists to save exactly these
+rounds and had fired in 0 of 77 records, because the driver returned the
+instant it saw the dialog), and `salvage-crashed.mjs` went from 22 rounds to
+69 once its two soft bars recorded their uncertainty instead of discarding
+the round.
+
+**15 — "the mid-draw stop scenario needs one round against a real host".**
+It got seven. It failed all seven, and the cause is a change of mine:
+`ca138f8` moved it onto a freshly-added slide and it has thrown
+`GeneralException` at `SlideCollection.getItem` ever since, after passing
+twice on the build before. That is a clean build boundary with one `src/`
+commit in it, and the elapsed times overlap through it (a pass at 488s
+against a failure at 400s), so it is not the host tiring. It also costs
+rounds: 7 of the 76 sound crash records carry a `stop requested` in their
+final ten steps and every one is dated 2026-09-02 or later. What it cannot
+say is WHICH of its two changes did it — the slide or the stop — which is
+why item 19 exists.
 
 **Closed 2026-09-01:** 18 — no ratchet varied `decorations`, and now one does,
 swept at the frames where the text has room. The answer is that the engine adds

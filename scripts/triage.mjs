@@ -4613,6 +4613,47 @@ export const ROUTINE_RECOVERIES = new Set(["not-ready:pane-closed", "not-ready:p
  * of this existed: 190 of them, and a row of question marks on every one is
  * noise, not information.
  */
+/**
+ * WHICH DOCUMENT, WHICH PROFILE, AND HOW MUCH IT ASKED OF THE HOST.
+ *
+ * Three fields landed on 2026-09-02 and 09-03 and NOTHING printed any of them,
+ * which is the state `driverRun` was in for its first fortnight — archived and
+ * invisible, so a round rescued from a crash read exactly like one that never
+ * needed rescuing. A field nobody prints is a field nobody uses.
+ *
+ *   driverDeck   the document actually in front, measured. 0 of 408 archived
+ *                files named one before this, which is why "4:3 crashes more"
+ *                and "that one file is sick" were the same sentence for a
+ *                fortnight. Only names the operator configured are published —
+ *                see `archivableDeck` — so `undisclosed` is a real value here
+ *                and means "a document this archive will not name", never
+ *                "unknown".
+ *   syncs        `context.sync()` calls, end to end. office-js#6329 says each
+ *                one forces a full presentation save on the web host, so this
+ *                is the load figure that would matter if it is right — and
+ *                every crash number in this archive is indexed by SHAPES.
+ *   asked for    `driverRun.deck`, the deck the leg was TOLD to use. Printed
+ *                only when it disagrees with what was in front, because that
+ *                disagreement is the one state worth a reader's eye and the
+ *                agreement is the ordinary case.
+ *
+ * Empty string for the rounds that predate all three, on the same reasoning
+ * `driverRunLine` gives: a row of question marks on 400 files is noise.
+ */
+export function roundIdentityLine(log) {
+  if (!log || typeof log !== "object") return "";
+  const bits = [];
+  if (log.driverDeck !== undefined) bits.push(`deck ${log.driverDeck ?? "unreadable"}`);
+  const asked = log.driverRun?.deck;
+  // Only when they differ. `deck-missing` is the refusal for the loud version
+  // of this, but a round can run against the right deck by luck and nothing
+  // would say the instruction had been wrong.
+  if (asked && log.driverDeck && !String(log.driverDeck).startsWith(String(asked))) bits.push(`ASKED FOR ${asked}`);
+  if (log.driverSlideSize) bits.push(String(log.driverSlideSize));
+  if (typeof log.syncs === "number") bits.push(`${log.syncs} syncs`);
+  return bits.length ? `\n  ${bits.join(" · ")}` : "";
+}
+
 export function driverRunLine(dr) {
   if (!dr || typeof dr !== "object") return "";
   const bits = [];
@@ -6069,6 +6110,7 @@ if (invokedDirectly) {
         // crashes went unnoticed, and were then attributed to the wrong rounds
         // — while the field naming them sat in every file the whole time.
         driverRunLine(log.driverRun) +
+        roundIdentityLine(log) +
         (runs.length ? `\n  ${runs.length} insert run(s) in this file — pass the .pptx to check their slots` : ""),
     );
     reportDeckEvidence(log.deck);
