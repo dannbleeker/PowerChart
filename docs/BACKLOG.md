@@ -3327,3 +3327,63 @@ IT IS A PRODUCT DECISION, because it changes what someone who accepted the offer
 receives: a chart on their current slide instead of an error and a dead host.
 That is the owner's call, and it is the last thing standing between this defect
 and a fix.
+
+### FIXED: the "4:3 crash" was a two-master crash, and a documented API misuse — 2026-09-03
+
+**The slide stopped vanishing.** Round 374, Presentation70 at 4:3, first
+attempt, no crash:
+
+    slides added  {requested:1, landed:1, from:7}
+    slides added  {requested:1, landed:1, from:8}
+
+The deck went 7 -> 8 -> 9 and KEPT both. Every prior 4:3 round went 7 -> 8 ->
+back to 7 with the slide gone under any name, twice a round. Zero "gone"
+readings in 374; the one draw that still failed reports `deckSlides:9
+index:8 indexInRange:true stillListedUnderTheSameId:true` — the slide is
+there.
+
+**The cause.** `AddSlideOptions` is explicit: a `layoutId` sent without a
+`slideMasterId` "needs to be available for the default Slide Master ...
+Otherwise, an error will be thrown", and that default is THE PREVIOUS SLIDE'S
+master. `blankLayoutId` took the blank layout of the FIRST master and
+`addSlides` sent it alone. One master, always legal — which is why it ran for
+months and why the fake, which had one master, could never catch it.
+
+**The evidence that named it**, over 220 archived rounds bucketed by the
+`layouts-readable` probe on whether the round crashed:
+
+    1 master  /  1 layout   @ 16:9     9 of 182  =   5%
+    2 masters / 12 layouts  @ 16:9     4 of   4  = 100%
+    2 masters / 12 layouts  @ 4:3     27 of  30  =  90%
+
+Hold the deck and the aspect ratio changes nothing; hold the ratio at 16:9 and
+the deck moves it 5% -> 100%. Round 373 confirmed it by experiment rather than
+correlation: Presentation70 at 16:9 lost the slide twice, exactly as at 4:3.
+
+**Two weeks of "4:3" in this file is mis-attributed.** 4:3 was along for the
+ride because `cyclePlan` has pinned the tall arm to one deck since 2026-08-26.
+Entries above that reason about aspect ratio should be read as reasoning about
+`Presentation70`.
+
+**And it IS the documented lost edit.** PowerPoint's ULS carries
+`errorLocalChangeLostSingleUser` in 17 crash logs and it is the ONLY ErrorName
+in the corpus of 109 — it discards the rejected revision, resets undo history
+and rolls the deck back, which is precisely "listed, listed again, gone". An
+earlier entry here said it was NOT that, on the grounds that the string appears
+in zero steps of round 371. That search was of the add-in's own step stream,
+which structurally cannot carry the host's ULS. Wrong scope, wrong conclusion.
+
+**What is fixed and what is not.**
+
+Fixed: the add. `blankLayoutTarget` returns `{layoutId, slideMasterId}` and
+every add — including the retry inside `addSlides` — sends both.
+
+NOT fixed, and still open above: the two own-slide scenarios still fail, now on
+DELETING the slide they added rather than drawing on it. That is the add-time
+vs settled id problem, unchanged and unrelated.
+
+NOT established: that the crash rate is fixed. One clean 4:3 round against a
+~49%-per-attempt history is encouraging and is not a rate. The vanish is
+settled by mechanism — slides persist, the deck grows, the readings say
+"there" — but the crash needs rounds, and the rate ratchet will show it
+falling on its own if it is real.
