@@ -1636,8 +1636,36 @@ async function blankLayoutId(context: PowerPoint.RequestContext): Promise<string
     await context.sync();
     for (const master of masters.items) {
       const blank = master.layouts.items.find((l) => l.type === PowerPoint.SlideLayoutType.blank);
-      if (blank) return blank.id;
+      if (blank) {
+        /**
+         * WHICH MASTER THIS CAME FROM, because the loop takes the FIRST one
+         * carrying a blank layout and has never said which that was.
+         *
+         * A slide added with a layout id is built from THAT master. On a deck
+         * with more than one master — or one whose slide size has been changed
+         * underneath it, which the round driver does with `PW_SET_SIZE` — the
+         * first master need not be the deck's active one, and a slide built
+         * from a foreign master is a candidate for what round 371 measured: an
+         * add the host accepts, lists twice, and then drops before a shape
+         * reaches it.
+         *
+         * A CANDIDATE, NOT A CAUSE. Nothing here shows that happening. The
+         * point is that the archive cannot currently tell, because no round has
+         * ever recorded which layout an add used or how many masters were on
+         * offer — and the 4:3 deck and the 16:9 deck have never been compared
+         * on it. One line makes the next round able to answer.
+         */
+        trace("host", "the layout an added slide will be built from", {
+          masters: masters.items.length,
+          fromMaster: masters.items.indexOf(master),
+          layoutsOnThatMaster: master.layouts.items.length,
+          layoutId: blank.id,
+          notTheFirstMaster: masters.items.indexOf(master) > 0,
+        });
+        return blank.id;
+      }
     }
+    trace("host", "no blank layout on any master — the add will inherit", { masters: masters.items.length });
   } catch {
     /* no master/layout access on this host — fall back to the inherited layout */
   }
@@ -1844,31 +1872,51 @@ async function insertSceneIntoSlideInner(
     // will not take. Each batch reports, so progress here is measured, not
     // guessed — see renderShapesChunked.
     let created: Awaited<ReturnType<typeof renderShapesChunked>>;
-    let committed = 0;
     try {
       created = await step("drawing the chart's shapes", () =>
-        renderShapesChunked(context, getSlide, scene, opts, (done, total) => {
-          committed = done;
-          onPhase?.("commit", `${done} of ${total} shapes`);
-        }),
+        renderShapesChunked(context, getSlide, scene, opts, (sending, total) =>
+          onPhase?.("commit", `${sending} of ${total} shapes`),
+        ),
       );
     } catch (err) {
       // Round 370's question, asked at the moment it matters. Costs nothing
       // unless the draw has already failed. See `askWhatTheDeckStillHolds`.
       const reading = index >= 0 ? await askWhatTheDeckStillHolds(opts.slideId, index) : "unreadable";
       /**
-       * THE SLIDE IS GONE AND NOTHING WAS DRAWN, so this is recoverable — and
-       * the caller is told by a flag on the error rather than here, because a
-       * retry inside this `ppRun` would nest a context inside a failed one.
+       * THE SLIDE IS GONE, SO THIS IS RECOVERABLE — and the caller is told by a
+       * flag on the error rather than here, because retrying inside this
+       * `ppRun` would nest a context inside a failed one.
        *
-       * BOTH HALVES ARE REQUIRED. `gone` alone is not enough: a draw that had
-       * already committed shapes cannot be re-run without drawing them twice,
-       * and this project has shipped a double-draw before. Round 371 is the
-       * case this covers, and it is the common one — the batch fails at
-       * `upTo=10 total=103 onSlide=0`, with nothing on the slide, because the
-       * slide the shapes were bound for stopped existing between two syncs.
+       * `gone` IS THE WHOLE GUARD, and the version shipped in `2414ceb` had a
+       * second one that was both broken and unnecessary. It required that
+       * nothing had been committed, counted from the `onBatch` callback — whose
+       * first argument is named `sending` and is reported BEFORE the sync, by
+       * deliberate design ("the sync is where a bad host stops answering, so
+       * this is the number that has to be on screen WHILE we wait"). On the
+       * host that number was 10 before the first batch failed, so the guard
+       * never held and THE FALLBACK NEVER FIRED. Round 372 is the receipt: the
+       * discriminator reads "gone" twice and there is not one fallback line in
+       * its trace. The unit tests passed because the fake fails earlier —
+       * synchronously, at `getSlide()`, before a shape is queued — so it
+       * reported 0 where the host reports 10. A fake that cannot fail the way
+       * the real thing fails, again.
+       *
+       * Switching it to the `sink` would have repeated the mistake: `sink` IS
+       * the accumulator (`const created = sink ?? []`) and fills at QUEUE time,
+       * not on commit.
+       *
+       * And no such guard is needed. It was there to prevent a double-draw —
+       * re-running a scene whose first batches had already landed. But shapes
+       * live on a slide, and this branch is only reached when that slide is
+       * GONE: whatever had landed went with it. There is nothing left to draw
+       * twice. The double-draw risk exists only while the slide SURVIVES, which
+       * is exactly what `reading !== "gone"` already excludes.
        */
-      if (reading === "gone" && committed === 0 && err && typeof err === "object") {
+      trace("insert", "the draw failed — deciding whether it can be re-run", {
+        reading,
+        recoverable: reading === "gone",
+      });
+      if (reading === "gone" && err && typeof err === "object") {
         (err as { ownSlideVanished?: boolean }).ownSlideVanished = true;
       }
       throw err;

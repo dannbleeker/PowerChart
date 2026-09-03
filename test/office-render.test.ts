@@ -7291,34 +7291,49 @@ describe("adding the slide a slow insert is offered", () => {
     expect(deck[0].created.length, "the fallback reported success and drew nothing").toBeGreaterThan(0);
   });
 
-  it("will NOT fall back once shapes have landed, because that would draw them twice", async () => {
+  it("falls back even when the vanished slide had already taken shapes with it", async () => {
     /**
-     * THE GUARD, AND IT IS THE HALF THAT CAN DO HARM. Falling back re-runs the
-     * whole scene, so it is only safe while nothing has been committed. A
-     * chart that failed half-drawn and then fell back would leave its first
-     * batches on the vanished slide and put the whole chart on the visible one.
+     * THE GUARD THAT WAS REMOVED, AND WHY ITS ABSENCE IS SAFE.
      *
-     * The first version of this suite tested only the recovery, and a mutation
-     * run showed all three guard conditions surviving — the fallback would have
-     * fired on a half-drawn chart, and on failures with nothing to do with a
-     * missing slide, while every test still passed. Testing that a thing
-     * happens is half a test; the other half is that it does not happen
-     * otherwise.
+     * An earlier version refused to fall back once any shape had been
+     * committed, to avoid re-running a half-drawn scene and drawing it twice.
+     * That guard was broken — it counted `onBatch`'s `sending` argument, which
+     * is reported before the sync, so on the host it was never zero and the
+     * fallback never fired at all (round 372). It was also unnecessary, which
+     * is the more interesting half.
+     *
+     * Shapes live on a slide. This path is only reached when that slide is
+     * GONE, so anything already drawn went with it — there is nothing left to
+     * draw twice. The double-draw risk exists only while the slide SURVIVES,
+     * and that case never reaches here because the reading is not "gone".
+     *
+     * So a chart that failed half-drawn onto a vanishing slide SHOULD be
+     * re-run, and this asserts the outcome a user cares about: exactly one
+     * chart, on the slide that still exists.
      */
     const deck: FakeSlide[] = [makeSlide("s1")];
     installHost(deck);
     const cfg = { ...sampleConfig("clustered"), ...DEFAULT_SIZE };
     const slideId = await addSlideForChart();
     const added = deck.length - 1;
-    let threw = false;
-    await insertSceneIntoSlide(buildChart(cfg), { slideId: slideId!, tagData: JSON.stringify(cfg) }, (p, detail) => {
-      // Vanish only AFTER the first batch has committed shapes.
-      if (p === "commit" && Number(String(detail).split(" ")[0]) > 0 && deck.length > 1) deck.splice(added, 1);
-    }).catch(() => {
-      threw = true;
-    });
-    expect(threw, "fell back after shapes had already landed — the chart would be drawn twice").toBe(true);
-    expect(deck[0].created.length, "the half-drawn chart was re-drawn onto the visible slide").toBe(0);
+    let vanished: FakeSlide | undefined;
+    const target = await insertSceneIntoSlide(
+      buildChart(cfg),
+      { slideId: slideId!, tagData: JSON.stringify(cfg) },
+      (p, detail) => {
+        // Vanish only AFTER a batch has gone out, so the scene is part-drawn.
+        if (p === "commit" && Number(String(detail).split(" ")[0]) > 0 && !vanished)
+          vanished = deck.splice(added, 1)[0];
+      },
+    );
+    expect(vanished?.id, "the slide never vanished, so this tested nothing").toBe(slideId);
+    expect(target, "a part-drawn chart on a vanished slide was not recovered").toBeTruthy();
+    expect(target!.slideId).toBe(deck[0].id);
+    // ONE chart on the surviving slide. The shapes that went out before the
+    // slide disappeared went with it; the fake keeps them on the detached
+    // object, which is why the assertion is about `deck[0]` and not a total.
+    expect(deck[0].created.length, "the recovered chart drew nothing").toBeGreaterThan(0);
+    expect(deck.length, "the vanished slide came back").toBe(1);
   });
 
   it("adds nothing at all when the deck will not say what is already in it", async () => {
