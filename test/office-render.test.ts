@@ -7178,6 +7178,37 @@ describe("adding the slide a slow insert is offered", () => {
       expect(asked!.data!.deckSlides).toBe(2);
       expect(asked!.data!.stillListedUnderTheSameId).toBe(true);
       expect(asked!.data!.reading).toBe("there, listed under the same id, and refused anyway");
+      /**
+       * AND IT DOES NOT FALL BACK HERE. The slide is present, so this is an
+       * ordinary host failure and must surface. Recovering from ANY failure
+       * would quietly redraw the chart elsewhere and swallow a real error.
+       *
+       * ASSERTED ON THE TRACE, not on where the ink landed, and the difference
+       * is why the mutation run needed two attempts. With the guard relaxed the
+       * retry happens and then fails too, so the deck looks identical either
+       * way — `threw`, `deck[0]` and `deck[1]` are all unchanged. The fallback
+       * announces itself before retrying, so the announcement is the only thing
+       * that separates "did not fall back" from "fell back and got nowhere".
+       */
+      expect(
+        seen.some((e) => e.message.includes("drawing on the visible slide instead")),
+        "fell back on a failure that had nothing to do with a missing slide",
+      ).toBe(false);
+      /**
+       * A SURVIVING MUTANT, RECORDED RATHER THAN HIDDEN. Dropping
+       * `reading === "gone"` from the guard in `insertSceneIntoSlideInner`
+       * survives this whole file, and it took two wrong explanations to find
+       * out why: the fault used here rejects with a non-object, so the
+       * `typeof err === "object"` arm filters it out and the flag is never set
+       * whatever the reading says. The assertion above is therefore true for a
+       * reason other than the one it names.
+       *
+       * Killing it needs a fault that fails a draw with an OBJECT error while
+       * the slide is still listed and nothing has committed, and no fault in
+       * `office-host.ts` produces that combination today. Left as a gap on the
+       * record instead of a green tick that means less than it looks like: the
+       * guard is right, and it is only partly tested.
+       */
     } finally {
       faults.failSyncOn = 0;
       onTrace(undefined);
@@ -7221,6 +7252,73 @@ describe("adding the slide a slow insert is offered", () => {
       onTrace(undefined);
       setTracing(false);
     }
+  });
+
+  it("draws on the visible slide when the slide added for the chart has vanished", async () => {
+    /**
+     * WHAT A USER GETS FOR ACCEPTING THE OFFER. `offerOwnSlide` adds a slide
+     * and hands its id to the insert. At 4:3 that slide is added, listed,
+     * listed AGAIN by the index resolution, and gone by the next sync of the
+     * same context — before one shape is issued. Round 371 measured it twice.
+     *
+     * Until now that was `GeneralException` and, on about half of those runs, a
+     * dead PowerPoint: `a big chart on a slide of its own` sits at 500 deaths
+     * per 1000 runs, the worst number in the suite. Now the chart lands on the
+     * slide the user was already looking at.
+     *
+     * THE INK IS THE ASSERTION, not the absence of a throw. A version that
+     * swallowed the error and returned null would pass a "does not reject"
+     * test while drawing nothing — the vacuous shape this file has been caught
+     * by twice already.
+     */
+    const deck: FakeSlide[] = [makeSlide("s1")];
+    installHost(deck);
+    const cfg = { ...sampleConfig("clustered"), ...DEFAULT_SIZE };
+    const slideId = await addSlideForChart();
+    expect(slideId, "no slide id came back").toBeTruthy();
+    const added = deck.length - 1;
+    const target = await insertSceneIntoSlide(
+      buildChart(cfg),
+      { slideId: slideId!, tagData: JSON.stringify(cfg) },
+      (p) => {
+        // Gone between the index resolution and the first batch — the window
+        // round 371 puts it in.
+        if (p === "queue") deck.splice(added, 1);
+      },
+    );
+    expect(target, "the offer threw instead of falling back — this is what killed the host").toBeTruthy();
+    expect(target!.slideId, "the target names a slide that is not in the deck").toBe(deck[0].id);
+    expect(deck[0].created.length, "the fallback reported success and drew nothing").toBeGreaterThan(0);
+  });
+
+  it("will NOT fall back once shapes have landed, because that would draw them twice", async () => {
+    /**
+     * THE GUARD, AND IT IS THE HALF THAT CAN DO HARM. Falling back re-runs the
+     * whole scene, so it is only safe while nothing has been committed. A
+     * chart that failed half-drawn and then fell back would leave its first
+     * batches on the vanished slide and put the whole chart on the visible one.
+     *
+     * The first version of this suite tested only the recovery, and a mutation
+     * run showed all three guard conditions surviving — the fallback would have
+     * fired on a half-drawn chart, and on failures with nothing to do with a
+     * missing slide, while every test still passed. Testing that a thing
+     * happens is half a test; the other half is that it does not happen
+     * otherwise.
+     */
+    const deck: FakeSlide[] = [makeSlide("s1")];
+    installHost(deck);
+    const cfg = { ...sampleConfig("clustered"), ...DEFAULT_SIZE };
+    const slideId = await addSlideForChart();
+    const added = deck.length - 1;
+    let threw = false;
+    await insertSceneIntoSlide(buildChart(cfg), { slideId: slideId!, tagData: JSON.stringify(cfg) }, (p, detail) => {
+      // Vanish only AFTER the first batch has committed shapes.
+      if (p === "commit" && Number(String(detail).split(" ")[0]) > 0 && deck.length > 1) deck.splice(added, 1);
+    }).catch(() => {
+      threw = true;
+    });
+    expect(threw, "fell back after shapes had already landed — the chart would be drawn twice").toBe(true);
+    expect(deck[0].created.length, "the half-drawn chart was re-drawn onto the visible slide").toBe(0);
   });
 
   it("adds nothing at all when the deck will not say what is already in it", async () => {

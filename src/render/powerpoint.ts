@@ -1682,7 +1682,43 @@ export async function insertSceneIntoSlide(
   opts: InsertOptions = {},
   onPhase?: (phase: InsertPhase, detail?: string) => void,
 ): Promise<EditTarget | null> {
-  return traceAbout(drawKey(), () => insertSceneIntoSlideInner(scene, opts, onPhase));
+  try {
+    return await traceAbout(drawKey(), () => insertSceneIntoSlideInner(scene, opts, onPhase));
+  } catch (err) {
+    /**
+     * THE OFFER FALLS BACK RATHER THAN FAILING, when the slide it was given
+     * has stopped existing.
+     *
+     * `offerOwnSlide` ships: the pane offers "put it on a slide of its own"
+     * for a big chart, adds a slide, and passes that id here. At 4:3 that
+     * slide is added, listed, listed AGAIN by the index resolution — and is
+     * gone by the next sync of the same context, before one shape is issued.
+     * Round 371 measured it twice; `askWhatTheDeckStillHolds` is what asks.
+     *
+     * What a user got for accepting the offer was `GeneralException` and, on
+     * roughly half of those runs, a dead PowerPoint tab — that scenario sits
+     * at 500 deaths per 1000 runs, the worst number in the suite. What they
+     * get now is the chart, on the slide they were already looking at.
+     *
+     * NOT A REPAIR OF THE HOST BUG, and it must not be read as one. The slide
+     * still vanishes and nobody knows why; this only stops the product dying
+     * of it. The mechanism is open in `docs/BACKLOG.md` — and notably NOT the
+     * documented server-side lost edit, which appears in zero steps of round
+     * 371.
+     *
+     * ONE RETRY, STRUCTURALLY. The retry carries no `slideId`, so `index`
+     * stays -1, so nothing can set the flag again and there is no second pass
+     * to guard against. The EditTarget it returns names the slide actually
+     * drawn on, which is what lets the pane tell the truth about where the
+     * chart went.
+     */
+    if (!opts.slideId || !(err as { ownSlideVanished?: boolean } | null)?.ownSlideVanished) throw err;
+    trace("insert", "the slide added for this chart is gone — drawing on the visible slide instead", {
+      slideId: opts.slideId,
+      nodes: scene.nodes.length,
+    });
+    return traceAbout(drawKey(), () => insertSceneIntoSlideInner(scene, { ...opts, slideId: undefined }, onPhase));
+  }
 }
 
 async function insertSceneIntoSlideInner(
@@ -1808,16 +1844,33 @@ async function insertSceneIntoSlideInner(
     // will not take. Each batch reports, so progress here is measured, not
     // guessed — see renderShapesChunked.
     let created: Awaited<ReturnType<typeof renderShapesChunked>>;
+    let committed = 0;
     try {
       created = await step("drawing the chart's shapes", () =>
-        renderShapesChunked(context, getSlide, scene, opts, (done, total) =>
-          onPhase?.("commit", `${done} of ${total} shapes`),
-        ),
+        renderShapesChunked(context, getSlide, scene, opts, (done, total) => {
+          committed = done;
+          onPhase?.("commit", `${done} of ${total} shapes`);
+        }),
       );
     } catch (err) {
       // Round 370's question, asked at the moment it matters. Costs nothing
       // unless the draw has already failed. See `askWhatTheDeckStillHolds`.
-      if (index >= 0) await askWhatTheDeckStillHolds(opts.slideId, index);
+      const reading = index >= 0 ? await askWhatTheDeckStillHolds(opts.slideId, index) : "unreadable";
+      /**
+       * THE SLIDE IS GONE AND NOTHING WAS DRAWN, so this is recoverable — and
+       * the caller is told by a flag on the error rather than here, because a
+       * retry inside this `ppRun` would nest a context inside a failed one.
+       *
+       * BOTH HALVES ARE REQUIRED. `gone` alone is not enough: a draw that had
+       * already committed shapes cannot be re-run without drawing them twice,
+       * and this project has shipped a double-draw before. Round 371 is the
+       * case this covers, and it is the common one — the batch fails at
+       * `upTo=10 total=103 onSlide=0`, with nothing on the slide, because the
+       * slide the shapes were bound for stopped existing between two syncs.
+       */
+      if (reading === "gone" && committed === 0 && err && typeof err === "object") {
+        (err as { ownSlideVanished?: boolean }).ownSlideVanished = true;
+      }
       throw err;
     }
     // Shapes are committed by now, so grouping/tagging (which some hosts,
@@ -8543,25 +8596,36 @@ async function slideIds(): Promise<string[] | undefined> {
  * And it swallows its own errors — a diagnostic that replaces the error it was
  * called to explain is worse than no diagnostic.
  */
-async function askWhatTheDeckStillHolds(slideId: string | undefined, index: number): Promise<void> {
+async function askWhatTheDeckStillHolds(
+  slideId: string | undefined,
+  index: number,
+): Promise<"gone" | "there" | "re-keyed" | "unreadable"> {
   try {
     const ids = await slideIds();
+    const verdict = !ids
+      ? "unreadable"
+      : index >= ids.length
+        ? "gone"
+        : ids.includes(slideId ?? "")
+          ? "there"
+          : "re-keyed";
     trace("insert", "the draw failed — asking the deck what it still holds", {
       slideId,
       index,
       deckSlides: ids?.length ?? "unreadable",
       indexInRange: ids ? index < ids.length : "unreadable",
       stillListedUnderTheSameId: ids ? ids.includes(slideId ?? "") : "unreadable",
-      reading: !ids
-        ? "unreadable"
-        : index >= ids.length
-          ? "gone — the index is past the end of the deck"
-          : ids.includes(slideId ?? "")
-            ? "there, listed under the same id, and refused anyway"
-            : "there, but re-keyed under a name we do not hold",
+      reading: {
+        unreadable: "unreadable",
+        gone: "gone — the index is past the end of the deck",
+        there: "there, listed under the same id, and refused anyway",
+        "re-keyed": "there, but re-keyed under a name we do not hold",
+      }[verdict],
     });
+    return verdict;
   } catch {
     /* A diagnostic must never replace the error it is diagnosing. */
+    return "unreadable";
   }
 }
 
