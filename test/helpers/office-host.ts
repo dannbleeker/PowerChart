@@ -2401,6 +2401,22 @@ export function installHost(
     // does and a near-miss id would let a buggy caller succeed by accident.
     slide.id = `settled-${settleSeq++}`;
     addedSlideIds.add(slide.id);
+    /**
+     * AND THE NEW ID IS SETTLED TOO, or the slide is renamed on every lookup
+     * for ever.
+     *
+     * `settledSlideIds` was keyed on the id being replaced, while the
+     * REPLACEMENT went into `addedSlideIds` — so the next by-id lookup found it
+     * eligible again and renamed it to `settled-2`, then `settled-3`. A caller
+     * doing the right thing (re-read the deck, test whether the id resolves,
+     * try again) could never catch up, because the id moved every time it
+     * looked. That is not what the host does: a slide settles ONCE.
+     *
+     * Unused until 2026-09-03, which is why it went unnoticed — the fault was
+     * built and never armed. The first test to arm it was the one for
+     * `addSlideForChart`, and it failed against a correct fix.
+     */
+    settledSlideIds.add(slide.id);
     addedSlideOrder.set(slide.id, addedSlideOrder.get(id) ?? 0);
   };
 

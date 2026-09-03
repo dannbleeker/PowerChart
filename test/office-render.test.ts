@@ -7074,6 +7074,48 @@ describe("adding the slide a slow insert is offered", () => {
     }
   });
 
+  it("hands back an id the host will actually resolve, not the one it was given at add time", async () => {
+    /**
+     * THE BUG THIS SHIPPED WITH, and the reason no test caught it for a
+     * fortnight.
+     *
+     * `addSlideForChart` read `.id` off a positional thunk inside the same
+     * `ppRun` that issued the add. That is the ADD-TIME id, and this host will
+     * not resolve it: `4123571152#123571113` at add time against
+     * `256#2587447327` once settled, two spaces rather than near-misses. Every
+     * caller passing it into `insertSceneIntoSlide` fails on its FIRST batch
+     * with GeneralException at `SlideCollection.getItem` — including
+     * `offerOwnSlide`, which SHIPS, so a user accepting "put it on a slide of
+     * its own" got an error and an empty slide.
+     *
+     * Reading it from a fresh deck listing was tried and is not enough: on
+     * build facdc84 the listing itself returned the add-time form. So the id is
+     * TESTED rather than trusted — handed to `getItemOrNullObject` and asked to
+     * resolve, which is the same question the draw is about to ask.
+     *
+     * `newSlideIdSettlesAfter` is what makes this testable, and it has been
+     * sitting in the fake unused: "the id works for the first N by-id lookups
+     * and is a different id afterwards", moving to a DIFFERENT SPACE so a buggy
+     * caller cannot succeed by accident. Exactly the host. Nothing had ever
+     * armed it against this function, which is how the defect reached a user.
+     */
+    const deck: FakeSlide[] = [makeSlide("s1")];
+    installHost(deck);
+    faults.newSlideIdSettlesAfter = 1;
+    try {
+      const id = await addSlideForChart();
+      expect(id, "no id came back at all").toBeTruthy();
+      // THE SETTLED SPACE, not the add-time one. Asserting merely "an id" would
+      // pass against the shipped bug, which is what every test here did.
+      expect(String(id), "handed back the add-time id the host refuses").toMatch(/^settled-/);
+      // And the deck really grew — this is the "landed and settled" case, not a
+      // dropped add wearing the same verdict.
+      expect(deck.length, "no slide landed, so this tested the wrong thing").toBe(2);
+    } finally {
+      faults.newSlideIdSettlesAfter = null;
+    }
+  });
+
   it("adds nothing at all when the deck will not say what is already in it", async () => {
     /**
      * THE ANSWER IS STILL NULL AND THE SLIDE IS NO LONGER LEFT BEHIND.

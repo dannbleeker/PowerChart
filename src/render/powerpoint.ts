@@ -2087,6 +2087,38 @@ export async function slideOccupancy(slideIds: string[]): Promise<Map<string, nu
  * throw — because the caller's fallback is to insert where the user originally
  * asked. Losing the offer is a nuisance; losing the chart is not acceptable.
  */
+/**
+ * How many times to re-list the deck waiting for a new slide's id to settle.
+ *
+ * Each pass is two round trips and there is no sleep between them, so this is
+ * about a second of host time on a path the user explicitly asked for. Small
+ * because `null` is a good answer here — the caller falls back to the slide
+ * they were already on, which is slower and correct.
+ */
+const SETTLE_PASSES = 5;
+
+/**
+ * Will this host resolve that slide id RIGHT NOW?
+ *
+ * The same question the draw is about to ask, asked cheaply first. Shape is not
+ * consulted: `4123571153#123571113` and `256#2587447327` are both real ids for
+ * the same slide at different moments, and no pattern separates a usable one
+ * from a stale one. Resolution does.
+ */
+async function slideIdResolves(id: string): Promise<boolean> {
+  try {
+    return await ppRun(async (context) => {
+      const slide = context.presentation.slides.getItemOrNullObject(id);
+      queueNullCheck(slide);
+      await context.sync();
+      return isLive(slide);
+    });
+  } catch {
+    // A throw is the host refusing the id, which is the answer.
+    return false;
+  }
+}
+
 export async function addSlideForChart(): Promise<string | null> {
   try {
     /**
@@ -2159,10 +2191,44 @@ export async function addSlideForChart(): Promise<string | null> {
       return thunks.length > 0;
     });
     if (!added) return null;
-    const after = await slideIds();
-    if (!after) return null;
-    const fresh = after.filter((id) => !known.has(id));
-    return fresh.length === 1 ? fresh[0] : null;
+    /**
+     * THE ID IS TESTED, NOT TRUSTED, AND THAT IS THE WHOLE FIX.
+     *
+     * Reading it from a fresh context was necessary and not sufficient: on
+     * build facdc84 this listed the deck exactly as intended and still got back
+     * `4123571153#123571113`, the add-time form, which `getItem` then refused.
+     * The deck's own listing does not carry a durable id for a slide added
+     * moments earlier.
+     *
+     * So the shape of the id is not consulted — it is not a reliable
+     * discriminator and guessing at it would be a guess about a host. The id is
+     * handed to `getItemOrNullObject` and asked to resolve, which is the same
+     * question the draw is about to ask and the only one that matters.
+     *
+     * RE-LISTED EACH TIME, because the id does not merely become resolvable —
+     * it CHANGES. `4123571153#123571113` at add time against `256#2587447327`
+     * once settled are different ids for one slide, so polling the first would
+     * wait for something that will never happen. Each pass re-diffs the deck
+     * and tests whatever the new slide is called NOW.
+     *
+     * No sleep: each pass is two round trips, which is the wait. The budget is
+     * small because the caller is a user who has just accepted an offer, and a
+     * null here is handled — `app.ts` falls back to the slide they were on.
+     */
+    for (let pass = 0; pass < SETTLE_PASSES; pass++) {
+      const after = await listOnce();
+      if (!after) continue;
+      const fresh = after.filter((id) => !known.has(id));
+      // Not exactly one means something else changed the deck underneath and
+      // the answer cannot be attributed to this add.
+      if (fresh.length !== 1) continue;
+      if (await slideIdResolves(fresh[0])) {
+        if (pass > 0) trace("insert", "the new slide's id took a moment to settle", { passes: pass + 1 });
+        return fresh[0];
+      }
+    }
+    trace("insert", "the new slide never produced an id this host would resolve", { passes: SETTLE_PASSES });
+    return null;
   } catch {
     return null;
   }
