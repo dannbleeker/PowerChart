@@ -296,9 +296,26 @@ export const KNOWN_DIVERGENCES = {
  * A NAME ABSENT FROM THIS TABLE HAS NEVER KILLED THE HOST, so its first death
  * is a rise from zero and is caught. That is the case most worth catching.
  *
- * The numbers may FALL and be lowered — that is a fix landing, and lowering
- * them is how the fix gets protected. They may not rise without a person
- * deciding they should.
+ * THESE NUMBERS CANNOT FALL, and an earlier version of this comment promised
+ * they could. They cannot: `crashes/` is append-only — nothing prunes it, and
+ * git records no deletion of a `*-crashed-run.json` — so `fatalScenarios`
+ * counts over all history and is monotonic. A cumulative count only grows.
+ *
+ * That was written by analogy to `overlap-budget`, which measures a CURRENT
+ * quantity and so genuinely falls when a fix lands. This measures an
+ * accumulated one. The analogy does not carry, and a reader waiting to lower a
+ * number here would wait forever.
+ *
+ * So the protection a fix gets is not a lowered number — it is this number
+ * staying put. Every entry is already at its ceiling, which makes the gate
+ * exactly "no new deaths": the next death in any listed scenario breaks it. Do
+ * not raise one without a person deciding it should, and do not go looking for
+ * a fall to prove a fix worked. The evidence a fix worked is a round, and for
+ * `6438dd1` that round is 369.
+ *
+ * Nor should the entries be RANKED by size: the biggest is the longest-running
+ * scenario, not the most dangerous one. `docs/BACKLOG.md`, "The death ratchet
+ * ranks EXPOSURE, not danger", has the measurement.
  *
  * Attribution is narrow on purpose: a scenario counts only when its
  * `scenario starting` line was never closed. 30 of 84 sound crash records

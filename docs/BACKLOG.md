@@ -3058,11 +3058,17 @@ An index whose id does not match is not the slide we added, and deleting it
 would remove a slide from someone's presentation with no undo. Do not "fix"
 this by relaxing the check.
 
-**It is a product path, not only the harness.** The pane's Tidy button
-(`app.ts:4910`) walks `tidyable` through `deleteSlideById`. If those are
-add-time ids, Tidy reports `0` removed and leaves the deck as it found it.
-Worth measuring before designing: nobody has checked which id space `tidyable`
-holds.
+**The blast radius is the HARNESS, not the pane — measured, not assumed.** The
+first draft of this entry warned that the pane's Tidy button was affected. It is
+not. Tidy walks `tidyable`, and `tidyable` is `deck.newSlides`, which
+`app.ts:3826` computes as `idsAfter.filter(...)` — a diff over the deck listing
+read AFTER the round. Those are SETTLED ids, so they are listed, so
+`deleteSlideByPosition` finds them. Round 369 shows one working:
+`gave the scratch slides back {"returned":1,"shrankBy":1}`.
+
+What breaks is narrower: a caller holding the id `addSlideForChart` returned,
+which is add-time. That is `selftest.ts:1918` and `selftest.ts:2058` — the two
+scenarios that fail — and nothing a user presses.
 
 **The shape of the fix, not the fix.** The insert path survived by resolving the
 id to an INDEX once, early, while the add-time id was still listed, and then
@@ -3084,3 +3090,41 @@ long-running scenarios report and the archive compares scenarios by name.
 on `GeneralException`, which was worse. The 10 loose shapes the grouping check
 flagged this round are the deliberately-aborted draw that this defect then could
 not clear, not a grouping fault: 11 of 11 attempts grouped, 0 refused.
+
+### The death ratchet ranks EXPOSURE, not danger — read it accordingly, 2026-09-03
+
+`FATAL_SCENARIO_BUDGET` works: it is a "no new deaths" gate and it fires
+correctly. But its ORDERING invites a wrong reading, and the wrong reading was
+mine until I measured it.
+
+Raw deaths say `same scale across the deck` (10) is the most dangerous thing the
+harness does. It is not. Against round 369's per-scenario durations:
+
+    scenario                                dur    deaths
+    same scale across the deck              146s      10
+    a big chart on a slide of its own       107s       4
+    does a rasterise poison the next draw    83s       0
+    stop a run mid-draw                       9s       8
+
+`stop a run mid-draw` takes NINE SECONDS and has collected eight deaths, while an
+83-second scenario has collected none. Per second of exposure it is roughly 30x
+more lethal than `same scale` — which is what you would expect from the one
+scenario that deliberately abandons a draw mid-flight and leaves the host holding
+a half-issued batch.
+
+`same scale` looks worst for a duller reason: it is the longest scenario, it runs
+late, and every one of its ten deaths landed in the 420-600s window inside
+`updated only the shapes that changed`, with single syncs taking 9-20s. That is
+the session-age crash this archive has documented all month, arriving while the
+longest scenario happens to be open. Attribution credits whoever holds the floor.
+
+**What this does NOT mean.** It does not mean the budget is wrong or should be
+normalised. A per-second rate cannot gate anything — the honest gate is "no new
+deaths", and that is what is shipped. This is a READING note: do not rank the
+budget's entries by size and call the top one the worst offender.
+
+**What it suggests next.** `stop a run mid-draw` is the cheapest place to buy
+host stability, because it is nine seconds long and kills the host eight times.
+Whether the abort path leaves a batch half-issued is answerable from the trace
+and has never been asked. Note it also just changed: `6438dd1` altered the slide
+targeting under it, so its next deaths are not comparable to its old ones.
