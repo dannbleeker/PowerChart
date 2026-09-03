@@ -3263,3 +3263,67 @@ is lost or merely withheld at 4:3. The next 4:3 round answers it in one trace
 line. `a big chart on a slide of its own` kills PowerPoint on 45% of its runs
 and the path it walks is one a user walks — accepting "put it on a slide of its
 own" — so this is the product's worst defect, not a harness problem.
+
+### MEASURED: the slide is added, listed, and gone before the first batch — round 371, 2026-09-03
+
+The fork round 370 could not settle is settled. The diagnostic fired twice in
+round 371 and both samples agree:
+
+    index 7 · deckSlides 7 · indexInRange false · stillListedUnderTheSameId false
+    reading: "gone — the index is past the end of the deck"
+
+Not withheld. Not re-keyed. NOT LISTED AT ALL, under any name, seconds after
+`addSlideForChart` confirmed it landed by diffing the deck's own listing.
+
+**AND THE TIMING IS TIGHTER THAN THE LAST ENTRY SAID.** That entry left open
+whether the slide vanished or the host merely refused a slide it still held.
+The trace closes it, and closes it earlier than expected:
+
+    host    slides added                          requested=1 landed=1 from=7
+    insert  resolved the target slide to an index index=7
+    draw    batch issued                          total=103 onSlide=0
+    error   drawing the chart's shapes            GeneralException @ getItemAt
+    insert  the draw failed — asking the deck     deckSlides=7 ... "gone"
+
+`findIndex` returned 7, which it can only do against a listing of EIGHT. So the
+slide was there at the resolution sync. `getItemAt(7)` then threw, which it can
+only do against a deck of SEVEN. Both syncs belong to the same `PowerPoint.run`,
+milliseconds apart.
+
+So the slide is lost BETWEEN TWO SYNCS OF ONE CONTEXT, before a single shape is
+issued. **The `GeneralException` is the consequence, not the cause** — the draw
+never had a slide to fail on.
+
+**What this rules out.** Every targeting strategy, permanently. By id, by index,
+by tag, by creation handle: there is no slide to name. The four ruled-out fixes
+and the by-index fix that replaced them were all answering the wrong question at
+4:3. `6438dd1` is still right — at 16:9 the slide persists and it is the only
+reason a chart has ever drawn onto one this product added — but it cannot be
+extended to cover this.
+
+**What it does NOT explain, and I checked rather than assumed.** Not the
+documented server-side lost edit: `errorLocalChangeLostSingleUser` appears in
+eight older crash records and in ZERO steps of round 371 or its crash record. So
+the obvious mechanism is not this one. Unknown remains unknown.
+
+**Where the fix has to go.** At the ADD, not the draw. Three shapes, uncosted:
+
+1. Verify the slide SURVIVES a round trip before drawing on it — one extra
+   listing after the add, and treat a slide that does not persist as a slide
+   that was never added. `addSlideForChart` already returns null on other
+   failures and `app.ts` already falls back to the slide the user was on.
+2. Retry the add. Cheap, and the archive has no evidence either way about
+   whether a second add sticks.
+3. Do not offer at all on a deck where adds do not persist, which needs a way to
+   know that in advance and probably cannot be answered.
+
+(1) is the honest one: the pane's offer is "put it on a slide of its own", and a
+slide that evaporates makes that a promise the product cannot keep. Turning a
+`GeneralException` — on the path that kills PowerPoint on HALF its runs, 500 per
+1000 as of round 371 — into a quiet fallback to the visible slide is strictly
+better for a user than what ships today.
+
+IT IS A PRODUCT DECISION, because it changes what someone who accepted the offer
+receives: a chart on their current slide instead of an error and a dead host.
+That is the owner's call, and it is the last thing standing between this defect
+and a fix.
