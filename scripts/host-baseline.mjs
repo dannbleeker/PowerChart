@@ -271,6 +271,64 @@ export const KNOWN_DIVERGENCES = {
  * A question in here has been SAMPLED, not answered. Removing an entry needs
  * several runs agreeing, not one.
  */
+/**
+ * HOW OFTEN EACH SCENARIO HAS KILLED THE HOST — a ratchet, not a record.
+ *
+ * A round file has three verdict states and cannot hold a fourth: a scenario
+ * that KILLS the host produces no verdict, and the round it belonged to files
+ * nothing at all. So the worst thing a scenario can do is the one thing
+ * `rounds/` cannot say, and it has hidden this:
+ *
+ *     same scale across the deck — 0 failures in 282 recorded verdicts,
+ *     joint-safest in the whole suite, and the scenario the host died inside
+ *     TEN times.
+ *
+ * `rounds-salvaged/` does not help: a salvaged round carries verdicts, and a
+ * killed scenario has none. Only the crash record's own steps know.
+ *
+ * SEEDED AT THE COUNTS ON 2026-09-03, not at zero, and that is deliberate. At
+ * zero this fails every night for damage already done, already known and
+ * already on the backlog — a gate that cries wolf gets switched off, which
+ * `docs/BACKLOG.md` records happening before. At today's counts it is silent
+ * about the past and loud the moment a scenario starts killing the host MORE
+ * than it already did, or a scenario that never has starts.
+ *
+ * A NAME ABSENT FROM THIS TABLE HAS NEVER KILLED THE HOST, so its first death
+ * is a rise from zero and is caught. That is the case most worth catching.
+ *
+ * The numbers may FALL and be lowered — that is a fix landing, and lowering
+ * them is how the fix gets protected. They may not rise without a person
+ * deciding they should.
+ *
+ * Attribution is narrow on purpose: a scenario counts only when its
+ * `scenario starting` line was never closed. 30 of 84 sound crash records
+ * attribute this way and the other 54 died in the probe phase or the deck
+ * scan, credited to nothing. See `fatalScenarios` in `scripts/triage.mjs`.
+ */
+export const FATAL_SCENARIO_BUDGET = {
+  /**
+   * THE ONE THIS EXISTS FOR. Ten deaths and not one failed verdict in 282.
+   * Every reader of this archive, human and machine, has been told for weeks
+   * that this scenario is among the safest in the suite.
+   */
+  "same scale across the deck": 10,
+  /**
+   * Ours, and known: `ca138f8` moved it onto a freshly-added slide and it has
+   * failed every round since. See `a big chart on a slide of its own`, which
+   * isolates the cause — the two share it.
+   */
+  "stop a run mid-draw": 8,
+  /** Written on 2026-09-03 to isolate the above; same defect, same deaths. */
+  "a big chart on a slide of its own": 4,
+  "a chart of rotated shapes": 2,
+  "insert onto a slide that already has content": 1,
+  "explode a degraded picture": 1,
+  "where a rotated shape lands": 1,
+  "one chart alone on a warm deck": 1,
+  "two slides claiming one slot": 1,
+  "edit the chart the user selected": 1,
+};
+
 export const UNSTABLE_ANSWERS = {
   // ---------------------------------------------------------------------------
   // ADDED 2026-09-01, WHEN IT LEFT `PENDING_QUESTIONS` FOR THE COMMITTED SHEET.

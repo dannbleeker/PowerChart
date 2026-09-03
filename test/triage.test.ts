@@ -5094,3 +5094,111 @@ describe("where the host died", () => {
     expect(crashStepKey("")).toBe("(no steps recorded)");
   });
 });
+
+describe("the scenario that killed the host", () => {
+  /**
+   * THE FOURTH OUTCOME CLASS. A round file holds passed, failed and skipped —
+   * and cannot hold this one, because a scenario that kills the host produces
+   * no verdict and the round it belonged to files nothing at all.
+   *
+   * That is not sampling, it is structural, and it hid the sharpest finding in
+   * this archive: `same scale across the deck` has 0 failures in 282 recorded
+   * verdicts — joint-safest in the suite — and is the scenario the host died
+   * inside TEN times. `rounds-salvaged/` cannot help either: a salvaged round
+   * carries verdicts, and a killed scenario has none.
+   */
+  const started = (name: string) => `  10.0s  selftest  scenario starting  name=${name} deckSlides=1 atMs=10000`;
+  const passed = (name: string) => `  20.0s  selftest  scenario passed  name=${name} detail=fine`;
+  const failed = (name: string) => `  20.0s  selftest  scenario failed  name=${name} detail=nope`;
+
+  it("credits the death to the scenario that was still open", async () => {
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { fatalScenarios } = await import("../scripts/triage.mjs");
+    const r = fatalScenarios([
+      { steps: [started("one"), passed("one"), started("two"), "  30.0s  error  the host went"] },
+    ]);
+    expect(r.deaths).toEqual({ two: 1 });
+    expect(r.attributed).toBe(1);
+    // "one" closed cleanly and must not be blamed for what came after it.
+    expect(r.deaths.one, "blamed a scenario that had already reported").toBeUndefined();
+  });
+
+  it("credits nothing when the host died outside a scenario", async () => {
+    /**
+     * 54 of the 84 sound crash records die in the probe phase or the
+     * deck-evidence scan. Attributing those to whatever ran last would invent
+     * a killer, and the counts are what the ratchet acts on — so they have to
+     * be right rather than complete.
+     */
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { fatalScenarios } = await import("../scripts/triage.mjs");
+    const r = fatalScenarios([
+      { steps: [started("one"), passed("one"), "  30.0s  pane  collecting deck evidence — scanning"] },
+    ]);
+    expect(r.deaths).toEqual({});
+    expect(r.attributed).toBe(0);
+    expect(r.unattributed).toBe(1);
+  });
+
+  it("closes a scenario only by its OWN name", async () => {
+    /**
+     * A `scenario passed` line for something else must not close the one that
+     * is open. Closing on any end line at all would credit the death to
+     * whatever happened to run last rather than to what was running — and the
+     * follow-up questions this suite asks mean end lines do interleave.
+     */
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { fatalScenarios } = await import("../scripts/triage.mjs");
+    const r = fatalScenarios([{ steps: [started("two"), passed("something else"), "  30.0s  error  gone"] }]);
+    expect(r.deaths, "another scenario's verdict closed this one").toEqual({ two: 1 });
+  });
+
+  it("counts a failed verdict as closing it — a fail is not a death", async () => {
+    // The distinction the whole class rests on: `stop a run mid-draw` FAILS
+    // constantly and also kills the host sometimes. Those are different facts
+    // and the ratchet only governs the second.
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { fatalScenarios } = await import("../scripts/triage.mjs");
+    const r = fatalScenarios([{ steps: [started("two"), failed("two"), "  30.0s  error  gone"] }]);
+    expect(r.deaths).toEqual({});
+  });
+
+  it("catches a rise, and a scenario that has never killed before", async () => {
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { fatalBudgetBreaches } = await import("../scripts/triage.mjs");
+    const budget = { "same scale across the deck": 10 };
+    // At budget is silent — seeded at today's counts so it reports NEW harm.
+    expect(fatalBudgetBreaches({ "same scale across the deck": 10 }, budget)).toEqual([]);
+    // Below budget is silent too: a fix landing must not fail the gate.
+    expect(fatalBudgetBreaches({ "same scale across the deck": 3 }, budget)).toEqual([]);
+    // A rise is the whole point.
+    expect(fatalBudgetBreaches({ "same scale across the deck": 11 }, budget)).toEqual([
+      { name: "same scale across the deck", count: 11, allowed: 10 },
+    ]);
+    /**
+     * AND A NAME NOT IN THE TABLE HAS NEVER KILLED THE HOST, so its first death
+     * is a rise from zero. That is the case most worth catching — a scenario
+     * that has always been safe starting to take PowerPoint down.
+     */
+    expect(fatalBudgetBreaches({ "edit a chart on the visible slide": 1 }, budget)).toEqual([
+      { name: "edit a chart on the visible slide", count: 1, allowed: 0 },
+    ]);
+  });
+
+  it("is wired into the gate as a FATAL check, not a report", async () => {
+    /**
+     * A scenario that stops passing is exit 1 here. One that starts taking
+     * PowerPoint down produces no verdict to notice it by and is at least as
+     * serious, so it exits 1 too — the owner's call, made 2026-09-03.
+     *
+     * Asserted as source because reaching it needs a crashes/ directory that
+     * breaches, and the gate's main block is not exported.
+     */
+    const src = readFileSync(new URL("../scripts/rounds-gate.mjs", import.meta.url), "utf8");
+    expect(src, "the gate no longer computes fatal scenarios").toMatch(/fatalScenarios\(crashes\)/);
+    expect(src, "a breach no longer stops the gate").toMatch(/breaches\.length[\s\S]{0,900}process\.exit\(1\)/);
+    // And it reads the CRASH records, not the salvaged rounds — a salvaged
+    // round carries verdicts and a killed scenario has none.
+    expect(src).toMatch(/loadCrashRecords\(\)/);
+  });
+});

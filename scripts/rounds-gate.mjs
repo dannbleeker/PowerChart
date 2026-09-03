@@ -40,8 +40,10 @@ import {
   paneAgeAtStartSeconds,
   probeFlipsWithinBuild,
   deckGeometryFaults,
+  fatalScenarios,
+  fatalBudgetBreaches,
 } from "./triage.mjs";
-import { pendingAlreadyAnswered, UNSTABLE_ANSWERS } from "./host-baseline.mjs";
+import { pendingAlreadyAnswered, UNSTABLE_ANSWERS, FATAL_SCENARIO_BUDGET } from "./host-baseline.mjs";
 
 /**
  * Did the SHIPPED BUNDLE change between two archived rounds?
@@ -108,6 +110,52 @@ export function countCrashReports(dir = "crashes", list = readdirSync) {
     // No crashes directory is not zero crashes, but it is nothing to report.
     return 0;
   }
+}
+
+/**
+ * Builds whose crash records are INSTRUMENT ARTEFACTS rather than host
+ * behaviour, and must not be counted as either.
+ *
+ * On 2026-09-02 a wrapper made every `PowerPoint.run` resolve undefined, so
+ * every host read on these four builds returned nothing. Their records describe
+ * a broken add-in, not a broken host, and pooling them would put deaths against
+ * scenarios that never got to run. Kept as a named list rather than a date
+ * range because a build is a fact and a date is an inference.
+ */
+export const POISONED_BUILDS = new Set(["b5c534a", "3eaab20", "2934204", "6421ba2"]);
+
+/**
+ * Every crash record, parsed — the half of the evidence `loadRounds` cannot see.
+ *
+ * A round that dies files nothing, so `rounds/` holds only the runs that lived.
+ * These are the rest, and they carry the one thing no verdict list can express:
+ * which scenario was in flight when the host went. See `fatalScenarios`.
+ *
+ * A record that will not parse is named and skipped, exactly as `loadRounds`
+ * treats a truncated round — one bad file must not refuse the other eighty.
+ */
+export function loadCrashRecords(dir = "crashes", list = readdirSync, read = readFileSync) {
+  const unreadable = [];
+  let records;
+  try {
+    records = list(dir)
+      .filter((f) => f.endsWith("-crashed-run.json"))
+      .sort()
+      .map((f) => {
+        try {
+          return JSON.parse(read(`${dir}/${f}`, "utf8"));
+        } catch {
+          unreadable.push(f);
+          return null;
+        }
+      })
+      .filter(Boolean)
+      .filter((c) => !POISONED_BUILDS.has(String(c?.build ?? "").split(" ")[0]));
+  } catch {
+    // No crashes directory at all is a fresh checkout, not a finding.
+    return Object.assign([], { unreadable });
+  }
+  return Object.assign(records, { unreadable });
 }
 
 export function loadRounds(dir = "rounds", list = readdirSync, read = readFileSync) {
@@ -233,6 +281,49 @@ if (isMain(import.meta.url, process.argv[1])) {
   }
   // JUDGED ON WHAT WAS ACTUALLY MEASURED, from here down.
   rounds = rounds.filter((r) => !coverageOf(r).collapsed);
+  /**
+   * THE FOURTH OUTCOME CLASS, and the reason this gate has been half-blind.
+   *
+   * Everything above judges VERDICTS, and a scenario that kills the host leaves
+   * none: no verdict, no round file, nothing in `rounds/` at all. So the worst
+   * thing a scenario can do has been the one thing this gate could not see, and
+   * it has been hiding the sharpest finding in the archive — `same scale across
+   * the deck`, 0 failures in 282 recorded verdicts, joint-safest in the suite,
+   * and the scenario the host died inside TEN times.
+   *
+   * Read from the crash records' own steps, because nothing else knows: a
+   * salvaged round carries verdicts, and a killed scenario has none.
+   */
+  const crashes = loadCrashRecords();
+  if (crashes.unreadable?.length)
+    console.error(`  ${crashes.unreadable.length} crash record(s) would not parse: ${crashes.unreadable.join(", ")}`);
+  const fatal = fatalScenarios(crashes);
+  if (fatal.attributed) {
+    console.log(
+      `\n  ${fatal.attributed} crash(es) died INSIDE a scenario; ${fatal.unattributed} died elsewhere ` +
+        "(probe phase, deck scan) and are credited to nothing:",
+    );
+    for (const [name, count] of Object.entries(fatal.deaths).sort((a, b) => b[1] - a[1])) {
+      const allowed = FATAL_SCENARIO_BUDGET[name] ?? 0;
+      console.log(`    ${String(count).padStart(3)}  ${name}${count > allowed ? `  (budget ${allowed})` : ""}`);
+    }
+  }
+  const breaches = fatalBudgetBreaches(fatal.deaths, FATAL_SCENARIO_BUDGET);
+  if (breaches.length) {
+    console.error("\n  A SCENARIO IS KILLING THE HOST MORE THAN IT DID:");
+    for (const b of breaches)
+      console.error(
+        `    ${b.name} — ${b.count} death(s), budget ${b.allowed}` +
+          (b.allowed === 0 ? " (it had never killed the host before)" : ""),
+      );
+    console.error(
+      "  A scenario that stops passing is exit 1 here; one that starts taking PowerPoint down is\n" +
+        "  at least as serious and produces no verdict to notice it by. If this is a fix landing and\n" +
+        "  the count is meant to be higher, say so in `FATAL_SCENARIO_BUDGET`; if it is a fix WORKING,\n" +
+        "  lower the number so the fix is protected. See docs/ROUNDS.md.",
+    );
+    process.exit(1);
+  }
   const gone = scenarioRegressions(rounds);
   // A SECOND, DIFFERENT QUESTION. The gate above asks whether a scenario fell
   // against its OWN history; this asks whether one slide size failed what

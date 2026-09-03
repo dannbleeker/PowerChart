@@ -3167,6 +3167,84 @@ export function crashStepKey(line) {
   return fields.slice(0, 2).join("  ").slice(0, 72) || "(no steps recorded)";
 }
 
+/**
+ * Which scenario was in flight when the host died — the FOURTH OUTCOME CLASS.
+ *
+ * A round file records three states per scenario: passed, failed, skipped. It
+ * cannot record the fourth, because a scenario that KILLS THE HOST produces no
+ * verdict and the round it belonged to files nothing. That is structural, not
+ * sampling, and it has hidden the single worst finding in this archive:
+ *
+ *     same scale across the deck — 0 failures in 282 recorded verdicts,
+ *     joint-safest in the suite, and the scenario the host died inside TEN
+ *     times.
+ *
+ * A reader of `rounds/` alone ranks it perfectly safe. `rounds-salvaged/`
+ * does not help either: a salvaged round carries VERDICTS, and a scenario that
+ * killed the host has none, so it is simply absent there too. The only place
+ * this fact exists is the crash record's own steps.
+ *
+ * ATTRIBUTION IS DELIBERATELY NARROW. A scenario counts as fatal only when its
+ * `scenario starting` line has no matching `scenario passed|failed` after it —
+ * it was open when the record ends. 30 of 84 sound records attribute this way;
+ * the other 54 died in the probe phase or the deck-evidence scan and are
+ * credited to NOTHING, which is correct and is why this returns counts rather
+ * than a rate. A death with a scenario open is not proof that the scenario
+ * caused it, and the budget in `host-baseline.mjs` is what turns the counts
+ * into a judgement.
+ *
+ * Pure: takes parsed records so it can be tested without a filesystem, the
+ * same split `host-baseline.mjs` keeps for the pane's sake.
+ */
+export function fatalScenarios(crashes) {
+  const deaths = {};
+  let attributed = 0;
+  let unattributed = 0;
+  for (const crash of crashes ?? []) {
+    const steps = crash?.steps;
+    if (!Array.isArray(steps) || !steps.length) continue;
+    let open = null;
+    for (const step of steps) {
+      const started = /scenario starting\s+name=(.+?)\s+(?:deckSlides|atMs)=/.exec(String(step));
+      if (started) {
+        open = started[1];
+        continue;
+      }
+      // CLOSED ONLY BY ITS OWN NAME. A nested or follow-up scenario line
+      // closing someone else's would credit the death to whatever ran last
+      // rather than to what was running.
+      const ended = /scenario (?:passed|failed)\s+name=(.+?)\s+detail=/.exec(String(step));
+      if (ended && ended[1] === open) open = null;
+    }
+    if (open) {
+      deaths[open] = (deaths[open] ?? 0) + 1;
+      attributed++;
+    } else unattributed++;
+  }
+  return { deaths, attributed, unattributed };
+}
+
+/**
+ * Scenarios whose death count has risen above what the archive already carried.
+ *
+ * The ratchet, in the shape this repo already uses for `overlap-budget`: a
+ * committed number that may fall and may not rise. Seeded at the counts on
+ * 2026-09-03 rather than at zero, so it catches NEW harm instead of failing
+ * every night for damage already done and already known.
+ *
+ * A scenario absent from the budget has never killed the host, so its first
+ * death is a rise from zero and is reported — which is the case worth catching
+ * most.
+ */
+export function fatalBudgetBreaches(deaths, budget) {
+  const over = [];
+  for (const [name, count] of Object.entries(deaths ?? {})) {
+    const allowed = budget?.[name] ?? 0;
+    if (count > allowed) over.push({ name, count, allowed });
+  }
+  return over.sort((a, b) => b.count - a.count);
+}
+
 function reportCrashes(dir = "crashes", list = readdirSync, read = readFileSync) {
   let files;
   try {
