@@ -2108,13 +2108,31 @@ const SETTLE_PASSES = 5;
 async function slideIdResolves(id: string): Promise<boolean> {
   try {
     return await ppRun(async (context) => {
-      const slide = context.presentation.slides.getItemOrNullObject(id);
-      queueNullCheck(slide);
+      /**
+       * `getItem`, NOT `getItemOrNullObject`, and the first version of this got
+       * it wrong on a real host while passing its unit test.
+       *
+       * They are not the same question. This file already records the two
+       * behaving differently in the SAME BATCH — a `getItem` the host refused
+       * beside a `getItemOrNullObject` handle it was perfectly happy with — and
+       * the fake's own note says `getItem` being the harsh one is backwards but
+       * real. Build 2a6d37b probed with the lenient call, got `true` for an
+       * add-time id, handed it back, and the draw then failed on `getItem` the
+       * way it always had.
+       *
+       * `getTargetSlide` uses `getItem`. So does this. A probe that asks an
+       * easier question than the caller is a probe that certifies failures.
+       *
+       * The proxy comes back synchronously and the refusal arrives at the sync,
+       * which is why this cannot be a null check — the throw IS the answer.
+       */
+      const slide = context.presentation.slides.getItem(id);
+      slide.load("id");
       await context.sync();
-      return isLive(slide);
+      return true;
     });
   } catch {
-    // A throw is the host refusing the id, which is the answer.
+    // The host refusing the id, which is exactly what the caller needs to know.
     return false;
   }
 }

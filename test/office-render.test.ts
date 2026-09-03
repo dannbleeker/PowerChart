@@ -7102,6 +7102,7 @@ describe("adding the slide a slow insert is offered", () => {
     const deck: FakeSlide[] = [makeSlide("s1")];
     installHost(deck);
     faults.newSlideIdSettlesAfter = 1;
+    faults.refuseGetItemOnNewSlide = true;
     try {
       const id = await addSlideForChart();
       expect(id, "no id came back at all").toBeTruthy();
@@ -7113,6 +7114,7 @@ describe("adding the slide a slow insert is offered", () => {
       expect(deck.length, "no slide landed, so this tested the wrong thing").toBe(2);
     } finally {
       faults.newSlideIdSettlesAfter = null;
+      faults.refuseGetItemOnNewSlide = false;
     }
   });
 

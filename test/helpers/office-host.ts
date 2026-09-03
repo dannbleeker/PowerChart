@@ -2400,10 +2400,20 @@ export function installHost(
     // A DIFFERENT SPACE, not an adjacent number, because that is what the host
     // does and a near-miss id would let a buggy caller succeed by accident.
     slide.id = `settled-${settleSeq++}`;
-    addedSlideIds.add(slide.id);
     /**
-     * AND THE NEW ID IS SETTLED TOO, or the slide is renamed on every lookup
-     * for ever.
+     * THE SETTLED ID IS NOT AN "ADDED" ID ANY MORE, and that is the whole
+     * point of settling.
+     *
+     * It used to go straight back into `addedSlideIds`, so every fault keyed on
+     * that set — `refuseGetItemOnNewSlide` above all — went on refusing the
+     * slide under its NEW name too. That models a slide no caller can ever
+     * reach by any id, which is not a host: PowerPoint refuses the id it handed
+     * you at add time and resolves the one the deck settles on. A correct fix
+     * failed against it, which is the wrong direction for a fake to be wrong in.
+     */
+    /**
+     * AND IT IS MARKED SETTLED, or the slide is renamed on every lookup for
+     * ever.
      *
      * `settledSlideIds` was keyed on the id being replaced, while the
      * REPLACEMENT went into `addedSlideIds` — so the next by-id lookup found it
@@ -2479,6 +2489,15 @@ export function installHost(
          */
         getItem: (id: string) => {
           const found = slides.find((s) => s.id === id)!;
+          /**
+           * SETTLING IS COUNTED HERE TOO, because a caller probing with
+           * `getItem` is asking the same by-id question `getItemOrNullObject`
+           * asks and the host does not care which name the caller used.
+           * Counting it only on the lenient call meant a caller that correctly
+           * probes with the HARSH one could never advance the settle, so the id
+           * never moved and the fake modelled a host that does not exist.
+           */
+          settleAddedSlideId(id);
           // Windowed only when ARMED — see `faults.newSlideGetItemExpires`.
           if (found && faults.refuseGetItemOnNewSlide && addedSlideIds.has(id)) {
             throw new Error(
