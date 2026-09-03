@@ -2128,7 +2128,34 @@ async function slideIdResolves(id: string): Promise<boolean> {
        */
       const slide = context.presentation.slides.getItem(id);
       slide.load("id");
+      /**
+       * AND A SHAPE READ, because loading the id is still too easy a question.
+       *
+       * Build 6891a20 probed with `getItem` + `load("id")` + sync, got `true`
+       * for an add-time id, and the draw failed on the same `getItem` moments
+       * later. The error's own `surroundingStatements` say why — the refusal
+       * surfaces when the batch touches SHAPES:
+       *
+       *     var slide = slides.getItem(...);
+       *     slide.load(["id"]);
+       *     var shapes = slide.shapes;
+       *     var addTextBox = shapes.addTextBox(...);
+       *
+       * A bare id load settles; reaching through the handle for its shape
+       * collection does not. `getCount` is the cheapest shape operation there
+       * is — a scalar, not a load, so it does not pay the >50-item ceiling —
+       * and it is the same reach the very next statement of a real draw makes.
+       *
+       * That is the third time this probe has been too lenient, each time
+       * because it asked a smaller question than its caller. The rule this
+       * function keeps failing and re-learning: probe with the operation the
+       * caller is about to perform, not with a cheaper cousin of it.
+       */
+      const count = slide.shapes.getCount();
       await context.sync();
+      // Read it, or the load is a statement nothing depends on and a host is
+      // entitled to skip work nobody asked the answer of.
+      void count.value;
       return true;
     });
   } catch {
