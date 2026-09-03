@@ -128,6 +128,46 @@ export function loadRounds(dir = "rounds", list = readdirSync, read = readFileSy
   return rounds;
 }
 
+/**
+ * The share of a round's scenarios that actually RAN, and whether so few did
+ * that the round is evidence of nothing.
+ *
+ * WHY THIS EXISTS. On 2026-09-02 a wrapper bug made every `PowerPoint.run`
+ * resolve undefined. Rounds 360 and 361 archived as ordinary rounds — exit 0,
+ * gate green — while reading nothing at all: 13 of 16 scenarios skipped for want
+ * of a chart that could never be inserted, `deckSlides` unreadable, deck growth
+ * `NaN`. Nothing complained. I read them as evidence for two rounds and
+ * concluded from them that a healthy deck was damaged. The instrument was
+ * broken and every check in this gate said the product was fine, because a
+ * skipped scenario is not a failing one.
+ *
+ * THE THRESHOLD IS MEASURED, NOT CHOSEN. Across 339 archived rounds the
+ * proportion of scenarios that ran is: 284 at 100%, 43 at 90-99%, 6 at 80-89%,
+ * 3 at 70-79% — and then nothing at all until 21%, 19%, 19%. A fifty-point dead
+ * zone with three rounds below it and 336 above. Any cut inside that gap
+ * separates them; 50% sits in the middle of it and cannot fire on a round this
+ * archive has ever produced.
+ *
+ * The third round below the gap is 287 (`2bf766b`, 3 of 14), which predates the
+ * wrapper bug entirely and has been sitting in the archive unremarked.
+ *
+ * NOT A REGRESSION, so never exit 1. A collapsed round means the instrument
+ * failed, not the product — the same distinction `unreadable` draws everywhere
+ * else in this project. It is exit 2's case: the gate could not do its job.
+ */
+export const COVERAGE_FLOOR = 0.5;
+
+export function coverageOf(round) {
+  const s = round?.selftest ?? [];
+  const total = s.length;
+  const ran = s.filter((x) => !x.skipped).length;
+  // A round with no self-test at all is not collapsed — it is a different kind
+  // of round, and several early ones carry only host answers. Judging those
+  // here would report an absence as a failure, which is the mistake this whole
+  // function exists to stop.
+  return { ran, total, collapsed: total > 0 && ran / total < COVERAGE_FLOOR };
+}
+
 if (isMain(import.meta.url, process.argv[1])) {
   // EXIT 2 MEANS "I COULD NOT DO MY JOB", and it has to be its own code. This
   // gate's whole value is that exit 1 means a scenario stopped passing — so a
@@ -157,6 +197,42 @@ if (isMain(import.meta.url, process.argv[1])) {
     console.error("  no readable rounds to judge — nothing was checked");
     process.exit(2);
   }
+  /**
+   * A ROUND THAT MEASURED NOTHING IS NOT EVIDENCE, and until now it read as a
+   * clean one. See `coverageOf` for what that cost.
+   *
+   * Two separate consequences, because they answer different questions:
+   *
+   *   - a collapsed round anywhere in the archive is dropped from the
+   *     comparison population. Leaving it in lets an instrument failure set a
+   *     baseline, so a scenario that "passed" in a round which never ran it
+   *     silently lowers the bar for every round after.
+   *   - a collapsed round AT THE HEAD stops the gate. The build under judgement
+   *     has no evidence either way, and saying so is the entire job. Exit 2,
+   *     not 1: nothing regressed, the instrument failed.
+   */
+  const atHead = rounds[rounds.length - 1];
+  const collapsed = rounds.filter((r) => coverageOf(r).collapsed);
+  if (collapsed.length) {
+    console.error(`  ${collapsed.length} round(s) RAN ALMOST NOTHING and are excluded from the comparison:`);
+    for (const r of collapsed) {
+      const c = coverageOf(r);
+      console.error(`    ${r.build ?? "?"} — ${c.ran} of ${c.total} scenarios ran; the rest were skipped, not passed`);
+    }
+    console.error("  A skipped scenario is not a passing one. Read these as the instrument, not the product.");
+  }
+  if (coverageOf(atHead).collapsed) {
+    const c = coverageOf(atHead);
+    console.error(
+      `\n  THE NEWEST ROUND MEASURED NOTHING — ${c.ran} of ${c.total} scenarios ran. This build has no\n` +
+        "  evidence for or against it, so nothing has been judged. Suspect the instrument before the\n" +
+        "  product: rounds 360 and 361 looked exactly like this and the cause was a wrapper in the\n" +
+        "  renderer that made every host call return undefined. See docs/ROUNDS.md.",
+    );
+    process.exit(2);
+  }
+  // JUDGED ON WHAT WAS ACTUALLY MEASURED, from here down.
+  rounds = rounds.filter((r) => !coverageOf(r).collapsed);
   const gone = scenarioRegressions(rounds);
   // A SECOND, DIFFERENT QUESTION. The gate above asks whether a scenario fell
   // against its OWN history; this asks whether one slide size failed what

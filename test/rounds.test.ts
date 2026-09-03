@@ -12,7 +12,7 @@ import { poolRasteriseArms } from "../scripts/triage.mjs";
 import { loadRounds } from "../scripts/rounds-gate.mjs";
 // And its own line again, for the same reason.
 // @ts-expect-error — as above.
-import { countCrashReports } from "../scripts/rounds-gate.mjs";
+import { countCrashReports, coverageOf, COVERAGE_FLOOR } from "../scripts/rounds-gate.mjs";
 
 /**
  * The archive is evidence, so it has to stay readable and honestly labelled.
@@ -218,5 +218,84 @@ describe("whether the shipped bundle could possibly be responsible", () => {
     };
     expect(bundleChanged("abc1234 · x", "abc1234 · y", counting)).toBe(false);
     expect(calls, "it shelled out to compare a build with itself").toBe(0);
+  });
+});
+
+describe("a round that measured nothing", () => {
+  const round = (ran: number, total: number) => ({
+    build: "abc1234 · x",
+    selftest: Array.from({ length: total }, (_, i) => ({
+      name: `s${i}`,
+      ok: true,
+      ...(i >= ran ? { skipped: true } : {}),
+    })),
+  });
+
+  it("is not read as a clean one", () => {
+    /**
+     * ROUNDS 360 AND 361. A wrapper bug made every `PowerPoint.run` resolve
+     * undefined; both rounds archived with exit 0 and a green gate while
+     * reading nothing at all — 13 of 16 scenarios skipped for want of a chart
+     * that could never be inserted. Nothing complained, because a SKIPPED
+     * scenario is not a FAILING one, and every check in the gate is about
+     * failures. I read them as evidence for two rounds and concluded from them
+     * that a healthy document was damaged.
+     */
+    expect(coverageOf(round(3, 16)).collapsed, "a round that ran 3 of 16 passed for evidence").toBe(true);
+    expect(coverageOf(round(3, 14)).collapsed).toBe(true);
+  });
+
+  it("does not fire on any round this archive has ever produced", () => {
+    /**
+     * THE THRESHOLD IS MEASURED. Across 339 archived rounds the share of
+     * scenarios that ran is 284 at 100%, 43 at 90-99%, 6 at 80-89%, 3 at
+     * 70-79% — then nothing until 21%, 19%, 19%. A fifty-point dead zone.
+     * These are the real edges of it, so a future cut that wanders into the
+     * gap fails here rather than on a night.
+     */
+    expect(coverageOf(round(11, 14)).collapsed, "79% — the worst legitimate round on file").toBe(false);
+    expect(coverageOf(round(12, 14)).collapsed).toBe(false);
+    expect(coverageOf(round(16, 16)).collapsed).toBe(false);
+    // And the top of the collapsed group, 3 of 14 = 21%.
+    expect(coverageOf(round(3, 14)).collapsed).toBe(true);
+    // The floor sits inside the gap rather than on either edge of it.
+    expect(COVERAGE_FLOOR).toBeGreaterThan(0.21);
+    expect(COVERAGE_FLOOR).toBeLessThan(0.79);
+  });
+
+  it("says nothing about a round that carries no self-test at all", () => {
+    /**
+     * Several early rounds hold only host answers. Reporting an ABSENT
+     * self-test as a collapsed one would be the same defect this guard exists
+     * to stop, pointed the other way: an absence read as a measurement.
+     *
+     * EQUIVALENT MUTANT, recorded rather than chased: deleting the `total > 0`
+     * guard changes nothing this test can see, because `0 / 0` is `NaN` and
+     * `NaN < COVERAGE_FLOOR` is already false. Two mechanisms deliver the same
+     * answer. The guard stays because relying on NaN's comparison semantics to
+     * express "there was nothing to measure" is a thing a reader has to work
+     * out, and this file is read at 2am — but the assertion below pins the
+     * BEHAVIOUR, which is what matters, and would survive either spelling.
+     */
+    expect(coverageOf({ build: "x", selftest: [] }).collapsed).toBe(false);
+    expect(coverageOf({ build: "x" }).collapsed).toBe(false);
+    expect(coverageOf(undefined).collapsed).toBe(false);
+  });
+
+  it("counts a skip as not-run whatever its ok flag says", () => {
+    // A skip carries `ok: false` in some scenarios and `ok: true` in others —
+    // `blindSkip` and `countlessSkip` both set `ok: false`, while an early-out
+    // may not. Coverage is about whether the question was PUT, so only
+    // `skipped` decides it.
+    const mixed = {
+      build: "x",
+      selftest: [
+        { name: "a", ok: false, skipped: true },
+        { name: "b", ok: true, skipped: true },
+        { name: "c", ok: true },
+      ],
+    };
+    expect(coverageOf(mixed).ran, "an ok:true skip was counted as having run").toBe(1);
+    expect(coverageOf(mixed).collapsed).toBe(true);
   });
 });
