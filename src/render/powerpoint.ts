@@ -2089,14 +2089,80 @@ export async function slideOccupancy(slideIds: string[]): Promise<Map<string, nu
  */
 export async function addSlideForChart(): Promise<string | null> {
   try {
-    return await ppRun(async (context) => {
+    /**
+     * THE ID IS READ FROM A FRESH CONTEXT, BY DIFFING THE DECK — and the version
+     * before this one returned an id no caller could use.
+     *
+     * It took a positional thunk (correct) and then read `.id` off it INSIDE the
+     * same `ppRun` that issued the add, after one sync. That returns the
+     * ADD-TIME id, and the rule this file states 350 lines above `getTargetSlide`
+     * is exactly that a new slide's id is not durable until the slide settles.
+     * The two spaces are not near-misses: `4123571152#123571113` at add time
+     * against `256#2587447327` once settled.
+     *
+     * WHAT IT COST. Every caller passing that id into `insertSceneIntoSlide`
+     * fails on its FIRST batch with `GeneralException` at
+     * `SlideCollection.getItem`, and the crash records carry the statement
+     * verbatim: `var slide = slides.getItem("4123571152#123571113");` while the
+     * same rounds list deck ids as `256#109857222`. `stop a run mid-draw` has
+     * failed on all six builds since it began using an added slide, and
+     * `a big chart on a slide of its own` — written to isolate this, with no
+     * stop involved — failed the same way on its first run.
+     *
+     * AND IT IS NOT ONLY THE HARNESS. `offerOwnSlide` ships: when a user accepts
+     * "put it on a slide of its own", `app.ts` passes this id straight into the
+     * same call. They get an error and an empty slide.
+     *
+     * DIFFED RATHER THAN RE-READ POSITIONALLY, because the position is not
+     * knowable from here — `addSlides` does not say where it landed, and
+     * assuming "the last one" would be a guess about a host that has been seen
+     * to append elsewhere. Both listings go through `slideIds`, which runs in
+     * its own context, so both sides of the diff are in the id space `getItem`
+     * accepts. Two extra deck reads per add, on a path that already costs a
+     * slide add and a settle.
+     *
+     * REFUSES RATHER THAN GUESSES in all three unhappy cases: a deck that will
+     * not list before the add (nothing is added at all, so no orphan is left);
+     * one that will not list after; and a diff that is not exactly one slide,
+     * which means something else changed the deck underneath and the answer
+     * cannot be attributed. Null is what the caller already handles — `app.ts`
+     * says "Could not add a slide — inserting here instead."
+     */
+    /**
+     * BEFORE the add, deliberately: a deck we cannot list is a deck whose new
+     * slide we could not name afterwards, and adding one anyway would leave a
+     * blank slide nobody asked for behind.
+     *
+     * RETRIED ONCE, because this read is now on the critical path and a single
+     * failed sync is a bad moment rather than a refusal — `addSlides` has
+     * recovered exactly that inside the add since it was written, and moving a
+     * read in front of it must not quietly make the whole offer less tolerant
+     * than it was. One retry, no new machinery; a host that refuses twice is
+     * making a statement.
+     */
+    const listOnce = async (): Promise<string[] | undefined> => {
+      // CAUGHT, not just null-coalesced. `slideIds` does not swallow a failed
+      // sync — it throws — so `(await slideIds()) ?? (await slideIds())` never
+      // reaches its second call and the retry above was decorative. Caught by a
+      // test that had been passing for the wrong reason before this line.
+      try {
+        return await slideIds();
+      } catch {
+        return undefined;
+      }
+    };
+    const before = (await listOnce()) ?? (await listOnce());
+    if (!before) return null;
+    const known = new Set(before);
+    const added = await ppRun(async (context) => {
       const thunks = await addSlides(context, 1, await blankLayoutId(context));
-      if (!thunks.length) return null;
-      const slide = thunks[0]();
-      slide.load("id");
-      await boundedSync(context, "naming the slide the chart will go on");
-      return loadedValue(() => (slide as unknown as { id?: string }).id) ?? null;
+      return thunks.length > 0;
     });
+    if (!added) return null;
+    const after = await slideIds();
+    if (!after) return null;
+    const fresh = after.filter((id) => !known.has(id));
+    return fresh.length === 1 ? fresh[0] : null;
   } catch {
     return null;
   }

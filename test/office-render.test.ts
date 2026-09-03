@@ -7074,12 +7074,24 @@ describe("adding the slide a slow insert is offered", () => {
     }
   });
 
-  it("answers null when the slide lands but will not say its name", async () => {
-    // THE MUTANT THAT SURVIVED. A slide exists here — the deck grows — and the
-    // host still refuses its id after the load and the sync. The temptation is
-    // to hand back something rather than nothing; a fabricated id would send the
-    // insert to a slide that does not answer to it, and report success. `null`
-    // sends the chart to the slide the user picked, which is slower and right.
+  it("adds nothing at all when the deck will not say what is already in it", async () => {
+    /**
+     * THE ANSWER IS STILL NULL AND THE SLIDE IS NO LONGER LEFT BEHIND.
+     *
+     * This used to assert the opposite of its second half: a slide landed, the
+     * host refused its id, and `null` came back — correct, because a fabricated
+     * id would send the insert to a slide that does not answer to it and report
+     * success. That half is unchanged and is what matters.
+     *
+     * What changed on 2026-09-03 is WHEN the deck is read. The id now comes
+     * from diffing the deck's own listing before and after the add, because the
+     * old positional read returned an ADD-TIME id that `getItem` refuses — see
+     * `addSlideForChart`. A deck that cannot be listed BEFORE the add is a deck
+     * whose new slide could never be named afterwards, so nothing is added at
+     * all rather than a blank slide being left for the user to find.
+     *
+     * Strictly better on the same evidence: same null, no orphan.
+     */
     const deck: FakeSlide[] = [makeSlide("s1")];
     installHost(deck);
     const before = deck.length;
@@ -7089,9 +7101,7 @@ describe("adding the slide a slow insert is offered", () => {
     } finally {
       faults.slideIdNeverReadable = false;
     }
-    // And the slide really was created — this is the "landed, unnameable" case,
-    // not a second dressing-up of the dropped-add one above.
-    expect(deck.length - before, "no slide landed, so this tested the wrong thing").toBeGreaterThan(0);
+    expect(deck.length, "a blank slide was left behind on a deck that could not be listed").toBe(before);
   });
 
   it("recovers when ONE sync fails, because addSlides retries", async () => {
