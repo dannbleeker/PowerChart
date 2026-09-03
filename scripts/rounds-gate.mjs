@@ -41,9 +41,11 @@ import {
   probeFlipsWithinBuild,
   deckGeometryFaults,
   fatalScenarios,
-  fatalBudgetBreaches,
+  fatalRateBreaches,
+  fatalDeathsAllowed,
+  scenarioRuns,
 } from "./triage.mjs";
-import { pendingAlreadyAnswered, UNSTABLE_ANSWERS, FATAL_SCENARIO_BUDGET } from "./host-baseline.mjs";
+import { pendingAlreadyAnswered, UNSTABLE_ANSWERS, FATAL_SCENARIO_RATE } from "./host-baseline.mjs";
 
 /**
  * Did the SHIPPED BUNDLE change between two archived rounds?
@@ -328,29 +330,50 @@ if (isMain(import.meta.url, process.argv[1])) {
   if (crashes.unreadable?.length)
     console.error(`  ${crashes.unreadable.length} crash record(s) would not parse: ${crashes.unreadable.join(", ")}`);
   const fatal = fatalScenarios(crashes);
+  const runs = scenarioRuns(rounds, crashes);
   if (fatal.attributed) {
     console.log(
       `\n  ${fatal.attributed} crash(es) died INSIDE a scenario; ${fatal.unattributed} died elsewhere ` +
-        "(probe phase, deck scan) and are credited to nothing:",
+        "(probe phase, deck scan) and are credited to nothing.",
     );
-    for (const [name, count] of Object.entries(fatal.deaths).sort((a, b) => b[1] - a[1])) {
-      const allowed = FATAL_SCENARIO_BUDGET[name] ?? 0;
-      console.log(`    ${String(count).padStart(3)}  ${name}${count > allowed ? `  (budget ${allowed})` : ""}`);
+    // SORTED BY RATE, not by count. The count order is upside down — it ranks
+    // how long a scenario has been exposed, and the two that kill the host on a
+    // third to a half of their runs sit below one that kills on 2% of them.
+    const byRate = Object.entries(fatal.deaths)
+      .map(([name, count]) => ({ name, count, ran: runs[name] ?? 0 }))
+      .map((r) => ({ ...r, rate: r.ran ? (1000 * r.count) / r.ran : null }))
+      .sort((a, b) => (b.rate ?? -1) - (a.rate ?? -1));
+    console.log("  deaths per 1000 runs, and the count that would trip the gate:");
+    for (const r of byRate) {
+      const allowed = FATAL_SCENARIO_RATE[r.name] ?? 0;
+      const rate = r.rate === null ? "  no runs" : r.rate.toFixed(1).padStart(8);
+      // The trip point printed alongside, because a ceiling in per-1000 is not
+      // something a reader can compare to "5 of 11" in their head — and the
+      // gap between them is the headroom the noise bound buys.
+      const trips = r.ran ? Math.floor(fatalDeathsAllowed(allowed, r.ran)) + 1 : 0;
+      console.log(
+        `    ${rate}   ${String(r.count).padStart(2)} of ${String(r.ran).padStart(4)}  ` +
+          `(ceiling ${String(allowed).padStart(3)}, trips at ${String(trips).padStart(2)})  ${r.name}`,
+      );
     }
   }
-  const breaches = fatalBudgetBreaches(fatal.deaths, FATAL_SCENARIO_BUDGET);
+  const breaches = fatalRateBreaches(fatal.deaths, runs, FATAL_SCENARIO_RATE);
   if (breaches.length) {
-    console.error("\n  A SCENARIO IS KILLING THE HOST MORE THAN IT DID:");
+    console.error("\n  A SCENARIO IS KILLING THE HOST MORE OFTEN THAN IT DID:");
     for (const b of breaches)
       console.error(
-        `    ${b.name} — ${b.count} death(s), budget ${b.allowed}` +
+        `    ${b.name} — ${b.rate.toFixed(1)} per 1000 (${b.count} of ${b.runs}), ceiling ${b.allowed}` +
           (b.allowed === 0 ? " (it had never killed the host before)" : ""),
       );
     console.error(
       "  A scenario that stops passing is exit 1 here; one that starts taking PowerPoint down is\n" +
-        "  at least as serious and produces no verdict to notice it by. If this is a fix landing and\n" +
-        "  the count is meant to be higher, say so in `FATAL_SCENARIO_BUDGET`; if it is a fix WORKING,\n" +
-        "  lower the number so the fix is protected. See docs/ROUNDS.md.",
+        "  at least as serious and produces no verdict to notice it by.\n" +
+        "  A RATE, not a count, and the difference matters when you act on this: the count version\n" +
+        "  went red on the next death after it was seeded, because deaths only accumulate. This one\n" +
+        "  falls on its own as runs pile up without deaths, so a landed fix protects itself and\n" +
+        "  NOTHING NEEDS EDITING to make it green. If a ceiling in `FATAL_SCENARIO_RATE` is genuinely\n" +
+        "  meant to be higher, that is a person deciding a scenario may kill PowerPoint more often\n" +
+        "  than it used to. See docs/ROUNDS.md.",
     );
     process.exit(1);
   }

@@ -5259,26 +5259,95 @@ describe("the scenario that killed the host", () => {
     expect(kept, "two unidentifiable records were folded into one").toHaveLength(2);
   });
 
-  it("catches a rise, and a scenario that has never killed before", async () => {
-    // @ts-expect-error - plain .mjs tool, no types.
-    const { fatalBudgetBreaches } = await import("../scripts/triage.mjs");
-    const budget = { "same scale across the deck": 10 };
-    // At budget is silent — seeded at today's counts so it reports NEW harm.
-    expect(fatalBudgetBreaches({ "same scale across the deck": 10 }, budget)).toEqual([]);
-    // Below budget is silent too: a fix landing must not fail the gate.
-    expect(fatalBudgetBreaches({ "same scale across the deck": 3 }, budget)).toEqual([]);
-    // A rise is the whole point.
-    expect(fatalBudgetBreaches({ "same scale across the deck": 11 }, budget)).toEqual([
-      { name: "same scale across the deck", count: 11, allowed: 10 },
-    ]);
+  it("counts how often each scenario RAN, from rounds AND from crashes", async () => {
     /**
-     * AND A NAME NOT IN THE TABLE HAS NEVER KILLED THE HOST, so its first death
-     * is a rise from zero. That is the case most worth catching — a scenario
-     * that has always been safe starting to take PowerPoint down.
+     * THE DENOMINATOR, and both halves are needed. Rounds alone miss every run
+     * that ended in a crash — which is exactly the population deaths come from,
+     * so a rate built on rounds alone divides by the wrong number in the
+     * direction that flatters the scenario.
+     *
+     * A skipped scenario RAN. It was attempted and the host outlived it.
      */
-    expect(fatalBudgetBreaches({ "edit a chart on the visible slide": 1 }, budget)).toEqual([
-      { name: "edit a chart on the visible slide", count: 1, allowed: 0 },
-    ]);
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { scenarioRuns } = await import("../scripts/triage.mjs");
+    const runs = scenarioRuns(
+      [
+        {
+          selftest: [
+            { name: "two", ok: true },
+            { name: "three", skipped: true },
+          ],
+        },
+        { selftest: [{ name: "two", ok: false }] },
+      ],
+      [{ steps: [started("two"), started("four")] }],
+    );
+    expect(runs).toEqual({ two: 3, three: 1, four: 1 });
+  });
+
+  it("needs a rise past NOISE, not past the point estimate", async () => {
+    /**
+     * THE TRAP THE COUNT VERSION FELL INTO, and a rate seeded at the point
+     * estimate falls into it too. `stop a run mid-draw` kills the host on about
+     * a third of its runs; at 8 deaths in 25 runs a NINTH death takes the rate
+     * from 320 to 346. Against a ceiling of 330 that is red — for a scenario
+     * doing exactly what it has done all week. Killing a third of the time
+     * PRODUCES eight-and-nine-death stretches; that is the baseline, not a rise.
+     *
+     * So the bound is binomial: p*n + 2*sqrt(p*(1-p)*n).
+     */
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { fatalRateBreaches, fatalDeathsAllowed } = await import("../scripts/triage.mjs");
+    const ceilings = { "stop a run mid-draw": 330 };
+
+    // At the accepted rate: silent. And one MORE death is still silent, which
+    // is the whole point — the count version went red exactly here.
+    expect(fatalRateBreaches({ "stop a run mid-draw": 8 }, { "stop a run mid-draw": 25 }, ceilings)).toEqual([]);
+    expect(
+      fatalRateBreaches({ "stop a run mid-draw": 9 }, { "stop a run mid-draw": 26 }, ceilings),
+      "a ninth death at the baseline rate tripped the gate",
+    ).toEqual([]);
+
+    // A REAL rise does trip: same exposure, far more deaths.
+    expect(fatalRateBreaches({ "stop a run mid-draw": 20 }, { "stop a run mid-draw": 26 }, ceilings)).toHaveLength(1);
+
+    // A rate FALLS as runs accumulate without deaths — the property a
+    // cumulative count can never have, and the reason a landed fix protects
+    // itself with nobody editing a number.
+    const far = fatalRateBreaches({ "stop a run mid-draw": 8 }, { "stop a run mid-draw": 400 }, ceilings);
+    expect(far, "a scenario that stopped dying was still reported").toEqual([]);
+
+    // p = 0 gets no statistics and needs none.
+    expect(fatalDeathsAllowed(0, 500)).toBe(0);
+    // Nor does zero exposure invent a rate.
+    expect(fatalDeathsAllowed(330, 0)).toBe(0);
+  });
+
+  it("trips on the FIRST death of a scenario that has never killed the host", async () => {
+    /**
+     * The case most worth catching, and the one thing the count version got
+     * right. An absent name means a ceiling of 0, so p=0, so the noise bound is
+     * 0, so any death at all is a rise. No statistics are applied because none
+     * are needed — this is not a question about a rate.
+     */
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { fatalRateBreaches } = await import("../scripts/triage.mjs");
+    const out = fatalRateBreaches(
+      { "edit a chart on the visible slide": 1 },
+      { "edit a chart on the visible slide": 422 },
+      { "stop a run mid-draw": 330 },
+    );
+    expect(out).toHaveLength(1);
+    expect(out[0].name).toBe("edit a chart on the visible slide");
+    expect(out[0].allowed).toBe(0);
+  });
+
+  it("does not invent a rate for a death it has no runs for", async () => {
+    // A death with no recorded run is a gap in what this tool can read. Dividing
+    // by zero would fail the gate on a parsing problem rather than on a host.
+    // @ts-expect-error - plain .mjs tool, no types.
+    const { fatalRateBreaches } = await import("../scripts/triage.mjs");
+    expect(fatalRateBreaches({ mystery: 3 }, {}, {})).toEqual([]);
   });
 
   it("is wired into the gate as a FATAL check, not a report", async () => {
@@ -5292,10 +5361,23 @@ describe("the scenario that killed the host", () => {
      */
     const src = readFileSync(new URL("../scripts/rounds-gate.mjs", import.meta.url), "utf8");
     expect(src, "the gate no longer computes fatal scenarios").toMatch(/fatalScenarios\(crashes\)/);
-    expect(src, "a breach no longer stops the gate").toMatch(/breaches\.length[\s\S]{0,900}process\.exit\(1\)/);
+    // The window is generous because the guidance printed between the two grew
+    // when this became a rate. What is asserted is that a breach still reaches
+    // `exit(1)`, not that the prose is any particular length.
+    expect(src, "a breach no longer stops the gate").toMatch(/breaches\.length[\s\S]{0,2000}process\.exit\(1\)/);
     // And it reads the CRASH records, not the salvaged rounds — a salvaged
     // round carries verdicts and a killed scenario has none.
     expect(src).toMatch(/loadCrashRecords\(\)/);
+    /**
+     * AND IT GATES ON A RATE, WITH A DENOMINATOR. The count version of this
+     * check was red within hours of shipping and could not have been anything
+     * else: deaths only accumulate, so a budget seeded at today's total
+     * breaches on the very next one. Reverting to `fatalBudgetBreaches` would
+     * restore a gate that fires on ordinary operation, so the wiring is
+     * asserted rather than assumed.
+     */
+    expect(src, "the gate is not computing a denominator").toMatch(/scenarioRuns\(rounds, crashes\)/);
+    expect(src, "the gate is back on a raw count").toMatch(/fatalRateBreaches\(fatal\.deaths, runs,/);
   });
 });
 

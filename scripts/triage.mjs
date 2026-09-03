@@ -3245,24 +3245,111 @@ export function fatalScenarios(crashes) {
 }
 
 /**
- * Scenarios whose death count has risen above what the archive already carried.
+ * How many times each scenario RAN — the denominator a death count needs.
  *
- * The ratchet, in the shape this repo already uses for `overlap-budget`: a
- * committed number that may fall and may not rise. Seeded at the counts on
- * 2026-09-03 rather than at zero, so it catches NEW harm instead of failing
- * every night for damage already done and already known.
- *
- * A scenario absent from the budget has never killed the host, so its first
- * death is a rise from zero and is reported — which is the case worth catching
- * most.
+ * A scenario ran if a completed round carries an entry for it (passed, failed
+ * or skipped all mean it was attempted), or if a crash record shows it opening.
+ * Both halves are needed: rounds alone miss every run that ended in a crash,
+ * which is precisely the population deaths come from.
  */
-export function fatalBudgetBreaches(deaths, budget) {
+export function scenarioRuns(rounds, crashes) {
+  const runs = {};
+  for (const r of rounds ?? []) {
+    for (const s of r?.selftest ?? []) if (s?.name) runs[s.name] = (runs[s.name] ?? 0) + 1;
+  }
+  for (const c of crashes ?? []) {
+    for (const step of c?.steps ?? []) {
+      const m = /scenario starting\s+name=(.+?)\s+(?:deckSlides|atMs)=/.exec(String(step));
+      if (m) runs[m[1]] = (runs[m[1]] ?? 0) + 1;
+    }
+  }
+  return runs;
+}
+
+/**
+ * Scenarios killing the host MORE OFTEN than the archive says they do.
+ *
+ * A RATE, in deaths per 1000 runs, and the change from a raw count is the whole
+ * point of this function.
+ *
+ * The count version shipped on 2026-09-03 and was red within hours. It could not
+ * have been anything else. Deaths only ever accumulate — `crashes/` is
+ * append-only — so a budget seeded at today's total breaches on the very next
+ * death, and "the next death" is ordinary operation for a scenario that has been
+ * dying all week. It fired on the episode continuing, not on a regression, and a
+ * gate that cries wolf gets switched off. `docs/BACKLOG.md` records that
+ * happening to an earlier one.
+ *
+ * The count also RANKED WRONG, because it conflated exposure with danger.
+ * Measured against how often each scenario actually runs:
+ *
+ *     a big chart on a slide of its own    5 deaths /  11 runs = 455
+ *     stop a run mid-draw                  8 deaths /  27 runs = 296
+ *     same scale across the deck           9 deaths / 421 runs =  21
+ *     every other listed scenario          1 death  / ~420     =   2.4
+ *
+ * `same scale` led on raw count and is a nine-times-baseline scenario. The two
+ * that kill the host on a THIRD to a HALF of their runs looked smaller only
+ * because they are young. The ranking was upside down.
+ *
+ * And a rate CAN FALL, which is the property this instrument needed and a
+ * cumulative count can never have: runs keep accumulating, so a scenario that
+ * stops dying sinks on its own and the fix is protected without anyone editing
+ * a number. That is what `overlap-budget` does, and why the analogy finally
+ * holds.
+ *
+ * A scenario absent from the ceilings has never killed the host, so its first
+ * death is a rise from zero and is reported. That is still the case most worth
+ * catching, and it is the one thing the count version got right.
+ */
+/**
+ * The most deaths a scenario may show before the rise is more than noise.
+ *
+ * A RATE SEEDED AT THE POINT ESTIMATE IS STILL A HAIR TRIGGER, which is the
+ * trap the count version fell into and the reason this is not simply
+ * `rate > ceiling`. `stop a run mid-draw` sits at 8 deaths in 25 runs; a ninth
+ * takes it to 346 per 1000 against a ceiling of 330 — red, on a scenario doing
+ * exactly what it has done all week. Killing the host a third of the time
+ * PRODUCES eight-and-nine-death stretches. That is the baseline, not a rise.
+ *
+ * So the gate asks the question a person would: is this more than a scenario at
+ * the accepted rate would produce anyway? Normal approximation to the binomial,
+ * two standard deviations:
+ *
+ *     allowed = p*n + 2*sqrt(p*(1-p)*n)      p = ceiling/1000, n = runs
+ *
+ * A ceiling of 0 gives p=0, sd=0 and allowed=0, so a scenario that has never
+ * killed the host trips on its FIRST death. That case needs no statistics and
+ * does not get any.
+ *
+ * THE COST IS HONEST AND WORTH STATING: at eleven runs this cannot tell 45% from
+ * 80%. `a big chart on a slide of its own` would need nine deaths in eleven runs
+ * to trip. That is a property of eleven samples, not a choice — a tighter bound
+ * would not be more sensitive, it would just be wrong more often. The printed
+ * table is the surveillance; the gate is for what the evidence can carry.
+ */
+export function fatalDeathsAllowed(ceilingPer1000, runs) {
+  const p = Math.max(0, Math.min(1, (ceilingPer1000 ?? 0) / 1000));
+  const n = Math.max(0, runs ?? 0);
+  if (p === 0 || n === 0) return 0;
+  return p * n + 2 * Math.sqrt(p * (1 - p) * n);
+}
+
+export function fatalRateBreaches(deaths, runs, ceilings) {
   const over = [];
   for (const [name, count] of Object.entries(deaths ?? {})) {
-    const allowed = budget?.[name] ?? 0;
-    if (count > allowed) over.push({ name, count, allowed });
+    const ran = runs?.[name] ?? 0;
+    // No denominator means no rate. A death with no recorded run is a record
+    // this tool cannot read, and inventing a rate of Infinity for it would fail
+    // the gate on a parsing gap rather than on a host.
+    if (!ran) continue;
+    const allowed = ceilings?.[name] ?? 0;
+    const cap = fatalDeathsAllowed(allowed, ran);
+    if (count > cap) {
+      over.push({ name, count, runs: ran, rate: (1000 * count) / ran, allowed, cap });
+    }
   }
-  return over.sort((a, b) => b.count - a.count);
+  return over.sort((a, b) => b.rate - a.rate);
 }
 
 /**

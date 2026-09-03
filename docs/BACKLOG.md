@@ -3186,3 +3186,80 @@ falling back to the by-id path when the index is past the end, would convert a
 `GeneralException` into the older, survivable failure. That is a change to a
 draw path that four previous unit-green fixes have failed on, so it wants the
 measurement above FIRST — not a fifth guess.
+
+### The four owner decisions, resolved — 2026-09-03
+
+All four were escalated as needing a person. Researched, decided and built.
+
+**1. The ratchet was red. It is now a RATE, and the count could never have
+worked.** Deaths only accumulate, so a budget seeded at today's total breaches
+on the very next death — and for a scenario dying all week, that is Tuesday. It
+fired on the episode continuing, not on a regression. The count also RANKED
+WRONG, because deaths arrive in episodes rather than at a steady drip:
+
+    same scale across the deck    all 9 deaths 08-24..08-29, none since
+    stop a run mid-draw           all 8 on 09-02 and 09-03
+    a big chart on a slide of its own   all 5 today, on a scenario written today
+
+Against exposure the order inverts, and the two young scenarios are the killers:
+
+    a big chart on a slide of its own    5 /  11 runs = 455 per 1000
+    stop a run mid-draw                  8 /  25 runs = 320
+    same scale across the deck           9 / 418 runs =  21
+    every other listed scenario          1 / ~420     =   2.4
+
+455 and 320 per 1000 is a host killed on nearly half, and on a third, of the
+runs. The scenario that led on raw count kills on 2% of its runs.
+
+The gate now compares deaths against `p*n + 2*sqrt(p*(1-p)*n)` — a rate seeded
+at today's, with a binomial noise bound. Without the bound a rate is still a
+hair trigger: at 8-of-25 a ninth death reads as 346 against a ceiling of 330,
+red for a scenario doing exactly what it always has. THE COST IS STATED AND
+REAL: at eleven runs this cannot tell 45% from 80%, so `a big chart on a slide
+of its own` needs nine deaths in eleven to trip. That is a property of eleven
+samples, not a choice. The printed table is the surveillance; the gate is for
+what the evidence can carry.
+
+And a rate CAN FALL. Runs accumulate, so a scenario that stops dying sinks on
+its own and a landed fix protects itself with nobody editing a number — the
+property this instrument needed, which a cumulative count can never have, and
+which an earlier docstring promised and had to retract.
+
+**2. `6438dd1` stays.** At 16:9 it turned one batch into eleven and is the only
+reason a chart has ever drawn onto a slide this product added. At 4:3 it fails
+where the old code also failed, so it is strictly better and is not the cause.
+The rate table is the strongest evidence for the fix mattering: the two worst
+scenarios in the suite are exactly the two own-slide ones.
+
+**3. The discriminator is built, and it is not a probe.** On a draw failure the
+insert path now takes one fresh-context deck read and traces which of the three
+things is true — the index is past the end (the slide is GONE), the slide is
+listed under a new name, or it is listed under the same id and was refused
+anyway. Zero cost unless a draw has already failed.
+
+A probe was the obvious vehicle and is the wrong one: the probe sheet asks early,
+on a scratch slide, in a healthy session, and this failure arrives 670 seconds
+in, on a 4:3 deck, behind a 103-shape batch. A probe would not reproduce it and
+might never sample it. This measures in the real conditions or not at all.
+
+**4. The delete reporting was inventing wreckage.** Both own-slide scenarios
+read `deleteSlideById` returning false as "a slide is stuck in the deck". At 4:3
+it means the opposite: the slide was already gone, so the delete correctly
+refused to remove an index whose id did not match. The scenarios announced "the
+aborted draw is still in the deck" about a deck that had never been cleaner.
+
+Wrong in the one direction a self-test must never be wrong. A missed problem
+costs a round; an invented one sends someone looking for wreckage that was never
+there. The DECK now decides, not the return value, and the pass detail says
+which of the two happened.
+
+The fake could not previously express "refused, AND gone" — it offered a refusal
+that leaves the slide or a success that removes it, and nothing in between. That
+is why no test caught this. `faults.slideVanishesInsteadOfDeleting` now
+reproduces round 370's pairing.
+
+**Still open, and now the sharpest question in the project:** whether the slide
+is lost or merely withheld at 4:3. The next 4:3 round answers it in one trace
+line. `a big chart on a slide of its own` kills PowerPoint on 45% of its runs
+and the path it walks is one a user walks — accepting "put it on a slide of its
+own" — so this is the product's worst defect, not a harness problem.

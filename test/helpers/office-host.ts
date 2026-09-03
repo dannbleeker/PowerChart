@@ -660,6 +660,22 @@ export const faults = {
    */
   refuseSlideDelete: false,
   /**
+   * The slide IS GONE and the delete still reports failure — round 370's 4:3
+   * host, reproduced.
+   *
+   * There the add reports `landed=1`, the listing puts the new slide at index 7
+   * of 8, and moments later the deck is back to seven. `deleteSlideById` is
+   * then holding an id the deck no longer lists, correctly refuses to remove an
+   * index whose id does not match, and returns false.
+   *
+   * Nothing in this fake could produce that pairing. It offered a refusal that
+   * LEAVES the slide, or a success that REMOVES it, but never "refused, and it
+   * was never there" — so the scenarios read `false` as "a slide is stuck in
+   * the deck", announced wreckage that did not exist, and no test could catch
+   * it, because the double could not fail the way the host fails.
+   */
+  slideVanishesInsteadOfDeleting: false,
+  /**
    * The next deck insert LANDS, and its `context.sync()` never answers.
    *
    * office-js#1650, verbatim: "the first time `context.sync()` is called the
@@ -2526,6 +2542,19 @@ export function installHost(
           // still works and the next one meets the new id. A caller that never
           // looks a slide up never sees it settle, which is the host's own shape.
           settleAddedSlideId(id);
+          /**
+           * THE HOST HAS ALREADY LOST IT — see
+           * `faults.slideVanishesInsteadOfDeleting`. Dropped here rather than at
+           * `delete()`, because at 4:3 the slide is gone BEFORE anyone asks to
+           * remove it: the lookup finds nothing, `isLive` is false, the
+           * positional fallback cannot match an unlisted id, and
+           * `deleteSlideById` returns false about a slide that is not there.
+           * Only an ADDED slide vanishes; a deck's original slides do not.
+           */
+          if (faults.slideVanishesInsteadOfDeleting && addedSlideIds.has(id)) {
+            const at = slides.findIndex((s) => s.id === id);
+            if (at >= 0) slides.splice(at, 1);
+          }
           const found = slides.find((s) => s.id === id);
           const live = found && !newSlideLeaseSpent(id) ? found : undefined;
           // A freshly-added slide's by-id handle is single-sync when the fault
@@ -3142,6 +3171,7 @@ export function installHost(
   faults.emptySlideImage = false;
   faults.slideImageGate = null;
   faults.refuseSlideDelete = false;
+  faults.slideVanishesInsteadOfDeleting = false;
   faults.deckInsertNeverAnswers = false;
   faults.selectionReadThrows = false;
   faults.tagsUndefinedOn = 0;

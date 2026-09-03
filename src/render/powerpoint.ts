@@ -1807,11 +1807,19 @@ async function insertSceneIntoSlideInner(
     // Committed in batches: the whole scene in one sync is what a live canvas
     // will not take. Each batch reports, so progress here is measured, not
     // guessed — see renderShapesChunked.
-    const created = await step("drawing the chart's shapes", () =>
-      renderShapesChunked(context, getSlide, scene, opts, (done, total) =>
-        onPhase?.("commit", `${done} of ${total} shapes`),
-      ),
-    );
+    let created: Awaited<ReturnType<typeof renderShapesChunked>>;
+    try {
+      created = await step("drawing the chart's shapes", () =>
+        renderShapesChunked(context, getSlide, scene, opts, (done, total) =>
+          onPhase?.("commit", `${done} of ${total} shapes`),
+        ),
+      );
+    } catch (err) {
+      // Round 370's question, asked at the moment it matters. Costs nothing
+      // unless the draw has already failed. See `askWhatTheDeckStillHolds`.
+      if (index >= 0) await askWhatTheDeckStillHolds(opts.slideId, index);
+      throw err;
+    }
     // Shapes are committed by now, so grouping/tagging (which some hosts,
     // notably PowerPoint on the web, don't support) can't roll back the chart.
     onPhase?.("group");
@@ -8502,6 +8510,59 @@ async function slideIds(): Promise<string[] | undefined> {
     const ids = items.map((s) => loadedValue(() => s.id));
     return ids.every((id): id is string => typeof id === "string" && !!id) ? ids : undefined;
   });
+}
+
+/**
+ * After a draw fails, ask the deck what it still holds — the one measurement
+ * that separates the two candidate causes of the own-slide crash.
+ *
+ * ROUND 370 LEFT A FORK NOTHING COULD SETTLE. On the 4:3 deck the add reports
+ * `landed=1`, the listing puts the new slide at index 7 of 8, `getItemAt(7)`
+ * throws `GeneralException`, and the next scenario opens on a deck of SEVEN.
+ * Two readings fit that equally well:
+ *
+ *   the slide is GONE          — `slides.add()` acknowledged and absent under
+ *                                load, which this archive has receipts for
+ *   the slide is THERE and the host will not hand it over yet
+ *
+ * They need completely different fixes — one is a lost write, the other a
+ * settle window — and nothing recorded so far can tell them apart. Reading the
+ * deck length at the moment of failure does:
+ *
+ *   deckSlides <= index                  the index is past the end: it is gone
+ *   deckSlides >  index, not listed      still there, re-keyed under a new name
+ *   still listed under the same id       there, named, and refused anyway
+ *
+ * WHY HERE AND NOT IN A PROBE. The probe sheet asks its questions early, on a
+ * scratch slide, in a healthy session. This failure arrives 670 seconds in, on
+ * a 4:3 deck, behind a 103-shape batch — conditions a probe does not reproduce
+ * and may never sample. This runs in the real conditions or not at all.
+ *
+ * Costs nothing on the success path: it is only reached once the draw has
+ * already thrown. A FRESH context, because the one that just failed is spent.
+ * And it swallows its own errors — a diagnostic that replaces the error it was
+ * called to explain is worse than no diagnostic.
+ */
+async function askWhatTheDeckStillHolds(slideId: string | undefined, index: number): Promise<void> {
+  try {
+    const ids = await slideIds();
+    trace("insert", "the draw failed — asking the deck what it still holds", {
+      slideId,
+      index,
+      deckSlides: ids?.length ?? "unreadable",
+      indexInRange: ids ? index < ids.length : "unreadable",
+      stillListedUnderTheSameId: ids ? ids.includes(slideId ?? "") : "unreadable",
+      reading: !ids
+        ? "unreadable"
+        : index >= ids.length
+          ? "gone — the index is past the end of the deck"
+          : ids.includes(slideId ?? "")
+            ? "there, listed under the same id, and refused anyway"
+            : "there, but re-keyed under a name we do not hold",
+    });
+  } catch {
+    /* A diagnostic must never replace the error it is diagnosing. */
+  }
 }
 
 /** Delete one slide by id, best-effort. True when it is gone (or already was). */

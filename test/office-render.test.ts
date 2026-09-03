@@ -7138,6 +7138,91 @@ describe("adding the slide a slow insert is offered", () => {
     }
   });
 
+  it("asks the deck what it still holds when the draw onto an added slide fails", async () => {
+    /**
+     * THE FORK ROUND 370 COULD NOT SETTLE. At 4:3 the add reports `landed=1`,
+     * the listing puts the slide at index 7 of 8, `getItemAt(7)` throws, and
+     * the next scenario opens on a deck of SEVEN. Two readings fit equally
+     * well: the slide is GONE — an acknowledged-and-absent `slides.add()`,
+     * which this archive has receipts for — or it is THERE and the host will
+     * not hand it over yet. Those want completely different fixes.
+     *
+     * Deck length at the moment of failure separates them, so the failure path
+     * now asks. BOTH branches are exercised here: a classifier that cannot
+     * produce both of its answers has not been tested, only executed.
+     */
+    const deck: FakeSlide[] = [makeSlide("s1")];
+    installHost(deck);
+    const seen: { message: string; data?: Record<string, unknown> }[] = [];
+    const found = () => seen.find((e) => e.message.startsWith("the draw failed — asking the deck"));
+    const cfg = { ...sampleConfig("clustered"), ...DEFAULT_SIZE };
+    setTracing(true);
+    onTrace((e) => seen.push({ message: e.message, data: e.data }));
+    try {
+      const slideId = await addSlideForChart();
+      expect(slideId).toBeTruthy();
+      // The index resolution is the next sync and the first render batch
+      // follows it. COMPUTED, not hardcoded — the tests one screen up warn that
+      // a wrong index here silently stops testing anything.
+      faults.failSyncOn = trips.syncs + 2;
+      let threw = false;
+      await insertSceneIntoSlide(buildChart(cfg), { slideId: slideId!, tagData: JSON.stringify(cfg) }).catch(() => {
+        threw = true;
+      });
+      expect(threw, "the draw did not fail, so nothing was diagnosed").toBe(true);
+
+      // CASE ONE — the slide is still there under the id we hold.
+      const asked = found();
+      expect(asked, "a draw onto an added slide failed and the deck was never asked about it").toBeTruthy();
+      expect(asked!.data!.index).toBe(1);
+      expect(asked!.data!.deckSlides).toBe(2);
+      expect(asked!.data!.stillListedUnderTheSameId).toBe(true);
+      expect(asked!.data!.reading).toBe("there, listed under the same id, and refused anyway");
+    } finally {
+      faults.failSyncOn = 0;
+      onTrace(undefined);
+      setTracing(false);
+    }
+
+    // CASE TWO — the same failure with the slide no longer in the deck, which
+    // is the reading that would mean the add was acknowledged and lost.
+    seen.length = 0;
+    setTracing(true);
+    onTrace((e) => seen.push({ message: e.message, data: e.data }));
+    try {
+      const slideId = await addSlideForChart();
+      /**
+       * NO ARMED SYNC FAILURE HERE, and that is not an oversight. A slide that
+       * is gone makes `getItemAt(index)` fail by itself, which is the whole
+       * point — arming one as well put the armed index on the DIAGNOSTIC's own
+       * listing sync, so it threw, the catch swallowed it, and the measurement
+       * never happened. The first draft did exactly that and reported nothing.
+       *
+       * IT HAS TO VANISH IN THE WINDOW, not before it. Removing the slide up
+       * front makes the index resolution miss it, `index` stays -1, and the
+       * diagnostic is never reached — which is what the first draft of this
+       * test did, and it proved nothing.
+       *
+       * `onPhase("queue")` fires after the index has resolved and before the
+       * first batch is issued, which is precisely the gap round 370 describes:
+       * listed at index 7 of 8 one moment, a deck of 7 the next.
+       */
+      let removed: FakeSlide | undefined;
+      await insertSceneIntoSlide(buildChart(cfg), { slideId: slideId!, tagData: JSON.stringify(cfg) }, (phase) => {
+        if (phase === "queue" && !removed) removed = deck.pop();
+      }).catch(() => {});
+      expect(removed?.id, "the wrong slide was removed, or none was").toBe(slideId);
+      const asked = found();
+      expect(asked, "the deck was not asked").toBeTruthy();
+      expect(asked!.data!.indexInRange, "an out-of-range index was reported as in range").toBe(false);
+      expect(asked!.data!.reading).toBe("gone — the index is past the end of the deck");
+    } finally {
+      faults.failSyncOn = 0;
+      onTrace(undefined);
+      setTracing(false);
+    }
+  });
+
   it("adds nothing at all when the deck will not say what is already in it", async () => {
     /**
      * THE ANSWER IS STILL NULL AND THE SLIDE IS NO LONGER LEFT BEHIND.

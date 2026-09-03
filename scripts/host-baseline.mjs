@@ -272,7 +272,7 @@ export const KNOWN_DIVERGENCES = {
  * several runs agreeing, not one.
  */
 /**
- * HOW OFTEN EACH SCENARIO HAS KILLED THE HOST — a ratchet, not a record.
+ * HOW OFTEN EACH SCENARIO KILLS THE HOST — a rate, and a ratchet.
  *
  * A round file has three verdict states and cannot hold a fourth: a scenario
  * that KILLS the host produces no verdict, and the round it belonged to files
@@ -281,88 +281,110 @@ export const KNOWN_DIVERGENCES = {
  *
  *     same scale across the deck — 0 failures in 282 recorded verdicts,
  *     joint-safest in the whole suite, and the scenario the host died inside
- *     TEN times.
+ *     NINE times.
  *
  * `rounds-salvaged/` does not help: a salvaged round carries verdicts, and a
  * killed scenario has none. Only the crash record's own steps know.
  *
- * SEEDED AT THE COUNTS ON 2026-09-03, not at zero, and that is deliberate. At
- * zero this fails every night for damage already done, already known and
- * already on the backlog — a gate that cries wolf gets switched off, which
- * `docs/BACKLOG.md` records happening before. At today's counts it is silent
- * about the past and loud the moment a scenario starts killing the host MORE
- * than it already did, or a scenario that never has starts.
+ * DEATHS PER 1000 RUNS, AND THE FIRST VERSION OF THIS TABLE WAS A RAW COUNT.
+ *
+ * That version shipped on the morning of 2026-09-03 and was red by the
+ * afternoon. It could not have been anything else. `crashes/` is append-only,
+ * so counts only ever grow; a budget seeded at today's total breaches on the
+ * very next death, and for a scenario that has been dying all week the next
+ * death is Tuesday. It fired on the episode continuing rather than on a
+ * regression, and a gate that cries wolf gets switched off — which
+ * `docs/BACKLOG.md` records happening to an earlier one.
+ *
+ * It also RANKED WRONG. Deaths arrive in episodes, not at a steady drip:
+ * `same scale` took all nine of its deaths between 2026-08-24 and 08-29 and
+ * none since, and `stop a run mid-draw` took all eight on 09-02 and 09-03. So a
+ * cumulative count mostly measures how long a scenario has been exposed. Put
+ * against how often each actually runs, the order inverts:
+ *
+ *     a big chart on a slide of its own    5 deaths /  11 runs = 455
+ *     stop a run mid-draw                  8 deaths /  27 runs = 296
+ *     same scale across the deck           9 deaths / 421 runs =  21
+ *     every other listed scenario          1 death  / ~420     =   2.4
+ *
+ * The scenario that led on raw count is a nine-times-baseline one. The two that
+ * kill the host on a THIRD to a HALF of their runs looked smaller only because
+ * they are young — `a big chart on a slide of its own` was written on
+ * 2026-09-03 and has run eleven times. Both are the OWN-SLIDE pair, which is
+ * the defect `6438dd1` fixed at 16:9 and round 370 showed still open at 4:3.
+ *
+ * AND A RATE CAN FALL. This is the property the instrument needed and the one a
+ * count can never have: runs keep accumulating, so a scenario that stops dying
+ * sinks on its own and a landed fix protects itself without anyone editing a
+ * number. That is what `overlap-budget` does — it measures a CURRENT quantity —
+ * and it is why the analogy to it finally holds. An earlier comment here
+ * promised a fall over a cumulative count and had to be retracted; this is what
+ * it should have said.
+ *
+ * SEEDED AT THE RATES MEASURED ON 2026-09-03, rounded up to the next ten. At
+ * zero this would fail every night for damage already known and already on the
+ * backlog. At today's rates it is silent while a known-bad scenario stays as
+ * bad as it is, and loud the moment one gets WORSE — which is the question
+ * worth asking, and the one the count could not ask.
  *
  * A NAME ABSENT FROM THIS TABLE HAS NEVER KILLED THE HOST, so its first death
- * is a rise from zero and is caught. That is the case most worth catching.
- *
- * THESE NUMBERS CANNOT FALL, and an earlier version of this comment promised
- * they could. They cannot: `crashes/` is append-only — nothing prunes it, and
- * git records no deletion of a `*-crashed-run.json` — so `fatalScenarios`
- * counts over all history and is monotonic. A cumulative count only grows.
- *
- * That was written by analogy to `overlap-budget`, which measures a CURRENT
- * quantity and so genuinely falls when a fix lands. This measures an
- * accumulated one. The analogy does not carry, and a reader waiting to lower a
- * number here would wait forever.
- *
- * So the protection a fix gets is not a lowered number — it is this number
- * staying put. Every entry is already at its ceiling, which makes the gate
- * exactly "no new deaths": the next death in any listed scenario breaks it. Do
- * not raise one without a person deciding it should, and do not go looking for
- * a fall to prove a fix worked. The evidence a fix worked is a round, and for
- * `6438dd1` that round is 369.
- *
- * Nor should the entries be RANKED by size: the biggest is the longest-running
- * scenario, not the most dangerous one. `docs/BACKLOG.md`, "The death ratchet
- * ranks EXPOSURE, not danger", has the measurement.
+ * is a rise from zero and is caught. That is the case most worth catching, and
+ * it is the one thing the count version got right. Do not add a name here to
+ * quiet a gate: a new name is a new scenario killing PowerPoint.
  *
  * Attribution is narrow on purpose: a scenario counts only when its
  * `scenario starting` line was never closed. 26 of 83 sound crash records
  * attribute this way and the other 57 died in the probe phase or the deck
- * scan, credited to nothing. See `fatalScenarios` in `scripts/triage.mjs`.
+ * scan, credited to nothing. See `fatalScenarios` in `scripts/triage.mjs`, and
+ * `scenarioRuns` for the denominator.
  */
-export const FATAL_SCENARIO_BUDGET = {
+export const FATAL_SCENARIO_RATE = {
   /**
-   * THE ONE THIS EXISTS FOR. Nine deaths and not one failed verdict in 282.
-   * Every reader of this archive, human and machine, has been told for weeks
-   * that this scenario is among the safest in the suite.
+   * IT KILLS POWERPOINT ON NEARLY HALF ITS RUNS. Five deaths in eleven, and it
+   * has only existed since 2026-09-03 — written that day to isolate the
+   * own-slide defect from `stop a run mid-draw`, which it did.
    *
-   * Was 10 until 2026-09-03. One of the ten was the same crash counted twice —
-   * `2026-08-29T03-32-07` and `…T08-27-00` are byte-identical — and
-   * `loadCrashRecords` now folds it. See its comment for why the fix is a
-   * reader that counts once, not a deleted file.
+   * This is the worst number in the suite by a factor of 190 over baseline, and
+   * it is not a harness problem: the scenario draws a chart onto a slide the
+   * product just added, which is a thing users do.
    */
-  "same scale across the deck": 9,
+  "a big chart on a slide of its own": 460,
   /**
    * Ours, and known: `ca138f8` moved it onto a freshly-added slide and it has
-   * failed every round since. See `a big chart on a slide of its own`, which
-   * isolates the cause — the two share it.
+   * failed every round since. Same defect as the entry above — the two share
+   * it, which is why they share an order of magnitude.
    *
-   * Nine seconds long, and the most lethal thing here per second of exposure by
-   * roughly 30x. Do not read this table by size — see `docs/BACKLOG.md`, "The
-   * death ratchet ranks EXPOSURE, not danger".
+   * Nine seconds long and 296 per 1000. Duration is not danger.
    */
-  "stop a run mid-draw": 8,
-  /** Written on 2026-09-03 to isolate the above; same defect, same deaths. */
-  "a big chart on a slide of its own": 4,
-  "insert onto a slide that already has content": 1,
-  "explode a degraded picture": 1,
-  "one chart alone on a warm deck": 1,
-  "two slides claiming one slot": 1,
-  "edit the chart the user selected": 1,
+  "stop a run mid-draw": 330,
+  /**
+   * THE ONE THIS TABLE EXISTS FOR, and the reason it is a rate. Nine deaths and
+   * not one failed verdict in 282 — every reader of this archive has been told
+   * for weeks that this scenario is among the safest in the suite.
+   *
+   * Nine times baseline, not the worst in the suite. All nine landed between
+   * 2026-08-24 and 08-29, inside `updated only the shapes that changed`, in the
+   * 420-600s window where this host dies of session age. Nothing since.
+   */
+  "same scale across the deck": 30,
+  // The tail: one death each, on 200-420 runs. At 2.4 per 1000 these are the
+  // background rate of a host that falls over sometimes, not scenarios with a
+  // problem. They are listed so their FIRST rise is measured against something.
+  "one chart alone on a warm deck": 10,
+  "edit the chart the user selected": 10,
+  "explode a degraded picture": 10,
+  "insert onto a slide that already has content": 10,
+  "two slides claiming one slot": 10,
   // TWO NAMES WERE HERE ON 2026-09-03 AND SHOULD NEVER HAVE BEEN.
   //
   // `a chart of rotated shapes` (2) and `where a rotated shape lands` (1) were
   // credited three deaths by a matcher that knew one spelling of three: the
   // host writes `scenario FAILED` and `scenario skipped`, and the close regex
   // read `passed|failed`. The scenario that closed was left open and the
-  // record's death landed on it. Corrected in `fatalScenarios`; both scenarios
-  // have killed the host exactly zero times.
+  // record's death landed on it. Corrected in `fatalScenarios`; both have
+  // killed the host exactly zero times.
   //
-  // Their ABSENCE is the point, and is load-bearing: an absent name has never
-  // killed the host, so its first death is a rise from zero and breaks the
-  // gate. A fabricated entry would have silently absorbed a real first kill.
+  // Their ABSENCE is load-bearing, per the rule above.
 };
 
 export const UNSTABLE_ANSWERS = {

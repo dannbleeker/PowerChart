@@ -855,6 +855,52 @@ describe("the scenarios the selection API unlocked", () => {
     }
   });
 
+  it("does not invent wreckage when the delete was refused because the slide had already gone", async () => {
+    /**
+     * THE OTHER HALF OF THE SAME QUESTION, and the scenario got it wrong until
+     * round 370 showed the case existed.
+     *
+     * At 4:3 the slide this scenario adds is listed, reported `landed=1`, and
+     * then not there. `deleteSlideById` is left holding an id the deck no longer
+     * lists; it correctly refuses to remove an index whose id does not match and
+     * returns false. The verdict read that `false` as "a slide is stuck in the
+     * deck" and announced "the aborted draw is still in the deck" about a deck
+     * that had never been cleaner.
+     *
+     * Wrong in the one direction a self-test must never be wrong. A missed
+     * problem costs a round; an INVENTED one sends someone looking for wreckage
+     * that was never there, and this project has burnt days on exactly that.
+     *
+     * So the DECK decides, not the return value. The fault reproduces a pairing
+     * this fake could not previously express — refused, AND gone.
+     */
+    installHost([makeSlide("s1")]);
+    faults.slideVanishesInsteadOfDeleting = true;
+    try {
+      const r = byName(await runSelfTest("probe", "stop a run mid-draw"))["stop a run mid-draw"];
+      expect(
+        r.detail,
+        "claimed the aborted draw was still in the deck, about a slide the host had already dropped",
+      ).not.toMatch(/still in the deck/);
+      /**
+       * AND ASSERTED POSITIVELY, because the line above passes for the wrong
+       * reason on its own: a clean run does not say "still in the deck" either,
+       * so it stays green even when the fault does nothing. The mutation run
+       * proved that — disarming the fake's drop left it passing.
+       *
+       * This phrase appears only when `deleteSlideById` returned FALSE, so it
+       * is the one observable separating "refused, and gone" from "deleted
+       * normally" — and it is what a reader chasing the own-slide defect needs.
+       */
+      expect(r.detail, "the scenario did not report that the delete had been refused").toMatch(
+        /the delete was refused, but the deck shrank/,
+      );
+      expect(r.ok, "a clean deck was reported as a failure").toBe(true);
+    } finally {
+      faults.slideVanishesInsteadOfDeleting = false;
+    }
+  });
+
   it("will not call a mid-draw stop clean when the wreckage claims to be a chart", async () => {
     // The half that matters. Partial shapes are allowed — the pane's own message
     // says "anything already drawn was kept". What is not allowed is half a

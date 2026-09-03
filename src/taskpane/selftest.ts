@@ -1944,17 +1944,32 @@ const stopMidDraw: Scenario = async (prefix) => {
     // host — round 353 proved that, 10 of 10 refused — so the slide is the unit
     // of cleanup, and a slide that will not go is wreckage every later scenario
     // reads.
-    !sweptSlide && "the slide this drew on could not be deleted, so the aborted draw is still in the deck",
-    sweptSlide &&
-      slideCountAfter >= slideCountBefore &&
-      `the slide was reported deleted but the deck still holds ${slideCountAfter} of ${slideCountBefore}`,
+    //
+    // A REFUSED DELETE IS NOT THE SAME AS A SLIDE LEFT BEHIND, and the deck
+    // count already in hand tells them apart. Round 370 made the difference
+    // matter: at 4:3 the slide this scenario adds is listed, reported landed,
+    // and then not there — so `deleteSlideById` correctly refuses to remove an
+    // index whose id does not match, returns false, and the old wording
+    // announced "the aborted draw is still in the deck" about a deck that had
+    // never been cleaner. Wrong in the one direction a self-test must not be:
+    // inventing wreckage sends someone looking for it.
+    //
+    // So the DECK decides, not the return value. If it shrank, the slide is
+    // gone, and how it went is not this scenario's subject.
+    slideCountAfter >= slideCountBefore &&
+      (sweptSlide
+        ? `the slide was reported deleted but the deck still holds ${slideCountAfter} of ${slideCountBefore}`
+        : "the slide this drew on could not be deleted, so the aborted draw is still in the deck"),
   ].filter(Boolean);
   return {
     ok: problems.length === 0,
     detail: problems.length
       ? problems.join("; ")
       : `stopped inside the draw after ${commits} batch(es) with ${landed ?? "?"} shape(s) down; ` +
-        `the slide went with them, nothing left claiming to be a chart`,
+        `the slide went with them, nothing left claiming to be a chart` +
+        // Reported, not counted against it: the deck is clean either way, and a
+        // reader chasing the own-slide defect wants to know which happened.
+        (sweptSlide ? "" : ` (the delete was refused, but the deck shrank to ${slideCountAfter} anyway)`),
   };
 };
 
@@ -2028,6 +2043,9 @@ const bigChartOnItsOwnSlide: Scenario = async (prefix) => {
     control = `threw: ${errorText(err)}`;
   }
 
+  // Read BEFORE the add, so the cleanup below can tell a slide that would not
+  // go from one that was never there. See the verdict for why that matters.
+  const slideCountBefore = await slideCount();
   const slideId = await addSlideForChart();
   if (!slideId)
     // The host dropping the add is `addSlides`' own finding and not this
@@ -2056,6 +2074,7 @@ const bigChartOnItsOwnSlide: Scenario = async (prefix) => {
   // CLEAN UP FIRST, REPORT SECOND — every scenario after this one reads the
   // deck. One slide delete, not N shape deletes.
   const swept = await deleteSlideById(slideId);
+  const slideCountAfter = await slideCount();
 
   /**
    * BATCHES MATTER TO THE VERDICT. A chart that happened to fit in one commit
@@ -2089,7 +2108,16 @@ const bigChartOnItsOwnSlide: Scenario = async (prefix) => {
     };
   const problems = [
     outcome !== "drew" && outcome,
-    !swept && "the scenario could not delete the slide it added",
+    // THE DECK DECIDES, NOT THE RETURN VALUE — same correction as the mid-draw
+    // scenario one screen up, and round 370 is why. At 4:3 the slide this adds
+    // is listed, reported landed, and then not there; `deleteSlideById` rightly
+    // refuses to remove an index whose id does not match and returns false. The
+    // old wording turned that into "the scenario could not delete the slide it
+    // added", which reads as a slide left in someone's deck. There was no
+    // slide. A self-test may not invent wreckage.
+    !swept &&
+      slideCountAfter > slideCountBefore &&
+      "the scenario could not delete the slide it added, and the deck still holds it",
     typeof landed === "number" && landed === 0 && "the draw reported success and the slide came back empty",
   ].filter(Boolean);
   return {
