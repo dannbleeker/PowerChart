@@ -1619,8 +1619,7 @@ function boundedSync(context: PowerPoint.RequestContext, what: string, budgetMs 
 }
 
 /**
- * The blank layout of the presentation's first master, or undefined if the host
- * has no opinion.
+ * The blank layout to add a slide with, AND THE MASTER IT BELONGS TO.
  *
  * A slide added with no layout inherits the previous slide's — which on a fresh
  * deck is the title slide, so an agenda lands on top of "Click to add title"
@@ -1628,8 +1627,43 @@ function boundedSync(context: PowerPoint.RequestContext, what: string, budgetMs 
  * want no placeholders at all. Matched on `type`, not on the name: the name is
  * localised ("Tom" on a Danish master) and matching English would silently do
  * nothing for most of the world.
+ *
+ * THE MASTER IS RETURNED WITH IT BECAUSE SENDING THE LAYOUT ALONE IS A
+ * DOCUMENTED ERROR, and that was this add-in's worst live defect.
+ *
+ * `AddSlideOptions` says it in as many words:
+ *
+ *     If no `slideMasterId` is provided, but a `layoutId` is provided, then the
+ *     specified layout needs to be available for the default Slide Master ...
+ *     Otherwise, an error will be thrown.
+ *
+ * and the default is "the previous slide's Slide Master". So a layout taken
+ * from the FIRST master and sent without its master is only valid while the
+ * deck's last slide happens to use that same master. On a one-master deck it
+ * always does, and this worked for months. On a two-master deck it need not,
+ * and then the add is a server-side error.
+ *
+ * That is not a theory about a host. Measured over 220 archived rounds,
+ * bucketed by the `layouts-readable` probe, on whether the round crashed:
+ *
+ *     1 master  /  1 layout   @ 16:9     9 of 182   =   5%
+ *     2 masters / 12 layouts  @ 16:9     4 of   4   = 100%
+ *     2 masters / 12 layouts  @ 4:3     27 of  30   =  90%
+ *
+ * Hold the deck and the aspect ratio changes nothing; hold the ratio at 16:9
+ * and the deck moves it from 5% to 100%. The failure had been filed as "the
+ * 4:3 crash" for two weeks. It is the two-master crash, and 4:3 was along for
+ * the ride because the 4:3 arm has only ever run on one deck.
+ *
+ * What the host does with the rejected add is `errorLocalChangeLostSingleUser`
+ * — its own ULS says so in 17 crash logs, and it is the only `ErrorName` in the
+ * whole corpus. PowerPoint discards the revision, resets undo history and rolls
+ * the deck back, which is why the slide is listed twice and then gone, and why
+ * `getItemAt(index)` lands past the end. See `docs/BACKLOG.md`.
  */
-async function blankLayoutId(context: PowerPoint.RequestContext): Promise<string | undefined> {
+async function blankLayoutTarget(
+  context: PowerPoint.RequestContext,
+): Promise<{ layoutId: string; slideMasterId: string } | undefined> {
   try {
     const masters = context.presentation.slideMasters;
     masters.load("items/id,items/layouts/items/id,items/layouts/items/type");
@@ -1638,31 +1672,23 @@ async function blankLayoutId(context: PowerPoint.RequestContext): Promise<string
       const blank = master.layouts.items.find((l) => l.type === PowerPoint.SlideLayoutType.blank);
       if (blank) {
         /**
-         * WHICH MASTER THIS CAME FROM, because the loop takes the FIRST one
-         * carrying a blank layout and has never said which that was.
+         * WHICH MASTER THIS CAME FROM — the reading that named the defect.
          *
-         * A slide added with a layout id is built from THAT master. On a deck
-         * with more than one master — or one whose slide size has been changed
-         * underneath it, which the round driver does with `PW_SET_SIZE` — the
-         * first master need not be the deck's active one, and a slide built
-         * from a foreign master is a candidate for what round 371 measured: an
-         * add the host accepts, lists twice, and then drops before a shape
-         * reaches it.
-         *
-         * A CANDIDATE, NOT A CAUSE. Nothing here shows that happening. The
-         * point is that the archive cannot currently tell, because no round has
-         * ever recorded which layout an add used or how many masters were on
-         * offer — and the 4:3 deck and the 16:9 deck have never been compared
-         * on it. One line makes the next round able to answer.
+         * Added as a bare diagnostic because no round had ever recorded which
+         * layout an add used or how many masters were on offer. Its first
+         * appearance on a real host said `masters=2 fromMaster=0
+         * layoutsOnThatMaster=11`, against `1 master(s), 1 layout(s)` on the
+         * deck that has never had this problem — which is the whole finding.
          */
         trace("host", "the layout an added slide will be built from", {
           masters: masters.items.length,
           fromMaster: masters.items.indexOf(master),
           layoutsOnThatMaster: master.layouts.items.length,
           layoutId: blank.id,
-          notTheFirstMaster: masters.items.indexOf(master) > 0,
+          slideMasterId: master.id,
+          moreThanOneMaster: masters.items.length > 1,
         });
-        return blank.id;
+        return { layoutId: blank.id, slideMasterId: master.id };
       }
     }
     trace("host", "no blank layout on any master — the add will inherit", { masters: masters.items.length });
@@ -2321,7 +2347,7 @@ export async function addSlideForChart(): Promise<string | null> {
     if (!before) return null;
     const known = new Set(before);
     const added = await ppRun(async (context) => {
-      const thunks = await addSlides(context, 1, await blankLayoutId(context));
+      const thunks = await addSlides(context, 1, await blankLayoutTarget(context));
       return thunks.length > 0;
     });
     if (!added) return null;
@@ -4248,14 +4274,14 @@ export const MAX_ADD_RETRY_ROUNDS = 3;
 async function addSlides(
   context: PowerPoint.RequestContext,
   count: number,
-  layoutId: string | undefined,
+  layout: { layoutId: string; slideMasterId: string } | undefined,
 ): Promise<SlideThunk[]> {
   if (count <= 0) return [];
   const slides = context.presentation.slides;
   const before = slides.getCount();
   await context.sync();
   const start = before.value;
-  for (let i = 0; i < count; i++) slides.add(layoutId ? { layoutId } : undefined);
+  for (let i = 0; i < count; i++) slides.add(layout ? { ...layout } : undefined);
   await context.sync();
 
   let landed = await slideCount();
@@ -4274,7 +4300,7 @@ async function addSlides(
     const toAdd = deficit;
     await ppRun(async (retryContext) => {
       const retrySlides = retryContext.presentation.slides;
-      for (let i = 0; i < toAdd; i++) retrySlides.add(layoutId ? { layoutId } : undefined);
+      for (let i = 0; i < toAdd; i++) retrySlides.add(layout ? { ...layout } : undefined);
       await retryContext.sync();
     });
     landed = await slideCount();
@@ -4321,8 +4347,8 @@ async function addSlides(
  */
 export async function insertAgendaSlides(scenes: Scene[]): Promise<void> {
   await ppRun(async (context) => {
-    const layoutId = await blankLayoutId(context);
-    const slideThunks = await addSlides(context, scenes.length, layoutId);
+    const layout = await blankLayoutTarget(context);
+    const slideThunks = await addSlides(context, scenes.length, layout);
     // Batched like every other render: a slide's worth of shapes in one sync is
     // what the host refuses. Off-screen slides tolerate more than the live
     // canvas does, but "more" is not a number worth betting on twice.
@@ -5227,7 +5253,12 @@ async function rescueGroupAndTag(
 
 /** The blank-layout id, resolved lazily on the first slide's context and reused. */
 interface LayoutRef {
-  id?: string;
+  /**
+   * The layout AND its master, together, because sending a layout without the
+   * master it came from is a documented error on any deck with more than one.
+   * See `blankLayoutTarget`.
+   */
+  target?: { layoutId: string; slideMasterId: string };
   resolved: boolean;
 }
 
@@ -5263,10 +5294,10 @@ async function addAndRenderItem(
   let tagged = false;
   await ppRun(async (context) => {
     if (!layout.resolved) {
-      layout.id = await blankLayoutId(context);
+      layout.target = await blankLayoutTarget(context);
       layout.resolved = true;
     }
-    const [getSlide] = await addSlides(context, 1, layout.id);
+    const [getSlide] = await addSlides(context, 1, layout.target);
     // No slide came back. `addSlides` is documented to hand out thunks only for
     // the adds that actually LANDED, so this is its contract working: every
     // add and every retry round was dropped by the host.
@@ -8434,8 +8465,8 @@ export async function addScratchSlide(
     // below is what names the slide, and it never trusted the promise anyway.
     await withTimeoutOrVerify(
       ppRun(async (context) => {
-        const layoutId = await blankLayoutId(context);
-        context.presentation.slides.add(layoutId ? { layoutId } : undefined);
+        const layout = await blankLayoutTarget(context);
+        context.presentation.slides.add(layout ? { ...layout } : undefined);
         await context.sync();
       }),
       budgetMs ?? readbackTimeoutMs(),

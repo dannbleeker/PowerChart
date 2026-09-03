@@ -96,6 +96,7 @@ const failedIndices = (r: DemoReport) =>
 
 import {
   addedWithLayout,
+  addedWithMaster,
   blankReadbackAt,
   failSyncsOn,
   faults,
@@ -3415,6 +3416,92 @@ describe("added slides use the blank layout", () => {
       buildAgendaScene(["Intro", "Body"], { highlight: 1 }),
     ]);
     expect(addedWithLayout).toEqual(["layout-blank", "layout-blank"]);
+  });
+
+  it("names the layout's MASTER too, which is what a two-master deck requires", async () => {
+    /**
+     * THE WORST DEFECT THIS ADD-IN HAS SHIPPED, and it was a documented API
+     * misuse sitting in plain sight.
+     *
+     * `AddSlideOptions`: a `layoutId` sent without a `slideMasterId` "needs to
+     * be available for the default Slide Master ... Otherwise, an error will be
+     * thrown" — and the default is THE PREVIOUS SLIDE'S master. We took the
+     * blank layout of the FIRST master and sent it alone. On a one-master deck
+     * that is always legal, which is why it worked for months and why this
+     * fake — which had one master — could never catch it.
+     *
+     * On a two-master deck it is a server-side error. PowerPoint discards the
+     * revision (`errorLocalChangeLostSingleUser`, the only ErrorName in 109
+     * crash logs), resets undo history and rolls the deck back — so the slide
+     * is listed, listed again, and then gone, and the draw's `getItemAt(index)`
+     * lands past the end.
+     *
+     * Measured over 220 archived rounds, bucketed by the `layouts-readable`
+     * probe on whether the round crashed:
+     *
+     *     1 master  /  1 layout   @ 16:9     9 of 182  =   5%
+     *     2 masters / 12 layouts  @ 16:9     4 of   4  = 100%
+     *     2 masters / 12 layouts  @ 4:3     27 of  30  =  90%
+     *
+     * Hold the deck and the aspect ratio changes nothing. Hold the ratio and
+     * the deck moves it from 5% to 100%. It had been filed as "the 4:3 crash"
+     * for two weeks; 4:3 was along for the ride because that arm has only ever
+     * run on the two-master deck.
+     */
+    faults.twoMasterDeck = true;
+    try {
+      installHost([makeSlide("s1")]);
+      const slideId = await addSlideForChart();
+      expect(slideId, "the add was refused — the layout went without its master").toBeTruthy();
+      expect(addedWithLayout, "no layout was named").toEqual(["layout-blank"]);
+      expect(addedWithMaster, "the layout was sent without the master it belongs to").toEqual(["master-1"]);
+    } finally {
+      faults.twoMasterDeck = false;
+    }
+    /**
+     * A SURVIVING MUTANT, RECORDED. Disarming the fake's own enforcement of the
+     * rule — the `throw` in `slides.add` — breaks no test here, because these
+     * assertions read `addedWithMaster` directly rather than relying on the
+     * host refusing. That is the right way round: the assertion IS the
+     * contract, and it kills the mutants that matter (sending no master at all,
+     * from either the first add or the retry).
+     *
+     * The fake's throw is there for every OTHER test in this file, so that any
+     * future path which adds a slide on a two-master deck fails loudly instead
+     * of quietly reproducing the defect. Nothing asserts that today.
+     */
+  });
+
+  it("names the master on the RETRY add too, not just the first one", async () => {
+    /**
+     * `addSlides` issues its own `add()` again when the host swallows the first
+     * — a real path, because PowerPoint web does drop adds under load. That is
+     * what `faults.swallowAdds` models and what `slide add(s) never landed`
+     * counts.
+     *
+     * The retry is a SEPARATE call with its own options object, and a mutation
+     * run showed it surviving: dropping the master from the retry alone broke
+     * no test. On a two-master deck that would make every recovery from a
+     * swallowed add fail exactly the way the original defect did — rarer, and
+     * so even harder to diagnose a second time.
+     */
+    // installHost FIRST. It resets fault state, so faults armed before it are
+    // wiped — and arming them the other way round made this test exercise no
+    // retry at all while still passing in isolation.
+    installHost([makeSlide("s1")]);
+    faults.twoMasterDeck = true;
+    faults.swallowAdds = 1;
+    try {
+      const slideId = await addSlideForChart();
+      expect(slideId, "the retry add was refused — it went without its master").toBeTruthy();
+      expect(addedWithLayout.length, "the add was never retried, so this tested nothing").toBeGreaterThan(1);
+      expect(addedWithMaster.filter((m) => m === "master-1").length, "one of the adds went without its master").toBe(
+        addedWithMaster.length,
+      );
+    } finally {
+      faults.twoMasterDeck = false;
+      faults.swallowAdds = 0;
+    }
   });
 
   it("uses it for the demo deck too", async () => {

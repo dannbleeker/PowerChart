@@ -660,6 +660,16 @@ export const faults = {
    */
   refuseSlideDelete: false,
   /**
+   * The deck has TWO slide masters, and its slides belong to the second.
+   *
+   * The shape of every deck that has ever killed this host. `Presentation70`
+   * reads `2 master(s), 12 layout(s)` and crashed 31 of 34 archived rounds;
+   * `Presentation64` reads `1 master(s), 1 layout(s)` and crashed 9 of 182.
+   * This fake had one master, so the whole class was unreachable and the
+   * add-in shipped a documented API misuse for months.
+   */
+  twoMasterDeck: false,
+  /**
    * The slide IS GONE and the delete still reports failure — round 370's 4:3
    * host, reproduced.
    *
@@ -1363,6 +1373,19 @@ export type FakeShape = ReturnType<typeof makeShape>;
 
 /** Layout ids passed to slides.add() since the last installHost(). */
 export const addedWithLayout: (string | undefined)[] = [];
+
+/** Slide-master ids passed to slides.add() since the last installHost(). */
+export const addedWithMaster: (string | undefined)[] = [];
+
+/**
+ * The layouts a new slide may name WITHOUT also naming a master.
+ *
+ * They belong to the deck's DEFAULT master — the previous slide's — which is
+ * the second one under `faults.twoMasterDeck`. A layout from the other master
+ * is only legal when the add names its master too, which is the rule
+ * `slides.add` models above.
+ */
+export const LAYOUTS_VALID_WITHOUT_A_MASTER = new Set(["m2-layout-blank"]);
 
 /**
  * The queued-command failure a stalled getItemAt handle produces, surfaced at
@@ -2449,6 +2472,16 @@ export function installHost(
   const addedSlideSettleLookups = new Map<string, number>();
   const settledSlideIds = new Set<string>();
   let settleSeq = 1;
+  /**
+   * A test's own replacement for `slideMasters`, when it installs one.
+   *
+   * `slideMasters` became a getter so `faults.twoMasterDeck` could vary how
+   * many masters a deck has, and that silently broke assignment — the test
+   * that swaps in a throwing collection to check the no-masters fallback got
+   * "Cannot set property ... which has only a getter". The setter keeps both
+   * working: the fault chooses the shape, an explicit assignment overrides it.
+   */
+  let mastersOverride: unknown;
 
   const newSlideLeaseSpent = (id: string): boolean => {
     if (!addedSlideIds.has(id)) return false;
@@ -2584,8 +2617,41 @@ export function installHost(
           pendingCounts.push(result);
           return result;
         },
-        add: (options?: { layoutId?: string }) => {
+        add: (options?: { layoutId?: string; slideMasterId?: string }) => {
           addedWithLayout.push(options?.layoutId);
+          addedWithMaster.push(options?.slideMasterId);
+          /**
+           * THE DOCUMENTED RULE, AND THE ONE THIS FAKE COULD NOT BREAK.
+           *
+           * `AddSlideOptions` says a `layoutId` sent without a `slideMasterId`
+           * "needs to be available for the default Slide Master ... Otherwise,
+           * an error will be thrown", and that default is THE PREVIOUS SLIDE'S
+           * master. On a one-master deck it can never mismatch — and this fake
+           * had exactly one master, so it accepted the pairing forever and
+           * every test passed.
+           *
+           * The archive paid for that. Bucketed by the `layouts-readable`
+           * probe over 220 rounds: a one-master deck crashed 9 of 182 rounds
+           * (5%); a two-master deck 4 of 4 at 16:9 and 27 of 30 at 4:3. Same
+           * add-in, same builds. PowerPoint's own ULS names it
+           * `errorLocalChangeLostSingleUser`: it discards the revision and
+           * rolls the deck back, which is why a slide is listed twice and then
+           * gone, and why `getItemAt` then lands past the end.
+           *
+           * Modelled rather than assumed away, and armed only on a deck with
+           * more than one master, because that is the only state in which the
+           * real host can refuse.
+           */
+          if (
+            faults.twoMasterDeck &&
+            options?.layoutId &&
+            !options.slideMasterId &&
+            !LAYOUTS_VALID_WITHOUT_A_MASTER.has(options.layoutId)
+          ) {
+            throw new Error(
+              "GeneralException | code=GeneralException | the layout is not available for the default slide master",
+            );
+          }
           if (faults.swallowAdds > 0) {
             faults.swallowAdds--; // the host dropped this add — no slide appears
             return;
@@ -2839,20 +2905,32 @@ export function installHost(
       })(),
       // A real deck's master carries several layouts; only one is blank, and
       // its NAME is localised — which is why the renderer matches on type.
-      slideMasters: {
-        items: [
-          {
-            id: "master-1",
-            layouts: {
-              items: [
-                { id: "layout-title", name: "Titeldias", type: "titleSlide" },
-                { id: "layout-blank", name: "Tom", type: "blank" },
-                { id: "layout-content", name: "Titel og indhold", type: "object" },
-              ],
-            },
+      set slideMasters(v: unknown) {
+        mastersOverride = v;
+      },
+      get slideMasters() {
+        if (mastersOverride) return mastersOverride as { items: unknown[]; load(): void };
+        const first = {
+          id: "master-1",
+          layouts: {
+            items: [
+              { id: "layout-title", name: "Titeldias", type: "titleSlide" },
+              { id: "layout-blank", name: "Tom", type: "blank" },
+              { id: "layout-content", name: "Titel og indhold", type: "object" },
+            ],
           },
-        ],
-        load() {},
+        };
+        /**
+         * A SECOND MASTER, AND THE DECK'S SLIDES BELONG TO IT — see
+         * `faults.twoMasterDeck`. It is second in `items` on purpose: code that
+         * walks the masters looking for a blank layout finds the FIRST one's,
+         * which is exactly the layout that is not legal for this deck's default
+         * master unless the add names its master too.
+         */
+        const items = faults.twoMasterDeck
+          ? [first, { id: "master-2", layouts: { items: [{ id: "m2-layout-blank", name: "Tom", type: "blank" }] } }]
+          : [first];
+        return { items, load() {} };
       },
       getSelectedSlides: () => ({
         getItemAt: () =>
@@ -3172,6 +3250,7 @@ export function installHost(
   faults.slideImageGate = null;
   faults.refuseSlideDelete = false;
   faults.slideVanishesInsteadOfDeleting = false;
+  faults.twoMasterDeck = false;
   faults.deckInsertNeverAnswers = false;
   faults.selectionReadThrows = false;
   faults.tagsUndefinedOn = 0;
@@ -3197,6 +3276,7 @@ export function installHost(
   unansweredNullChecks.clear();
   faults.swallowDecks = 0;
   addedWithLayout.length = 0;
+  addedWithMaster.length = 0;
   vi.stubGlobal("PowerPoint", {
     run: async <T>(cb: (ctx: typeof context) => Promise<T>) => {
       trips.contexts++;
