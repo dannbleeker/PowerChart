@@ -1117,6 +1117,45 @@ function barInk(scene: Scene): number {
  * is the refusal rather than an empty slide (see the collapse readback above,
  * and `slideHoldsOnlyChart`).
  */
+/**
+ * Delete the slide this scenario added, found by what the deck gained.
+ *
+ * WHY NOT JUST DELETE IT BY ITS ID. The id `addSlideForChart` returns is the
+ * add-time one — `4123571152#123571113` — and this host RE-KEYS a slide once it
+ * settles, to `258#347339495` and the like. So minutes later the deck holds the
+ * slide under a name nobody upstream has, `deleteSlideById` cannot resolve it,
+ * `deleteSlideByPosition` finds `indexOf === -1`, and it correctly refuses to
+ * remove an index whose id does not match. That refusal is load-bearing and
+ * must stay: round 124 reported 62 scratch slides swept and deleted none.
+ *
+ * The probe layer already works around this by sweeping positionally, and its
+ * own trace says why — "delete-by-id left slides behind and this host does not
+ * list the ids they were added under".
+ *
+ * So the slide is identified by a SET DIFFERENCE taken at delete time rather
+ * than by a name captured at add time. Whatever the deck calls it now, it is
+ * the id that is in the listing and was not there before. That is immune to
+ * re-keying by construction, and it hands `deleteSlideById` an id the deck is
+ * currently listing — the case it handles well.
+ *
+ * NOT EXACTLY ONE means something else changed the deck underneath this
+ * scenario, and then nothing here can attribute a slide to this add. It
+ * refuses rather than guessing, for the same reason the positional delete does.
+ *
+ * This became possible only on 2026-09-03. Before the slide-master fix the
+ * added slide was rejected by the server and rolled back, so there was no
+ * slide to find and no diff to take.
+ */
+async function deleteSlideAddedSince(before: string[] | undefined): Promise<boolean> {
+  if (!before) return false;
+  const now = await deckSlideIds().catch(() => undefined);
+  if (!now) return false;
+  const known = new Set(before);
+  const fresh = now.filter((id) => !known.has(id));
+  if (fresh.length !== 1) return false;
+  return deleteSlideById(fresh[0]);
+}
+
 async function stillThere(target: { slideId: string; shapeId?: string }): Promise<boolean | undefined> {
   if (!target.shapeId) return undefined;
   const shapes = await slideShapeList(target.slideId);
@@ -1880,6 +1919,10 @@ const stopMidDraw: Scenario = async (prefix) => {
    * it and taking a probe chart with them, and any wreckage that does survive is
    * on a slide nothing else reads.
    */
+  // The deck's ids BEFORE the add, so the cleanup can find the slide by what
+  // the deck gained rather than by a name that will have changed. See
+  // `deleteSlideAddedSince`.
+  const deckIdsBefore = await deckSlideIds().catch(() => undefined);
   const slideId = await addSlideForChart();
   if (!slideId)
     return { ok: false, skipped: true, detail: "the host would not add a slide to draw the stopped chart on" };
@@ -1915,7 +1958,7 @@ const stopMidDraw: Scenario = async (prefix) => {
   // CLEAN UP FIRST, REPORT SECOND. Whatever this scenario decides, the deck must
   // be left as it was found — every scenario after this one reads it. One slide
   // delete, not N shape deletes.
-  const sweptSlide = await deleteSlideById(slideId);
+  const sweptSlide = (await deleteSlideAddedSince(deckIdsBefore)) || (await deleteSlideById(slideId));
   const slideCountAfter = await slideCount();
   /**
    * A stop that landed before any shape did is the case `stop a run part-way`
@@ -2045,7 +2088,10 @@ const bigChartOnItsOwnSlide: Scenario = async (prefix) => {
 
   // Read BEFORE the add, so the cleanup below can tell a slide that would not
   // go from one that was never there. See the verdict for why that matters.
+  // The id list is for the same cleanup, by set difference — the slide will be
+  // called something else by the time it is deleted. See `deleteSlideAddedSince`.
   const slideCountBefore = await slideCount();
+  const deckIdsBefore = await deckSlideIds().catch(() => undefined);
   const slideId = await addSlideForChart();
   if (!slideId)
     // The host dropping the add is `addSlides`' own finding and not this
@@ -2073,7 +2119,7 @@ const bigChartOnItsOwnSlide: Scenario = async (prefix) => {
   const landed = (await slideShapeList(slideId))?.length;
   // CLEAN UP FIRST, REPORT SECOND — every scenario after this one reads the
   // deck. One slide delete, not N shape deletes.
-  const swept = await deleteSlideById(slideId);
+  const swept = (await deleteSlideAddedSince(deckIdsBefore)) || (await deleteSlideById(slideId));
   const slideCountAfter = await slideCount();
 
   /**

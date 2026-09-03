@@ -855,6 +855,40 @@ describe("the scenarios the selection API unlocked", () => {
     }
   });
 
+  it("finds the slide it added by what the deck GAINED, once the id has changed under it", async () => {
+    /**
+     * THE LAST THING KEEPING THESE TWO SCENARIOS RED, and it only became
+     * fixable on 2026-09-03.
+     *
+     * The id `addSlideForChart` returns is the add-time one; this host re-keys
+     * a slide once it settles. So by cleanup time the deck holds the slide
+     * under a name nobody upstream has: `deleteSlideById` cannot resolve it,
+     * the positional fallback finds `indexOf === -1`, and it correctly refuses
+     * to remove an index whose id does not match. That refusal must stay —
+     * round 124 reported 62 scratch slides swept and deleted none.
+     *
+     * `deleteSlideAddedSince` sidesteps the name entirely: it diffs the deck
+     * listing at DELETE time, so whatever the slide is called now, it is the id
+     * that is there and was not before.
+     *
+     * Before the slide-master fix this could not have worked at all — the added
+     * slide was rejected by the server and rolled back, so there was nothing to
+     * find. `newSlideIdSettlesAfter` is what makes the fake re-key the way the
+     * host does.
+     */
+    installHost([makeSlide("s1")]);
+    faults.newSlideIdSettlesAfter = 1;
+    try {
+      const r = byName(await runSelfTest("probe", "stop a run mid-draw"))["stop a run mid-draw"];
+      expect(
+        r.detail,
+        "the slide was left in the deck even though the deck was listing it under a new name",
+      ).not.toMatch(/still in the deck/);
+    } finally {
+      faults.newSlideIdSettlesAfter = null;
+    }
+  });
+
   it("does not invent wreckage when the delete was refused because the slide had already gone", async () => {
     /**
      * THE OTHER HALF OF THE SAME QUESTION, and the scenario got it wrong until
