@@ -1620,6 +1620,59 @@ export function browserReachable(sh) {
  * crash on a perfectly healthy host, every time. Same family as the ref that
  * `buildOf` used to read out of its own haystack.
  */
+/**
+ * How long to keep watching the pane after PowerPoint's crash dialog appears.
+ *
+ * The pane's own budget is `DECK_EVIDENCE_TIMEOUT_MS` — 45 seconds — and its
+ * timer starts when the SCAN starts, which is some seconds before the dialog
+ * shows. 90 gives that a clear margin plus the local work that follows it, and
+ * still costs a twentieth of the wedge budget it is spent against.
+ *
+ * Env-overridable for the same reason every other budget here is: the one thing
+ * that would make it wrong is a host slower than any yet seen.
+ */
+export const PANE_FINISH_GRACE_MS = Number(process.env.PW_PANE_FINISH_GRACE_MS) || 90_000;
+
+/**
+ * Did the pane finish the round anyway, after the host died under it?
+ *
+ * Polls the one signal that means the round is complete and downloadable — the
+ * same enabled-button test the main loop breaks on — and answers false when the
+ * grace runs out. See the call site for why this exists at all.
+ *
+ * READS ONLY THE PANE, never the host: `find` is a DOM read against an iframe
+ * that outlived Office.js, so it works precisely when nothing else does. An
+ * Office.js call here would hang on the dead host and spend the grace waiting
+ * for a single answer.
+ *
+ * A poll that FAILS TO RUN is not a "no" — `sh.state.lastFailed` says the call
+ * never happened, and folding that into "the pane is gone" is the mistake the
+ * main loop's `dlFailed` comment describes at length. Those polls are skipped,
+ * so a busy CLI costs patience rather than a round.
+ */
+export async function paneFinishedAnyway(sh, sleep, started, graceMs = PANE_FINISH_GRACE_MS) {
+  const until = Date.now() + graceMs;
+  console.log(
+    `  the round's verdicts are banked before the deck scan — watching the pane for ${Math.round(graceMs / 1000)}s ` +
+      "in case it finishes without the host",
+  );
+  while (Date.now() < until) {
+    await sleep(3000);
+    const dl = sh("find", "Download run log");
+    if (sh.state.lastFailed) continue;
+    if (/button "Download run log"(?! \[disabled\])/.test(dl)) {
+      const secs = Math.round((Date.now() - started) / 1000);
+      console.log(
+        `  THE PANE FINISHED ANYWAY, ${secs}s in — the host died in the deck scan and the round survived it. ` +
+          "Filing it; its deck evidence will be absent and the round says so.",
+      );
+      return true;
+    }
+  }
+  console.error(`  the pane did not finish inside ${Math.round(graceMs / 1000)}s — this round is lost`);
+  return false;
+}
+
 export function sawCrashDialog(found) {
   const text = String(found ?? "").trim();
   // Deliberately NOT "does the output contain the word dialog". That version
@@ -2062,6 +2115,35 @@ export async function attempt(argv, deps, sh, healed = false) {
       // This is the only window in which the host's own account of the crash
       // exists, and three separate hand passes were spent reaching it.
       await keepCrashEvidence(sh, `${secs}s into a round`);
+      /**
+       * AND THEN WAIT, because the pane has a way out of this and has never
+       * once been given the time to take it.
+       *
+       * 41 of the 75 crash records on file — 55% — end at the same trace line:
+       * `collecting deck evidence — scanning`. That is the POST-ROUND inventory
+       * pass, which runs after every verdict is already banked in `lastRunLog`.
+       * The pane bounds it with `DECK_EVIDENCE_TIMEOUT_MS`, 45 seconds, exactly
+       * so a host dying in there cannot take the round with it; on timeout the
+       * scan returns undefined, the round files without deck evidence, and
+       * `demo-log` is enabled. Between that timeout and the button there is not
+       * one `await` — no host call at all, only local work — and the pane
+       * outlives the host, which is the same fact `keepCrashedRun` relies on to
+       * get a file out of every one of these.
+       *
+       * THAT TIMEOUT HAS FIRED IN 0 OF 77 RECORDS. Not because it does not
+       * work: because this branch returned the instant it saw the dialog, and
+       * the driver was gone before the pane's 45 seconds were up.
+       *
+       * So the cost of finding out is one minute against a 30-minute wedge
+       * budget, and the prize is a complete round — every verdict, every probe
+       * answer — where today there is a crash report and a gap in the archive.
+       * `docs/BACKLOG.md` item 14 asks whether a STUB may be filed for these.
+       * The better answer is not to lose them.
+       *
+       * The crash evidence above is kept either way: the host really did crash,
+       * and its account is worth having whether or not the round survives it.
+       */
+      if (await paneFinishedAnyway(sh, sleep, started)) break;
       return { code: 1, reason: "crashed" };
     }
     // THE BROWSER, not just the pane. Checked before the quiet counter because

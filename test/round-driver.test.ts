@@ -2113,6 +2113,123 @@ describe("what the driver had to do to get the round", () => {
   });
 });
 
+describe("the round the pane finishes after the host dies", () => {
+  /**
+   * 55% OF EVERY CRASH ON FILE IS RECOVERABLE AND NOTHING WAS RECOVERING IT.
+   *
+   * 41 of the 75 sound-build crash records end at the same trace line —
+   * `collecting deck evidence — scanning`, the POST-round inventory pass that
+   * runs after every verdict is already banked. The pane bounds it at 45s so a
+   * host dying in there cannot take the round; on timeout the scan gives up,
+   * the round files without deck evidence, and `Download run log` is enabled.
+   *
+   * That timeout has fired in **0 of 77** records — because the driver returned
+   * the instant it saw PowerPoint's dialog and was gone before the pane's 45
+   * seconds were up.
+   */
+  const paneSh = (script: Array<string>) => {
+    let n = 0;
+    const calls: string[][] = [];
+    const fn = ((...args: string[]) => {
+      calls.push(args);
+      if (args[0] !== "find") return "ok";
+      const out = script[Math.min(n, script.length - 1)];
+      n++;
+      fn.state.lastFailed = out === "FAIL";
+      return out === "FAIL" ? "" : out;
+    }) as unknown as ((...a: string[]) => string) & { state: { lastFailed: boolean } };
+    fn.state = { lastFailed: false };
+    return { fn, calls, polls: () => n };
+  };
+  const ENABLED = '  - button "Download run log" [ref=f2]';
+  const DISABLED = '  - button "Download run log" [disabled] [ref=f2]';
+  const sleep = async () => {};
+
+  it("waits out the pane's budget and files the round instead of losing it", async () => {
+    // Disabled for three polls, then the pane's 45s scan budget expires, the
+    // round files itself, and the button comes alive.
+    const { fn, polls } = paneSh([DISABLED, DISABLED, DISABLED, ENABLED]);
+    expect(await driver.paneFinishedAnyway(fn, sleep, Date.now(), 90_000)).toBe(true);
+    expect(polls(), "it stopped polling before the pane could answer").toBeGreaterThanOrEqual(4);
+  });
+
+  it("gives up when the pane really is gone, rather than waiting for ever", async () => {
+    // The other half. A host that took the pane with it must still cost a
+    // bounded amount of time — this runs inside a 30-minute wedge budget and
+    // spending it here would trade one lost round for a lost night.
+    const { fn, polls } = paneSh([DISABLED]);
+    const began = Date.now();
+    expect(await driver.paneFinishedAnyway(fn, (async () => {}) as never, began, 300)).toBe(false);
+    // BOUNDED, and measured rather than assumed: it has to come back inside the
+    // grace it was given, not merely come back. An unbounded version of this
+    // would trade one lost round for a whole lost night.
+    expect(Date.now() - began, "it waited past the grace it was handed").toBeLessThan(5_000);
+    expect(polls(), "it gave up without reading the button at all").toBeGreaterThanOrEqual(2);
+  });
+
+  it("never reads a DISABLED button as a finished round", async () => {
+    /**
+     * The button exists from the moment the pane loads; `disabled` is the only
+     * thing separating "a round is running" from "a round is done". Matching
+     * the name alone would file the PREVIOUS round's log as this one's — the
+     * exact defect `archive`'s build check exists to catch downstream, and it
+     * should never get that far.
+     */
+    const { fn, polls } = paneSh([DISABLED]);
+    expect(await driver.paneFinishedAnyway(fn, (async () => {}) as never, Date.now(), 300)).toBe(false);
+    /**
+     * AND IT HAS TO HAVE LOOKED. The first version of this passed a 60ms grace,
+     * which expired before the loop could poll — so it asserted "returns false"
+     * against a function that had not read anything at all, and survived the
+     * mutant that deletes the `[disabled]` lookahead entirely. A test that
+     * cannot reach the code it names is not a test.
+     */
+    expect(polls(), "the grace expired before it read the button even once").toBeGreaterThanOrEqual(2);
+  });
+
+  it("does not read a poll that never ran as a pane that is gone", async () => {
+    /**
+     * `sh.state.lastFailed` means the CLI call itself did not happen — a second
+     * terminal touching the session, a busy CLI — and it is not evidence about
+     * the pane. The main poll loop carries a long comment about the round this
+     * confusion once killed. A failed poll here must cost patience, not the
+     * round: the pane answers on the very next one.
+     */
+    const { fn } = paneSh(["FAIL", "FAIL", ENABLED]);
+    expect(await driver.paneFinishedAnyway(fn, sleep, Date.now(), 90_000)).toBe(true);
+  });
+
+  it("is wired into the crash branch, ahead of giving the round up", () => {
+    /**
+     * The half a unit test cannot reach. `paneFinishedAnyway` can be perfect
+     * and change nothing if the crash branch still returns first — which is
+     * precisely the shape of the defect it exists to fix, and the shape this
+     * repo has shipped five times.
+     *
+     * Order matters twice over: the crash evidence must still be captured
+     * BEFORE the wait (it is the only window in which the host's own account
+     * exists), and the wait must come before the `return`.
+     */
+    const src = readFileSync(new URL("../scripts/round.mjs", import.meta.url), "utf8");
+    // ANCHORED ON THE MESSAGE, not on `sawCrashDialog` — that call appears three
+    // times in this file and `indexOf` finds the readiness one, 300 lines from
+    // the poll loop this test is about. The first draft asserted against the
+    // wrong branch entirely and failed for the right-looking wrong reason.
+    const branch = src.slice(src.indexOf("PowerPoint crashed ${secs}s in"));
+    const body = branch.slice(0, branch.indexOf("\n    }"));
+    expect(body, "the crash branch no longer waits for the pane").toMatch(/paneFinishedAnyway\(sh, sleep, started\)/);
+    expect(body.indexOf("keepCrashEvidence"), "the host's account is no longer captured first").toBeGreaterThan(-1);
+    expect(
+      body.indexOf("keepCrashEvidence") < body.indexOf("paneFinishedAnyway"),
+      "the wait now runs before the crash evidence is captured — recovery would reload the tab first",
+    ).toBe(true);
+    expect(
+      body.indexOf("paneFinishedAnyway") < body.indexOf('return { code: 1, reason: "crashed" }'),
+      "the round is given up before the pane is given its chance",
+    ).toBe(true);
+  });
+});
+
 describe("the steps a crashed round managed to write", () => {
   const OFFERED = '        - button "Download the crashed run" [ref=f7c1]';
   const shWith = (out: string) => {
