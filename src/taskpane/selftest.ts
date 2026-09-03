@@ -1959,6 +1959,89 @@ const stopMidDraw: Scenario = async (prefix) => {
 };
 
 /**
+ * A BIG chart on a slide of its own — the shipped feature nothing has tested.
+ *
+ * `offerOwnSlide` puts a chart on a freshly added slide when the current one is
+ * crowded, and it fires precisely when the chart is BIG: that is the whole
+ * point of the offer. So the shipped path is "add a slide, then draw a chart
+ * across many batches onto it", and no scenario has ever walked it.
+ *
+ * WHY IT IS SUSPECTED. `stop a run mid-draw` moved onto its own slide in
+ * `ca138f8` and has thrown `GeneralException` at `SlideCollection.getItem` on
+ * every one of the six rounds since — after passing twice on the build before,
+ * when it drew on the VISIBLE slide. That is a clean build boundary with one
+ * `src/` change in it, and the elapsed times overlap (a pass at 488s, a failure
+ * at 400s), so it is not the host tiring.
+ *
+ * WHAT THIS ISOLATES. That scenario also requests a STOP, so its failure has
+ * two candidate causes and cannot separate them. This one changes exactly one
+ * thing: same freshly-added slide, same multi-batch chart, NO stop. A failure
+ * here means the shipped offer is broken for the charts it exists to serve. A
+ * pass means the stop is implicated and the feature is safe.
+ *
+ * `insertSceneIntoSlide` holds ONE slide proxy for the whole draw — see the
+ * long note above `getTargetSlide` — and that proxy came from
+ * `slides.getItem(id)`. Office.js replays the statement chain on every sync, so
+ * a `getItem` the host will not honour fails at the FIRST sync that uses it and
+ * every one after. `addSlideForChart` is built to return a settled, positional
+ * id precisely so that cannot happen; whether it is enough across eleven syncs
+ * is the open question, and it is open because nothing has ever asked.
+ */
+const bigChartOnItsOwnSlide: Scenario = async (prefix) => {
+  const slideId = await addSlideForChart();
+  if (!slideId)
+    // The host dropping the add is `addSlides`' own finding and not this
+    // scenario's — reporting it here would blame the draw for a slide that
+    // never arrived.
+    return { ok: false, skipped: true, detail: "the host would not add a slide to draw on" };
+
+  // The same shape and size as the mid-draw scenario's chart, so the two differ
+  // in exactly one thing. A waffle at this size is ~103 shapes: eleven batches
+  // at SHAPES_PER_SYNC, which is what makes this a test of the multi-sync path
+  // rather than of a single commit.
+  const c = { ...cfg(`${prefix} own slide`, "waffle"), width: 320, height: 220 };
+  const scene = buildChart(c);
+  let batches = 0;
+  let outcome: string;
+  try {
+    const target = await insertSceneIntoSlide(scene, { slideId, tagData: JSON.stringify(c) }, (phase) => {
+      if (phase === "commit") batches += 1;
+    });
+    outcome = target ? "drew" : "finished without reporting a chart";
+  } catch (err) {
+    outcome = `threw: ${errorText(err)}`;
+  }
+
+  const landed = (await slideShapeList(slideId))?.length;
+  // CLEAN UP FIRST, REPORT SECOND — every scenario after this one reads the
+  // deck. One slide delete, not N shape deletes.
+  const swept = await deleteSlideById(slideId);
+
+  /**
+   * BATCHES MATTER TO THE VERDICT. A chart that happened to fit in one commit
+   * would pass this scenario while testing nothing — the multi-sync path is the
+   * whole subject — so too few batches is a SKIP rather than a pass.
+   */
+  if (outcome === "drew" && batches < 2)
+    return {
+      ok: false,
+      skipped: true,
+      detail: `the chart drew in ${batches} batch(es), so nothing crossed a sync boundary on the new slide`,
+    };
+  const problems = [
+    outcome !== "drew" && outcome,
+    !swept && "the scenario could not delete the slide it added",
+    typeof landed === "number" && landed === 0 && "the draw reported success and the slide came back empty",
+  ].filter(Boolean);
+  return {
+    ok: problems.length === 0,
+    detail: problems.length
+      ? `${problems.join("; ")} (${batches} batch(es), ${landed ?? "unreadable"} shape(s) landed)`
+      : `${batches} batches onto a slide added moments before, ${landed} shapes, slide swept`,
+  };
+};
+
+/**
  * Whether anything is actually VISIBLE.
  *
  * Every other assertion in this file counts shapes and reads tags. All of them
@@ -3468,6 +3551,11 @@ const SCENARIOS: {
   // wreckage; running it before the cheaper before-the-first-batch case would
   // put the harder of the two first for no reason.
   { name: "stop a run mid-draw", run: stopMidDraw },
+  // Placed straight after it, because the two differ in exactly one thing and a
+  // reader comparing their verdicts is the whole point. A NEW name, so it opens
+  // its own series and disturbs no round of history — `scenarioRegressions`
+  // compares by name.
+  { name: "a big chart on a slide of its own", run: bigChartOnItsOwnSlide },
   // Picked only because it is 0 for 4 and takes the tab with it every time.
   //
   // Four real-host rounds, four different builds (a5b032d, 618b8d8, cedbc6c,

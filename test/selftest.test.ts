@@ -160,6 +160,23 @@ describe("the host self-test battery", () => {
       // real host. It cleans up the wreckage it makes, because the deck it draws
       // into is the deck every later scenario reads.
       "stop a run mid-draw",
+      /**
+       * Straight after it, and differing from it in exactly one thing: no stop.
+       *
+       * `stop a run mid-draw` moved onto a freshly-added slide in `ca138f8` and
+       * has thrown `GeneralException` at `SlideCollection.getItem` on all six
+       * rounds since, after passing twice on the build before, when it drew on
+       * the visible slide. One `src/` change in that boundary, and the elapsed
+       * times overlap — a pass at 488s against a failure at 400s — so it is not
+       * the host tiring.
+       *
+       * But that scenario also requests a STOP, so it cannot say which of the
+       * two caused it. This one holds everything else and drops the stop, which
+       * makes it a test of the SHIPPED `offerOwnSlide` path: add a slide, draw
+       * a big chart across eleven syncs onto it. That path fires precisely when
+       * a chart is big, and nothing has ever walked it.
+       */
+      "a big chart on a slide of its own",
       // Routine again as of `c7d91d5`, where it PASSED on a real host after
       // five rounds of killing the tab — see the case below. Still last, for
       // the reason everything newest is last.
