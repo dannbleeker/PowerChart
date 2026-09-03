@@ -3024,3 +3024,63 @@ PowerPoint session, and it is the scale at which this happens.
 This costs the EVIDENCE COLLECTION after a run, not the run. That is why it has
 been survivable for a month and why it has never been urgent — and it is also
 what stopped the 4:3 leg on 2026-08-28.
+
+### A slide added in this session cannot be deleted by the id it was added under — round 369, 2026-09-03
+
+The by-index insert fix (`6438dd1`) landed and works: round 369 drew all **11
+batches** onto a freshly-added slide where every prior round died on the first,
+and the trace carries a signature this archive had never produced —
+`8x insert|resolved the target slide to an index`.
+
+What it uncovered is the SAME defect one call further on. Both own-slide
+scenarios still fail, and neither now mentions `GeneralException`:
+
+    a big chart on a slide of its own   the scenario could not delete the slide it added
+    stop a run mid-draw                 the slide this drew on could not be deleted
+
+**The cause, in the host's own words.** A slide is added under one id and
+re-keyed once it settles. Round 369 recorded the swap twenty times:
+
+    re-acquired the scratch slide by position instead of adding one
+      {"was":"4123571139#123571113","now":"282#3064692630"}
+
+and the probe layer's positional sweep states the conclusion outright:
+
+    "delete-by-id left slides behind and this host does not list the ids
+     they were added under"
+
+So `deleteSlideById` gets an add-time id, `slideIds()` no longer lists it,
+`deleteSlideByPosition` finds `indexOf === -1`, and it returns false.
+
+**That refusal is CORRECT and must stay.** The comment above it was bought with
+round 124's receipt — 62 scratch slides reported swept and zero actually gone.
+An index whose id does not match is not the slide we added, and deleting it
+would remove a slide from someone's presentation with no undo. Do not "fix"
+this by relaxing the check.
+
+**It is a product path, not only the harness.** The pane's Tidy button
+(`app.ts:4910`) walks `tidyable` through `deleteSlideById`. If those are
+add-time ids, Tidy reports `0` removed and leaves the deck as it found it.
+Worth measuring before designing: nobody has checked which id space `tidyable`
+holds.
+
+**The shape of the fix, not the fix.** The insert path survived by resolving the
+id to an INDEX once, early, while the add-time id was still listed, and then
+carrying the index. Deletion has no such early moment — the caller holds a
+string across an arbitrary gap. Options, none costed yet:
+
+1. `addSlideForChart` returns a handle carrying both the id and the index it was
+   added at, and the caller re-verifies the slide at that index before deleting.
+2. Tag the slide at add time and delete by tag lookup, which survives re-keying.
+3. Leave deletion refusing, and make the CALLERS say so — the scenarios would
+   then report "the host will not let this be cleaned up", which is true, rather
+   than failing.
+
+(3) is honest and cheap and does not touch a destructive path; (2) is the real
+fix. This wants an owner decision, because option (3) changes what two
+long-running scenarios report and the archive compares scenarios by name.
+
+**Not urgent, and not a regression.** These two scenarios were already failing —
+on `GeneralException`, which was worse. The 10 loose shapes the grouping check
+flagged this round are the deliberately-aborted draw that this defect then could
+not clear, not a grouping fault: 11 of 11 attempts grouped, 0 refused.
