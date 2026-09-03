@@ -44,9 +44,11 @@
     "pptxgenjs": "^4.0.1"
   },
   "_overrides_why": "qs: GHSA-q8mj-m7cp-5q26 reaches us only through @stryker-mutator/core -> typed-rest-client, which pins a vulnerable range. `npm audit fix` reported a fix available and then changed nothing, because it cannot move a pinned transitive. The advisory range is 6.11.1-6.15.1 and 6.15.3 is outside it, so this is a PATCH bump on the same minor, not a version gamble. Dev-only: qs is never shipped. Remove this once typed-rest-client ships a version that does not pin a vulnerable qs.",
+  "_fast_uri_why": "fast-uri: GHSA-5jgf-p345-68v8, GHSA-f65p-4m7j-42xc, GHSA-fph4-wmhf-6fwf, GHSA-jqff-g426-hqxp (four HIGH, all fixed in 3.1.6) reach us only through @stryker-mutator/core -> ajv, which resolved 3.1.5. All four are SSRF or host-confusion in URI parsing, and nothing here parses a hostile URI: Stryker is a test-time mutation runner and fast-uri is NEVER shipped — it is absent from the add-in bundle, which is what a user receives. So this is repo hygiene on a public repo, not user exposure. A patch bump on the same minor. Remove once ajv resolves >=3.1.6 on its own.",
   "overrides": {
     "qs": "^6.15.3",
-    "image-size": "file:vendor/image-size-stub"
+    "image-size": "file:vendor/image-size-stub",
+    "fast-uri": "^3.1.6"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
