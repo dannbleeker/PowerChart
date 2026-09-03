@@ -1373,6 +1373,12 @@ let contextBaseCount = 0;
  * is the host itself slowing down.
  */
 let syncsInContext = 0;
+/**
+ * True only while `run` is making the closing auto-sync that carries a batch's
+ * return value out. See both call sites: it is exercised so a wrapper around
+ * `sync` is caught, and not charged so the suite's fault indices stay put.
+ */
+let inClosingAutoSync = false;
 
 /** Set by installHost so a slide can splice itself out of the live deck. */
 let deckRemove: ((s: { id: string }) => void) | null = null;
@@ -2845,6 +2851,26 @@ export function installHost(
      * stayed green. See the `run` stub below.
      */
     sync: async <T>(passThroughValue?: T): Promise<T | undefined> => {
+      /**
+       * THE BATCH'S CLOSING AUTO-SYNC CARRIES THE VALUE AND NOTHING ELSE.
+       *
+       * Office.js ends every `run` with `.then(r => ctx.sync(r))`, and modelling
+       * that is what lets this fake catch a wrapper that drops the argument —
+       * the defect that let a completely broken add-in pass 3,831 tests.
+       *
+       * But it is also a real sync, and counting it renumbered every
+       * fault-injection index in the suite: ten tests that pin wedge and stall
+       * behaviour to "the Nth sync" broke at once. Those indices are load-bearing
+       * and re-numbering them by hand would silently move what each test asserts.
+       *
+       * So this call is exercised but not CHARGED. Anything wrapping `sync` still
+       * runs — that is the whole point, and a wrapper that swallows
+       * `passThroughValue` still fails here — while the fault machinery, the trip
+       * counters and the commit bookkeeping stay on the syncs the code under test
+       * actually asked for. The fake stays faithful in the dimension the bug
+       * lives in and stable in the dimension the suite indexes by.
+       */
+      if (inClosingAutoSync) return passThroughValue;
       trips.syncs++;
       syncsInContext++;
       // Charged BEFORE anything else this sync does, and unconditionally, so
@@ -3145,8 +3171,27 @@ export function installHost(
        * hurried one at the end of a long day, so the upgrade is filed and the
        * contract is guarded directly instead — see the pass-through test in
        * `test/office-render.test.ts`.
+       *
+       * ADOPTED 2026-09-03. The deferral above was the right call at the end of
+       * a long day and the wrong one to leave standing: a fake that cannot fail
+       * the way the real host fails is a second implementation that agrees with
+       * you, and this one let a completely broken add-in pass 3,831 tests.
+       *
+       * The lookup happens INSIDE this callback, after `cb` resolves, because
+       * that is where Office.js does it — `.then(runBodyResult => ctx.sync(...))`.
+       * Written as `context.sync(await cb(context))` it would resolve the member
+       * reference BEFORE the argument, capture the unpatched `sync`, and be
+       * blind to exactly the wrapper class it exists to catch. That is not
+       * hypothetical: the first draft of the guard test made that mistake and
+       * passed against the bug.
        */
-      return cb(context);
+      const runBodyResult = await cb(context);
+      inClosingAutoSync = true;
+      try {
+        return await context.sync(runBodyResult);
+      } finally {
+        inClosingAutoSync = false;
+      }
     },
     // Real Office.js exposes all 177 presets. A plain object listing only the
     // ones in use today hands back `undefined` for any other name, and the
