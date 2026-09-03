@@ -3550,12 +3550,24 @@ const SCENARIOS: {
   // AFTER it, deliberately. This one aborts a half-drawn chart and cleans up the
   // wreckage; running it before the cheaper before-the-first-batch case would
   // put the harder of the two first for no reason.
-  { name: "stop a run mid-draw", run: stopMidDraw },
-  // Placed straight after it, because the two differ in exactly one thing and a
-  // reader comparing their verdicts is the whole point. A NEW name, so it opens
-  // its own series and disturbs no round of history — `scenarioRegressions`
-  // compares by name.
+  /**
+   * BEFORE the mid-draw stop, not after it, and the first attempt had it the
+   * wrong way round.
+   *
+   * The two differ in exactly one thing and a reader comparing their verdicts
+   * is the point — but `stop a run mid-draw` does not merely FAIL, it takes the
+   * round with it often enough to matter: the round on build a69c7fd banked 12
+   * verdicts and died at scenario 13, which is that one. Placed after it, this
+   * scenario never got a turn, so the question it exists to answer went
+   * unanswered by the round run to answer it.
+   *
+   * A scenario that cannot run because an earlier one killed the host is a
+   * scenario that reports nothing, and ordering is the whole remedy. A NEW
+   * name, so it opens its own series and disturbs no round of history —
+   * `scenarioRegressions` compares by name.
+   */
   { name: "a big chart on a slide of its own", run: bigChartOnItsOwnSlide },
+  { name: "stop a run mid-draw", run: stopMidDraw },
   // Picked only because it is 0 for 4 and takes the tab with it every time.
   //
   // Four real-host rounds, four different builds (a5b032d, 618b8d8, cedbc6c,

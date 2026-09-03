@@ -159,7 +159,7 @@ describe("the host self-test battery", () => {
       // the case the Stop button exists for and had never been exercised on a
       // real host. It cleans up the wreckage it makes, because the deck it draws
       // into is the deck every later scenario reads.
-      "stop a run mid-draw",
+      "a big chart on a slide of its own",
       /**
        * Straight after it, and differing from it in exactly one thing: no stop.
        *
@@ -176,7 +176,7 @@ describe("the host self-test battery", () => {
        * a big chart across eleven syncs onto it. That path fires precisely when
        * a chart is big, and nothing has ever walked it.
        */
-      "a big chart on a slide of its own",
+      "stop a run mid-draw",
       // Routine again as of `c7d91d5`, where it PASSED on a real host after
       // five rounds of killing the tab — see the case below. Still last, for
       // the reason everything newest is last.
