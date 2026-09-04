@@ -3549,6 +3549,52 @@ describe("Explode respects the same budget the insert path enforces", () => {
     target: { slideId: "s1", shapeId: "pic-1", left: 10, top: 20 },
   });
 
+  it("does not promise, at insert time, the door it refuses at explode time", async () => {
+    /**
+     * THE LOCK WENT ON THE DOOR AND THE SIGN STAYED UP.
+     *
+     * The guard tested below was added so `doExplode` could not walk a user
+     * into a 401-shape draw. Nobody changed the sentence the INSERT path
+     * prints, which ended: `Inserted as a picture; "Explode to native shapes"
+     * turns it back.` Same predicate — `wantsAutoPicture`, same arguments —
+     * with one branch promising the door and the other refusing it.
+     *
+     * Being told the way back exists and finding it locked is worse than never
+     * being offered it, and it is the exact complaint a rival markets this
+     * whole category against: "a colleague asks you to just tweak the Q3 bar,
+     * and there's nothing to tweak."
+     *
+     * Pinned together here so a later change has to keep them agreeing.
+     */
+    /**
+     * The raster has to SUCCEED, or this tests the wrong branch. jsdom decodes
+     * no SVG, so without `stubRaster` the insert falls through to "could not be
+     * turned into a picture either" — a different sentence, which never carried
+     * the false promise. The first draft of this test asserted against that one
+     * and proved nothing about the message it was written for.
+     */
+    const raster = stubRaster();
+    let said: string;
+    try {
+      host.autoPicture = true;
+      $("insert").click();
+      await settle();
+      said = $("host-note").textContent ?? "";
+    } finally {
+      raster.restore();
+    }
+    expect(said, `the too-dense insert said nothing about a picture: ${said}`).toMatch(/picture/i);
+    expect(said, `still promising Explode while doExplode refuses it: ${said}`).not.toMatch(/turns it back/i);
+    /**
+     * AND IT SAYS WHAT IS TRUE, which was never said at all. The picture keeps
+     * the chart's config tag, so this pane can still load it, change its data
+     * and restyle it; only the conversion to native SHAPES needs a host that
+     * can draw them. That is a better offer than the one being made, and the
+     * user was not being given it.
+     */
+    expect(said, `did not tell the user what they CAN still do: ${said}`).toMatch(/edit it here|reloads its data/i);
+  });
+
   it("refuses to explode a chart the budget would have made a picture", async () => {
     host.autoPicture = true; // the renderer says: too many shapes for this host
     host.loadSelectionResult = pictureChart();

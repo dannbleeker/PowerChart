@@ -1947,7 +1947,30 @@ async function chartPicture(cfg: ChartConfig, scene: Scene): Promise<{ png?: str
     if (png)
       return {
         png,
-        warn: `That chart is ${shapes} shapes — too many for PowerPoint on the web to draw. Inserted as a picture; "Explode to native shapes" turns it back.`,
+        /**
+         * THIS USED TO PROMISE SOMETHING THE PRODUCT THEN REFUSED.
+         *
+         * It read: `Inserted as a picture; "Explode to native shapes" turns it
+         * back.` And `doExplode`, reached by the button that sentence names,
+         * asks `wantsAutoPicture` with THE SAME ARGUMENTS as the branch you are
+         * reading — and on the web answers "so it stays a picture. Open it on
+         * the desktop app to explode it, or make the chart simpler."
+         *
+         * One predicate, two contradictory promises. Being told the door back
+         * exists and then finding it locked is worse than never being offered
+         * it, and it is the exact complaint a rival markets this whole category
+         * against: "a colleague asks you to just tweak the Q3 bar, and there's
+         * nothing to tweak."
+         *
+         * What is TRUE is better than what was promised, and was never said:
+         * the picture carries the chart's config tag, so this pane can still
+         * load it, change its data and restyle it. Only the conversion to
+         * native SHAPES needs a host that can draw them.
+         */
+        warn:
+          `That chart is ${shapes} shapes — too many for PowerPoint on the web to draw, so it went in as a picture. ` +
+          `You can still edit it here: select it and this pane reloads its data. ` +
+          `Turning it into native shapes needs the desktop app.`,
       };
     // The rescue itself failed. Drawing the shapes anyway is still better than
     // refusing the user's chart, but this is precisely the case the budget

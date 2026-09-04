@@ -1619,6 +1619,31 @@ function boundedSync(context: PowerPoint.RequestContext, what: string, budgetMs 
 }
 
 /**
+ * How many slide masters the deck holds, or `undefined` if the host will not
+ * say.
+ *
+ * One number, and it decides a product question: whether inserting a generated
+ * .pptx quietly adds that file's own master to someone's deck. See the
+ * `mastersAfter` reading in `insertSlidesFromPptx`, and `blankLayoutTarget`
+ * for why a second master used to be fatal.
+ *
+ * Its own context, because it is called from a trace after another call has
+ * already finished, and it must not be able to fail that call.
+ */
+async function masterCount(): Promise<number | undefined> {
+  try {
+    return await ppRun(async (context) => {
+      const masters = context.presentation.slideMasters;
+      masters.load("items/id");
+      await context.sync();
+      return loadedItems(masters)?.length;
+    });
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * The blank layout to add a slide with, AND THE MASTER IT BELONGS TO.
  *
  * A slide added with no layout inherits the previous slide's — which on a fresh
@@ -7527,6 +7552,23 @@ export async function insertSlidesFromPptx(
     landed: after - before,
     base64Bytes: base64.length,
     formatting,
+    // DID THE FILE BRING ITS OWN MASTER IN WITH IT?
+    //
+    // A generated .pptx carries `ppt/slideMasters/slideMaster1.xml` and a
+    // `theme1.xml` of its own — measured, not assumed — and this call defaults
+    // to `KeepSourceFormatting`. If PowerPoint imported that master, every
+    // insert would push a deck one master further from the template its owner
+    // chose, and a two-master deck is the state that crashed 90-100% of this
+    // archive's rounds until 2026-09-04.
+    //
+    // Read here rather than hoped for. The archive answers this only by
+    // accident, when a later slide add happens to log a master count: on the
+    // two-master deck it stayed at 2 across rounds 377 and 378 (n=3 after the
+    // last insert, against 35-37 before), and on the ONE-master deck no such
+    // reading has ever landed after an insert at all. 1 becoming 2 is exactly
+    // the case a customer with a clean template would meet, and it is the one
+    // the archive cannot currently see.
+    mastersAfter: await masterCount(),
   });
   return after - before;
 }
