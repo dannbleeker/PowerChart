@@ -1146,15 +1146,59 @@ function barInk(scene: Scene): number {
  * This became possible only on 2026-09-03. Before the slide-master fix the
  * added slide was rejected by the server and rolled back, so there was no
  * slide to find and no diff to take.
+ *
+ * AND IT ASKS MORE THAN ONCE, because the first version was immune to the id
+ * having CHANGED and not to it not having changed YET.
+ *
+ * Round 378 caught that. `stop a run mid-draw` aborts early by design, so its
+ * cleanup runs seconds after the add — before the host re-keys — and the diff
+ * handed back the ADD-TIME id, which is exactly the name `deleteSlideById`
+ * cannot resolve. Rounds 376 and 377 passed the same scenario only because
+ * their cleanup ran later, after the re-key. Same code, opposite result, and
+ * the difference was timing.
+ *
+ * So it retries, briefly. Each pass re-reads the deck and re-takes the
+ * difference, because what changes between them is the NAME: the slide is
+ * there the whole time, under a form that resolves a moment later. Three
+ * passes over about a second, which is the settle window the rest of this file
+ * uses for the same host.
+ *
+ * THE RETRY IS A HYPOTHESIS, AND NO TEST HERE PROVES IT. Two reasons, both
+ * measured rather than assumed. `faults.newSlideIdSettlesAfter` settles an id
+ * after N LOOKUPS, and a single `deleteSlideById` attempt makes several on its
+ * own — so the id always settles inside one attempt, because the host's settle
+ * is a matter of TIME and this fake cannot express that. And the call site
+ * reads `deleteSlideAddedSince(...) || deleteSlideById(slideId)`, so a failed
+ * diff falls through to the old route and the verdict looks identical either
+ * way. Cutting this loop to a single pass changes no test in the suite; that
+ * was checked, not supposed.
+ *
+ * A ROUND ADJUDICATES IT. `stop a run mid-draw` failed this cleanup in rounds
+ * 378, 382 and 383. If it starts passing at 4:3 the retry is doing the work;
+ * if it does not, revert this rather than lengthen it. Do not read the loop as
+ * verified because the suite is green.
+ *
+ * DELIBERATELY NOT A POSITIONAL DELETE, though the diff knows the index and it
+ * would work first time. Deleting an index whose id has not been confirmed is
+ * the move round 124 punished — 62 scratch slides reported swept and none
+ * gone — and buying three retries is cheaper than reopening that. If every
+ * pass fails the caller is told false and reports it, which is honest and
+ * costs a scenario rather than someone's deck.
  */
 async function deleteSlideAddedSince(before: string[] | undefined): Promise<boolean> {
   if (!before) return false;
-  const now = await deckSlideIds().catch(() => undefined);
-  if (!now) return false;
   const known = new Set(before);
-  const fresh = now.filter((id) => !known.has(id));
-  if (fresh.length !== 1) return false;
-  return deleteSlideById(fresh[0]);
+  for (let pass = 0; pass < 3; pass++) {
+    if (pass) await new Promise((resolve) => setTimeout(resolve, 400));
+    const now = await deckSlideIds().catch(() => undefined);
+    if (!now) continue;
+    const fresh = now.filter((id) => !known.has(id));
+    // Not exactly one means something else moved the deck underneath this
+    // scenario, and no retry makes that attributable. Give up rather than guess.
+    if (fresh.length !== 1) return false;
+    if (await deleteSlideById(fresh[0])) return true;
+  }
+  return false;
 }
 
 async function stillThere(target: { slideId: string; shapeId?: string }): Promise<boolean | undefined> {
