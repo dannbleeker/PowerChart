@@ -1014,6 +1014,60 @@ describe("image render mode", () => {
     }
   });
 
+  it("names the rescued charts even when others fell back, and keeps the counts", async () => {
+    /**
+     * THREE NOTES, ONE SLOT. `doSameScale` posted the applied count, then a
+     * rescued clause, then a degraded clause, straight into a channel that
+     * holds one — so when both qualifiers fired the user saw only the last, and
+     * lost the rescued count, the chart count and the shared max with it.
+     *
+     * The rescued charts are the ones that matter here: they went in as
+     * PICTURES, and "Explode to native shapes" is the way back. Saying nothing
+     * about them steers the user away from the one control that recovers
+     * them — which is the same harm the test below this one guards against,
+     * reached from the other side.
+     *
+     * A MIXED RUN NEEDS A RASTER THAT SUCCEEDS ONCE AND THEN FAILS. Both flags
+     * that drive this are global to the fake, so the only per-chart lever is
+     * the canvas: chart one gets a png (warn + png = rescued), chart two does
+     * not (warn, no png = degraded).
+     */
+    class FakeImage {
+      onload: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      set src(_v: string) {
+        Promise.resolve().then(() => this.onload?.());
+      }
+    }
+    vi.stubGlobal("Image", FakeImage);
+    const ctx = vi
+      .spyOn(HTMLCanvasElement.prototype, "getContext")
+      .mockReturnValue({ scale() {}, drawImage() {} } as unknown as CanvasRenderingContext2D);
+    const url = vi
+      .spyOn(HTMLCanvasElement.prototype, "toDataURL")
+      .mockReturnValueOnce("data:image/png;base64,RASTER")
+      .mockReturnValue(null as unknown as string);
+    const co = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:x");
+    const re = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+    try {
+      host.autoPicture = true;
+      host.canPicture = true;
+      host.deckCharts = [
+        { configJson: chartJson([1, 5]), target: { shapeId: "a" } },
+        { configJson: chartJson([2, 90]), target: { shapeId: "b" } },
+      ];
+      $("same-scale").click();
+      await settle();
+
+      const said = $("host-note").textContent ?? "";
+      expect(said, `dropped the rescued charts entirely: ${said}`).toMatch(/went in as pictures/i);
+      expect(said, `dropped the charts that fell back: ${said}`).toMatch(/fell back to native shapes/i);
+      expect(said, `dropped the count and the shared max: ${said}`).toMatch(/max/i);
+    } finally {
+      for (const s of [ctx, url, co, re]) s.mockRestore();
+    }
+  });
+
   it("does not report a successful auto-picture rescue as a fallback to shapes", async () => {
     // `chartPicture` returns a warn WITH a png on its SUCCESS path: a chart too
     // dense for the web host, rasterised and inserted as a picture, the warn

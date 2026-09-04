@@ -2573,6 +2573,44 @@ async function runInsert(asNew: boolean) {
 }
 
 /**
+ * What Same Scale did, then what it cost — one sentence for one slot.
+ *
+ * THREE NOTES USED TO GO OUT BACK TO BACK: the applied count, then a rescued
+ * clause, then a degraded clause, into a channel that holds one. Each
+ * replacement re-said "Same scale applied" and dropped the numbers the one
+ * before it carried, so a run with both qualifiers showed only the degraded
+ * clause — losing the rescued count, the chart count and the shared max.
+ *
+ * The rescued charts are the ones that cost most to lose. They went in as
+ * PICTURES, and "Explode to native shapes" is the way back; saying nothing
+ * about them steers the user away from the one control that recovers them.
+ * `pane-host-actions.test.ts` already guards that harm from the other
+ * direction — "does not report a successful auto-picture rescue as a fallback
+ * to shapes" — and this was the same harm by a different route.
+ *
+ * OUTCOME FIRST, THEN QUALIFIERS, which is why this is not
+ * `insertOutcomeSentence`. That one puts setbacks first and its docstring
+ * argues for it; the same join under the opposite rule would make one of the
+ * two comments a lie.
+ *
+ * TAKES TRANSLATED TEXT. Each clause is its own catalogue key with its own
+ * params, so `t()` runs at the call site and this only joins. Exported for the
+ * same reason `elapsedLabel` is: so what it says can be asserted directly.
+ *
+ * A RESCUE IS NOT A FAILURE — the comment at the call site is emphatic that it
+ * is the guard working — so only `degraded` makes this red.
+ */
+export function sameScaleNote(parts: { base: string; rescued?: string; degraded?: string }): {
+  text: string;
+  status: "ok" | "err";
+} {
+  return {
+    text: [parts.base, parts.rescued, parts.degraded].filter(Boolean).join(" "),
+    status: parts.degraded ? "err" : "ok",
+  };
+}
+
+/**
  * think-cell's Set Same Scale: pin every value-axis chart (in the deck, or
  * just the selected ones) to the union of their extents and re-render them.
  */
@@ -2705,27 +2743,36 @@ async function doSameScale(scope: "deck" | "selection" = "deck") {
     );
     return;
   }
-  note("Same scale applied to {n} charts (max {max}).", "ok", { n: applied.length, max });
   // `warn` alone is not a failure. `chartPicture` returns a warn WITH a png on
   // its SUCCESS path — the web auto-picture rescue, where a chart too dense for
   // this host was rasterised and inserted as a picture, and the warn is the
   // explanation. Counting every warn reported those in RED as "fell back to
-  // native shapes", the opposite of what happened: it overwrote the true
-  // success line one statement above, claimed the dangerous thing had occurred
-  // when the guard against it had just worked, and steered the user away from
-  // "Explode to native shapes" — the one control that turns a picture back.
+  // native shapes", the opposite of what happened: it claimed the dangerous
+  // thing had occurred when the guard against it had just worked, and steered
+  // the user away from "Explode to native shapes" — the one control that turns
+  // a picture back.
   const rescued = pictures.filter((p) => p.warn && p.png).length;
   const degraded = pictures.filter((p) => p.warn && !p.png).length;
-  if (rescued) {
-    note(
-      'Same scale applied. {n} chart(s) were too dense for this host and went in as pictures — "Explode to native shapes" turns them back.',
-      "ok",
-      { n: rescued },
-    );
-  }
-  if (degraded) {
-    note("Same scale applied, but {n} image chart(s) fell back to native shapes.", "err", { n: degraded });
-  }
+  /**
+   * ONE NOTE, NOT THREE. These used to be posted one after another into a
+   * single slot, so the last silently erased the others — and each opened with
+   * "Same scale applied" because each was written to stand alone. Composed,
+   * the base says that once and the clauses qualify it, which is why both lost
+   * their prefix. See `sameScaleNote`.
+   */
+  const said = sameScaleNote({
+    base: t("Same scale applied to {n} charts (max {max}).", { n: applied.length, max }),
+    rescued: rescued
+      ? t(
+          '{n} chart(s) were too dense for this host and went in as pictures — "Explode to native shapes" turns them back.',
+          {
+            n: rescued,
+          },
+        )
+      : "",
+    degraded: degraded ? t("{n} image chart(s) fell back to native shapes.", { n: degraded }) : "",
+  });
+  note(said.text, said.status);
 }
 
 async function doLoadSelection() {

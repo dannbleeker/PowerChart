@@ -137,6 +137,12 @@ export const EN = {
     "That is valid JSON, but not a chart this pane can open: {error}",
   "Host answered late — {message}": "Host answered late — {message}",
   "Same scale applied to {n} charts (max {max}).": "Same scale applied to {n} charts (max {max}).",
+  // The two clauses that qualify the line above. Catalogued because they are
+  // now composed WITH it: uncatalogued, a localised pane got a sentence that
+  // was translated up to the full stop and English after it.
+  '{n} chart(s) were too dense for this host and went in as pictures — "Explode to native shapes" turns them back.':
+    '{n} chart(s) were too dense for this host and went in as pictures — "Explode to native shapes" turns them back.',
+  "{n} image chart(s) fell back to native shapes.": "{n} image chart(s) fell back to native shapes.",
   "Inserted {n} chart(s) on the current slide.": "Inserted {n} chart(s) on the current slide.",
   "Inserting demo slides… {done} of {total}": "Inserting demo slides… {done} of {total}",
   'Loaded chart 1 of {total} — use "Insert batch" for all.': 'Loaded chart 1 of {total} — use "Insert batch" for all.',

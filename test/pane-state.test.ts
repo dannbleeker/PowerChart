@@ -1246,3 +1246,46 @@ describe("a chart size the pane will act on", () => {
     }
   });
 });
+
+/**
+ * The Same Scale outcome sentence.
+ *
+ * Pure, and tested directly for the reason `elapsedLabel` above it is: what was
+ * wrong was the decision, and the decision is one function. Three notes used to
+ * go out back to back into a channel that holds one, so the last erased the
+ * others and a run with both qualifiers reported only the degraded clause.
+ */
+describe("what Same Scale says it did", () => {
+  it("keeps the qualifiers after the outcome, in that order", async () => {
+    await bootPane();
+    const { sameScaleNote } = await import("../src/taskpane/app");
+    expect(sameScaleNote({ base: "Applied to 6.", rescued: "2 as pictures.", degraded: "1 fell back." })).toEqual({
+      text: "Applied to 6. 2 as pictures. 1 fell back.",
+      status: "err",
+    });
+  });
+
+  it("is just the outcome when nothing needed qualifying", async () => {
+    await bootPane();
+    const { sameScaleNote } = await import("../src/taskpane/app");
+    expect(sameScaleNote({ base: "Applied to 6." })).toEqual({ text: "Applied to 6.", status: "ok" });
+  });
+
+  it("stays GREEN for a rescue, because the guard working is not a failure", async () => {
+    /**
+     * `chartPicture` returns a warn WITH a png on its success path — the chart
+     * was too dense and was rasterised rather than drawn. Reporting that in red
+     * claimed the dangerous thing had happened when the guard against it had
+     * just worked, and steered the user away from "Explode to native shapes".
+     */
+    await bootPane();
+    const { sameScaleNote } = await import("../src/taskpane/app");
+    expect(sameScaleNote({ base: "Applied to 6.", rescued: "2 as pictures." }).status).toBe("ok");
+  });
+
+  it("turns RED as soon as something fell back", async () => {
+    await bootPane();
+    const { sameScaleNote } = await import("../src/taskpane/app");
+    expect(sameScaleNote({ base: "Applied to 6.", degraded: "1 fell back." }).status).toBe("err");
+  });
+});
