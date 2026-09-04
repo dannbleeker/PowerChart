@@ -598,6 +598,66 @@ function offerOwnSlide(
   });
 }
 
+/**
+ * The question a too-dense chart never got asked.
+ *
+ * A chart over the web shape budget was rasterised BEFORE anything was put to
+ * the user: `chartPicture` runs first, `pricedShapes` collapses to 1, and the
+ * own-slide offer then prices a PICTURE — so it does not fire. Explode refuses
+ * on the same host and the same predicate. The picture was not the fallback,
+ * it was the only reachable outcome, and nobody was asked.
+ *
+ * There is a real alternative, and it is measured. The same chart built as a
+ * one-slide .pptx and handed over in ONE call takes ~280ms, against 46.4s of
+ * shape-by-shape drawing whose per-shape cost CLIMBS as the slide fills — 161ms
+ * to 784ms across a single 103-shape chart. It keeps `POWERCHART_CONFIG`, so
+ * the pane can still edit it, and it draws filled polygons and exact arcs that
+ * Office.js cannot. Round 379 settled the one risk that would have killed it:
+ * four inserts on a ONE-master deck, `mastersAfter: 1` every time, so a
+ * generated slide does not drag its own master into someone's template.
+ *
+ * WHY THIS ASKS RATHER THAN JUST DOING IT. The user pointed at a slide, and
+ * `insertSlidesFromBase64` can only add slides — it can never place shapes on
+ * one that already exists. So whatever is chosen, the chart cannot land where
+ * they pointed. Moving someone's content to a different slide unasked is a
+ * worse surprise than a flat picture, so the choice is theirs.
+ *
+ * The picture stays the floor: it is what "here" means, what a refusal means,
+ * and what every failure below falls back to. That also matches the field —
+ * every web-capable competitor ships a picture on purpose, and every
+ * native-shapes product is desktop-only.
+ *
+ * Reuses the slow-offer box. `here` is hidden because for this chart there is
+ * no "here, as shapes" — that is the premise — and it is restored on the way
+ * out so the other offer is not left with a missing button.
+ */
+function offerNativeInsteadOfPicture(shapes: number): Promise<"own-slide" | "picture"> {
+  const box = $("slow-offer");
+  const text = $("slow-offer-text");
+  const own = $<HTMLButtonElement>("slow-offer-own");
+  const here = $<HTMLButtonElement>("slow-offer-here");
+  const picture = $<HTMLButtonElement>("slow-offer-picture");
+  text.textContent =
+    `That chart is ${shapes} shapes — too many for PowerPoint on the web to draw onto this slide. ` +
+    `It can go on a slide of its own as editable shapes, or stay on this one as a picture.`;
+  here.hidden = true;
+  picture.hidden = false;
+  box.hidden = false;
+  return new Promise((resolve) => {
+    const done = (choice: "own-slide" | "picture") => () => {
+      own.removeEventListener("click", onOwn);
+      picture.removeEventListener("click", onPicture);
+      here.hidden = false;
+      box.hidden = true;
+      resolve(choice);
+    };
+    const onOwn = done("own-slide");
+    const onPicture = done("picture");
+    own.addEventListener("click", onOwn);
+    picture.addEventListener("click", onPicture);
+  });
+}
+
 const gallery = $("gallery");
 const preview = $("preview");
 const optionsHost = $("options");
@@ -2318,6 +2378,50 @@ async function runInsert(asNew: boolean) {
   // one shape and one sync — `wantsPicture` in the renderer takes that path on
   // the PAYLOAD, so `png` being present is the honest test, not `cfg.render`.
   const pricedShapes = pic.png ? 1 : sceneShapes;
+  /**
+   * THE BUDGET FORCED A PICTURE — so ask, instead of just doing it.
+   *
+   * Guarded on `pic.png` and on the budget predicate together: this is only the
+   * charts the renderer refused to draw here, not every picture. A user who
+   * ticked "Insert as picture" asked for one and is not questioned about it,
+   * which is why `cfg.render !== "image"` is part of the test.
+   *
+   * See `offerNativeInsteadOfPicture` for the measurements and for why the
+   * choice is put to the user rather than taken for them.
+   */
+  if (
+    pic.png &&
+    cfg.render !== "image" &&
+    canInsertSlidesFromBase64() &&
+    wantsAutoPicture(sceneShapes, { web: isWebHost(), canPicture: canInsertPicture(), alreadyPicture: false }) &&
+    (await offerNativeInsteadOfPicture(sceneShapes)) === "own-slide"
+  ) {
+    note("Building a slide for it…", "busy");
+    let landed = 0;
+    try {
+      const built = await buildDeckBase64(
+        [{ scene, title: cfg.title ?? "Chart", configJson: JSON.stringify(cfg) }],
+        await slideSize(),
+      );
+      landed = await insertSlidesFromPptx(built.base64, 1);
+    } catch (err) {
+      console.warn("SSF Charts: the generated slide failed — falling back to a picture", err);
+    }
+    if (landed === 1) {
+      state.editTarget = null;
+      renderActionState();
+      note("Added on a slide of its own, as editable shapes. Select it and this pane reloads its data.", "ok");
+      return;
+    }
+    // ANY other outcome falls through to the picture, which is the floor. A
+    // landed count that is not exactly 1 means the host took something other
+    // than what was handed over, and `insertSlidesFromPptx` measures that from
+    // a before-and-after slide count rather than trusting the call not to throw.
+    note(
+      `Could not add the slide${landed > 1 ? ` (the host took ${landed})` : ""} — inserting here as a picture.`,
+      "err",
+    );
+  }
   if (occupied && worthOwnSlide(pricedShapes, occupied.length)) {
     const choice = await offerOwnSlide(
       estimateInsertMs(pricedShapes, occupied.length),

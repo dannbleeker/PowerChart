@@ -3549,6 +3549,95 @@ describe("Explode respects the same budget the insert path enforces", () => {
     target: { slideId: "s1", shapeId: "pic-1", left: 10, top: 20 },
   });
 
+  it("offers a slide of its own, as shapes, instead of silently rasterising", async () => {
+    /**
+     * THE QUESTION THAT WAS NEVER ASKED. A chart over the web budget was
+     * rasterised before anything was put to the user, and Explode then refused
+     * on the same predicate — so the picture was not the fallback, it was the
+     * only reachable outcome.
+     *
+     * The alternative is measured: the same chart as a one-slide .pptx is
+     * ~280ms and ONE call, against 46.4s of shape-by-shape drawing whose
+     * per-shape cost climbs 161ms to 784ms as the slide fills. It keeps its
+     * config tag, so it stays editable — which a picture also does, but a
+     * picture cannot be nudged, restyled by the ribbon, or printed as vector.
+     */
+    const raster = stubRaster();
+    try {
+      host.autoPicture = true;
+      host.canInsertFile = true;
+      $("insert").click();
+      await settle();
+      // The offer is up, and it names the cost rather than just asking.
+      expect($("slow-offer").hidden, "the too-dense chart was rasterised without asking").toBe(false);
+      expect($("slow-offer-text").textContent ?? "").toMatch(/slide of its own|editable shapes/i);
+      $("slow-offer-own").click();
+      await settle();
+      // It went as a FILE, not as shapes drawn one batch at a time.
+      expect(host.calls.insertFile, "the accepted offer did not hand over a generated slide").toHaveLength(1);
+      expect(host.calls.insertScene, "it drew the shapes anyway, which is the 46-second path").toHaveLength(0);
+      expect($("host-note").textContent ?? "").toMatch(/own|editable shapes/i);
+    } finally {
+      raster.restore();
+    }
+  });
+
+  it("falls back to the picture when the generated slide does not land", async () => {
+    /**
+     * THE PICTURE IS THE FLOOR. `insertSlidesFromPptx` measures what the host
+     * actually took, from a before-and-after slide count, because a host that
+     * drops the call reports no error. Anything other than exactly one slide
+     * means the chart is not where it was meant to be, and the user must still
+     * end up with a chart.
+     */
+    const raster = stubRaster();
+    try {
+      host.autoPicture = true;
+      host.canInsertFile = true;
+      host.insertFileLands = 0; // the host took the call and did nothing
+      $("insert").click();
+      await settle();
+      $("slow-offer-own").click();
+      await settle();
+      expect(host.calls.insertFile, "never tried the file route").toHaveLength(1);
+      expect(host.calls.insertScene, "the chart was lost — no picture went in either").toHaveLength(1);
+      /**
+       * The user ends up told it is a picture and why, which is the OUTCOME —
+       * but not that their choice failed on the way. The fallback's own note
+       * is overwritten by the insert's closing message, and unpicking that
+       * means restructuring how one note channel carries two facts. Asserted as
+       * it actually behaves rather than as I would like it to, so the gap is on
+       * the record instead of hidden behind a friendlier assertion.
+       */
+      expect($("host-note").textContent ?? "", "said nothing at all").toMatch(/picture/i);
+    } finally {
+      host.insertFileLands = null;
+      raster.restore();
+    }
+  });
+
+  it("does not ask when the user chose a picture themselves", async () => {
+    // Ticking "Insert as picture" is a request, not a refusal to draw. Asking
+    // again would question a decision the user already made.
+    const raster = stubRaster();
+    try {
+      host.autoPicture = true;
+      host.canInsertFile = true;
+      const box = $("render-image") as HTMLInputElement;
+      box.checked = true;
+      box.dispatchEvent(new Event("change", { bubbles: true }));
+      $("insert").click();
+      await settle();
+      expect($("slow-offer").hidden, "questioned a picture the user asked for").toBe(true);
+      expect(host.calls.insertFile).toHaveLength(0);
+    } finally {
+      const box = $("render-image") as HTMLInputElement;
+      box.checked = false;
+      box.dispatchEvent(new Event("change", { bubbles: true }));
+      raster.restore();
+    }
+  });
+
   it("does not promise, at insert time, the door it refuses at explode time", async () => {
     /**
      * THE LOCK WENT ON THE DOOR AND THE SIGN STAYED UP.

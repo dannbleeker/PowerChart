@@ -144,8 +144,17 @@ describe("when the pane offers a slide of its own", () => {
      * remains a real question. Only the number had to stop lying.
      */
     const src = readFileSync("src/taskpane/app.ts", "utf8");
+    /**
+     * The window grew from 600 to 2600 characters on 2026-09-04, when the
+     * too-dense offer (`offerNativeInsteadOfPicture`) was added between these
+     * two lines. The INVARIANT is untouched and is the only thing asserted: the
+     * picture is decided before any offer prices it. What sits between them is
+     * not this test's business — widened rather than deleted, because the
+     * ordering it pins is what stopped a violin being quoted "about 7 minutes"
+     * for what was a single `setImage`.
+     */
     expect(src, "the picture is still decided after the offer").toMatch(
-      /let pic = await chartPicture\(cfg, scene\);[\s\S]{0,600}worthOwnSlide\(pricedShapes/,
+      /let pic = await chartPicture\(cfg, scene\);[\s\S]{0,2600}worthOwnSlide\(pricedShapes/,
     );
     expect(src, "the priced count does not come from the payload").toMatch(
       /const pricedShapes = pic\.png \? 1 : sceneShapes/,
