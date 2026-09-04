@@ -1668,7 +1668,53 @@ async function blankLayoutTarget(
     const masters = context.presentation.slideMasters;
     masters.load("items/id,items/layouts/items/id,items/layouts/items/type");
     await context.sync();
-    for (const master of masters.items) {
+    /**
+     * THE DECK'S OWN MASTER FIRST, so the chart's slide looks like its
+     * neighbours.
+     *
+     * Sending the master alongside the layout made the add legal. It did not
+     * make it RIGHT: the loop below takes the first master carrying a blank
+     * layout, and on a two-master deck that need not be the one the deck
+     * itself uses. A slide built from a foreign master carries that master's
+     * theme — different fonts, different colours — on a slide the user asked
+     * to have their chart on.
+     *
+     * That the two DO differ here is not a guess. `slides.add` was rejected
+     * precisely because the layout was "not available for the default Slide
+     * Master", and the default is the previous slide's. If the deck's own
+     * master had been the first one, the layout would have been valid and
+     * nothing would ever have failed. The rejection is the proof.
+     *
+     * So: ask the last slide what master it uses and prefer a blank layout
+     * from THAT. It also happens to be what Office.js would have defaulted to
+     * with no `layoutId` at all, which is a good sign rather than a
+     * coincidence. Falls through to the old first-master choice when the
+     * deck's master has no blank layout, or when the host will not say.
+     *
+     * Costs one extra round trip on a path the user explicitly asked for.
+     */
+    let deckMasterId: string | undefined;
+    try {
+      const slides = context.presentation.slides;
+      slides.load("items/id");
+      await context.sync();
+      const items = loadedItems(slides);
+      // THE LOADED ITEM, not a fresh `getItemAt`. A by-index handle on this
+      // host is the windowed kind this file spends so much effort on, and it
+      // does not reliably carry `slideMaster`; the item the collection already
+      // handed back does.
+      const last = items?.length ? items[items.length - 1] : undefined;
+      if (last) {
+        last.slideMaster.load("id");
+        await context.sync();
+        deckMasterId = loadedValue(() => last.slideMaster.id);
+      }
+    } catch {
+      /* the host will not say which master the deck uses — fall back below */
+    }
+    const preferred = deckMasterId ? masters.items.find((m) => m.id === deckMasterId) : undefined;
+    const ordered = preferred ? [preferred, ...masters.items.filter((m) => m !== preferred)] : masters.items;
+    for (const master of ordered) {
       const blank = master.layouts.items.find((l) => l.type === PowerPoint.SlideLayoutType.blank);
       if (blank) {
         /**
@@ -1687,6 +1733,12 @@ async function blankLayoutTarget(
           layoutId: blank.id,
           slideMasterId: master.id,
           moreThanOneMaster: masters.items.length > 1,
+          // The two readings that say whether the deck got its OWN master, and
+          // whether that was ever in doubt. `matchedTheDeck: false` on a
+          // two-master deck is a chart slide wearing a different theme from
+          // the slides around it.
+          deckMasterId: deckMasterId ?? "unreadable",
+          matchedTheDeck: deckMasterId ? master.id === deckMasterId : "unreadable",
         });
         return { layoutId: blank.id, slideMasterId: master.id };
       }

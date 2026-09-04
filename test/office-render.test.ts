@@ -3448,13 +3448,21 @@ describe("added slides use the blank layout", () => {
      * for two weeks; 4:3 was along for the ride because that arm has only ever
      * run on the two-master deck.
      */
+    /**
+     * installHost FIRST — it resets every fault, so one armed before it is
+     * wiped. The first draft of this test armed `twoMasterDeck` beforehand and
+     * therefore ran against ONE master, where the misuse is legal and the
+     * assertion `["master-1"]` was true for the wrong reason. It passed while
+     * testing nothing about two masters at all — the exact shape of vacuous
+     * test this file keeps being caught by.
+     */
+    installHost([makeSlide("s1")]);
     faults.twoMasterDeck = true;
     try {
-      installHost([makeSlide("s1")]);
       const slideId = await addSlideForChart();
       expect(slideId, "the add was refused — the layout went without its master").toBeTruthy();
-      expect(addedWithLayout, "no layout was named").toEqual(["layout-blank"]);
-      expect(addedWithMaster, "the layout was sent without the master it belongs to").toEqual(["master-1"]);
+      expect(addedWithMaster, "the layout was sent without the master it belongs to").toEqual(["master-2"]);
+      expect(addedWithLayout, "the layout did not come from the deck's own master").toEqual(["m2-layout-blank"]);
     } finally {
       faults.twoMasterDeck = false;
     }
@@ -3495,7 +3503,9 @@ describe("added slides use the blank layout", () => {
       const slideId = await addSlideForChart();
       expect(slideId, "the retry add was refused — it went without its master").toBeTruthy();
       expect(addedWithLayout.length, "the add was never retried, so this tested nothing").toBeGreaterThan(1);
-      expect(addedWithMaster.filter((m) => m === "master-1").length, "one of the adds went without its master").toBe(
+      // `master-2` is the DECK's master — see the test above for why the layout
+      // is taken from there rather than from whichever master comes first.
+      expect(addedWithMaster.filter((m) => m === "master-2").length, "one of the adds went without its master").toBe(
         addedWithMaster.length,
       );
     } finally {

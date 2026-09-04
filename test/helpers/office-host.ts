@@ -1600,6 +1600,22 @@ export function makeSlide(id: string) {
     pending,
     isNullObject: false,
     /**
+     * Which master this slide is built from — `Slide.slideMaster`, API 1.3.
+     *
+     * The deck's own slides sit on the SECOND master under
+     * `faults.twoMasterDeck`. That is what makes the first master "foreign",
+     * and it is the whole reason the real host refuses a layout taken from it.
+     * Without this the fake cannot express a deck whose master differs from the
+     * one a naive walk of `slideMasters` picks — so it cannot tell a chart
+     * slide that matches its neighbours from one wearing a different theme.
+     */
+    slideMaster: {
+      get id() {
+        return faults.twoMasterDeck ? "master-2" : "master-1";
+      },
+      load() {},
+    },
+    /**
      * The slide's layout, with a shape collection that answers empty.
      *
      * Modelled because office-js#3826 says a NEW slide's
