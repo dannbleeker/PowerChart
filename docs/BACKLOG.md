@@ -39,6 +39,34 @@ that one is waiting on a deck rather than on work:**
    17  the deck scan's paging loop — now covered under the fake at 25
        slides; only the live-host half remains (engineering)
 
+**3 — DECIDED, AND TWO THIRDS SHIPPED, 2026-09-04.** The question was "picture
+or native shapes for a crowded slide". The answer is "ask, and keep the picture
+as the floor":
+
+- `0596b70` — the insert used to promise `"Explode to native shapes" turns it
+  back` while `doExplode` refused on the identical predicate. It now says what
+  is true: the picture keeps its config tag, so the pane can still reload and
+  restyle it, and only the conversion to shapes needs the desktop.
+- `3613be8` — a too-dense chart is now OFFERED its own slide as native shapes,
+  delivered as a one-slide .pptx in a single call: ~280ms against 46.4s of
+  shape-by-shape drawing, whose per-shape cost climbs from 161ms to 784ms as
+  the slide fills. The picture is what a refusal means and what every failure
+  falls back to, measured from a before-and-after slide count.
+- `cf2d01b` — the risk that would have killed it is measured and gone. Four
+  inserts on a ONE-master deck reported `mastersAfter: 1` every time, so a
+  generated slide does not drag its own master into a customer's template.
+
+WHY IT STAYS ON THE LIST: **the 90-shape budget is in the wrong unit.** It
+prices a cost that varies 4-5x with whose slide it is — round 374 measured
+`onSlide 38` at 18,054ms per batch against `onSlide 40` at 3,500ms.
+`src/core/insert-cost.ts` already holds the honest model, and `SLOW_INSERT_MS`
+already disagrees with the shape threshold. Re-express the gate as a TIME
+estimate. Do not raise the number on current evidence.
+
+Also unverified: that the densest shipped chart — the 401-shape hex tile map,
+~152KB of base64 — actually lands through this path on a host. It has only been
+measured offline.
+
 **19 CLOSED 2026-09-03, and the answer is yes.** Round 374 drew a 103-shape
 chart in ELEVEN batches onto a slide the add-in had just added, on the deck
 that had never managed one: `upTo` 10, 20 ... 103 with `onSlide` climbing 0 to
