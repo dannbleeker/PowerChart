@@ -26,8 +26,13 @@ refused, or a finding rather than a task.
 
 **Six of the eight closed on 2026-08-29; 11 and 12 closed on 2026-08-31; 18
 closed on 2026-09-01, 16 the same evening. 19 closed on 2026-09-03, by a round
-rather than by work. FIVE are open now — four the owner's, one engineering, and
+rather than by work. THREE are open now — two the owner's, one engineering, and
 that one is waiting on a deck rather than on work:**
+
+> The count here read "six" against a list of four, and then "five" against a
+> list of three. Stale both times, and this file states its own tie-breaker:
+> "if a thing is not on that list it is not open". Counted from the list, and
+> the list is what to trust.
 
     3  whether a crowded slide should get a picture instead of native shapes
     5  filing this project's host measurements to the office-js tracker
@@ -65,6 +70,15 @@ Presentation70 and every 16:9 round ran Presentation64, and no file named
 either until `driverDeck` landed. Width and deck are near-collinear across
 the whole archive. What is wrong with that DOCUMENT is now the open question,
 and it is answerable because rounds name theirs.
+
+> **ANSWERED 2026-09-04, and nothing was wrong with the document.** It has TWO
+> slide masters where Presentation64 has one, and that was enough: this add-in
+> sent `slides.add` a `layoutId` with no `slideMasterId`, which Office.js
+> documents as an error unless the layout resolves against the default master.
+> One master hid it for months. The deck was only ever the messenger — any
+> customer deck with two masters would have done the same. Fixed by sending the
+> pair; round 377 then swept 17 of 17 on that document at 4:3. See the last two
+> entries in this file.
 
 **14 — "40% of crashes leave no round file; may a stub be archived?"** The
 question dissolved: nothing needs fabricating, because the evidence was
