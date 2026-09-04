@@ -3518,3 +3518,59 @@ that is already several fixes deep. Filed rather than rushed.
 **Severity: harness only.** The product's Tidy walks `deck.newSlides`, which is
 a diff over the POST-round listing, so it holds settled ids and works. This
 costs one intermittent scenario failure, not a user anything.
+
+### ITEM 3, MEASUREMENT 1: an inserted .pptx does NOT bring its own master — round 379, 2026-09-04
+
+The kill switch is cleared. Four generated-deck inserts on Presentation64, the
+ONE-master deck, every one with `KeepSourceFormatting`:
+
+    {"expectedSlides":2,"landed":2,"base64Bytes":112852,
+     "formatting":"KeepSourceFormatting","mastersAfter":1}   x4
+
+The deck stayed at one master. PowerPoint maps the incoming master onto the
+destination rather than importing it, so a generated slide cannot push a
+customer's deck from one master to two — which was the risk that would have
+killed this whole line of work, because a two-master deck is the state that
+crashed 90-100% of this archive until 2026-09-04.
+
+It matters that the file DOES carry one. Unzipping a generated .pptx shows
+`ppt/slideMasters/slideMaster1.xml` and `ppt/theme/theme1.xml` of its own. The
+host declines to bring them in; the file is not innocent, the host is careful.
+
+The two-master deck agreed earlier by accident: masters stayed at 2 across
+rounds 377 and 378 (n=3 after the last insert against 35-37 before). This is
+the reading that was missing — 1 staying 1 — and it is the case a customer with
+a clean template would meet.
+
+**So option B is unblocked, and it is now a product decision rather than a
+technical one.** What remains is not "can we", it is "should an over-budget
+chart take a slide of its own on the web, and does it ask first".
+
+**The measured case for it**, all from this archive:
+
+    native, 103 shapes, own slide     46.4s over 11 batches, and superlinear:
+                                      161ms per shape at the start, 784ms at
+                                      the end (rounds 374-378: 44.6-49.1s)
+    the same chart as a .pptx         280ms to build, ~152KB base64, ONE call
+    reliability of that one call      352 of 353 archived rounds already use it
+    fidelity                          HIGHER: the pptx sink draws filled
+                                      polygons, exact arcs and text alpha that
+                                      Office.js cannot (src/core/scene.ts)
+    editability                       kept — ooxml.ts writes POWERCHART_CONFIG
+                                      on the group, the same tag the pane
+                                      re-edits a drawn chart by
+
+**The case against, which is not technical.** The user asked for a chart on
+THIS slide and would get one on a new slide. `insertSlidesFromBase64` inserts
+SLIDES after a target slide — it can never place shapes on a slide that already
+exists — so there is no version of this that honours the original request. That
+is the whole cost, and it is a product judgement.
+
+**What the industry does, for calibration.** Every web-capable competitor ships
+a picture on purpose: Datawrapper (the closest analogue, a real Office.js
+add-in) inserts a static image by published choice; Power BI's own add-in
+snapshots to an image; Mekko Graphics' founder says "our charts are just
+pictures within PowerPoint"; UpSlide ships vector pictures. The native-shapes
+champions — think-cell, Deckary, Power-user — are all DESKTOP ONLY and never
+face this constraint. Doing native shapes on the web would be unusual, and
+would be the product's differentiator rather than its convention.
