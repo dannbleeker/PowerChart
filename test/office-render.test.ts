@@ -5343,8 +5343,22 @@ describe("what a deck scan says about itself", () => {
     // A named shape on the LAST slide — the one only a second page can reach.
     const far = deck[n - 1].shapes.addGeometricShape("rectangle", { left: 7, top: 8, width: 9, height: 10 });
     far.name = "beyond the first page";
+    /**
+     * CHARTS ON BOTH PAGES, with DIFFERENT counts per page.
+     *
+     * Without them every page contributes zero, and a per-page count is
+     * indistinguishable from the running total — a mutation swapping one for
+     * the other survived, because 0 === 0. Three here and two beyond the
+     * boundary make the two numbers differ on the second page, which is the
+     * whole point of reporting both.
+     */
+    for (const i of [0, 1, 2, READBACK_PAGE, READBACK_PAGE + 1]) {
+      const c = deck[i].shapes.addGeometricShape("rectangle", { left: 1, top: 2, width: 3, height: 4 });
+      c.tagStore.set(CHART_TAG, '{"kind":"pie"}');
+    }
     installHost(deck);
 
+    setTracing(true);
     const whole = await listChartsInDeck({ withInventory: true });
     expect(whole.unread, "a deck of 25 did not scan cleanly").toBe(0);
     expect(scanIsComplete(whole), "a complete scan did not report itself complete").toBe(true);
@@ -5356,15 +5370,59 @@ describe("what a deck scan says about itself", () => {
       "a shape on the second page never reached the inventory",
     ).toContain("beyond the first page");
 
+    /**
+     * AND EACH PAGE SAYS WHAT IT CONTRIBUTED.
+     *
+     * The loop merged `readChartsPage`'s findings in silence, so a page that
+     * ran and contributed nothing looked exactly like a page of slides holding
+     * no charts — which is the failure a paging loop actually has, and the one
+     * thing the instrument could not see. `chartsSoFar` is the running total on
+     * purpose: it shows the MERGE happening rather than merely the return.
+     */
+    const pages = traceLog().entries.filter((e) => e.message === "deck scan — a page came back");
+    expect(pages.length, "the second page never reported back").toBe(Math.ceil(n / READBACK_PAGE));
+    expect(pages[0]?.data).toMatchObject({ from: 0, to: READBACK_PAGE - 1, charts: 3, chartsSoFar: 3 });
+    // THE TWO NUMBERS DIFFER HERE, and that is the assertion. `charts` is what
+    // this page found; `chartsSoFar` is what has survived the merge. Reporting
+    // the running total in both places would hide a page whose findings were
+    // dropped, which is the failure this instrument exists for.
+    expect(pages[1]?.data).toMatchObject({ from: READBACK_PAGE, to: n - 1, charts: 2, chartsSoFar: 5 });
+    setTracing(false);
+
     // Now lose the second page. The count comes back, the charts on it do not,
     // and the scan has to be honest about which.
+    setTracing(true);
+    const before = traceLog().entries.length;
     failSyncsOn.add(trips.syncs + 2);
     try {
       const partial = await listChartsInDeck({ withInventory: true });
       expect(partial.unread, "a lost page was reported as nothing to read").toBeGreaterThan(0);
       expect(scanIsComplete(partial), "a scan that lost a page called itself complete").toBe(false);
+      /**
+       * AND IT NAMES THE PAGE IT LOST, AND WHY.
+       *
+       * This catch swallowed the error and added the page to `unread`, so a
+       * failed page reached the reader as a bigger number and nothing else —
+       * not which page, not why, not even that one had failed rather than the
+       * deck being unreadable. On the multi-page scan this loop exists for,
+       * that was the whole diagnosis.
+       *
+       * Sliced from `before` so this reads only THIS scan's entries: the log
+       * accumulates across the two halves of this test, and asserting over all
+       * of it would let the clean half satisfy the broken half's assertions.
+       */
+      const lost = traceLog()
+        .entries.slice(before)
+        .filter((e) => e.message === "deck scan — a page did not come back");
+      expect(lost.length, "a page was lost and nothing said so").toBeGreaterThan(0);
+      expect(typeof lost[0]?.data?.from, "the lost page was not identified").toBe("number");
+      // The host's own words, not a boolean. Measured: "host refused a queued
+      // command | at=reading slides 0-19 for charts" — which names the sync as
+      // well as the failure, and is what a crashed round would carry.
+      expect(String(lost[0]?.data?.error ?? ""), "the reason was discarded").toMatch(/refused|at=reading slides/);
     } finally {
       failSyncsOn.clear();
+      setTracing(false);
     }
   });
 

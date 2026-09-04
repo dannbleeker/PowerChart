@@ -4259,9 +4259,47 @@ export async function listChartsInDeck(opts: { withInventory?: boolean } = {}): 
       unread += page.unread;
       short += page.short;
       tagsUnread += page.tagsUnread;
-    } catch {
+      /**
+       * WHAT THIS PAGE ACTUALLY CONTRIBUTED, because the aggregate below cannot
+       * say and the second page has never run on a live host.
+       *
+       * `readChartsPage` traces what it ASKED for — the range, the slide count,
+       * the shapes looked up — and then its findings were merged here in
+       * silence. So a page that ran and contributed nothing looked exactly like
+       * a page of slides that hold no charts, and a shortfall could not be
+       * attributed to a page. That is the failure a paging loop actually has,
+       * and it was the one thing the instrument could not see.
+       *
+       * `chartsSoFar` is the running total on purpose: it is what shows the
+       * merge happening rather than merely the page returning. A page whose
+       * findings were dropped leaves it flat while `charts` is non-zero.
+       */
+      trace("pane", "deck scan — a page came back", {
+        from: start,
+        to: end - 1,
+        charts: page.charts.length,
+        unread: page.unread,
+        short: page.short,
+        tagsUnread: page.tagsUnread,
+        chartsSoFar: charts.length,
+      });
+    } catch (err) {
       // A page whose sync rejected told us nothing about any slide on it.
       unread += end - start;
+      /**
+       * AND IT USED TO SAY NOTHING AT ALL. This catch swallowed the error and
+       * added the page to `unread`, so a failed page reached the reader as a
+       * larger number in the total and nothing else — not which page, not why,
+       * not even that one had failed rather than a deck simply being
+       * unreadable. On a one-page deck that is survivable; on the multi-page
+       * scan this loop exists for, it is the whole diagnosis.
+       */
+      trace("pane", "deck scan — a page did not come back", {
+        from: start,
+        to: end - 1,
+        slides: end - start,
+        error: errorText(err),
+      });
     }
   }
   const scan = { charts, unread, short, tagsUnread, slides: total, ...(opts.withInventory ? { inventory } : {}) };
