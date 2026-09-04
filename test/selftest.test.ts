@@ -190,6 +190,22 @@ describe("the host self-test battery", () => {
       // is already occupied by a scenario whose chart stays, and taking a sixth
       // would narrow all the others.
       "a chart of rotated shapes",
+      /**
+       * Last, and it is the CHEAPEST thing here: one host call that hands over
+       * a generated file, against the eleven-batch draw of its sibling above.
+       *
+       * It exists because the route it drives shipped with no round able to
+       * reach it. `offerNativeInsteadOfPicture` puts a too-dense chart on a
+       * slide of its own as native shapes, and it lives behind a button — and
+       * the battery cannot press buttons, so the newest user-facing insert path
+       * in the pane was also the only one nothing exercised.
+       *
+       * It drives `chartOnItsOwnSlideAsFile`, the shipped function, rather than
+       * repeating its two calls here. A re-implementation would have been a
+       * double that cannot fail the way the real thing fails, which is the
+       * mistake this archive has paid for four times.
+       */
+      "a chart handed over as a file",
     ]);
     for (const r of results) {
       expect(typeof r.ok).toBe("boolean");

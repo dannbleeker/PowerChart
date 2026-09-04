@@ -544,6 +544,21 @@ vi.mock("../src/render/powerpoint", () => ({
     if (host.insertFileError) throw host.insertFileError;
     return host.insertFileLands ?? expected;
   }),
+  /**
+   * The own-slide-as-a-file route, which moved OUT of `app.ts` and into the
+   * renderer so a self-test scenario could drive the shipped code rather than a
+   * copy of it. Mocked here because it is now a renderer import.
+   *
+   * SWALLOWS, LIKE THE REAL ONE. `chartOnItsOwnSlideAsFile` catches its own
+   * errors and returns 0, because every failure on that path is a fallback and
+   * the caller's floor is the picture. A mock that threw instead would make the
+   * pane's fallback look broken in exactly the tests written to prove it works.
+   */
+  chartOnItsOwnSlideAsFile: vi.fn(async () => {
+    host.calls.insertFile.push({ b64: "generated-one-slide", expected: 1 });
+    if (host.insertFileError) return 0;
+    return host.insertFileLands ?? 1;
+  }),
   reconcileDeck: vi.fn(async () => host.reconcileOutcome),
   applyReconcilePlan: vi.fn(async () => host.reconcileOutcome),
   snapshotAddedSlides: vi.fn(async () => []),

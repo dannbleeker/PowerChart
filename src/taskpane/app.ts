@@ -19,6 +19,7 @@ import {
   applyReconcilePlan,
   canInsertSlidesFromBase64,
   insertSlidesFromPptx,
+  chartOnItsOwnSlideAsFile,
   OFFSCREEN_BATCH,
   replaceSlideWithDeck,
   slideHoldsOnlyChart,
@@ -2440,16 +2441,7 @@ async function runInsert(asNew: boolean) {
     (await offerNativeInsteadOfPicture(sceneShapes)) === "own-slide"
   ) {
     note("Building a slide for it…", "busy");
-    let landed = 0;
-    try {
-      const built = await buildDeckBase64(
-        [{ scene, title: cfg.title ?? "Chart", configJson: JSON.stringify(cfg) }],
-        await slideSize(),
-      );
-      landed = await insertSlidesFromPptx(built.base64, 1);
-    } catch (err) {
-      console.warn("SSF Charts: the generated slide failed — falling back to a picture", err);
-    }
+    const landed = await chartOnItsOwnSlideAsFile(scene, cfg);
     if (landed === 1) {
       state.editTarget = null;
       renderActionState();

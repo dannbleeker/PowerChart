@@ -71,6 +71,7 @@ import {
   slideOccupancy,
   insertSlidesFromPptx,
   listChartsInDeck,
+  chartOnItsOwnSlideAsFile,
   scanIsComplete,
   scanGap,
   newRunId,
@@ -2045,6 +2046,76 @@ const stopMidDraw: Scenario = async (prefix) => {
  * id precisely so that cannot happen; whether it is enough across eleven syncs
  * is the open question, and it is open because nothing has ever asked.
  */
+/**
+ * The own-slide offer's OTHER route: a chart handed over as a generated file.
+ *
+ * `offerNativeInsteadOfPicture` gives a too-dense chart a slide of its own as
+ * native shapes, built as a one-slide .pptx and inserted in ONE call — ~280ms
+ * against 46.4s of shape-by-shape drawing whose per-shape cost climbs from
+ * 161ms to 784ms as the slide fills.
+ *
+ * IT SHIPPED WITH NO ROUND THAT COULD REACH IT. The route is behind a button,
+ * and the battery cannot press buttons, so the only user-facing insert path in
+ * the pane that no scenario exercised was also the newest one. That is the
+ * shape of defect this project has been caught by four times.
+ *
+ * So `chartOnItsOwnSlideAsFile` was lifted out of the click handler into
+ * `powerpoint.ts` and this scenario drives THE SHIPPED FUNCTION. Re-writing
+ * the two calls here instead would have tested a copy — the same "fake that
+ * cannot fail the way the real thing fails" that cost this archive four
+ * separate fixes, wearing a different hat.
+ *
+ * WHAT IT ASKS, in order of what would hurt most to get wrong:
+ *   - did the deck gain exactly one slide (not zero, not two)
+ *   - is the chart ON it, rather than the slide arriving empty
+ *   - is it RE-EDITABLE — the whole argument for native over a picture is that
+ *     the config tag survives, so a scan that cannot find it makes the feature
+ *     pointless
+ * and then it takes the slide back, because every scenario after this one
+ * reads the deck.
+ */
+const chartAsItsOwnFile: Scenario = async (prefix) => {
+  if (!canInsertSlidesFromBase64())
+    return { ok: false, skipped: true, detail: "this host has no insertSlidesFromBase64, so there is no file route" };
+
+  const before = await deckSlideIds().catch(() => undefined);
+  const countBefore = await slideCount();
+  const c = { ...cfg(`${prefix} own file`, "waffle"), width: 320, height: 220 };
+  const landed = await chartOnItsOwnSlideAsFile(buildChart(c), c);
+  const countAfter = await slideCount();
+
+  if (landed !== 1)
+    return {
+      ok: false,
+      detail: `the host took ${landed} slide(s) from a one-slide file; the deck went ${countBefore} to ${countAfter}`,
+    };
+
+  // The chart has to be FINDABLE, not merely present. `listChartsInDeck` is
+  // what Same Scale, the repair pass and the pane's own reload all go through,
+  // so a chart it cannot see is a chart the product has lost.
+  const scan = await listChartsInDeck();
+  const mine = scan.charts.filter((x) => String(x.configJson).includes(`${prefix} own file`));
+
+  // CLEAN UP FIRST, REPORT SECOND — by what the deck gained, because the id an
+  // add hands back is not the one the deck lists it under later. See
+  // `deleteSlideAddedSince`.
+  const swept = await deleteSlideAddedSince(before);
+  const countSwept = await slideCount();
+
+  const problems = [
+    countAfter - countBefore !== 1 && `the deck grew by ${countAfter - countBefore}, not 1`,
+    mine.length !== 1 && `${mine.length} of 1 charts from the file are re-editable`,
+    !scanIsComplete(scan) && `the deck scan was short, so "not found" may mean "not looked at" — ${scanGap(scan)}`,
+    !swept && countSwept > countBefore && "the slide the file added could not be taken back",
+  ].filter(Boolean);
+  return {
+    ok: problems.length === 0,
+    detail: problems.length
+      ? problems.join("; ")
+      : `one slide from a generated file, its chart re-editable, slide returned (deck ${countBefore} to ${countAfter} to ${countSwept})`,
+  };
+};
+
 const bigChartOnItsOwnSlide: Scenario = async (prefix) => {
   /**
    * ITS OWN CONTROL, TAKEN SECONDS BEFORE, because without one this scenario
@@ -3775,6 +3846,17 @@ const SCENARIOS: {
   // nothing — but running after everything else means it cannot cost anyone
   // ELSE a readback either.
   { name: "a chart of rotated shapes", run: rotatedShapePlacement },
+  /**
+   * LAST of the routine list, and a NEW NAME so it opens its own series
+   * without disturbing a round of history — `scenarioRegressions` compares by
+   * name.
+   *
+   * Last for the ordinary reason, that it is the newest. But it is also the
+   * cheapest thing in the battery: ONE host call that hands over a file,
+   * against the eleven-batch draw its sibling makes. Putting it at the end
+   * costs the scenarios in front of it nothing.
+   */
+  { name: "a chart handed over as a file", run: chartAsItsOwnFile },
   // Picked only for the plainest reason there is: it blocks on a human.
   { name: "edit the chart YOU click", run: editViaRealClick, pickedOnly: true },
   { name: "what makes a long run slow down", run: degradesOverTime, pickedOnly: true },

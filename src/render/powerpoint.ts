@@ -14,6 +14,7 @@ import { lazy, isStaleBuild, StaleBuildError } from "./lazy";
 import { polar, arrowheadBox, wedgeFanSteps, wedgeFanChord, symbolPreset, dashKind } from "../core/geometry";
 import { estimateOfficeShapes } from "../core/scene";
 import { buildChart } from "../core/chart";
+import { buildDeckBase64 } from "./pptx-deck";
 import type { ChartConfig } from "../core/types";
 import { planSceneUpdate, sceneFingerprint, worthUpdating, type NodeChange } from "../core/scene-diff";
 import { toHex6, alphaOf, isNamedColor } from "../core/color";
@@ -7538,6 +7539,38 @@ export function _setDeckInsertPerSlideForTest(ms: number): void {
 const DECK_INSERT_TIMEOUT_MS = (slides: number): number =>
   Math.max(BATCH_TIMEOUT_MS, slides * DECK_INSERT_PER_SLIDE_MS);
 
+/**
+ * Put one chart on a slide of its own by handing PowerPoint a generated file.
+ *
+ * Returns how many slides the deck actually GAINED — from a before-and-after
+ * count inside `insertSlidesFromPptx`, not from the call failing to throw,
+ * because a host that drops the call reports no error. Anything other than
+ * exactly 1 means the chart is not where it was meant to be and the caller
+ * must fall back.
+ *
+ * WHY THIS IS A FUNCTION RATHER THAN THE BODY OF AN `if`. It is the only
+ * user-facing insert path in this pane that no round can reach: it lives
+ * behind a button in `offerNativeInsteadOfPicture`, and the self-test cannot
+ * press buttons. Extracted so a scenario can drive THE SHIPPED CODE instead of
+ * a copy of it — this project has been caught four times by a double that
+ * could not fail the way the real thing fails, and a re-implementation in the
+ * self-test would have been the fifth.
+ *
+ * Swallows its own errors on purpose: every failure here is a fallback, and
+ * the caller's floor is the picture. The reason still reaches the console.
+ */
+export async function chartOnItsOwnSlideAsFile(scene: Scene, cfg: ChartConfig): Promise<number> {
+  try {
+    const built = await buildDeckBase64(
+      [{ scene, title: cfg.title ?? "Chart", configJson: JSON.stringify(cfg) }],
+      await slideSize(),
+    );
+    return await insertSlidesFromPptx(built.base64, 1);
+  } catch (err) {
+    console.warn("SSF Charts: the generated slide failed — falling back to a picture", err);
+    return 0;
+  }
+}
 /**
  * Insert a whole .pptx and return how many slides the deck actually gained.
  *
