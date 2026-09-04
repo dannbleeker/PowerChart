@@ -1679,11 +1679,23 @@ async function blankLayoutTarget(
      * theme — different fonts, different colours — on a slide the user asked
      * to have their chart on.
      *
-     * That the two DO differ here is not a guess. `slides.add` was rejected
-     * precisely because the layout was "not available for the default Slide
-     * Master", and the default is the previous slide's. If the deck's own
-     * master had been the first one, the layout would have been valid and
-     * nothing would ever have failed. The rejection is the proof.
+     * THEY DO NOT DIFFER ON THE DECK THAT PROMPTED THIS, and I argued they
+     * must. The reasoning was that `slides.add` had been rejected for a layout
+     * "not available for the default Slide Master", so the default could not be
+     * the master the layout came from. Round 377 measured it and the deck's
+     * master IS the first one — the two ids merely render differently
+     * (`2147483660` against `2147483660#2460954070`), which is why the
+     * comparison below keys on the part before the `#`.
+     *
+     * So sending `slideMasterId` did not fix a WRONG master. It disambiguated
+     * a layout id that the host would not resolve against the default on its
+     * own. The fix is the same either way and is measured — slides persist,
+     * round 377 swept 17 of 17 on the deck that had never managed one — but
+     * the mechanism is "the pair resolves where the layout alone did not",
+     * not "we were naming another master".
+     *
+     * This preference still earns its keep: on a deck whose slides really do
+     * sit on a later master it takes the right one, and it costs one read.
      *
      * So: ask the last slide what master it uses and prefer a blank layout
      * from THAT. It also happens to be what Office.js would have defaulted to
@@ -1712,7 +1724,20 @@ async function blankLayoutTarget(
     } catch {
       /* the host will not say which master the deck uses — fall back below */
     }
-    const preferred = deckMasterId ? masters.items.find((m) => m.id === deckMasterId) : undefined;
+    /**
+     * COMPARED ON THE PART BEFORE THE `#`, because one master answers to two
+     * names depending on who is asked — the same id-space split this file
+     * already carries for slides.
+     *
+     * Round 377 measured it: the master walked out of `slideMasters` reported
+     * `2147483660#2460954070` while the very same master, read through
+     * `Slide.slideMaster`, reported `2147483660`. A plain `===` calls those
+     * different and reports `matchedTheDeck: false` about a deck that matched
+     * perfectly — which it did, and which corrects the claim in `6dfaa4b` that
+     * the rejection proved the two differed. They never differed here.
+     */
+    const masterKey = (id: string | undefined) => String(id ?? "").split("#")[0];
+    const preferred = deckMasterId ? masters.items.find((m) => masterKey(m.id) === masterKey(deckMasterId)) : undefined;
     const ordered = preferred ? [preferred, ...masters.items.filter((m) => m !== preferred)] : masters.items;
     for (const master of ordered) {
       const blank = master.layouts.items.find((l) => l.type === PowerPoint.SlideLayoutType.blank);
@@ -1738,7 +1763,10 @@ async function blankLayoutTarget(
           // two-master deck is a chart slide wearing a different theme from
           // the slides around it.
           deckMasterId: deckMasterId ?? "unreadable",
-          matchedTheDeck: deckMasterId ? master.id === deckMasterId : "unreadable",
+          // Keyed on the part before the `#`. A raw `===` here reported a
+          // mismatch on round 377 against a deck that matched perfectly, on
+          // nothing but two renderings of one id.
+          matchedTheDeck: deckMasterId ? masterKey(master.id) === masterKey(deckMasterId) : "unreadable",
         });
         return { layoutId: blank.id, slideMasterId: master.id };
       }

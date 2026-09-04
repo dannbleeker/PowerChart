@@ -3419,3 +3419,48 @@ NOT established: that the crash rate is fixed. One clean 4:3 round against a
 settled by mechanism — slides persist, the deck grows, the readings say
 "there" — but the crash needs rounds, and the rate ratchet will show it
 falling on its own if it is real.
+
+### 17 of 17 at 4:3, and a correction to why the master fix works — round 377, 2026-09-04
+
+**Round 377 swept the deck that had never swept.** Presentation70 at 4:3, build
+`6dfaa4b`: 17 passed, 0 failed, 0 skipped, no crash. That deck crashed 27 of
+its 30 archived rounds and both own-slide scenarios had been red for weeks.
+
+Its 16:9 control the round before — 376, Presentation64 — also went 17 of 17,
+so nothing regressed on the main arm.
+
+**AND IT CORRECTS THE MECHANISM I COMMITTED.** `6dfaa4b` argued that the deck's
+own master could not be the first one, because the add had been rejected for a
+layout "not available for the default Slide Master" and the default is the
+previous slide's. Round 377 read both and they are the same master:
+
+    slideMasterId (from slideMasters)      2147483660#2460954070
+    deckMasterId  (from Slide.slideMaster) 2147483660
+    matchedTheDeck                         false     <- WRONG
+
+One master, two renderings, and a `===` between them that reported a mismatch
+about a deck that matched perfectly. The same id-space split this project
+already documents for slides, one level up, and I walked into it while writing
+the check that was meant to detect it.
+
+So the corrected reading: sending `slideMasterId` did NOT fix a wrong master.
+It disambiguated a layout id the host would not resolve against the default on
+its own. The fix is unchanged and the measurements are unchanged — slides
+persist, the deck grows and keeps them, three 4:3 rounds in a row without a
+crash — but the mechanism is "the pair resolves where the layout alone did
+not", not "we were naming another master".
+
+The comparison now keys on the part before the `#`, and the fake renders the id
+both ways so the normalisation is testable at all: with it removed, the test
+falls back to the wrong master and fails.
+
+**What is now established.** The add is fixed and verified on both decks and
+both aspect ratios. The recovery for a slide that does vanish is verified
+(round 373, fired twice). The cleanup by set difference is verified (rounds
+376 and 377, "slide swept", no refusal note).
+
+**What is still not established.** The crash RATE. Three clean 4:3 rounds
+against a 27-of-30 history is a strong signal and is not yet a rate. The rate
+ratchet will show it: `stop a run mid-draw` has already fallen from 320 to 276
+per 1000 with nobody editing a number, which is the property it was rebuilt
+for.

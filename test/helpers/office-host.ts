@@ -1610,8 +1610,19 @@ export function makeSlide(id: string) {
      * slide that matches its neighbours from one wearing a different theme.
      */
     slideMaster: {
+      /**
+       * SUFFIXED, because the host renders one master's id two ways.
+       *
+       * Round 377: the master walked out of `slideMasters` answered
+       * `2147483660#2460954070`; the SAME master read through
+       * `Slide.slideMaster` answered `2147483660`. A plain `===` between the
+       * two called them different and reported a mismatch about a deck that
+       * matched perfectly. This fake used to hand back an identical string
+       * from both, so the comparison looked sound and no test could say
+       * otherwise.
+       */
       get id() {
-        return faults.twoMasterDeck ? "master-2" : "master-1";
+        return faults.twoMasterDeck ? "master-2#7788" : "master-1#7788";
       },
       load() {},
     },
