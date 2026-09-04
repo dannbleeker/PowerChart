@@ -1,5 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { batchMs, estimateInsertMs, isSlowInsert, describeMs, SLOW_INSERT_MS } from "../src/core/insert-cost";
+import {
+  batchMs,
+  estimateInsertMs,
+  isSlowInsert,
+  describeMs,
+  insertOutcomeSentence,
+  SLOW_INSERT_MS,
+} from "../src/core/insert-cost";
 
 /**
  * The insert estimate, against the archive it was measured from.
@@ -73,5 +80,53 @@ describe("estimating what an insert will cost", () => {
     expect(describeMs(SLOW_INSERT_MS)).toBe("about 15 seconds");
     expect(describeMs(58_000)).toBe("about a minute");
     expect(describeMs(150_000)).toBe("about 2.5 minutes");
+  });
+});
+
+/**
+ * The sentence an insert ends on, when something went wrong on the way.
+ *
+ * Pure, and tested here rather than through the pane, for the reason
+ * `offerSentence` gives one screen up: what it says can be asserted instead of
+ * grepped for.
+ */
+describe("saying what went wrong before saying what happened", () => {
+  it("puts the setback first, because the outcome is not the news", () => {
+    expect(insertOutcomeSentence(["Could not add a slide — inserting here instead."], "Scaled to fit.")).toBe(
+      "Could not add a slide — inserting here instead. Scaled to fit.",
+    );
+  });
+
+  it("says both setbacks when two routes failed", () => {
+    // The generated-slide route leaves the shape count at 1, which still prices
+    // past SLOW_INSERT_MS on a crowded slide — so the own-slide offer fires
+    // after it and can fail too. One bad host, two failed choices, and the user
+    // should hear about both.
+    expect(insertOutcomeSentence(["First failed.", "Second failed."], "Went in here.")).toBe(
+      "First failed. Second failed. Went in here.",
+    );
+  });
+
+  it("is just the setback when there is no outcome to report", () => {
+    /**
+     * THE CASE THAT USED TO END ON "Working… done". A setback settles, which
+     * suppresses `guard`'s "Done.", and if nothing else posts then the last
+     * text written is the insert's busy phase note — leaving a finished action
+     * showing blue "Working… done" with the progress bar still up. So a lone
+     * setback must still compose to something postable.
+     */
+    expect(insertOutcomeSentence(["Could not add a slide — inserting here instead."], "")).toBe(
+      "Could not add a slide — inserting here instead.",
+    );
+  });
+
+  it("is just the outcome when nothing went wrong", () => {
+    expect(insertOutcomeSentence([], "Placed beside the last chart.")).toBe("Placed beside the last chart.");
+  });
+
+  it("is empty when there is nothing to say, so the caller can stay silent", () => {
+    // An ordinary insert reports nothing and lets `guard` close with "Done.".
+    // Returning " " here would post an empty note and steal that.
+    expect(insertOutcomeSentence([], "")).toBe("");
   });
 });

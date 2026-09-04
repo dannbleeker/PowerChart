@@ -1430,6 +1430,70 @@ describe("the slow-insert offer", () => {
     expect(host.calls.insertScene[0].slideId, "addressed a slide that was never created").toBeUndefined();
   });
 
+  it("does not report a failed choice in green just because the placement worked", async () => {
+    /**
+     * THE BEHAVIOUR CHANGE MOST WORTH PINNING. On a tiled slide the placement
+     * cascade reports "beside, scaled to fit" — an "ok" outcome — and that
+     * green sentence used to be the ONLY thing the user saw, erasing a red
+     * failure that had happened seconds earlier.
+     *
+     * Both facts now, and red: the chart did land, but not where the user
+     * chose, and a choice that did not happen is not a success.
+     */
+    host.slideShapes = crowd(80);
+    host.addSlideResult = null;
+    $("insert").click();
+    await untilOffered();
+    $("slow-offer-own").click();
+    await settle();
+    await settle();
+
+    const said = $("host-note").textContent ?? "";
+    expect(said, `did not lead with the failed choice: ${said}`).toMatch(/^Could not add a slide/);
+    expect(said, `dropped the placement outcome: ${said}`).toMatch(/placed beside/i);
+    expect($("host-note").className, `a failed choice painted green: ${said}`).toMatch(/status-err/);
+  });
+
+  it("says the slide add failed, and does not end on a busy note", async () => {
+    /**
+     * THE SETBACK IS POSTED AND THEN DESTROYED. `note("Could not add a slide —
+     * inserting here instead.")` runs before `insertSceneIntoSlide`, and that
+     * call's first act is `phaseNote("context")` — a busy note into the same
+     * single-slot channel. The rule is already written down one screen away:
+     * "After the insert, never before: phaseNote would have overwritten it."
+     *
+     * TWO THINGS GO WRONG, and the second is the worse one. The setback is
+     * non-busy, so it increments `settledNotes`; `guard` compares that counter
+     * to decide whether to close with "Done."; and on this path no closing
+     * branch applies — the chart is not lost, there is no `warn`, and nothing
+     * moved or shrank. So "Done." is suppressed while the last text written was
+     * `phaseNote("done")`, and the action ends showing "Working… done" in busy
+     * blue with the progress bar still up. That is exactly the state
+     * `settledNotes` was introduced to prevent.
+     */
+    /**
+     * STACKED, not tiled. `crowd(80)` lays shapes across the whole slide, so
+     * placement ends up "beside" and shrunk — a closing branch fires and the
+     * setback is merely overwritten. Eighty shapes piled in one corner keep the
+     * COUNT that makes `worthOwnSlide` fire while leaving the slide empty
+     * enough that placement reports something the closing chain does not print
+     * ("below", "cascade" or "none"), which is the case where nothing settles.
+     */
+    host.slideShapes = Array.from({ length: 80 }, () => ({ left: 40, top: 70, width: 110, height: 18 }));
+    host.addSlideResult = null;
+    $("insert").click();
+    await untilOffered();
+    $("slow-offer-own").click();
+    await settle();
+    await settle();
+
+    const said = $("host-note").textContent ?? "";
+    const cls = $("host-note").className;
+    expect(said, `ended on a busy phase note: ${said}`).not.toMatch(/^Working…/);
+    expect(cls, `ended in the busy state: ${cls}`).not.toMatch(/status-busy/);
+    expect(said, `never told the user the slide add failed: ${said}`).toMatch(/could not add a slide/i);
+  });
+
   /**
    * SLOW IS NOT THE SAME AS WORTH MOVING, and this is the case that separates
    * them. An empty slide is the fastest target there is, so however big the
@@ -2138,7 +2202,61 @@ describe("updating a chart the live canvas will not redraw", () => {
       // call can only ever resolve nothing.
       expect(host.calls.updateChart.filter((c) => c.opts.pictureBase64)).toHaveLength(0);
       expect($("host-note").textContent).not.toMatch(/no longer on the slide/i);
+
+      /**
+       * AND IT SAYS THE CHART WAS DESTROYED AND REBUILT — which it could not,
+       * until 2026-09-04.
+       *
+       * `updateChartResilient` returns `{ next, picture, recovered }` together,
+       * and the ladder that read them returned on the first match. `next` came
+       * back here, so `recovered` was unreachable and the user was told only
+       * "Drawn as a picture" — nothing about the in-place update having deleted
+       * their chart and the pane having drawn it again from scratch.
+       *
+       * That is the fact a user would most want about their own document, and
+       * it was the one fact this path could not deliver.
+       */
+      const said = $("host-note").textContent ?? "";
+      expect(said, `never said the chart had been redrawn from scratch: ${said}`).toMatch(/redrawn from scratch/i);
+      expect($("host-note").className, "reported a destroyed-and-rebuilt chart as success").toMatch(/status-err/);
     } finally {
+      raster.restore();
+    }
+  });
+
+  it("says the chart was rebuilt AND why it is a picture, not one or the other", async () => {
+    /**
+     * The update ladder used to pick one fact with an `else if`, so a
+     * too-dense chart that was destroyed and rebuilt reported the rebuild and
+     * swallowed `chartPicture`'s warn — the sentence that explains why it is a
+     * picture and what can still be done with it. Both are true at once and
+     * both are the user's business.
+     */
+    const raster = stubRaster();
+    try {
+      /**
+       * A warn WITHOUT a png, deliberately. `autoPicture` would also produce a
+       * warn, but it supplies a picture with it — and that picture sends the
+       * resilient ladder down a different route, so `next` comes back null and
+       * this branch never runs. A host that cannot insert pictures at all warns
+       * and hands over nothing, which is the combination this needs.
+       */
+      host.canPicture = false;
+      host.updateChartThrows = true; // wreckage, so the chart is rebuilt
+      host.slideHoldsOnlyChart = false;
+      host.insertResult = { slideId: "s1", shapeId: "grp-new", left: 40, top: 50 };
+      await loadThenUpdate();
+
+      const said = $("host-note").textContent ?? "";
+      expect(said, `never said the chart was rebuilt: ${said}`).toMatch(/redrawn from scratch/i);
+      expect(said, `swallowed the second fact: ${said}`).toMatch(/drawn as a picture/i);
+      // REBUILT LEADS. What happened to their document outranks how it was
+      // drawn, and the old ladder reported only the second of these.
+      expect(said.indexOf("redrawn from scratch"), `led with the wrong fact: ${said}`).toBeLessThan(
+        said.indexOf("Drawn as a picture"),
+      );
+    } finally {
+      host.canPicture = true;
       raster.restore();
     }
   });
@@ -3602,14 +3720,18 @@ describe("Explode respects the same budget the insert path enforces", () => {
       expect(host.calls.insertFile, "never tried the file route").toHaveLength(1);
       expect(host.calls.insertScene, "the chart was lost — no picture went in either").toHaveLength(1);
       /**
-       * The user ends up told it is a picture and why, which is the OUTCOME —
-       * but not that their choice failed on the way. The fallback's own note
-       * is overwritten by the insert's closing message, and unpicking that
-       * means restructuring how one note channel carries two facts. Asserted as
-       * it actually behaves rather than as I would like it to, so the gap is on
-       * the record instead of hidden behind a friendlier assertion.
+       * BOTH FACTS, SETBACK FIRST.
+       *
+       * This assertion used to read `/picture/i` alone, under a comment saying
+       * the user was told the outcome but not that their choice had failed, and
+       * that unpicking it meant restructuring how one note channel carries two
+       * facts. That restructure is what `insertOutcomeSentence` is, so the
+       * comment has been replaced by the assertion it was standing in for.
        */
-      expect($("host-note").textContent ?? "", "said nothing at all").toMatch(/picture/i);
+      const said = $("host-note").textContent ?? "";
+      expect(said, `did not lead with the failed choice: ${said}`).toMatch(/^Could not add the slide/);
+      expect(said, `dropped the outcome: ${said}`).toMatch(/picture/i);
+      expect($("host-note").className, "a failed choice reported as success").toMatch(/status-err/);
     } finally {
       host.insertFileLands = null;
       raster.restore();

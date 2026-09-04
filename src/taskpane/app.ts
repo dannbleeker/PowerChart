@@ -1,5 +1,5 @@
 import { buildChart, clampDim, DEFAULT_SIZE, valueExtent } from "../core/chart";
-import { estimateInsertMs, worthOwnSlide, offerSentence } from "../core/insert-cost";
+import { estimateInsertMs, worthOwnSlide, offerSentence, insertOutcomeSentence } from "../core/insert-cost";
 import { PALETTES } from "../core/style";
 import type { ChartConfig, ChartKind, Decorations, Series } from "../core/types";
 import { resolveStyleFile, isEmptyStyle, type DeckStyle, type StylePreference } from "../core/deck-style";
@@ -2232,8 +2232,31 @@ async function runInsert(asNew: boolean) {
     }
     if (next) {
       state.editTarget = next;
-      if (picture && !png) note("Drawn as a picture — PowerPoint would not redraw the shapes.", "err");
-      else if (warn) note(warn, "err");
+      /**
+       * THREE FACTS, AND TWO OF THEM USED TO BE UNREACHABLE.
+       *
+       * `updateChartResilient` returns `{ next, picture, recovered }` together
+       * (see its `return { next, picture: true, recovered: !!wreckage }`), but
+       * this ladder returned on the first match. So `recovered` — the chart was
+       * DESTROYED by the failed in-place update and redrawn from scratch — was
+       * only ever said when `next` was null, and the `warn` explaining a
+       * too-dense chart was swallowed by an `else if` whenever the ladder had
+       * fallen to a picture.
+       *
+       * `recovered` leads: "your chart was destroyed and rebuilt" outranks how
+       * it was drawn, and it is the one a user would want to know about their
+       * own document.
+       *
+       * The standalone `if (recovered)` below is untouched — it still handles
+       * the `next === null` case it was written for, and its comment explains
+       * why that case must be told apart from "gone".
+       */
+      const setbacks = [
+        recovered && t("PowerPoint would not redraw that chart in place, so it was redrawn from scratch."),
+        picture && !png && t("Drawn as a picture — PowerPoint would not redraw the shapes."),
+      ].filter((s): s is string => !!s);
+      const said = insertOutcomeSentence(setbacks, warn ? t(warn) : "");
+      if (said) note(said, "err");
       return;
     }
     if (recovered) {
@@ -2358,6 +2381,26 @@ async function runInsert(asNew: boolean) {
    * cost, the two stop agreeing and the difference becomes real.
    */
   let ownSlideId: string | undefined;
+  /**
+   * WHAT WENT WRONG ON THE WAY, collected rather than posted.
+   *
+   * `note()` is one slot and the last write wins, so a setback posted here was
+   * destroyed by `phaseNote` moments later — the insert's first act is a busy
+   * note into the same element, which is why "After the insert, never before"
+   * is already written down further down this function. The user's chosen route
+   * had failed and the pane told them only the outcome.
+   *
+   * AN ARRAY, NOT A STRING, because two can stack: the generated-slide fallback
+   * leaves `pricedShapes` at 1, and one shape onto a slide already holding
+   * fifty-odd still prices past `SLOW_INSERT_MS` — so the own-slide offer fires
+   * after it and can fail too. Two failed routes are one bad host, and the user
+   * should hear about both.
+   *
+   * Translated at PUSH time: the first carries an interpolated count, so it has
+   * stopped being a catalogue key by the time it is composed. See
+   * `insertOutcomeSentence`.
+   */
+  const setbacks: string[] = [];
   const sceneShapes = estimateOfficeShapes(scene);
   /**
    * THE PICTURE IS DECIDED BEFORE THE OFFER, because the offer quotes a TIME and
@@ -2417,9 +2460,10 @@ async function runInsert(asNew: boolean) {
     // landed count that is not exactly 1 means the host took something other
     // than what was handed over, and `insertSlidesFromPptx` measures that from
     // a before-and-after slide count rather than trusting the call not to throw.
-    note(
-      `Could not add the slide${landed > 1 ? ` (the host took ${landed})` : ""} — inserting here as a picture.`,
-      "err",
+    setbacks.push(
+      t("Could not add the slide{took} — inserting here as a picture.", {
+        took: landed > 1 ? ` (the host took ${landed})` : "",
+      }),
     );
   }
   if (occupied && worthOwnSlide(pricedShapes, occupied.length)) {
@@ -2437,7 +2481,12 @@ async function runInsert(asNew: boolean) {
       // literally, and a sibling flag would slip past them.
       cfg.render = "image";
       pic = await chartPicture(cfg, scene);
-      if (!pic.png) note("Could not render a picture — inserting native shapes instead.", "err");
+      // NAMES THE CHOICE ONLY. `chartPicture` always returns a `warn` on this
+      // path ("Couldn't rasterize the chart — inserted native shapes instead."),
+      // and the old wording here repeated it almost verbatim — composing the two
+      // would have said the same thing twice. This says which choice failed and
+      // lets the outcome carry the remedy.
+      if (!pic.png) setbacks.push(t("Could not render the picture you chose."));
     }
     if (choice === "own-slide") {
       note("Adding a slide…", "busy");
@@ -2445,7 +2494,7 @@ async function runInsert(asNew: boolean) {
       // chart then goes where the user originally asked — slowly, but it goes.
       // Losing the offer is a nuisance; losing the chart is not acceptable.
       ownSlideId = (await addSlideForChart()) ?? undefined;
-      if (!ownSlideId) note("Could not add a slide — inserting here instead.", "err");
+      if (!ownSlideId) setbacks.push(t("Could not add a slide — inserting here instead."));
     }
   }
   // PLACEMENT IS RECOMPUTED FOR AN EMPTY SLIDE. `at` was cascaded around the
@@ -2472,25 +2521,55 @@ async function runInsert(asNew: boolean) {
   // and this path threw the whole return away, so `guard()` printed "Done." in
   // green over it. The demo path has a repair pass for exactly this; the
   // everyday insert has none, which makes saying so the only thing left.
+  /**
+   * CHOSEN HERE, POSTED ONCE BELOW, so a setback can lead it.
+   *
+   * Same four conditions and the same texts as before — only the verb changed,
+   * from posting to assigning. `undefined` is the fourth outcome and always
+   * was: an ordinary insert with nothing to report.
+   */
+  let outcome: { text: string; status: "ok" | "err" } | undefined;
   if (inserted?.lost === "no-config")
-    note(
-      "The chart is on the slide, but PowerPoint would not save its settings onto it — the pane cannot re-open " +
+    outcome = {
+      text:
+        "The chart is on the slide, but PowerPoint would not save its settings onto it — the pane cannot re-open " +
         "this one. Insert it again if you need to keep editing it.",
-      "err",
-    );
-  else if (warn) note(warn, "err");
+      status: "err",
+    };
+  else if (warn) outcome = { text: warn, status: "err" };
   // Say where it went as well as whether it was scaled. A chart that appears
   // BESIDE the last one rather than under it is the one placement outcome a
   // user has no reason to expect, and silence about it reads as the add-in
   // having put the chart somewhere at random.
   else if (at.moved === "beside")
-    note(
-      at.shrunk
+    outcome = {
+      text: at.shrunk
         ? "Placed beside the last chart and scaled to fit — drag or resize it as you like."
         : "Placed beside the last chart — drag or resize it as you like.",
-      "ok",
-    );
-  else if (at.shrunk) note("Scaled to fit the space left on the slide — drag or resize it as you like.", "ok");
+      status: "ok",
+    };
+  else if (at.shrunk)
+    outcome = { text: "Scaled to fit the space left on the slide — drag or resize it as you like.", status: "ok" };
+  /**
+   * SETBACK FIRST, and RED whenever there is one.
+   *
+   * A setback beside an "ok" placement is an error overall — the user's choice
+   * did not happen, and reporting that in green is the defect this replaces.
+   *
+   * The outcome is translated HERE and the setbacks were translated at push
+   * time, so `insertOutcomeSentence` only joins. Passing the joined string to
+   * `note` is safe precisely because both halves are already localised: `t()`
+   * misses on the join and returns it unchanged, which is the documented
+   * fallback rather than an accident.
+   *
+   * THE THIRD BRANCH IS LOAD-BEARING. A setback with no outcome must still
+   * post, or nothing settles and `guard` paints "Done." in green over a
+   * failure — which is worse than the bug being fixed. It is also the case that
+   * used to end on "Working… done" in busy blue, because the setback settled,
+   * suppressed "Done.", and left the phase note as the last thing written.
+   */
+  const said = insertOutcomeSentence(setbacks, outcome ? t(outcome.text) : "");
+  if (said) note(said, setbacks.length || outcome?.status === "err" ? "err" : "ok");
 }
 
 /**

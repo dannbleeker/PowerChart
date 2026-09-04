@@ -141,6 +141,36 @@ export function offerSentence(present: number, hereMs: number, freshMs: number):
   );
 }
 
+/**
+ * What went wrong on the way, then what happened — one sentence for one slot.
+ *
+ * The pane has a single live text channel and `note()` REPLACES it, so a
+ * setback posted mid-insert is destroyed: `insertSceneIntoSlide`'s first act is
+ * a busy phase note into that same slot. Every setback was lost this way, and
+ * the user was told only the outcome — their choice had failed and the pane
+ * never said so.
+ *
+ * Worse, a setback SETTLES (it is not "busy"), and `guard` posts "Done." only
+ * when nothing settled. So on the path where no closing message applies, the
+ * setback suppressed "Done." while the last text written was the phase note —
+ * an action that had finished sitting on "Working… done" in busy blue with the
+ * progress bar still up. Measured, not supposed: the test "says the slide add
+ * failed, and does not end on a busy note" failed on exactly that string before
+ * this function existed.
+ *
+ * SETBACKS FIRST. The user needs to know their choice did not happen before
+ * being told what happened instead; the other order buries it.
+ *
+ * TRANSLATE THE PARTS, NOT THE RESULT. Each piece is its own catalogue key; the
+ * join is not, and `t()` would never find it. Callers pass text that has already
+ * been through `t()` — this only joins. The separator is a space because these
+ * are whole sentences each ending in its own stop, where the repo's "; " is for
+ * problems and " · " for tallies.
+ */
+export function insertOutcomeSentence(setbacks: string[], outcome: string): string {
+  return [...setbacks, outcome].filter(Boolean).join(" ");
+}
+
 /** "about 20 seconds" / "about a minute" — for a sentence, not a readout. */
 export function describeMs(ms: number): string {
   const s = Math.round(ms / 1000);
