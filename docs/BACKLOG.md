@@ -3478,3 +3478,43 @@ against a 27-of-30 history is a strong signal and is not yet a rate. The rate
 ratchet will show it: `stop a run mid-draw` has already fallen from 320 to 276
 per 1000 with nobody editing a number, which is the property it was rebuilt
 for.
+
+### The set-difference delete is PARTIAL — it works only after the slide settles, 2026-09-04
+
+`deleteSlideAddedSince` (89604bc) finds the added slide by diffing the deck
+listing at delete time, so it is immune to the id having CHANGED. It is not
+immune to the id not having changed YET.
+
+Round 378 caught it. `stop a run mid-draw` aborts early by design, so its
+cleanup runs seconds after the add — before the host re-keys. The diff then
+returns the ADD-TIME id, which is exactly the name `deleteSlideById` cannot
+resolve, and the scenario failed on the old sentence:
+
+    deck 7 -> 8, "stop requested", reading "there" (deckSlides 8, in range)
+    then: "the slide this drew on could not be deleted"
+
+Rounds 376 and 377 passed the same scenario because their cleanup ran later,
+after the re-key, so the diff handed over the settled id. Same code, different
+timing, opposite result — which is why one green round was not evidence.
+
+**Where it actually breaks.** `deleteSlideByPosition` looks the id up in a fresh
+listing, finds it, then re-reads the id through a by-index handle and compares:
+
+    if (loadedValue(() => slide.id) !== slideId) return;
+
+The listing says `4123571151#123571113` and the by-index handle answers the
+settled form, so the comparison fails and it declines. Normalising on the `#`
+does NOT help here as it did for masters — an add-time slide id and its settled
+form share no prefix (`4123571151#123571113` against `256#2587447327`).
+
+**What would fix it, and why I have not built it.** The diff already knows the
+INDEX of the fresh id in the listing it just read. Deleting at that index and
+verifying both that the deck shrank by one AND that the fresh id is no longer
+listed would be sound. But that is a destructive path guarded by a check bought
+with round 124's receipt — 62 scratch slides reported swept and none deleted —
+and it deserves its own careful pass rather than being bolted onto a session
+that is already several fixes deep. Filed rather than rushed.
+
+**Severity: harness only.** The product's Tidy walks `deck.newSlides`, which is
+a diff over the POST-round listing, so it holds settled ids and works. This
+costs one intermittent scenario failure, not a user anything.
