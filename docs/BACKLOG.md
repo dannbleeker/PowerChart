@@ -3602,3 +3602,51 @@ pictures within PowerPoint"; UpSlide ships vector pictures. The native-shapes
 champions — think-cell, Deckary, Power-user — are all DESKTOP ONLY and never
 face this constraint. Doing native shapes on the web would be unusual, and
 would be the product's differentiator rather than its convention.
+
+### The death ratchet is falling on its own, which is what a landed fix looks like — 2026-09-04
+
+The rate instrument was rebuilt on 2026-09-03 with one argument for choosing a
+rate over a count: **a rate can fall**, so a fix that works protects itself
+without anyone editing a number. That claim can now be checked against a day of
+rounds, and it holds.
+
+Tracked across today, the two own-slide scenarios:
+
+    a big chart on a slide of its own   455 (5/11) -> 500 (7/14)
+                                        -> 524 (11/21) -> 393 (11/28)
+    stop a run mid-draw                 320 (8/25) -> 296 (8/27)
+                                        -> 276 (8/29) -> 222 (8/36)
+
+The death COUNTS are flat while the run counts climb. Nothing was edited; the
+rate fell because clean runs accumulated under it. Both are now well below the
+ceilings they were seeded at.
+
+**And the deaths stopped where the fix landed.** Attributed across sound crash
+records, split at `40dfee0`:
+
+    deaths on PRE-fix builds    33
+    deaths on POST-fix builds    0
+
+Zero, across every arm and every scenario.
+
+**What that does and does not establish.** It establishes that the own-slide
+scenarios have stopped killing the host: `a big chart on a slide of its own`
+has run seven more times and `stop a run mid-draw` eleven more, both without a
+death, against pre-fix rates of ~500 and ~320 per 1000. At those rates the
+chance of seeing none is roughly 1 in 100 and 1 in 60 respectively.
+
+It does NOT establish the 4:3 crash rate, and the difference is worth keeping
+straight. Post-fix the 4:3 arm has FIVE archived rounds with no crash — 374,
+375, 377, 378 and 382 — and ONE crash record, which died at 128.9s in the PROBE
+phase on `creationid-survives-grouping`, with no scenario open. That is a
+different population from the own-slide defect, and there is no reason the
+master fix would have touched it.
+
+One crash in six attempts against 55 in 113 is suggestive and not yet
+conclusive: at the old rate, seeing at most one in six happens about 11% of the
+time by chance. Around ten clean attempts is where this stops being a hopeful
+reading, and each one is a ten-minute round.
+
+So: the mechanism is fixed and the deaths it caused have stopped, measured. The
+ARM is not yet demonstrably healthy, and saying otherwise would be reading a
+scenario-level result as a deck-level one.
