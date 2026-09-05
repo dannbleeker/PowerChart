@@ -35,9 +35,16 @@ that one is waiting on a deck rather than on work:**
 > the list is what to trust.
 
     3  whether a crowded slide should get a picture instead of native shapes
+       — decided and shipped; the remainder (re-express the 90-shape budget as
+       a time estimate) is ON HOLD as of 2026-09-05, blocked on a measurement
+       rather than a decision. See "the cost model is in the wrong unit too"
     5  filing this project's host measurements to the office-js tracker
    17  the deck scan's paging loop — now covered under the fake at 25
        slides; only the live-host half remains (engineering)
+
+**The 4:3 arm is no longer on this list, and was never on it as a numbered
+item.** It closed 2026-09-05 on seven post-fix rounds against four pre-fix
+ones, p = 0.010. See the two-master entry at the end of this file.
 
 **3 — DECIDED, AND TWO THIRDS SHIPPED, 2026-09-04.** The question was "picture
 or native shapes for a crowded slide". The answer is "ask, and keep the picture
@@ -3573,11 +3580,42 @@ both aspect ratios. The recovery for a slide that does vanish is verified
 (round 373, fired twice). The cleanup by set difference is verified (rounds
 376 and 377, "slide swept", no refusal note).
 
-**What is still not established.** The crash RATE. Three clean 4:3 rounds
-against a 27-of-30 history is a strong signal and is not yet a rate. The rate
-ratchet will show it: `stop a run mid-draw` has already fallen from 320 to 276
-per 1000 with nobody editing a number, which is the property it was rebuilt
-for.
+**~~What is still not established.~~ THE RATE IS NOW ESTABLISHED, 2026-09-05.**
+Every 4:3 round that carries the own-slide scenario, split on whether its build
+contains the fix (`6dfaa4b`):
+
+    PRE-fix    370  371  372  375                          4 of 4 FAILED
+    post-fix   377  378  382  383  385  386  387           7 of 7 passed
+               384                                         failed elsewhere
+
+Fisher's exact, one-sided, counting 384 as a failure so no judgement is
+required of the reader: **p = 0.010**. Excluding it on its own evidence — its
+detail says the CONTROL insert onto the visible slide hung and that "nothing
+here says anything about a freshly-added slide" — p = 0.003. The conservative
+number is the one to quote.
+
+Three of the four pre-fix failures are `GeneralException at=drawing the chart's
+shapes`; the fourth could not delete the slide it added. None of that has
+recurred in seven attempts, and 385, 386 and 387 are 18 of 18.
+
+**Round 374 is absent from both columns, and the rounds gate is right to flag
+it — but the disagreement is now resolved.** The gate reports it as "filed
+under a profile the driver did not measure": the archive says 960x540 from
+`exportedSlide`, `driverSlideSize` says 4:3, `driverDeck` says
+Presentation70.pptx. The archive is the correct reading. Round 373 deliberately
+held Presentation70 at 960pt to prove the crash was not about aspect ratio, and
+that resize was still in place when 374 ran an hour later; 375 is back at
+720x540, so the deck was reset between them. `driverSlideSize` is echoing what
+the round was ASKED for, `exportedSlide` is measuring what it got, and on this
+round they honestly differ. 374 is a 16:9 round on the 4:3 deck. It is
+pre-fix (`40dfee0`, 2026-09-03 23:01, against the fix at 2026-09-04 08:26) and
+it failed the own-slide scenario — consistent with the pre-fix column it is not
+counted in.
+
+Originally written as: "Three clean 4:3 rounds against a 27-of-30 history is a
+strong signal and is not yet a rate." It took seven. The rate ratchet moved on
+its own throughout, which is the property it was rebuilt for — `stop a run
+mid-draw` fell from 320 to 222 per 1000 with nobody editing a number.
 
 ### The set-difference delete is PARTIAL — it works only after the slide settles, 2026-09-04
 
@@ -3618,6 +3656,27 @@ that is already several fixes deep. Filed rather than rushed.
 **Severity: harness only.** The product's Tidy walks `deck.newSlides`, which is
 a diff over the POST-round listing, so it holds settled ids and works. This
 costs one intermittent scenario failure, not a user anything.
+
+**RESOLVED BY THE ROUNDS, NOT BY A TEST — 2026-09-05.** `bc9a386` made the diff
+re-read and re-take the difference over three passes 400ms apart, on the theory
+that the fault was the id not having settled YET rather than having changed.
+That theory could not be tested: the fake settles an id after N LOOKUPS and one
+delete attempt makes several, so it always settles within a single attempt,
+where the host's settle is a matter of TIME; and the call site is
+`deleteSlideAddedSince(...) || deleteSlideById(slideId)`, so a failed diff falls
+through to the old route and the verdict is identical either way. Cutting the
+loop to one pass changed no test, checked twice after two failed fixture
+attempts. The docstring said so rather than letting a green suite imply
+coverage, and named the rounds that would adjudicate it.
+
+They have. `stop a run mid-draw` failed this cleanup in 378, 382 and 383, and
+passed it at 4:3 in **385, 386 and 387** — three in a row, all 18 of 18. The
+retry is doing the work. It stays, and it stays labelled as verified by the
+harness rather than by the suite.
+
+The positional delete described below was NOT built, and should still not be:
+the diff knows the index and it would have worked first time, but deleting an
+unconfirmed index is what round 124 punished. The cheaper fix was enough.
 
 ### ITEM 3, MEASUREMENT 1: an inserted .pptx does NOT bring its own master — round 379, 2026-09-04
 
