@@ -217,6 +217,20 @@ the deck between rounds, so the scan always runs against 7-9 slides against a
 page size of 20. Closing it needs a deck deliberately left holding 21+ slides
 at scan time, which is a deck-preparation step and not a code change.
 
+**AND THE OBVIOUS SHORTCUT IS A TRAP — considered and rejected 2026-09-05.**
+The tempting move is to make `READBACK_PAGE` settable, shrink it to 3 in a
+scenario, and let an ordinary 7-9 slide deck page twice on a live host. It
+would go green, it would look like this item closing, and it would prove almost
+nothing. The loop is ALREADY covered against the fake at 25 slides. What is
+untested is not the arithmetic of `start += READBACK_PAGE`; it is what a real
+host does on a second page — and the page is 20 precisely to stay clear of the
+web >50-item load ceiling (office-js#4272). A page of 3 never approaches it. So
+the shortcut exercises the half that is covered and skips the half that is the
+risk, at the cost of making a shipped constant mutable in the hot read path.
+
+The honest options are a deck genuinely holding 21+ slides, or leaving this
+open. It stays open.
+
 **13, 14 and 15 closed on 2026-09-03.** Each was closed by an answer rather
 than by a decision, and two of the answers were the opposite of what the item
 assumed.
