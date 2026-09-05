@@ -5640,6 +5640,44 @@ describe("what the per-slide shape counter counts", () => {
   });
 
   /**
+   * EVERY DRAW'S LAST BATCH WENT UNTIMED, and the hole was half the data.
+   *
+   * `prevBatchMs` is only ever read by the NEXT batch's `issued` line, so a
+   * draw's final batch was never recorded — 4,583 of 8,771 batches across the
+   * archive, measured 2026-09-05 — and a chart small enough to fit in ONE batch
+   * was never timed at all. `estimateInsertMs` prices exactly those, so the
+   * curve in `insert-cost.ts` was fitted on a sample containing none of them.
+   *
+   * The single-batch case is what this draws, because it is the one the hole
+   * swallowed whole: without the `last batch settled` line such a draw produces
+   * NO timing at all, and every assertion below has nothing to find.
+   */
+  it("times the last batch of a draw, including a draw that is only one batch", async () => {
+    installHost([makeSlide("settled-a")]);
+    const cfg = { ...sampleConfig("clustered"), ...DEFAULT_SIZE };
+    const scene = buildChart(cfg);
+    setTracing(true);
+    try {
+      await insertSceneIntoSlide(scene, { tagData: JSON.stringify(cfg), slideId: "settled-a" });
+      const entries = traceLog().entries;
+      const issued = entries.filter((e) => e.message === "batch issued");
+      const settled = entries.filter((e) => e.message === "last batch settled");
+      expect(issued.length, "nothing was drawn, so there is no last batch to time").toBeGreaterThan(0);
+      expect(settled.length, "the draw ended without timing its final batch").toBe(1);
+      const d = settled[0].data ?? {};
+      expect(typeof d.ms, `the settled line carried no duration: ${JSON.stringify(d)}`).toBe("number");
+      expect(Number(d.batchNo), "the settled line disagrees with how many batches were issued").toBe(issued.length);
+      expect(Number(d.drew), "the settled line says the last batch drew nothing").toBeGreaterThan(0);
+      // AFTER, and the name is load-bearing. On a one-batch draw the count is
+      // still under the sentinel, so a "before" here would be the fabricated
+      // zero that made the first reading of this archive wrong by 13x.
+      expect(Number(d.onSlideAfter)).toBeGreaterThanOrEqual(Number(d.drew));
+    } finally {
+      setTracing(false);
+    }
+  });
+
+  /**
    * A redraw is not an addition, and for a round this counter said it was.
    *
    * The field answers "how much has this run already put here" and feeds two

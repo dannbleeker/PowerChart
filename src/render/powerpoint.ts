@@ -9955,6 +9955,8 @@ async function renderShapesChunked(
    */
   let bankedHere = 0;
   let bankedUnder: string | undefined;
+  /** What the final batch drew — so its `settled` line can report a size, not just a time. */
+  let lastDrew = 0;
   while (s < steps.length) {
     // The stop check, and the only place it can honestly go: batches already
     // committed are on the slide and a sync in flight cannot be recalled, so
@@ -10134,7 +10136,37 @@ async function renderShapesChunked(
     shapesDrawnOnSlide.set(slideKey, (shapesDrawnOnSlide.get(slideKey) ?? 0) + (created.length - before));
     bankedHere += created.length - before;
     bankedUnder = slideKey;
+    lastDrew = created.length - before;
   }
+  // THE LAST BATCH OF EVERY DRAW WAS NEVER TIMED, and the gap is not random.
+  //
+  // `prevBatchMs` is only ever read by the NEXT batch's `issued` line, so a
+  // draw's final batch went unrecorded — 4,583 of 8,771 batches across the
+  // archive, measured 2026-09-05 — and a chart small enough to fit in ONE batch
+  // was never timed at all. The sizes this project draws are 7, 9, 10, 11, 14,
+  // 16, 24 and 103 shapes, and all 1,799 draws at 7, 9 or 10 were silent.
+  // `estimateInsertMs` prices exactly those, so its curve was fitted on a
+  // sample containing none of them; see `src/core/insert-cost.ts`.
+  //
+  // Its own message rather than a field on `batch issued`, so every reader of
+  // that line keeps the shape it has always had.
+  //
+  // `onSlideAfter` IS AFTER, and the name says so because the sibling field on
+  // `batch issued` is before. Not restated as a "before" here: on a
+  // single-batch draw the count is still banked under the `(visible)` sentinel
+  // — the retag only runs when a LATER batch arrives — so a before-value would
+  // be the fabricated zero that made the first reading of this data wrong by
+  // 13x. `drew` is emitted instead, and a reader who wants the before can
+  // subtract it and check `onSlideKey` first.
+  if (prevBatchMs !== undefined && batchNo > 0)
+    trace("draw", "last batch settled", {
+      batchNo,
+      total,
+      drew: lastDrew,
+      onSlideAfter: bankedUnder === undefined ? 0 : (shapesDrawnOnSlide.get(bankedUnder) ?? 0),
+      onSlideKey: bankedUnder ?? "(never named)",
+      ms: prevBatchMs,
+    });
   return created;
 }
 
