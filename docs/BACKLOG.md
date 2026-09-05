@@ -155,49 +155,78 @@ are 7, 9, 10, 11, 14, 16, 24, 103 — and all 1,799 draws at 7, 9 or 10 shapes
 were untimed. The model priced single-batch charts from a sample containing
 none of them.
 
-`last batch settled` now carries them. Four rounds (388-391) produced 48 new
-readings, 20 of them single-batch draws that were previously invisible:
+`last batch settled` now carries them. Eight rounds (388-395) produced 96 new
+readings, 40 of them single-batch draws that were previously invisible. Held to
+those drawn at **true zero occupancy**, which is the only like-for-like:
 
-    single-batch draws, 7 and 9 shapes    p25 7,222   med 8,271   p75 9,282
-    what estimateInsertMs prices them at              3,886
+    7 shapes    n=8    med 5,683ms     model says 3,886    1.46x low
+    9 shapes    n=8    med 8,547ms     model says 3,886    2.20x low
 
-**2.1x low, and this is a SECOND, INDEPENDENT line of evidence for the same
-number.** The hold-out validation put the blank-slide anchor at +99% using data
-this line could not see; these are charts the hold-out could not see either.
-Two methods, no shared readings, same answer.
+**A second, independent line of evidence for the hold-out's answer.** The
+hold-out put the blank-slide anchor at +99% using data this line could not see;
+these are charts the hold-out could not see either. Two methods, no shared
+readings, the same direction and roughly the same size.
 
-Like-for-like on batch position, it also extends the size inversion further
-down than the archive could previously reach: a 7-shape chart drawn in ONE
-batch costs ~8,271ms where a 24-shape chart's ten-shape FIRST batch costs
-~3,617ms. Fewer shapes drawn, 2.2x the time, both at batch 1 on an empty slide.
+It also extends the size inversion further down than the archive could reach: a
+**9-shape** chart costs 8,547ms where a **24-shape** chart's first batch costs
+3,617ms — and a 7-shape one costs 5,683ms. Neither ordering nor magnitude
+follows the count.
 
-Caveats kept in front: n=20 over four rounds, and a last batch is not a
-first batch in general — it sits at the draw's maximum occupancy, and it draws
-a partial tail rather than ten. The single-batch subset is the clean one,
-because there the last batch IS the first batch. That is the subset quoted
-above.
+**MY FIRST READING OF THIS QUOTED 2.1x, AND IT WAS THE OCCUPANCY MISTAKE AGAIN
+IN A NEW PLACE.** It pooled all 40 single-batch draws, and those draws sit at
+occupancies 0, 7, 14 and 21 — four to a slide. Conditioning on a true prior of
+zero is what gives 1.46x and 2.20x above. Third time occupancy has hidden
+inside a pooled median in one day; the standing rule now is that no median from
+this archive is quoted without saying what occupancy it is at.
 
-**A SECOND THING THE NEW LINE UNLOCKS, AND IT IS ONLY A LEAD SO FAR.** Those
-single-batch draws are the rasterise scenario's, and that scenario is already a
-properly counterbalanced experiment — "after a rasterise" against "after a
-cheap read", back to back in the same round on the same deck. Until now it
-could only be read for STALLS, where it says 0.0% against 0.1% over 359 rounds
-and looks settled. It was never readable for DURATION, because every one of its
-draws is a single batch and single batches were never timed.
+Remaining caveat: a last batch is not a first batch in general — it sits at the
+draw's maximum occupancy and draws a partial tail rather than ten. The
+single-batch subset is the clean one, because there the last batch IS the first
+batch, and it is the only subset quoted.
 
-Read for duration across rounds 388-391:
+**A RASTERISE DOES NOT SLOW THE NEXT DRAW — the lead this line produced was
+killed by the experiment's own control, 2026-09-05.** Worth the whole entry,
+because the false version was convincing.
 
-    after a rasterise    n=8   p25 5,958   med 8,888   p75 9,367
-    after a cheap read   n=8   p25 7,446   med 7,847   p75 8,319
+Those single-batch draws are the rasterise scenario's, which is already a
+counterbalanced A/B — "after a rasterise" against "after a cheap read" — and
+until `6b0b2a4` it could only be read for STALLS, where it says 0.0% against
+0.1% over 359 rounds. Read for DURATION over eight rounds it looked like a
+find: rasterise arm median 8,888ms against 7,509ms, and paired per round the
+rasterise arm slower in **8 of 8**, p = 0.0039 on a sign test.
 
-    paired per round, the rasterise arm is slower in 4 of 4
+It is an artefact, and the scenario was built to catch exactly this. The design
+is ABBA — rasterise at positions 0 and 3, cheap read at 1 and 2 — so splitting
+by half is the control:
 
-**Do not read that as a finding.** Four of four on a sign test is p = 0.0625,
-the quartiles overlap heavily, and n is 8 per arm. It is worth watching because
-it is FREE — every round from here produces it — and because a duration effect
-is exactly what a stall count cannot see. Ten paired rounds would settle it
-either way. Recorded now so the question is asked of the data rather than
-noticed later in it.
+    rasterise slower in the EARLY half   0 of 8      p = 1.0
+    rasterise slower in the LATE  half   8 of 8      p = 0.0039
+
+Perfectly symmetric, which is what "no effect plus a position trend" looks like.
+The trend is the whole story: in all eight rounds the four draws climb
+monotonically by POSITION, and pooling an arm's two positions left a residue
+that happened to lean one way every time.
+
+**And the trend is not position either — it is occupancy, measured more cleanly
+here than anywhere else in the archive.** All four draws land on the SAME slide
+and each draws 7 shapes, so `onSlideAfter` runs 7, 14, 21, 28 and the prior
+runs 0, 7, 14, 21:
+
+    prior 0    n=8    p25 5,660   med 5,683   p75 5,958
+    prior 7    n=8    p25 6,721   med 7,128   p75 7,446
+    prior 14   n=8    p25 7,810   med 7,847   p75 8,319
+    prior 21   n=8    p25 9,072   med 9,282   p75 9,384
+
+Identical chart, identical size, one slide, one scenario, monotonic in every
+round — **+63% for 21 shapes, about 260ms per shape already present.** That is
+the second independent within-slide series, alongside the 103-shape chart's ten
+batches, and the two agree that occupancy is real and roughly linear at this
+scale.
+
+The lesson is filed with the finding: this scenario's ABBA was designed for the
+stall question years before anyone read it for time, and it paid off on the
+first duration reading taken from it. A pooled per-round comparison would have
+published the opposite.
 
 WHAT those 16-shape charts contain that costs 2.8x is the open question, and it
 is the term the model needs.
@@ -3744,20 +3773,20 @@ Every 4:3 round that carries the own-slide scenario, split on whether its build
 contains the fix (`6dfaa4b`):
 
     PRE-fix    370  371  372  375                        4 of 4 FAILED
-    post-fix   377  378  382  383  385  386  387         11 of 11 passed
-               388  389  390  391
+    post-fix   377  378  382  383  385  386  387         15 of 15 passed
+               388  389  390  391  392  393  394  395
                384                                       failed elsewhere
 
 Fisher's exact, one-sided, counting 384 as a failure so no judgement is
-required of the reader: **p = 0.0028**. Excluding it on its own evidence — its
+required of the reader: **p = 0.0010**. Excluding it on its own evidence — its
 detail says the CONTROL insert onto the visible slide hung and that "nothing
-here says anything about a freshly-added slide" — p = 0.0007. The conservative
+here says anything about a freshly-added slide" — p = 0.0003. The conservative
 number is the one to quote.
 
 Three of the four pre-fix failures are `GeneralException at=drawing the chart's
 shapes`; the fourth could not delete the slide it added. None of that has
-recurred in eleven attempts, and **385 through 391 are seven consecutive rounds
-at 18 of 18** — the longest clean run at 4:3 in the archive.
+recurred in fifteen attempts, and **385 through 395 are eleven consecutive
+rounds at 18 of 18** — the longest clean run at 4:3 in the archive.
 
 **Round 374 is absent from both columns, and the rounds gate is right to flag
 it — but the disagreement is now resolved.** The gate reports it as "filed
@@ -3774,7 +3803,7 @@ it failed the own-slide scenario — consistent with the pre-fix column it is no
 counted in.
 
 Originally written as: "Three clean 4:3 rounds against a 27-of-30 history is a
-strong signal and is not yet a rate." It took seven, and eleven now stand. The
+strong signal and is not yet a rate." It took seven, and fifteen now stand. The
 rate ratchet moved on its own throughout, which is the property it was rebuilt
 for — `stop a run mid-draw` fell from 320 to 222 per 1000 with nobody editing a
 number.
