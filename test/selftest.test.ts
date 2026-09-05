@@ -34,7 +34,7 @@ import {
 } from "../src/render/powerpoint";
 import { sampleConfig } from "../src/core/samples";
 import { buildChart } from "../src/core/chart";
-import type { ChartConfig } from "../src/core/types";
+import type { ChartConfig, ChartKind } from "../src/core/types";
 import { setTracing, traceLog } from "../src/core/trace";
 import {
   runSelfTest,
@@ -63,6 +63,9 @@ import {
   GRID_SLOT,
   stallDetail,
   rasteriseArmVerdict,
+  kindCostVerdict,
+  KIND_COST_ORDER,
+  type KindDraw,
   type ScenarioResult,
 } from "../src/taskpane/selftest";
 
@@ -206,6 +209,16 @@ describe("the host self-test battery", () => {
        * mistake this archive has paid for four times.
        */
       "a chart handed over as a file",
+      /**
+       * Runs last, and the list's own rule is why: newest, it draws eight
+       * specimens, and an unproven scenario's failure should cost the fewest
+       * verdicts behind it.
+       *
+       * It is also the only scenario in the battery that draws anything other
+       * than `clustered`, which is the whole reason it exists — see
+       * `kindCostSpread`.
+       */
+      "what a chart kind costs",
     ]);
     for (const r of results) {
       expect(typeof r.ok).toBe("boolean");
@@ -2611,6 +2624,65 @@ describe("the experiment that asks whether a rasterise poisons the next draw", (
     expect(mixed.detail, "claimed a pattern from a mixed result").toMatch(/no pattern/);
     expect(mixed.detail).not.toMatch(/every draw after a RASTERISE failed/);
     expect(mixed.detail).not.toMatch(/both LATER draws failed/);
+  });
+});
+
+/**
+ * The scenario built because the archive cannot answer what a chart KIND costs:
+ * every existing scenario draws one chart in one context, so kind, size,
+ * preceding call and slot are one variable wearing four names.
+ *
+ * Its counterbalance is the part that can be silently wrong. If the kinds ran
+ * in one pass instead of there-and-back, kind would be confounded with position
+ * exactly as it is confounded with scenario today — the same defect, moved into
+ * the instrument built to escape it, and nothing about a green round would say
+ * so. So the ORDER is asserted as a property, not eyeballed.
+ */
+describe("what a chart kind costs", () => {
+  it("draws each kind once early and once late, or it measures position", () => {
+    const n = KIND_COST_ORDER.length;
+    expect(n % 2, "an odd number of specimens cannot be balanced").toBe(0);
+    // A palindrome is the balance: position i and position n-1-i are the same
+    // kind, so every kind's two slots are mirrored about the middle.
+    for (let i = 0; i < n; i++)
+      expect(KIND_COST_ORDER[i], `position ${i} is not mirrored at ${n - 1 - i}`).toBe(KIND_COST_ORDER[n - 1 - i]);
+    const seen = new Map<string, number>();
+    for (const k of KIND_COST_ORDER) seen.set(k, (seen.get(k) ?? 0) + 1);
+    for (const [k, c] of seen) expect(c, `${k} appears ${c} times, so its positions cannot balance`).toBe(2);
+    expect(seen.size, "one kind is not a comparison").toBeGreaterThan(1);
+    // The cheap population's own kind has to be in it, or there is nothing to
+    // compare the others AGAINST: `clustered` is what every other scenario
+    // draws and what the 3,615ms arm of the archive is made of.
+    expect([...seen.keys()], "no clustered specimen, so the readings anchor to nothing").toContain("clustered");
+  });
+
+  it("fails only on a kind this host will not draw at all", () => {
+    const ok = (kind: ChartKind): KindDraw => ({ kind, drew: true, why: "" });
+    const no = (kind: ChartKind): KindDraw => ({ kind, drew: false, why: "the host stopped answering" });
+
+    const all = kindCostVerdict([ok("clustered"), ok("area"), ok("area"), ok("clustered")]);
+    expect(all.ok).toBe(true);
+    expect(all.detail).toMatch(/4 of 4 specimens landed across 2 kinds/);
+
+    // THE FINDING: a kind that refused in BOTH its positions. Invisible in a
+    // battery where every other scenario draws clustered.
+    const dead = kindCostVerdict([ok("clustered"), no("area"), no("area"), ok("clustered")]);
+    expect(dead.ok, "a kind that never drew is a product fact, not weather").toBe(false);
+    expect(dead.detail, "did not name the kind").toMatch(/^area did not draw in either position/);
+
+    // NOT a failure: the intermittent stall this battery already lives with,
+    // which takes one specimen and leaves the kind's other position standing.
+    // Failing here would put a red on a timer, which `rasteriseArmVerdict`
+    // records the cost of.
+    const flaky = kindCostVerdict([ok("clustered"), no("area"), ok("area"), ok("clustered")]);
+    expect(flaky.ok, "went red on the intermittent stall").toBe(true);
+    expect(flaky.detail).toMatch(/every kind drew at least once/);
+    expect(flaky.detail).not.toMatch(/did not draw in either position/);
+
+    // Nothing attempted is a skip, not a pass: no specimen means no reading.
+    const none = kindCostVerdict([]);
+    expect(none.skipped).toBe(true);
+    expect(none.ok).toBe(false);
   });
 });
 

@@ -3101,6 +3101,169 @@ export function rasteriseArmVerdict(raster: DrawArm[], cheap: DrawArm[]): { ok: 
 }
 
 /**
+ * WHAT A CHART KIND COSTS — the one question this archive is built wrong for.
+ *
+ * `src/core/insert-cost.ts` prices a draw as `batches x batchMs(occupancy)`,
+ * which says every ten-shape batch costs the same. Measured 2026-09-05, they do
+ * not: at a true prior occupancy of zero a 16-shape chart's first batch medians
+ * 10,098ms against 3,617ms for a 24-shape one — backwards to the count, 2.8x.
+ *
+ * Every candidate explanation was eliminated against the archive: occupancy
+ * (paired inside single draws), batch position, draw path, in-place updates,
+ * and the call the host last answered before the draw. What defeated the last
+ * one is why this scenario has to exist. Sorting batch-1 readings by that
+ * preceding call separates them beautifully — ~3,400ms after a per-slide
+ * operation, ~10,300ms after a deck-wide scan — and it is an artefact:
+ * 103-shape charts follow `listing the deck's slides` in 23 of 23 readings and
+ * are the CHEAPEST batch in the archive at 1,611ms.
+ *
+ * The reason no split works is structural. Each existing scenario draws ONE
+ * chart in ONE context, so chart size, preceding call, scenario and slot are a
+ * single variable wearing four names:
+ *
+ *      16-shape charts    273 of 274 after a deck scan     med 10,046ms
+ *      24-shape charts      0 of 1,210 after a deck scan   med  3,615ms
+ *     103-shape charts     23 of 23 after a deck listing   med  1,611ms
+ *
+ * No further reading answers that. It needs an experiment where the KIND is the
+ * only thing that moves, which is this one.
+ *
+ * COUNTERBALANCED, for the reason `rasteriseArmVerdict` spells out at length:
+ * the kinds are drawn in order and then in reverse, so each appears once early
+ * and once late. Without it, kind would be confounded with position exactly as
+ * it is confounded with scenario in the archive today — the same mistake, moved
+ * into the instrument built to escape it.
+ *
+ * EACH SPECIMEN IS DELETED BEFORE THE NEXT, so the slide this scenario leaves
+ * is the slide it found and eight specimens do not pile up where later
+ * scenarios read. Occupancy still climbs in the renderer's own counter, which
+ * does not decrement on a plain delete — deliberate, not overlooked: `last
+ * batch settled` records `onSlideAfter` and `drew`, so the true prior is exact
+ * for every reading and the analysis conditions on it rather than assuming it.
+ *
+ * THE VERDICT IS NOT THE MEASUREMENT. This returns pass/fail on whether the
+ * draws LANDED; the costs live in the trace and are read from the archive. A
+ * verdict that failed on a timing would go red on host weather, and this
+ * project has already learned what a red on a schedule teaches a reader.
+ */
+const kindCostSpread: Scenario = async (prefix) => {
+  const attempt = stepsOf("kind cost step");
+  const { found, blind, gap } = await probeCharts(prefix);
+  const host = leastLoadedChart(found, shapesDrawnOn);
+  if (!host) return blind ? blindSkip(gap) : { ok: false, skipped: true, detail: "no probe chart to draw beside" };
+  const slideId = host.target.slideId;
+  const slide = await slideSize();
+  const cell = sideSlot(GRID_SLOT, slide, boxOf(host));
+  const w = Math.max(1, Math.floor(cell.width / 4) - 3);
+  /**
+   * ONE DATASET FOR EVERY KIND, so the only difference is how it is drawn. Two
+   * categories and one series keeps each specimen inside a single batch, which
+   * is what makes `last batch settled` the whole draw's cost rather than a
+   * tail — the same reasoning as the rasterise arm's `tiny`.
+   */
+  const specimen = (kind: ChartKind, n: number): ChartConfig => ({
+    kind,
+    title: `${prefix} kind ${kind} ${n}`,
+    width: w,
+    height: cell.height,
+    data: { categories: ["A", "B"], series: [{ name: "s", values: [1, 2] }] },
+  });
+  const drawn: KindDraw[] = [];
+  for (let n = 0; n < KIND_COST_ORDER.length; n++) {
+    const kind = KIND_COST_ORDER[n];
+    const c = specimen(kind, n);
+    try {
+      const t = await attempt(`${kind} #${n}: drawing`, () =>
+        insertSceneIntoSlide(buildChart(c), {
+          slideId,
+          tagData: JSON.stringify(c),
+          left: cell.left + (n % 4) * (w + 3),
+          top: cell.top,
+        }),
+      );
+      drawn.push({ kind, drew: true, why: "" });
+      // Swept immediately, so the deck this scenario leaves is the deck it
+      // found. Same shape as the own-slide control's cleanup: group plus parts.
+      const ids = [t?.shapeId, ...(t?.partIds ?? [])].filter(Boolean) as string[];
+      if (t && ids.length) await deleteShapesById(t.slideId, ids);
+    } catch (err) {
+      // Per specimen, not per scenario: one kind the host will not draw must
+      // not discard the readings of the seven it did.
+      drawn.push({ kind, drew: false, why: isTimeout(err) ? "the host stopped answering" : errorText(err) });
+    }
+  }
+  trace("selftest", "chart kind cost arms", { order: KIND_COST_ORDER, drew: drawn.map((d) => d.drew) });
+  return kindCostVerdict(drawn);
+};
+
+/** One specimen's outcome: did it land, and if not, what the host said. */
+export interface KindDraw {
+  kind: ChartKind;
+  drew: boolean;
+  why: string;
+}
+
+/**
+ * The kinds, and then the same kinds backwards.
+ *
+ * Four chosen to span how a shape is MADE rather than how many there are, since
+ * the count is the variable already known not to explain this: `clustered` is
+ * plain rectangles and is the cheap population's own kind, `line` is open
+ * polyline segments, `area` is a filled outline (one line per edge, which is
+ * why a dense one reaches ~200 shapes), and `pie` is arcs.
+ *
+ * Exported so a reading of the archive can name the order without re-deriving
+ * it from a round.
+ */
+export const KIND_COST_ORDER: readonly ChartKind[] = [
+  "clustered",
+  "line",
+  "area",
+  "pie",
+  "pie",
+  "area",
+  "line",
+  "clustered",
+];
+
+/**
+ * Did the specimens land — deliberately NOT whether they differed in cost.
+ *
+ * The costs are the point of the scenario and are read from the archive, not
+ * asserted here. A verdict that failed on a timing would go red on host
+ * weather, and `rasteriseArmVerdict` records what that does to a reader.
+ *
+ * The one thing worth failing on is a kind the host will not draw AT ALL, in
+ * either position — that is a product fact rather than weather, and it is
+ * invisible in a battery where every other scenario draws `clustered`.
+ */
+export function kindCostVerdict(drawn: KindDraw[]): { ok: boolean; detail: string; skipped?: boolean } {
+  if (!drawn.length) return { ok: false, skipped: true, detail: "no specimen was attempted" };
+  const landed = drawn.filter((d) => d.drew).length;
+  const kinds = [...new Set(drawn.map((d) => d.kind))];
+  const dead = kinds.filter((k) => drawn.filter((d) => d.kind === k).every((d) => !d.drew));
+  const why = drawn.find((d) => !d.drew)?.why ?? "";
+  if (dead.length)
+    return {
+      ok: false,
+      detail:
+        `${dead.join(", ")} did not draw in either position (${why}) — a kind this host will not take, ` +
+        "which no other scenario would show because they all draw clustered",
+    };
+  if (landed < drawn.length)
+    return {
+      ok: true,
+      detail:
+        `${landed} of ${drawn.length} specimens landed (${why}); every kind drew at least once, so this is ` +
+        "the intermittent stall rather than a kind the host refuses",
+    };
+  return {
+    ok: true,
+    detail: `${landed} of ${landed} specimens landed across ${kinds.length} kinds, each drawn once early and once late`,
+  };
+}
+
+/**
  * Order: the scenarios with a track record first, the new ones last.
  *
  * A battery is only worth its whole run if it survives to the end, and this one
@@ -3901,6 +4064,9 @@ const SCENARIOS: {
    * costs the scenarios in front of it nothing.
    */
   { name: "a chart handed over as a file", run: chartAsItsOwnFile },
+  // Newest, so last: it draws eight specimens and this list's rule is that an
+  // unproven scenario's failure should cost the fewest verdicts behind it.
+  { name: "what a chart kind costs", run: kindCostSpread },
   // Picked only for the plainest reason there is: it blocks on a human.
   { name: "edit the chart YOU click", run: editViaRealClick, pickedOnly: true },
   { name: "what makes a long run slow down", run: degradesOverTime, pickedOnly: true },
