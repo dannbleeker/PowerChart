@@ -146,13 +146,36 @@ independently before anything was edited. The correction cuts the effect from
 13x to 2.8x and it is still the wrong unit — but "wrong by 13x" was itself the
 kind of claim this file exists to stop.
 
-**Half the batches are never timed, and not at random.** `prevBatchMs` is only
-readable from the following batch, so every draw's last batch is unmeasured
-(4,583 of 8,771) and 1,869 single-batch draws contribute nothing. All 4,188
-readings drew exactly ten shapes; not one is a partial tail. The sizes drawn
+**~~Half the batches are never timed, and not at random.~~ FIXED IN `6b0b2a4`,
+AND THE FIRST READINGS AGREE WITH THE HOLD-OUT.** `prevBatchMs` was only
+readable from the following batch, so every draw's last batch was unmeasured
+(4,583 of 8,771) and 1,869 single-batch draws contributed nothing. All 4,188
+readings drew exactly ten shapes; not one was a partial tail. The sizes drawn
 are 7, 9, 10, 11, 14, 16, 24, 103 — and all 1,799 draws at 7, 9 or 10 shapes
-are untimed. The model prices single-batch charts from a sample containing
+were untimed. The model priced single-batch charts from a sample containing
 none of them.
+
+`last batch settled` now carries them. Four rounds (388-391) produced 48 new
+readings, 20 of them single-batch draws that were previously invisible:
+
+    single-batch draws, 7 and 9 shapes    p25 7,222   med 8,271   p75 9,282
+    what estimateInsertMs prices them at              3,886
+
+**2.1x low, and this is a SECOND, INDEPENDENT line of evidence for the same
+number.** The hold-out validation put the blank-slide anchor at +99% using data
+this line could not see; these are charts the hold-out could not see either.
+Two methods, no shared readings, same answer.
+
+Like-for-like on batch position, it also extends the size inversion further
+down than the archive could previously reach: a 7-shape chart drawn in ONE
+batch costs ~8,271ms where a 24-shape chart's ten-shape FIRST batch costs
+~3,617ms. Fewer shapes drawn, 2.2x the time, both at batch 1 on an empty slide.
+
+Caveats kept in front: n=20 over four rounds, and a last batch is not a
+first batch in general — it sits at the draw's maximum occupancy, and it draws
+a partial tail rather than ten. The single-batch subset is the clean one,
+because there the last batch IS the first batch. That is the subset quoted
+above.
 
 WHAT those 16-shape charts contain that costs 2.8x is the open question, and it
 is the term the model needs.
@@ -3698,19 +3721,21 @@ both aspect ratios. The recovery for a slide that does vanish is verified
 Every 4:3 round that carries the own-slide scenario, split on whether its build
 contains the fix (`6dfaa4b`):
 
-    PRE-fix    370  371  372  375                          4 of 4 FAILED
-    post-fix   377  378  382  383  385  386  387           7 of 7 passed
-               384                                         failed elsewhere
+    PRE-fix    370  371  372  375                        4 of 4 FAILED
+    post-fix   377  378  382  383  385  386  387         11 of 11 passed
+               388  389  390  391
+               384                                       failed elsewhere
 
 Fisher's exact, one-sided, counting 384 as a failure so no judgement is
-required of the reader: **p = 0.010**. Excluding it on its own evidence — its
+required of the reader: **p = 0.0028**. Excluding it on its own evidence — its
 detail says the CONTROL insert onto the visible slide hung and that "nothing
-here says anything about a freshly-added slide" — p = 0.003. The conservative
+here says anything about a freshly-added slide" — p = 0.0007. The conservative
 number is the one to quote.
 
 Three of the four pre-fix failures are `GeneralException at=drawing the chart's
 shapes`; the fourth could not delete the slide it added. None of that has
-recurred in seven attempts, and 385, 386 and 387 are 18 of 18.
+recurred in eleven attempts, and **385 through 391 are seven consecutive rounds
+at 18 of 18** — the longest clean run at 4:3 in the archive.
 
 **Round 374 is absent from both columns, and the rounds gate is right to flag
 it — but the disagreement is now resolved.** The gate reports it as "filed
@@ -3727,9 +3752,10 @@ it failed the own-slide scenario — consistent with the pre-fix column it is no
 counted in.
 
 Originally written as: "Three clean 4:3 rounds against a 27-of-30 history is a
-strong signal and is not yet a rate." It took seven. The rate ratchet moved on
-its own throughout, which is the property it was rebuilt for — `stop a run
-mid-draw` fell from 320 to 222 per 1000 with nobody editing a number.
+strong signal and is not yet a rate." It took seven, and eleven now stand. The
+rate ratchet moved on its own throughout, which is the property it was rebuilt
+for — `stop a run mid-draw` fell from 320 to 222 per 1000 with nobody editing a
+number.
 
 ### The set-difference delete is PARTIAL — it works only after the slide settles, 2026-09-04
 
