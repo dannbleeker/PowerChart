@@ -177,6 +177,28 @@ a partial tail rather than ten. The single-batch subset is the clean one,
 because there the last batch IS the first batch. That is the subset quoted
 above.
 
+**A SECOND THING THE NEW LINE UNLOCKS, AND IT IS ONLY A LEAD SO FAR.** Those
+single-batch draws are the rasterise scenario's, and that scenario is already a
+properly counterbalanced experiment — "after a rasterise" against "after a
+cheap read", back to back in the same round on the same deck. Until now it
+could only be read for STALLS, where it says 0.0% against 0.1% over 359 rounds
+and looks settled. It was never readable for DURATION, because every one of its
+draws is a single batch and single batches were never timed.
+
+Read for duration across rounds 388-391:
+
+    after a rasterise    n=8   p25 5,958   med 8,888   p75 9,367
+    after a cheap read   n=8   p25 7,446   med 7,847   p75 8,319
+
+    paired per round, the rasterise arm is slower in 4 of 4
+
+**Do not read that as a finding.** Four of four on a sign test is p = 0.0625,
+the quartiles overlap heavily, and n is 8 per arm. It is worth watching because
+it is FREE — every round from here produces it — and because a duration effect
+is exactly what a stall count cannot see. Ten paired rounds would settle it
+either way. Recorded now so the question is asked of the data rather than
+noticed later in it.
+
 WHAT those 16-shape charts contain that costs 2.8x is the open question, and it
 is the term the model needs.
 
