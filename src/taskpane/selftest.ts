@@ -3208,21 +3208,44 @@ export interface KindDraw {
  *
  * Four chosen to span how a shape is MADE rather than how many there are, since
  * the count is the variable already known not to explain this: `clustered` is
- * plain rectangles and is the cheap population's own kind, `line` is open
- * polyline segments, `area` is a filled outline (one line per edge, which is
- * why a dense one reaches ~200 shapes), and `pie` is arcs.
+ * plain rectangles and is the cheap population's own kind, so the readings
+ * anchor to something; `funnel` is filled trapezoid bands; `waterfall` mixes
+ * rectangles with connector lines; `line` is open polyline strokes.
+ *
+ * THE COUNTS HAVE TO BE CLOSE, AND THE FIRST VERSION'S WERE NOT. Rounds 398 and
+ * 399 ran `clustered, line, area, pie` and the design did not survive contact.
+ * `pie` draws THIRTY-SEVEN shapes at this size, so it was multi-batch — making
+ * `last batch settled` its tail rather than its cost — and it drove the prior
+ * occupancy to 60 before the second half began, then 74, 81, 91, where a draw
+ * costs three to five times what it does at zero. The palindrome balances
+ * POSITION. It can only balance OCCUPANCY when the specimens are the same size.
+ *
+ * Measured at four candidate boxes (50x60 through 160x120), shapes per kind:
+ *
+ *     clustered   7  7  9  9        line       10 10 10 10
+ *     funnel      8  8  8  8        waterfall   9  9  9  9
+ *     area        8 11 15 23        pie        37 37 37 37
+ *
+ * So `area` is out as well, for a reason the first pick missed: its count
+ * varies THREE-FOLD with the box, so it cannot hold occupancy equal either. The
+ * four kept are flat across every box and land within three shapes of one
+ * another.
+ *
+ * What that buys, with priors running 0, 7, 15, 24, 34, 44, 53, 61 across the
+ * eight slots: a mean prior per kind of 30.5, 30, 29.5, 29 — balanced to within
+ * one and a half shapes, which is the property the palindrome is FOR.
  *
  * Exported so a reading of the archive can name the order without re-deriving
  * it from a round.
  */
 export const KIND_COST_ORDER: readonly ChartKind[] = [
   "clustered",
+  "funnel",
+  "waterfall",
   "line",
-  "area",
-  "pie",
-  "pie",
-  "area",
   "line",
+  "waterfall",
+  "funnel",
   "clustered",
 ];
 

@@ -34,6 +34,7 @@ import {
 } from "../src/render/powerpoint";
 import { sampleConfig } from "../src/core/samples";
 import { buildChart } from "../src/core/chart";
+import { estimateOfficeShapes } from "../src/core/scene";
 import type { ChartConfig, ChartKind } from "../src/core/types";
 import { setTracing, traceLog } from "../src/core/trace";
 import {
@@ -2654,6 +2655,57 @@ describe("what a chart kind costs", () => {
     // compare the others AGAINST: `clustered` is what every other scenario
     // draws and what the 3,615ms arm of the archive is made of.
     expect([...seen.keys()], "no clustered specimen, so the readings anchor to nothing").toContain("clustered");
+  });
+
+  /**
+   * THE PALINDROME BALANCES POSITION. IT ONLY BALANCES OCCUPANCY IF THE
+   * SPECIMENS ARE THE SAME SIZE — and the first version's were not.
+   *
+   * Rounds 398 and 399 ran `clustered, line, area, pie`. `pie` draws 37 shapes
+   * at this size, so it was multi-batch — making `last batch settled` its tail
+   * rather than its cost — and it drove the prior occupancy to 60 before the
+   * second half began, reaching 91 by the end, where a draw costs three to five
+   * times what it does at zero. The experiment built to remove a confound had
+   * reintroduced it, and BOTH ROUNDS WERE GREEN, because the verdict is about
+   * landing and not about cost.
+   *
+   * So the design constraint is asserted here instead of living in prose. It is
+   * also the property `area` fails for a different reason: its count runs 8,
+   * 11, 15, 23 across the boxes a specimen might get, so it cannot hold
+   * occupancy equal even against itself.
+   */
+  it("draws specimens of near-equal size, or the palindrome cannot balance occupancy", () => {
+    const at = (kind: ChartKind, width: number, height: number) =>
+      estimateOfficeShapes(
+        buildChart({
+          kind,
+          title: "t",
+          width,
+          height,
+          data: { categories: ["A", "B"], series: [{ name: "s", values: [1, 2] }] },
+        }),
+      );
+    const kinds = [...new Set(KIND_COST_ORDER)];
+    // Every box a specimen plausibly gets: the slot is a quarter of a band, so
+    // narrow, while the band's height varies with the deck.
+    for (const [w, h] of [
+      [50, 60],
+      [70, 90],
+      [100, 90],
+      [160, 120],
+    ]) {
+      const counts = kinds.map((k) => at(k, w, h));
+      const spread = Math.max(...counts) - Math.min(...counts);
+      expect(
+        spread,
+        `at ${w}x${h} the specimens are ${kinds.map((k, i) => `${k} ${counts[i]}`).join(", ")} — ` +
+          "too far apart to hold occupancy equal across the palindrome",
+      ).toBeLessThanOrEqual(4);
+      // Single-batch, or `last batch settled` reports a tail instead of a draw.
+      expect(Math.max(...counts), `a specimen at ${w}x${h} spans more than one ten-shape batch`).toBeLessThanOrEqual(
+        10,
+      );
+    }
   });
 
   it("fails only on a kind this host will not draw at all", () => {
