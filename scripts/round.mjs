@@ -784,13 +784,33 @@ export async function sideloadAddIn(sh, sleep, manifest = MANIFEST_PATH) {
   click(addins);
   await sleep(5000);
 
+  // OPTIONAL, BECAUSE TWO UIS ARE IN THE FIELD AND ONLY ONE HAS THIS RUNG.
+  //
+  // On 2026-09-05 a brand-new presentation opened the Add-ins flyout straight
+  // onto the store panel — no "See all installed add-ins" anywhere in it, with
+  // `More Add-ins` sitting right there as the next rung. This walk refused with
+  // "the Add-ins menu did not open", which was false twice over: the menu HAD
+  // opened, and the thing it was looking for is not on this variant at all.
+  //
+  // Absence is the ONLY case treated as "carry on". A `See all` that is present
+  // is still clicked, because on the older UI the store panel is behind it and
+  // skipping it lands the next step on nothing. What decides the walk is the
+  // rung after this one — `More Add-ins` is on both variants, and its absence
+  // is still fatal, so a genuinely unopened menu is caught one line later with
+  // a message that is true.
   const seeAll = step("See all", /menuitem "See all installed add-ins"/);
-  if (!seeAll) return giveUp("the Add-ins menu did not open");
-  click(seeAll);
-  await sleep(6000);
+  if (seeAll) {
+    click(seeAll);
+    await sleep(6000);
+  }
 
   const more = step("More Add-ins", /menuitem "More Add-ins"/);
-  if (!more) return giveUp("no `More Add-ins` entry");
+  if (!more)
+    return giveUp(
+      seeAll
+        ? "no `More Add-ins` entry"
+        : "the Add-ins menu did not open — neither `See all installed add-ins` nor `More Add-ins` is in it",
+    );
   click(more);
   await sleep(9000);
 

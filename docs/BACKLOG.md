@@ -28,9 +28,10 @@ refused, or a finding rather than a task.
 closed on 2026-09-01, 16 the same evening. 19 closed on 2026-09-03, by a round
 rather than by work. 20 was added and closed on 2026-09-05, the same day — it
 was also a third instance of this file's own trap, written up as a section and
-left off this list until someone asked what was open. THREE are open now — two
-the owner's, one engineering, and that one is waiting on a deck rather than on
-work:**
+left off this list until someone asked what was open. 17 closed the same
+evening, on a deck created for it rather than a harness one. TWO are open now,
+and BOTH are the owner's — one waits on his GitHub identity, one on a decision
+about the shape budget:**
 
 > The count here read "six" against a list of four, and then "five" against a
 > list of three. Stale both times, and this file states its own tie-breaker:
@@ -42,8 +43,8 @@ work:**
        a time estimate) is ON HOLD as of 2026-09-05, blocked on a measurement
        rather than a decision. See "the cost model is in the wrong unit too"
     5  filing this project's host measurements to the office-js tracker
-   17  the deck scan's paging loop — now covered under the fake at 25
-       slides; only the live-host half remains (engineering)
+       — drafts written 2026-09-05 (docs/OFFICE-JS-DRAFTS.md), nothing filed;
+       submission is the owner's identity and his alone
 
 
 **The 4:3 arm is no longer on this list, and was never on it as a numbered
@@ -472,7 +473,52 @@ slide was rejected by the server and rolled back before a shape reached it. See
 the two-master entry at the end of this file. What is left on that scenario is
 the CLEANUP, which is item 3028's add-time-id defect and is unrelated.
 
-**17 is still open, and now has a number.** Across 350 archived rounds carrying
+**17 CLOSED 2026-09-05 — the second page ran, and it works. What fails is the
+LAST page.** Evidence: `docs/evidence/17-deck-scan-second-page.json`.
+
+Not on a harness deck and not by preparing one: `Presentation72.pptx` was
+created blank for the purpose, sideloaded, and given the demo deck by the file
+path — 38 items, 0 lost, 14.5s — for 39 slides. The self-test then ran on it and
+grew it to 45. Both are things the driver cannot do, because `cleanDeckScript`
+deletes every slide but index 0 on a positional rule with no name, tag or
+session test, `readiness` refuses `deck-dirty` above one slide, and the heal
+runs BEFORE `--check` returns. Nothing about item 17 was reachable through
+`round.mjs`; it needed a deck the driver never sees.
+
+**Three pages, 87 attempts, and the second page is clean.**
+
+    from  attempts  slides  charts  unread  short  tagsUnread   failed
+       0        29      20     464       0      0           0        0
+      20        29      20     539       0      0           0        0
+      40        15     5-6      68       0      0           0       15
+
+The middle column is the one this item existed for: **29 pages at `from: 20`,
+every one complete, against 379 archived rounds where `from` was 0 every time.**
+`chartsSoFar` climbs 16 → 32 → 35 across the pages, which is the field added to
+prove the MERGE happens rather than merely the page returning. Median complete
+scan 4,392ms over 43-46 slides.
+
+**And the last page failed 15 times out of 15, always the same way:**
+
+    InvalidParam passed to GetItem(id) | at=reading chart tags on slides 40-44 | code=5010
+
+Same error, same code, same call as item 5's Draft A. That is a second,
+independent manifestation of the same defect at a different call site, and it
+strengthens the filing rather than being a separate problem.
+
+WHAT IS NOT YET SEPARATED: the tail page is both PARTIAL (5-6 slides, not 20)
+and made of the slides this run had most recently added. Those two explanations
+are confounded in this data and only one of them is about paging. A rescan of
+the settled deck separates them.
+
+**The premise this item was written on was also wrong**, and it is worth saying
+because it inflated the risk: the page size of 20 was justified by "the web
+>50-item load ceiling (office-js#4272)". #4272 was read directly on 2026-09-05 —
+its threshold is items in ONE LOAD, driven by shapes and tags, not slides in a
+deck, and it is open since 2024-03-19 with zero comments and no Microsoft reply.
+`READBACK_PAGE` bounds slides and never bounded items. See its docstring.
+
+**Originally:** 17 is still open, and now has a number. Across 350 archived rounds carrying
 a trace, `deck scan — settling a page of slides` has NEVER been emitted with
 `from > 0`. Not once. The second page is unexercised on a live host, exactly as
 this item says, and no round can exercise it as things stand: the driver sweeps
@@ -1073,33 +1119,61 @@ current. The traffic has been one-way. This project holds measurements of
 PowerPoint on the web that are **not in the tracker at all**, and a fixed host
 retires a workaround permanently where a guard only routes around it.
 
-**The three worth filing, in order of how much the evidence adds.**
+**REWRITTEN 2026-09-05. THREE FINDINGS BECAME TWO, AND BOTH NAMED THE WRONG
+VARIABLE.** Read back against the answer sheet the item itself says to attach
+(`test/fixtures/host-answers-web.json`, build `8643e2d`) and against the round
+archive. Ready-to-paste drafts are in `docs/OFFICE-JS-DRAFTS.md`; nothing has
+been filed.
 
-1. **A freshly-added slide's handle is good for exactly one `context.sync()`.**
-   Not "GeneralException happens sometimes" — the probe asks three questions that
-   isolate the cause. `shape-add-fresh-slide-proxy` (resolve and use inside one
-   sync) → **yes**. `shape-add-held-slide-proxy` (same slide, same id, proxy one
-   sync older) → **threw**, `GeneralException`,
-   `errorLocation: SlideCollection.getItem`. `shape-add-positional-slide-proxy`
-   (by index instead of id) → **yes**. So it is the *holding* that fails, not the
-   id, not the slide, and not `getItem`. Most reports of this reach the exception
-   and stop; the trio is the contribution.
+**~~2. A non-empty `setSelectedShapes([id])` wedges the selection subsystem.~~
+STRUCK — it does not, on this host, and has not for 371 rounds.** The item said
+"measured, twice: `getSelectedShapes` ran out a 90-second budget".
+`selectionLadder` was built to prove exactly that, and has since run in **378
+archived rounds: 371 report "the host answered all 7 rung(s) — nothing wedged",
+2,597 rungs, zero silences.** The seven non-passes are skips — no probe chart,
+or a deck scan that could not see the deck — not wedges. Whatever was seen twice
+has not recurred in 371 consecutive opportunities, and filing it would report a
+behaviour this project's own instrument contradicts. Those same rounds are also
+counter-evidence to the "never resolves" half of #3698 and #4225: the EMPTY call
+returns in about a second, every time.
 
-2. **A non-empty `setSelectedShapes([id])` wedges the whole selection
-   subsystem.** The call itself is taken — no error, no refusal, the sync
-   resolves — and every selection call after it goes silent: neither resolving
-   nor rejecting. Measured, twice: `getSelectedShapes` ran out a 90-second
-   budget, and the `setSelectedSlides` behind it did too. This is a **third**
-   claim, distinct from the two already filed — #3083 is `setSelectedShapes([])`
-   failing to clear, #3698 is the empty call never resolving plus the picture
-   interaction. The self-test's ladder produces the exact rung and the last one
-   the host answered, which is the shape of evidence those two threads lack.
+**1. The variable is the SLIDE, not the proxy's age.** The item said
+`shape-add-held-slide-proxy` threw, and concluded "it is the holding that
+fails". The sheet says otherwise, and the real split is cleaner:
 
-3. **Tag writes through a shape proxy several syncs old.**
-   `InvalidParam passed to GetItem(id)`, code 5010, **46 times in one 38-item
-   run**, leaving charts on the slide carrying no config. Related to #2903, so
-   this is a corroborating comment with a volume and a reproduction rather than
-   a new issue.
+    shape-add-held-slide-proxy         yes    3/3   scratch=reused-slide
+    shape-add-held-slide-proxy-again   threw  3/3   scratch=fresh-slide
+
+Same question, same host, moments apart. Holding a slide proxy across a sync is
+fine on a slide that already existed and throws `GeneralException` on one added
+this session. Two controls survive and narrow it: resolve-and-use inside ONE
+sync works on both, and `getItemAt(index)` works on both. So it is not the id,
+not the slide and not `getItem` — it is holding a proxy to a NEWLY ADDED slide
+across a sync.
+
+**3. The variable is a COLLECTION RE-READ, not the proxy's age either.** The
+item blamed "a shape proxy several syncs old". The sheet says age is not what
+kills it:
+
+    tag-the-creation-proxy-a-sync-later            yes             3/3
+    how-many-syncs-a-creation-handle-survives      survives-8      (healthy)
+    how-many-collection-reads-a-context-survives   short-at-1      3/3  (0 of 3)
+    collection-read-poisons-the-creation-handle    refused         3/3  (5010)
+
+A creation handle survives EIGHT syncs untouched. Re-read the slide's shapes
+once — a read that itself comes back short, 0 of 3, with no error — and the
+handle is refused with `InvalidParam passed to GetItem(id)`. That is the
+mechanism behind the 46 failures in one 38-item run, and it is one finding
+rather than two.
+
+**The corroboration target moved.** #2903 is not the dead end `KNOWN_ISSUES`
+treats it as — its closure was an automated inactivity sweep, not a decision —
+and #4204 is an open re-file of it with zero comments. Better: **#6237 is open,
+labelled `Type: product bug`, and had Microsoft activity on 2026-08-31**,
+carrying the identical 5010 / `ShapeCollection.getItem` on a tag read. Its
+reporter blames a date placeholder, which is a DIFFERENT trigger from the
+collection re-read measured here — so that is a corroborating comment with a
+second mechanism, and the cheapest thing on this list.
 
 **What makes this a day of work rather than an afternoon.** Microsoft's issue
 template wants a Script Lab repro, and an issue without one is triaged slowly or

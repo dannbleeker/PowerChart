@@ -5950,8 +5950,31 @@ function blanksFromSnapshots(outcome: ReconcileOutcome): {
   };
 }
 
-/** Slides read per sync in the readback — kept modest to stay clear of the web
- *  >50-item load ceiling (office-js#4272), though getCount is a scalar, not a load. */
+/**
+ * Slides read per sync in the readback.
+ *
+ * THE REASON THIS COMMENT USED TO GIVE WAS ON THE WRONG AXIS. It read "kept
+ * modest to stay clear of the web >50-item load ceiling (office-js#4272)". That
+ * issue was read directly on 2026-09-05 and it is not about slides: its words
+ * are "Whenever there are items more than 51 items to be loaded in the load
+ * function, context.sync hangs", and its repro loads
+ * `slides.items.shapes.items...tags.items` against "more than 50 items in the
+ * slide". The threshold is ITEMS IN ONE LOAD, driven by shapes and tags. This
+ * constant bounds SLIDES per sync and places no bound at all on shapes per
+ * sync, so it never implemented the protection it claimed: twenty slides
+ * holding ten shapes each is two hundred items in one load.
+ *
+ * Paging is still right, and for a plainer reason — fewer slides per sync is
+ * fewer items per sync, and a page that fails costs one page rather than the
+ * whole deck. What is arbitrary is the NUMBER: 20 is not derived from 50 and
+ * never was. Left at 20 because it has read every deck this project has ever
+ * scanned without a short page, and moving it on no evidence would be trading a
+ * number that works for one that merely sounds better.
+ *
+ * Worth knowing about #4272 before leaning on it again: open since 2024-03-19,
+ * ZERO comments, no Microsoft reply, no reproduction by anyone, still labelled
+ * `Needs: attention`. It is a lead, not a finding.
+ */
 export const READBACK_PAGE = 20;
 
 /**

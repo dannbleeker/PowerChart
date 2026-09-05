@@ -802,6 +802,32 @@ describe("talking to the browser at all", () => {
       }
     });
 
+    /**
+     * TWO UIS ARE IN THE FIELD AND ONLY ONE HAS THE `See all` RUNG.
+     *
+     * Measured 2026-09-05 on a brand-new presentation: the Add-ins flyout came
+     * up straight on the store panel, with no "See all installed add-ins"
+     * anywhere in it and `More Add-ins` sitting right there as the next rung.
+     * The walk refused with "the Add-ins menu did not open", which was false
+     * twice over — the menu HAD opened, and the control it wanted is not on
+     * that variant at all. It cost a sideload that then had to be walked by
+     * hand.
+     */
+    it("carries on when this UI has no `See all` rung, and still stops when the menu is shut", async () => {
+      const newUi = shWith(ALL, ["See all"]);
+      expect(await sideloadAddIn(newUi, now, "C:/x/m.xml"), "refused a menu that had opened").toBe(true);
+
+      // The rung AFTER it is what decides, because `More Add-ins` is on both
+      // variants. A genuinely unopened menu still fails — one line later, with
+      // a message that is true — and still leaves no dialog behind.
+      const shut = shWith({ ...ALL, Cancel: 'button "Cancel" [ref=rcancel]' }, ["See all", "More Add-ins"]);
+      expect(await sideloadAddIn(shut, now, "C:/x/m.xml"), "walked on with no menu open").toBe(false);
+      expect(
+        shut.calls.some((c) => c[0] === "eval" && c[2] === "rcancel"),
+        "left a dialog open",
+      ).toBe(true);
+    });
+
     it("will not call it done when the host never accepted the manifest", async () => {
       // The Upload button is disabled until a file is accepted, so its enabled
       // state is the host's own receipt — better evidence than the upload call

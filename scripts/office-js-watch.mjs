@@ -133,7 +133,11 @@ export const KNOWN_ISSUES = {
     "TRIED AND REVERTED: `addScratchSlide` settled for 2s on 2026-08-07 and the next real-host round answered 1 of 25 questions against 19 of 26 before it — the add landed, the wait ran, and the liveness check after it found nothing. This host resolves a fresh slide id ONCE and refuses it ever after, so waiting spends that one resolution later instead of buying time. Do not re-apply the workaround from this issue.",
   3014:
     "PowerPoint's API has no grouping story: creating and reading groups is a known parity gap, grouped shapes come back from getItem() " +
-    "as type `unknown`, and sub-shapes cannot be reached. Open since 2022, `Status: in backlog`. No exposure to fix, but it is why " +
+    "as type `unknown`, and sub-shapes cannot be reached. CLOSED/COMPLETED — checked 2026-09-05, and the table said `Open since 2022, " +
+    "Status: in backlog` until then. DO NOT STRIP THE WORKAROUND ON THE LABEL: a fix upstream is a claim about the service, not proof " +
+    "it reached this host. What this host actually does is already measured — the rounds gate reports 12 of 12 attempts grouped, 0 " +
+    "refused, over 358 rounds — so the parity gap does look shut here. Removing `ungroupedFallback` still needs a probe that FAILS " +
+    "without it. It is why " +
     "`ungroupedFallback` and CHART_PARTS_TAG exist at all — a chart that cannot be grouped has to carry its parts some other way — and " +
     "why `chooseGroupMembers` prefers an ungrouped, tagged chart over a failed addGroup that takes the tagging down with it.",
   3083: "setSelectedShapes([]) does not clear the selection on the web. clearShapeSelection re-selects the slide instead.",
