@@ -1,5 +1,5 @@
 import { buildChart, clampDim, DEFAULT_SIZE, valueExtent } from "../core/chart";
-import { estimateInsertMs, worthOwnSlide, offerSentence, insertOutcomeSentence } from "../core/insert-cost";
+import { worthOwnSlide, offerSentence, insertOutcomeSentence } from "../core/insert-cost";
 import { PALETTES } from "../core/style";
 import type { ChartConfig, ChartKind, Decorations, Series } from "../core/types";
 import { resolveStyleFile, isEmptyStyle, type DeckStyle, type StylePreference } from "../core/deck-style";
@@ -558,8 +558,6 @@ const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as 
  * one's promise.
  */
 function offerOwnSlide(
-  estimateMs: number,
-  freshMs: number,
   present: number,
   /**
    * Whether to show the third button.
@@ -577,9 +575,11 @@ function offerOwnSlide(
   const own = $<HTMLButtonElement>("slow-offer-own");
   const here = $<HTMLButtonElement>("slow-offer-here");
   const picture = $<HTMLButtonElement>("slow-offer-picture");
-  // The wording lives in `insert-cost.ts` beside the numbers it quotes, where a
-  // test can read what it actually says rather than grep for what it must not.
-  text.textContent = offerSentence(present, estimateMs, freshMs);
+  // The wording lives in `insert-cost.ts`, where a test can read what it
+  // actually says rather than grep for what it must not. It USED to be fed two
+  // durations from `estimateInsertMs` as well; those came out on 2026-09-05
+  // because the curve behind them fails out of sample. See BACKLOG item 20.
+  text.textContent = offerSentence(present);
   picture.hidden = !canPicture;
   box.hidden = false;
   return new Promise((resolve) => {
@@ -2460,8 +2460,6 @@ async function runInsert(asNew: boolean) {
   }
   if (occupied && worthOwnSlide(pricedShapes, occupied.length)) {
     const choice = await offerOwnSlide(
-      estimateInsertMs(pricedShapes, occupied.length),
-      estimateInsertMs(pricedShapes, 0),
       occupied.length,
       // Offer the switch only when there is something to switch TO: a host that
       // can rasterise, and a chart not already going in as one.

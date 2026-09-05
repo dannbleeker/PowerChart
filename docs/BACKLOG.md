@@ -26,11 +26,11 @@ refused, or a finding rather than a task.
 
 **Six of the eight closed on 2026-08-29; 11 and 12 closed on 2026-08-31; 18
 closed on 2026-09-01, 16 the same evening. 19 closed on 2026-09-03, by a round
-rather than by work. FOUR are open now — three the owner's, one engineering,
-and that one is waiting on a deck rather than on work. 20 was added 2026-09-05
-and is a third instance of this file's own trap: it was written up as a section
-the same day and left OFF this list, where the tie-breaker below would have
-made it invisible:**
+rather than by work. 20 was added and closed on 2026-09-05, the same day — it
+was also a third instance of this file's own trap, written up as a section and
+left off this list until someone asked what was open. THREE are open now — two
+the owner's, one engineering, and that one is waiting on a deck rather than on
+work:**
 
 > The count here read "six" against a list of four, and then "five" against a
 > list of three. Stale both times, and this file states its own tie-breaker:
@@ -44,9 +44,7 @@ made it invisible:**
     5  filing this project's host measurements to the office-js tracker
    17  the deck scan's paging loop — now covered under the fake at 25
        slides; only the live-host half remains (engineering)
-   20  the own-slide offer quotes two SECONDS figures from the part of the
-       cost curve that fails out of sample — leave it, drop the numbers, or
-       gate the offer off on the web (owner). Filed 2026-09-05
+
 
 **The 4:3 arm is no longer on this list, and was never on it as a numbered
 item.** It closed 2026-09-05 on fifteen post-fix rounds against four pre-fix
@@ -363,7 +361,7 @@ Until then the 90 stays, and it stays understood rather than defended. Nothing
 should be tightened against `estimateInsertMs` in the meantime; treat its
 output as a floor.
 
-### THE OWN-SLIDE OFFER'S PREMISE IS THE PART OF THE CURVE THAT FAILED — owner decision, 2026-09-05
+### 20 CLOSED 2026-09-05: the own-slide offer keeps its advice and loses its numbers
 
 I first wrote that the model error was conservative, because a low estimate
 makes `isSlowInsert` fire less often. That is true of the blank-slide anchor and
@@ -409,6 +407,38 @@ ever validated.
     (b) costs a catalogue key and no behaviour. It is reversible the moment the
     refit lands, and it stops the pane asserting a figure that the one honest
     check available says is 2-3x out.
+
+**THE OWNER CHOSE (b), AND IT SHIPPED THE SAME DAY.** The sentence was
+
+> This slide already holds 35 shapes, so adding here takes about 40 seconds. On
+> a new slide, about 15 seconds.
+
+and is now
+
+> This slide already holds 35 shapes, which is what makes adding here slow. A
+> new slide would be quicker.
+
+`offerSentence` takes only the count; `offerOwnSlide` no longer takes the two
+durations; the pane no longer computes them. `describeMs` went with them — it
+had four tests of its own and `offerSentence` was its only caller, and a tested
+export the product does not call reads as coverage without being any. Its tests
+were deleted rather than left green over nothing.
+
+WHAT SURVIVES IS WHAT IS MEASURED. The shape count is read off the slide by
+`getSlideShapeBounds`, not modelled. And the DIRECTION is supported three
+independent ways: paired inside single draws, where batch 2 beat batch 1 in
+1,270 of 1,330; one chart's own ten batches climbing 1,608ms to 8,293ms; and a
+7-shape chart at priors 0/7/14/21 costing 5,683/7,128/7,847/9,282. "This slide
+is full, which is what makes it slow, and a new one is quicker" is measured.
+"By forty seconds" was not.
+
+The gate is unchanged — `worthOwnSlide` still decides WHEN to ask, on the same
+ratio. That is deliberate and it is the part still resting on the unvalidated
+curve: this change stops the pane ASSERTING a number it cannot defend, and does
+not pretend to fix when the offer fires. Narrowing the gate needs the refit.
+
+Three mutants killed: a duration smuggled back into the sentence, the advice
+dropped so only the fact remains, and an estimate returning to the call site.
 
 **And `present` means two different things either side of the model.** The
 curve is indexed by the renderer's `onSlide`, which counts only the shapes THIS

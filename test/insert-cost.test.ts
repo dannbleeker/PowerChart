@@ -1,12 +1,5 @@
 import { describe, it, expect } from "vitest";
-import {
-  batchMs,
-  estimateInsertMs,
-  isSlowInsert,
-  describeMs,
-  insertOutcomeSentence,
-  SLOW_INSERT_MS,
-} from "../src/core/insert-cost";
+import { batchMs, estimateInsertMs, isSlowInsert, insertOutcomeSentence } from "../src/core/insert-cost";
 
 /**
  * The insert estimate, against the archive it was measured from.
@@ -73,14 +66,17 @@ describe("estimating what an insert will cost", () => {
     expect(optimistic).toBeLessThanOrEqual(asItFills);
   });
 
-  it("says a duration in words, roundly", () => {
-    // A sentence, not a readout: "about 20 seconds" survives being wrong by two
-    // in a way "19.4s" does not.
-    expect(describeMs(19_400)).toBe("about 20 seconds");
-    expect(describeMs(SLOW_INSERT_MS)).toBe("about 15 seconds");
-    expect(describeMs(58_000)).toBe("about a minute");
-    expect(describeMs(150_000)).toBe("about 2.5 minutes");
-  });
+  /**
+   * `describeMs` was tested here and is gone with the durations it phrased —
+   * 2026-09-05, BACKLOG item 20. Its best assertion was the one that looked
+   * pointless: rounding 58s to the nearest five gives 60, and "about 60
+   * seconds" is a phrase no one says, so the check had to happen after the
+   * rounding that produces it.
+   *
+   * The tests went with the function rather than being left green over nothing.
+   * A passing test for an export the product does not call reads as coverage
+   * and is not.
+   */
 });
 
 /**

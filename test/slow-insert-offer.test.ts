@@ -2,14 +2,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { estimateOfficeShapes } from "../src/core/scene";
 import { buildChart } from "../src/core/chart";
-import {
-  isSlowInsert,
-  worthOwnSlide,
-  estimateInsertMs,
-  offerSentence,
-  describeMs,
-  SLOW_INSERT_MS,
-} from "../src/core/insert-cost";
+import { isSlowInsert, worthOwnSlide, estimateInsertMs, offerSentence, SLOW_INSERT_MS } from "../src/core/insert-cost";
 import { sampleConfig } from "../src/core/samples";
 
 /**
@@ -87,39 +80,56 @@ describe("when the pane offers a slide of its own", () => {
     expect(src, "the null-occupancy guard is gone").toMatch(/if \(occupied && worthOwnSlide\(/);
   });
 
-  it("quotes both waits rather than promising the new slide is instant", () => {
-    // The first draft said a new slide was "nearly instant". It is not: that
-    // 0.75s belongs to the DECK path, which hands the host a generated file. A
-    // single insert onto a blank slide still draws shape by shape — for a chart
-    // big enough to earn the offer, around fifteen seconds. The user would press
-    // the button, wait anyway, and discount every later estimate.
-    const shapes = shapesOf("stacked");
-    const here = estimateInsertMs(shapes, 35);
-    const fresh = estimateInsertMs(shapes, 0);
-    const said = offerSentence(35, here, fresh);
-    expect(said).toContain(describeMs(here));
-    expect(said, "the new-slide wait is not quoted").toContain(describeMs(fresh));
+  /**
+   * THE DURATIONS CAME OUT ON 2026-09-05, on the owner's call — BACKLOG item 20.
+   *
+   * The sentence used to quote both waits, and that was an improvement on the
+   * draft before it, which promised a new slide was "nearly instant". What
+   * neither version had was a validated model. The curve those numbers come
+   * from had never been scored out of sample, and does not survive it: on the
+   * 103 rounds it was not fitted to, the two points this offer's ratio is built
+   * from read 7,717 and 7,097 — a ratio of 0.9, where a new slide saves nothing
+   * at all. Swept across sizes and occupancies, 18 of 36 cells flip.
+   *
+   * What survives is the part that is MEASURED rather than modelled: the shape
+   * count is read off the slide, and occupancy is real three independent ways.
+   * So the advice stays and the arithmetic goes.
+   */
+  it("names the crowding and quotes no duration", () => {
+    const said = offerSentence(35);
+    expect(said, "the one number here is measured, and it is missing").toContain("holds 35 shapes,");
+    expect(said, "a duration came back without a validated refit").not.toMatch(/about .*(second|minute)/i);
     expect(said, "it went back to promising instant").not.toMatch(/instant|immediate/i);
-    // The two numbers have to be DIFFERENT, or the sentence quotes one wait
-    // twice and reads as though moving buys nothing.
-    expect(describeMs(fresh)).not.toEqual(describeMs(here));
+    // Nothing numeric beyond the shape count itself. Blunter than matching
+    // phrasings, and it catches a figure smuggled in as "35 shapes, ~40s".
+    expect(said.replace("35", ""), "a number crept back into the sentence").not.toMatch(/[0-9]/);
+    // The advice has to survive the surgery, or the offer is a question with
+    // its reason removed and two buttons.
+    expect(said, "no longer says why moving would help").toMatch(/quicker|faster/i);
   });
 
   it("counts one shape in the singular", () => {
     // A guard for the smallest kind of tell. The pane speaks carefully
     // everywhere else; "1 shapes" in the one message that interrupts the user
     // is the sentence they would remember.
-    expect(offerSentence(1, 30_000, 5_000)).toContain("holds 1 shape,");
-    expect(offerSentence(2, 30_000, 5_000)).toContain("holds 2 shapes,");
-    expect(offerSentence(0, 30_000, 5_000)).toContain("holds 0 shapes,");
+    expect(offerSentence(1)).toContain("holds 1 shape,");
+    expect(offerSentence(2)).toContain("holds 2 shapes,");
+    expect(offerSentence(0)).toContain("holds 0 shapes,");
   });
 
-  it("takes the copy from the pane's own numbers", () => {
-    // The sentence is only honest if the pane feeds it the real pair: what this
-    // insert costs HERE, and what the same chart costs on a blank slide.
+  it("feeds the offer the measured count, and nothing modelled", () => {
+    // This asserted the OPPOSITE until 2026-09-05 — that the pane handed the
+    // offer the real pair from `estimateInsertMs`, one for here and one for a
+    // blank slide. That was the right guard while the model was trusted. It is
+    // not any more: the curve behind those two numbers had never been scored
+    // out of sample and does not survive it. See BACKLOG item 20.
     const src = readFileSync("src/taskpane/app.ts", "utf8");
-    expect(src).toMatch(/estimateInsertMs\(pricedShapes, occupied\.length\)/);
-    expect(src, "the new-slide figure became a constant").toMatch(/estimateInsertMs\(pricedShapes, 0\)/);
+    expect(src, "the offer is no longer given the slide's real shape count").toMatch(
+      /offerOwnSlide\(\s*occupied\.length,/,
+    );
+    expect(src, "an estimate went back into the offer's arguments").not.toMatch(
+      /offerOwnSlide\([\s\S]{0,160}estimateInsertMs/,
+    );
   });
 
   it("prices what will actually be inserted, not what the scene contains", () => {

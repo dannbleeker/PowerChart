@@ -216,19 +216,31 @@ export function worthOwnSlide(shapes: number, present: number): boolean {
  * matched the comment explaining the ban. A string a test can read is worth more
  * than a comment a test can trip over.
  *
- * BOTH NUMBERS. The draft said a new slide was "nearly instant"; it is not. That
- * 0.75s belongs to the deck path, which hands the host a generated file. A single
- * insert onto a blank slide still draws shape by shape, and for a chart big
- * enough to earn this offer that is around fifteen seconds. Quoting the real
- * pair lets the user decide whether a slide is worth the saving. A slogan would
- * have them press it once, wait anyway, and discount every later estimate.
+ * NO DURATIONS, AND THE HISTORY RUNS BOTH WAYS. The first draft called a new
+ * slide "nearly instant" — false; that 0.75s belongs to the deck path, and a
+ * single insert onto a blank slide still draws shape by shape. It was replaced
+ * by the real pair from `estimateInsertMs`, so a user could judge whether a
+ * slide was worth the saving.
+ *
+ * Those numbers came out on 2026-09-05, on the owner's call, because the curve
+ * behind them had never been validated out of sample and does not survive it.
+ * On the 103 rounds it was not fitted to, the two points this offer's ratio is
+ * built from read 7,717 and 7,097 — where a new slide saves nothing at all.
+ * Swept across chart sizes and occupancies, 18 of 36 cells flip to "should not
+ * have offered". See BACKLOG item 20; the numbers can come back the moment a
+ * refit is validated on rounds it was not fitted to.
+ *
+ * WHAT SURVIVES IS THE PART THAT IS MEASURED RATHER THAN MODELLED. The shape
+ * count is read off the slide. And occupancy is real three independent ways:
+ * paired inside single draws, where batch 2 beat batch 1 in 1,270 of 1,330; one
+ * chart's own ten batches climbing 1,608ms to 8,293ms; and a 7-shape chart at
+ * priors 0/7/14/21 costing 5,683/7,128/7,847/9,282. So "this slide is full,
+ * which is what makes it slow, and a new one is quicker" is supported by
+ * measurement. "By forty seconds" was not.
  */
-export function offerSentence(present: number, hereMs: number, freshMs: number): string {
+export function offerSentence(present: number): string {
   const shapes = `${present} shape${present === 1 ? "" : "s"}`;
-  return (
-    `This slide already holds ${shapes}, so adding here takes ${describeMs(hereMs)}. ` +
-    `On a new slide, ${describeMs(freshMs)}.`
-  );
+  return `This slide already holds ${shapes}, which is what makes adding here slow. A new slide would be quicker.`;
 }
 
 /**
@@ -261,14 +273,17 @@ export function insertOutcomeSentence(setbacks: string[], outcome: string): stri
   return [...setbacks, outcome].filter(Boolean).join(" ");
 }
 
-/** "about 20 seconds" / "about a minute" — for a sentence, not a readout. */
-export function describeMs(ms: number): string {
-  const s = Math.round(ms / 1000);
-  // ROUNDED FIRST, THEN COMPARED. Rounding 58s to the nearest five gives 60,
-  // and "about 60 seconds" is a phrase no one says. The check has to happen
-  // after the rounding that can produce it, not before.
-  const rounded = Math.max(1, Math.round(s / 5) * 5);
-  if (rounded < 60) return `about ${rounded} seconds`;
-  const m = Math.round(s / 30) / 2;
-  return m <= 1 ? "about a minute" : `about ${m} minutes`;
-}
+/**
+ * `describeMs` LIVED HERE AND IS GONE, 2026-09-05, with the numbers it phrased.
+ *
+ * It turned 19,400 into "about 20 seconds" and had four tests of its own,
+ * including the one that mattered — rounding 58s to the nearest five gives 60,
+ * and "about 60 seconds" is a phrase no one says, so the check had to happen
+ * after the rounding that produces it rather than before.
+ *
+ * Deleted rather than kept warm, because `offerSentence` was its only caller
+ * and a tested export with no caller is worse than nothing: the tests keep
+ * passing and read as coverage of something the product does. If a validated
+ * refit brings the durations back (BACKLOG item 20), it is a dozen lines and
+ * this commit has them.
+ */
