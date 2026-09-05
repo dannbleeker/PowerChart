@@ -177,6 +177,53 @@ Until then the 90 stays, and it stays understood rather than defended. Nothing
 should be tightened against `estimateInsertMs` in the meantime; treat its
 output as a floor.
 
+### THE OWN-SLIDE OFFER'S PREMISE IS THE PART OF THE CURVE THAT FAILED — owner decision, 2026-09-05
+
+I first wrote that the model error was conservative, because a low estimate
+makes `isSlowInsert` fire less often. That is true of the blank-slide anchor and
+false of the thing that actually gates the offer, so it is corrected here.
+
+`worthOwnSlide` fires only when moving the chart at least HALVES the wait:
+
+    estimateInsertMs(shapes, 0) <= estimateInsertMs(shapes, present) / 2
+
+That is a test on the RATIO of the curve's ends, and the curve's ends are the
+two points the hold-out moved furthest and in opposite directions. Coded, the
+ratio is 3,886 to 18,074 — 4.65x, so the halving test passes almost everywhere.
+On the 103 rounds the curve was never fitted to, the same two points read 7,717
+and 7,097: a ratio of 0.9, where a fresh slide saves nothing at all.
+
+Swept across chart sizes 16-103 and occupancies 0-90, **18 of 36 cells flip.**
+Every flip is the same direction — the offer fires today where the out-of-sample
+reading says it should not. And the sentence it puts up quotes both numbers: for
+a 40-shape chart on a slide holding 90, the pane says about 72 seconds here
+against about 16 on a new slide, where the held-out reading is about 28 either
+way.
+
+This is exactly the failure `worthOwnSlide`'s own docstring exists to prevent —
+"an offer that cannot deliver is worse than silence: it spends the user's
+attention and their trust in the next warning."
+
+**What is NOT established, and why this is a decision rather than a fix.** The
+held-out set is 722 readings over 103 rounds, and its 51-100 bucket is 98%
+103-shape charts (n=66) — the cheapest per batch of anything measured. So the
+hold-out is composition-skewed in its own way and is not proof the offer is
+wrong. What it is: the only out-of-sample evidence that exists, and it inverts
+the premise. The honest statement is that the offer rests on a ratio nothing has
+ever validated.
+
+    THE OWNER'S CALL, three options and my recommendation is the second:
+      a) leave it — the offer is useful more often than not, and the evidence
+         against it is thin and skewed
+      b) keep the offer, drop the two quoted SECONDS from `offerSentence` and
+         say only that this slide is crowded — the advice survives, the number
+         nobody can defend goes away
+      c) gate the offer off on the web until a validated refit exists
+
+    (b) costs a catalogue key and no behaviour. It is reversible the moment the
+    refit lands, and it stops the pane asserting a figure that the one honest
+    check available says is 2-3x out.
+
 **And `present` means two different things either side of the model.** The
 curve is indexed by the renderer's `onSlide`, which counts only the shapes THIS
 RUN drew on that slide. The pane calls `estimateInsertMs` with
