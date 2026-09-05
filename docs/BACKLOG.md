@@ -231,6 +231,48 @@ published the opposite.
 WHAT those 16-shape charts contain that costs 2.8x is the open question, and it
 is the term the model needs.
 
+**AND THIS ARCHIVE CANNOT ANSWER IT. NO OBSERVATIONAL SPLIT OF IT CAN.**
+Established 2026-09-05, after the last candidate explanation died.
+
+The candidate was context: `batch issued` records what the host last answered
+before each draw, and sorting batch-1 readings at zero occupancy by that field
+separates them beautifully — everything after a per-slide operation costs
+~3,400-3,700ms, everything after a deck-wide scan costs 7,500-10,300ms. It
+looks like a finding, and it even suggests a fix (do not scan the deck
+immediately before drawing).
+
+It is dead, killed by the one cell that breaks the pattern: **103-shape charts
+are preceded by `listing the deck's slides` in 23 of 23 readings and are the
+CHEAPEST batch in the archive at 1,611ms.** A deck scan does not slow the next
+draw.
+
+What that leaves is the structural problem. Every candidate variable is
+perfectly collinear with WHICH SCENARIO a draw belongs to, because each
+scenario draws one chart in one context:
+
+    16-shape charts    273 of 274 after a deck scan      med 10,046ms
+    24-shape charts      0 of 1,210 after a deck scan    med  3,615ms
+    103-shape charts    23 of 23 after a deck listing    med  1,611ms
+
+Chart size, preceding call, scenario and slot are one variable wearing four
+names. Occupancy, batch position, draw path and in-place updates have all been
+ruled out; what is left cannot be separated by any grouping of these rounds.
+
+**THE EXPERIMENT THAT WOULD ANSWER IT** — proposed, not built, because it
+changes what every round measures:
+
+> One scenario that draws SEVERAL DIFFERENT CHART KINDS back to back onto the
+> same slide, from the same preceding call, recording each one's
+> `last batch settled`. Same context, same occupancy sequence, only the chart
+> differs — the mirror of the 7-shape series that made occupancy clean. Four or
+> five kinds spanning the shape-complexity range (a plain bar, an area with a
+> filled outline, something rotated, a waffle) would give the first honest
+> per-kind reading this project has ever had, at a cost of one extra slide per
+> round.
+
+Until that runs, "what a shape IS costs more than how many there are" stays a
+correct summary of an unexplained effect, not a mechanism.
+
 So the gate would move from a number that is wrong in a KNOWN direction (90
 shapes ignores occupancy) to one wrong in an unknown one — time, priced by a
 model whose blank-slide anchor is 2x low on every round it was not fitted to.
