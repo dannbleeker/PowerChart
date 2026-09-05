@@ -63,6 +63,78 @@ prices a cost that varies 4-5x with whose slide it is — round 374 measured
 already disagrees with the shape threshold. Re-express the gate as a TIME
 estimate. Do not raise the number on current evidence.
 
+**MEASURED 2026-09-05, AND THE RE-EXPRESSION IS ON HOLD: the replacement model
+is in the wrong unit too.** 4,137 timed batches across 360 rounds, every one on
+a build containing the `onSlide` retag (`ee1741e`), so all readings share a
+definition.
+
+Two of the item's claims survive. Occupancy is real, and the cleanest evidence
+is one chart watched across its own draw rather than a bucket average: the
+103-shape chart in `a big chart on a slide of its own` costs 1,608ms at batch 1
+and climbs monotonically to 8,293ms by batch 10, filling the slide with its own
+shapes as it goes. The coded curve has held up too: 3,886 / 5,490 / 13,995 /
+18,074 against 4,259 / 5,455 / 14,650 / 17,121 now, a drift of +10 / -1 / +5 /
+-5% after doubling the rounds behind it.
+
+What breaks it is a term the model does not have. `estimateInsertMs` is
+`ceil(shapes / 10) × batchMs(present)`, which says every ten-shape batch costs
+the same. They do not. Comparing LIKE FOR LIKE — first batch only, so ten
+shapes onto an empty slide in every arm:
+
+     11 shapes, rotated    21,094ms
+     16 shapes             13,688ms
+     24 shapes              3,780ms
+    103 shapes              1,608ms
+
+**Thirteen times, at identical occupancy and identical batch position, running
+BACKWARDS to shape count.** Two confounds were worth ruling out, and both make
+the gap wider rather than narrower.
+
+*Batch position.* A 24-shape chart contributes cheap later batches a 16-shape
+one never reaches. The table above is batch 1 only, which is the single reading
+every chart contributes.
+
+*Draw path.* Chart size and target slide are nearly collinear in this archive —
+the visible-slide charts are 16 shapes, the named-slide ones 24 — so the first
+reading of this looked like a path effect. It is not. Held to the named path
+alone, batch 1 of a 16-shape chart is 16,497ms (n=585) against 3,694ms for a
+24-shape one (n=1,328); and a 16-shape chart is slow on BOTH paths (12,660ms on
+the visible slide, n=718). Same path, same batch, ten shapes drawn either way,
+4.5x apart.
+
+What a shape IS outweighs how many there are, and rotation is the dearest
+property measured — `a chart of rotated shapes` tops the table at eleven
+shapes. WHAT those 16-shape charts contain that costs 4.5x is the open
+question, and it is the term the model needs.
+
+So the gate would move from a number that is wrong in a KNOWN direction (90
+shapes ignores occupancy) to one wrong in an unknown one (time, priced by a
+model that misprices small charts by 5x low and dense ones by 2x high). That is
+not an improvement, and the honest order this file already argues for — measure
+first, decide second, edit numbers third — says stop at the measurement.
+
+WHAT WOULD UNBLOCK IT: a per-shape-kind cost term, measured the way the
+decoration sweep was. Until then the 90 stays, and it stays understood rather
+than defended.
+
+**And `present` means two different things either side of the model.** The
+curve is indexed by the renderer's `onSlide`, which counts only the shapes THIS
+RUN drew on that slide. The pane calls `estimateInsertMs` with
+`occupied.length` — `getSlideShapeBounds`, the shapes actually there, whoever
+put them there (`app.ts:2461`). So a user's slide holding forty shapes we never
+touched is priced from readings taken where the renderer had just drawn forty
+itself, into a context still warm from drawing them. Whether those cost the
+same is untested in 360 rounds.
+
+A first pass at this said the archive contained one crowded-slide reading, from
+counting `onSlideKey === "(visible)"` batches. That was wrong and is recorded
+because the mistake is reusable: all 763 of them are FIRST batches, where the
+host has not yet answered the slide id, so the sentinel and the zero are both
+artefacts of timing rather than facts about the deck. `onSlide` cannot answer
+the question at all — it is the wrong counter, not a thin one. The missing
+measurement is a round that inserts onto a genuinely pre-loaded slide, the same
+deck-preparation problem as item 17.
+
 Also unverified: that the densest shipped chart — the 401-shape hex tile map,
 ~152KB of base64 — actually lands through this path on a host. It has only been
 measured offline.

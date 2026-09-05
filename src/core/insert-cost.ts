@@ -31,6 +31,45 @@
  * It is an ESTIMATE and the pane must present it as one. Real spread inside a
  * bucket is wide, the archive's own noise floor is 14% IQR between rounds, and
  * a host having a bad minute can double any of this.
+ *
+ * WHAT THE CURVE LEAVES OUT, MEASURED 2026-09-05 OVER 4,137 TIMED BATCHES.
+ * Occupancy is real, and the cleanest evidence for it is one chart watched
+ * across its own draw: the 103-shape chart in `a big chart on a slide of its
+ * own` costs 1,608ms at batch 1 and climbs monotonically to 8,293ms by batch 10
+ * as its own shapes fill the slide. These four points have also drifted only
+ * +10/-1/+5/-5% since they were set.
+ *
+ * But `estimateInsertMs` multiplies `batchMs` by a batch COUNT, which says
+ * every ten-shape batch costs the same. Comparing LIKE FOR LIKE — first batch
+ * only, so ten shapes onto an empty slide in both arms — the medians run:
+ *
+ *      11 shapes, rotated           21,094ms
+ *      16 shapes                    13,688ms
+ *      24 shapes                     3,780ms
+ *     103 shapes                     1,608ms
+ *
+ * Thirteen times, backwards to shape count. Two confounds were worth ruling
+ * out and both make the gap wider rather than narrower. Batch position: a
+ * 24-shape chart contributes cheap later batches a 16-shape one never reaches,
+ * so the table above is batch 1 only. Draw path: chart size and target slide
+ * are nearly collinear here, but held to the named-slide path alone, batch 1 of
+ * a 16-shape chart is 16,497ms (n=585) against 3,694ms for a 24-shape one
+ * (n=1,328) — and 16-shape charts are slow on BOTH paths (12,660ms on the
+ * visible slide, n=718), so the slide is not what is expensive. What
+ * a shape IS costs more than how many there are, and nothing here prices it —
+ * so this understates a small ornate chart several-fold and overstates a big
+ * plain one. Treated as a floor, not a forecast; see BACKLOG item 3, where
+ * re-expressing the shape budget as a time threshold is ON HOLD for this reason.
+ *
+ * AND `present` MEANS TWO DIFFERENT THINGS EITHER SIDE OF THIS FILE. The curve
+ * is indexed by the renderer's `onSlide`, which counts only the shapes THIS RUN
+ * drew on that slide. The pane calls `estimateInsertMs` with `occupied.length`
+ * — the shapes actually on the slide, whoever put them there. So a user's slide
+ * holding forty shapes we never touched is priced from readings taken where we
+ * had just drawn forty ourselves, into a context still warm from drawing them.
+ * Nothing in 360 rounds measures the other case, and the two need not cost the
+ * same. Fixing this is a round that inserts onto a genuinely pre-loaded slide,
+ * not an edit here.
  */
 
 /** Measured medians: [shapes already present, ms for one ten-shape batch]. */

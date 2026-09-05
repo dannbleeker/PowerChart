@@ -384,7 +384,23 @@ export function readiness({
         "starts from (`OnServerFindSucceeded could not find target slide` in its own log). Reload the " +
         "PowerPoint tab and reopen the pane; an attempt that follows a recovery has never crashed.",
     );
-  if (!deployed) refuse("no-build", "the site did not answer with a build — is Pages up?");
+  // NAMES BOTH CAUSES, BECAUSE IT CANNOT TELL THEM APART. This used to read
+  // "is Pages up?", which is a diagnosis, and it was the wrong one on
+  // 2026-09-05: every round refused here while `curl` fetched the same URL in
+  // 850ms. The fault was local — node's `fetch` gives each address 250ms, a TCP
+  // connect to Pages from that machine took 282ms, so it abandoned IPv4 and
+  // fell through to an IPv6 route the machine did not have. Two rounds were
+  // spent looking at GitHub. A refusal that points confidently at the wrong
+  // thing costs more than one naming both candidates and how to separate them.
+  if (!deployed)
+    refuse(
+      "no-build",
+      "could not read a build stamp from the site. Either Pages is down, or the network from HERE cannot " +
+        "reach it — node's `fetch` gives each address 250ms, and a slower connect falls through to an address " +
+        "this machine may have no route to. Tell them apart with " +
+        "`curl https://ssf-chart.struktureretsundfornuft.dk/build.json`: if that answers, the site is fine and " +
+        "the round wants `NODE_OPTIONS=--network-family-autoselection-attempt-timeout=2000`.",
+    );
   else if (head && deployed !== head)
     refuse("site-behind", `the site is serving ${deployed} but HEAD is ${head} — wait for Deploy Pages to finish`);
   // `slides !== null` is the proof the DOCUMENT is up. Without it this fires on
@@ -2768,7 +2784,13 @@ async function collectRound(sh, stamp, sleep, driverSize = null, driverRun = nul
  * now is (`SIDELOAD_COMMAND_BUDGET_MS`).
  *
  * Deliberately absent, and each for its own reason: `site-behind` and `no-build`
- * are waiting for Pages and a reload does not make it deploy faster;
+ * are waiting for Pages and a reload does not make it deploy faster — though
+ * `no-build`'s reason is only half true, and knowing which half matters. It
+ * fires both when Pages has nothing to say and when this machine cannot reach
+ * it at all (2026-09-05: node's `fetch` timing out on a 250ms per-address
+ * budget while `curl` answered in 850ms). Reloading cures neither, so it stays
+ * out; but the refusal itself now names both, because the reader's next move
+ * differs completely between them;
  * `verbose-off` and `pictures-off` are choices a person made in the pane and
  * silently re-making them would change what the round measures; the sign-in and
  * unreachable-CLI states never get here because they return before the codes do.
