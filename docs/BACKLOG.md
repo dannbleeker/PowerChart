@@ -506,10 +506,39 @@ Same error, same code, same call as item 5's Draft A. That is a second,
 independent manifestation of the same defect at a different call site, and it
 strengthens the filing rather than being a separate problem.
 
-WHAT IS NOT YET SEPARATED: the tail page is both PARTIAL (5-6 slides, not 20)
-and made of the slides this run had most recently added. Those two explanations
-are confounded in this data and only one of them is about paging. A rescan of
-the settled deck separates them.
+**SEPARATED, AND IT IS NEITHER.** The tail page is both partial and made of
+recently added slides, so both were candidates. Ordered in time, the outcomes
+are a step function:
+
+    tail page, in order:  11111111111111000000000000000
+
+Fourteen came back, then fifteen failed, and it never recovered — while pages 0
+and 20 went 29 for 29 over the same span. Deck size was flat at 45 across the
+transition, so size is out; the failures begin BEFORE the two traced slide adds,
+so recency is out; and the page had already succeeded fourteen times, so being
+partial is out.
+
+What is at the transition is the mechanism itself. The scenario running is
+`explode a degraded picture`, working slide `296#19242001` — which sits in the
+tail range — and in that window the trace holds `reading back an ungrouped
+chart's shape ids → InvalidParam passed to GetItem(id)` twice, a cold re-read
+listing **0 of 24 shapes drawn**, and `not grouping: no member handle this host
+will accept`. That is `collection-read-poisons-the-creation-handle` happening
+live at a call site, and from that moment the page containing that slide could
+not have its tags read.
+
+**It is not permanent.** Three same-scale runs on the settled deck twenty
+minutes later all scanned completely. So the state belongs to the run, not to
+the slide or the document.
+
+**And the product is honest about it, which is the part worth keeping.**
+`doSameScale` checks `scanIsComplete(scan)` before doing anything and refuses
+with "Same scale needs to see the whole deck first — {gap}. Try again; nothing
+was changed." A deck-wide action never silently operates on a page it could not
+read. The scan marks itself `complete: false` and 15 of 29 scans in that run
+did so. This was checked because the failure mode it would otherwise be — a
+deck-wide rescale quietly skipping five slides — is exactly the kind this
+project has shipped before.
 
 **The premise this item was written on was also wrong**, and it is worth saying
 because it inflated the risk: the page size of 20 was justified by "the web
