@@ -33,23 +33,41 @@
  * a host having a bad minute can double any of this.
  *
  * WHAT THE CURVE LEAVES OUT, MEASURED 2026-09-05 OVER 4,188 TIMED BATCHES.
- * Occupancy is real, and the cleanest evidence for it is one chart watched
- * across its own draw: the 103-shape chart in `a big chart on a slide of its
- * own` costs 1,608ms at batch 1 and climbs monotonically to 8,293ms by batch 10
- * as its own shapes fill the slide — ten positions, n=16 at every one, not a
- * single reversal: 1608 2107 2882 3664 4310 5141 6081 6658 7394 8293. That is
- * the cleanest reading in the archive, because the chart, the path and the
- * scenario are all held constant and only the slide fills.
  *
- * These four constants have also held, and hold BETTER once occupancy is read
- * correctly. Bucketing on the reported `onSlide` gives 4,278 / 5,439 / 14,553 /
- * 16,946; bucketing on what each batch actually saw gives 3,764 / 5,650 /
- * 14,127 / 16,946, against the coded 3,886 / 5,490 / 13,995 / 18,074 — so
- * -3.1 / +2.9 / +0.9 / -6.2% after doubling the rounds behind them. The
- * blank-slide anchor is the one that moves between those two readings, by 12%,
- * which is why the correction below matters here and not only in the table.
+ * THE EFFECT IS REAL. Measured the one way composition cannot vary — PAIRED,
+ * inside a single draw, where the only thing changing between two consecutive
+ * batches is that ten more shapes are on the slide. Batch 2 is slower than
+ * batch 1 in **1,270 of 1,330** 24-shape draws (95%), median 3,693 -> 5,548, a
+ * 1.5x climb for ten shapes. The 103-shape chart runs the series out to ten
+ * positions, n=16 at every one, without a single reversal: 1608 2107 2882 3664
+ * 4310 5141 6081 6658 7394 8293. Occupancy costs what this file says it costs.
  *
- * But `estimateInsertMs` multiplies `batchMs` by a batch COUNT, which says
+ * THESE FOUR CONSTANTS ARE NOT A CLEAN MEASURE OF IT, and "the curve has held
+ * up" was a circular claim that has now been tested and failed. The constants
+ * were fitted at `cc59d4d` on the 261 rounds then archived; 103 rounds have
+ * been added since. Re-measured on the ROUNDS IT WAS FITTED ON, the curve
+ * matches to -4.2 / +2.1 / -1.8 / -0.3%, which is what fitting means. Held out
+ * on the 103 rounds it never saw:
+ *
+ *     bucket    coded    held-out (n=722)     off by
+ *       0        3886      7717 (n=236)       +99%
+ *       1-20     5490      6813 (n=230)       +24%
+ *      21-50    13995     17236 (n=189)       +23%
+ *      51-100   18074      7097 (n=66)        -61%
+ *
+ * Non-monotonic, and the anchor the pane quotes for a blank slide is 2x low.
+ *
+ * The reason is that the buckets are CHART-MIX buckets. In the fitted set,
+ * bucket 0 is 89% 24-shape charts (the cheap kind) and bucket 51-100 is 98%
+ * 16-shape charts (the dear kind), so the climb across buckets is partly just
+ * the mix changing. In the held-out set bucket 51-100 is 98% 103-shape charts
+ * and reads 7,097ms. Same occupancy, different charts, 2.5x apart.
+ *
+ * So there are TWO real effects here and one axis to carry them. Occupancy is
+ * one, and the paired numbers above are what it actually costs. The other is
+ * what the chart IS, and this file has no term for it at all:
+ *
+ * `estimateInsertMs` multiplies `batchMs` by a batch COUNT, which says
  * every ten-shape batch costs the same. At a chart's first batch, held to a
  * slide this run had genuinely drawn nothing on, the medians run:
  *
@@ -77,8 +95,13 @@
  *
  * So: what a shape IS does cost more than how many there are, but by ~3x, not
  * ~13x, and nothing here prices it — this understates a small ornate chart and
- * overstates a big plain one. Treated as a floor, not a forecast; see BACKLOG
- * item 3, where re-expressing the shape budget as a time threshold is ON HOLD.
+ * overstates a big plain one.
+ *
+ * TREAT THE OUTPUT AS A FLOOR, NOT A FORECAST, and do not tighten anything
+ * against it. Re-expressing the 90-shape budget as a time threshold is ON HOLD
+ * for exactly this reason; see BACKLOG item 3. What would fix it is a term for
+ * the chart, and a refit that is validated on rounds it was not fitted to —
+ * which no version of these constants has ever been.
  *
  * HALF THE BATCHES ARE NEVER TIMED, and not at random. `prevBatchMs` is only
  * readable from the following batch, so every draw's LAST batch is unmeasured —

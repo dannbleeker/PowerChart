@@ -75,27 +75,44 @@ is in the wrong unit too.** 4,137 timed batches across 360 rounds, every one on
 a build containing the `onSlide` retag (`ee1741e`), so all readings share a
 definition.
 
-Two of the item's claims survive. Occupancy is real, and the cleanest evidence
-is one chart watched across its own draw rather than a bucket average: the
-103-shape chart in `a big chart on a slide of its own` costs 1,608ms at batch 1
-and climbs to 8,293ms by batch 10, filling the slide with its own shapes as it
-goes. Ten positions, n=16 at every one, not a single reversal — 1608 2107 2882
-3664 4310 5141 6081 6658 7394 8293. Chart, path and scenario are all held
-constant and only the slide fills.
+**Occupancy is real, and here is the measurement that cannot be argued with.**
+PAIRED, inside a single draw, where the only thing that changes between two
+consecutive batches is that ten more shapes are on the slide. Batch 2 is slower
+than batch 1 in **1,270 of 1,330** 24-shape draws — 95% — median 3,693 → 5,548,
+a 1.5x climb for ten shapes. The 103-shape chart runs the series out to ten
+positions, n=16 at every one, without a single reversal: 1608 2107 2882 3664
+4310 5141 6081 6658 7394 8293. Chart, path and scenario are all held constant;
+only the slide fills.
 
-The coded curve has held up too, and it holds up BETTER once occupancy is read
-correctly. Bucketing on the reported `onSlide` puts the four points at 4,278 /
-5,439 / 14,553 / 16,946; bucketing on what each batch actually saw puts them at
-**3,764 / 5,650 / 14,127 / 16,946**, against coded values of 3,886 / 5,490 /
-13,995 / 18,074. That is -3.1 / +2.9 / +0.9 / -6.2%, after doubling the rounds
-behind them. The correction matters most exactly where the pane quotes it: the
-blank-slide anchor moves 12% between the two readings, because 12.3% of all
-4,188 timed readings are filed under an occupancy that is not the one they saw.
+**But the four coded constants are NOT a clean measure of it, and "the curve
+has held up" was circular.** I wrote that twice before testing it. The
+constants were fitted at `cc59d4d` on the 261 rounds then archived, and 103
+rounds have been added since. On the rounds it was FITTED ON, the curve matches
+to -4.2 / +2.1 / -1.8 / -0.3% — which is what fitting means, not what holding
+up means. Held out on the 103 rounds it never saw:
 
-What breaks it is a term the model does not have. `estimateInsertMs` is
-`ceil(shapes / 10) × batchMs(present)`, which says every ten-shape batch costs
-the same. They do not. At a chart's first batch, held to a slide this run had
-genuinely drawn nothing on:
+    bucket    coded    held-out (n=722)    off by
+      0        3886      7717 (n=236)       +99%
+      1-20     5490      6813 (n=230)       +24%
+     21-50    13995     17236 (n=189)       +23%
+     51-100   18074      7097 (n=66)        -61%
+
+Non-monotonic, and the anchor the pane quotes for a blank slide is 2x low.
+
+The reason is that **the occupancy buckets are chart-mix buckets.** In the
+fitted set, bucket 0 is 89% 24-shape charts — the cheap kind — and bucket
+51-100 is 98% 16-shape charts, the dear kind. Much of the climb across buckets
+is the mix changing rather than the slide filling. In the held-out set bucket
+51-100 is 98% 103-shape charts and reads 7,097ms against 18,016ms in the fitted
+set: same occupancy, different charts, 2.5x apart.
+
+So there are two real effects and one axis carrying both. Occupancy is the
+first, and the paired numbers above are what it actually costs. The second is
+what the chart IS, and the model has no term for it at all.
+
+`estimateInsertMs` is `ceil(shapes / 10) × batchMs(present)`, which says every
+ten-shape batch costs the same. They do not. At a chart's first batch, held to
+a slide this run had genuinely drawn nothing on:
 
      16 shapes    10,098ms   n=258
      24 shapes     3,617ms   n=1,202
@@ -141,14 +158,24 @@ WHAT those 16-shape charts contain that costs 2.8x is the open question, and it
 is the term the model needs.
 
 So the gate would move from a number that is wrong in a KNOWN direction (90
-shapes ignores occupancy) to one wrong in an unknown one (time, priced by a
-model that misprices small charts by 5x low and dense ones by 2x high). That is
-not an improvement, and the honest order this file already argues for — measure
-first, decide second, edit numbers third — says stop at the measurement.
+shapes ignores occupancy) to one wrong in an unknown one — time, priced by a
+model whose blank-slide anchor is 2x low on every round it was not fitted to.
+That is not an improvement, and the honest order this file already argues for —
+measure first, decide second, edit numbers third — says stop at the
+measurement.
 
-WHAT WOULD UNBLOCK IT: a per-shape-kind cost term, measured the way the
-decoration sweep was. Until then the 90 stays, and it stays understood rather
-than defended.
+WHAT WOULD UNBLOCK IT, and it is now two things rather than one:
+
+1. **A term for the chart**, not just its shape count. Rotation is the dearest
+   property seen; beyond that the archive cannot say, because it only ever
+   draws eight distinct chart sizes.
+2. **A refit validated on rounds it was not fitted to.** No version of these
+   constants has ever been, which is why the failure above went unnoticed for
+   nine days. Any replacement must be held out before it ships.
+
+Until then the 90 stays, and it stays understood rather than defended. Nothing
+should be tightened against `estimateInsertMs` in the meantime; treat its
+output as a floor.
 
 **And `present` means two different things either side of the model.** The
 curve is indexed by the renderer's `onSlide`, which counts only the shapes THIS
