@@ -540,6 +540,24 @@ did so. This was checked because the failure mode it would otherwise be — a
 deck-wide rescale quietly skipping five slides — is exactly the kind this
 project has shipped before.
 
+**AND THE OBVIOUS IMPROVEMENT IS DEAD ON ARRIVAL — checked 2026-09-05 before
+building it.** The tempting change is to retry a short page in a FRESH context
+before telling the user to try again: the answer sheet says a context degrades
+after one collection re-read (`how-many-collection-reads-a-context-survives →
+short-at-1`), so a new context should be the cure, and the state did clear on
+its own twenty minutes later.
+
+It would do nothing. `readChartsPage` already runs each page inside its own
+`ppRun`, and `ppRun`'s own docstring records that "real Office.js hands out a
+fresh context per run". So the 15 consecutive failures were 15 consecutive FRESH
+contexts, across 15 separate scans spanning about seven minutes. A retry would
+add a page-read of latency and refuse anyway.
+
+What cured it was time on the order of twenty minutes, or the run ending — not
+a new context. So the refusal stays as it is, and any future attempt at this
+should start by explaining what the retry would do differently from the fourteen
+that already happened.
+
 **The premise this item was written on was also wrong**, and it is worth saying
 because it inflated the risk: the page size of 20 was justified by "the web
 >50-item load ceiling (office-js#4272)". #4272 was read directly on 2026-09-05 —
