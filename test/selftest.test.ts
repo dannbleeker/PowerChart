@@ -2708,28 +2708,58 @@ describe("what a chart kind costs", () => {
     }
   });
 
-  it("fails only on a kind this host will not draw at all", () => {
+  /**
+   * A REFUSAL IS A KIND FACT. A STALL IS WEATHER. The first version could not
+   * tell them apart and fired a false red on its first real outing.
+   *
+   * 2026-09-05, on a 45-slide deck: `funnel` missed both slots while clustered
+   * and waterfall took both, and the verdict called it "a kind this host will
+   * not take". Re-run alone on the same deck twenty minutes later, 8 of 8
+   * specimens landed, funnel included.
+   *
+   * That was predictable rather than unlucky. With eight slots in four mirrored
+   * pairs, if failures fall at random then SOME kind loses both its slots 14% of
+   * the time on two failures, 43% on three, 77% on four. That run had three.
+   */
+  it("fails on a kind the host REFUSED, and not on one the host stalled on", () => {
     const ok = (kind: ChartKind): KindDraw => ({ kind, drew: true, why: "" });
-    const no = (kind: ChartKind): KindDraw => ({ kind, drew: false, why: "the host stopped answering" });
+    const refused = (kind: ChartKind): KindDraw => ({ kind, drew: false, why: "GeneralException" });
+    const stalled = (kind: ChartKind): KindDraw => ({
+      kind,
+      drew: false,
+      stalled: true,
+      why: "the host stopped answering",
+    });
 
     const all = kindCostVerdict([ok("clustered"), ok("area"), ok("area"), ok("clustered")]);
     expect(all.ok).toBe(true);
     expect(all.detail).toMatch(/4 of 4 specimens landed across 2 kinds/);
 
-    // THE FINDING: a kind that refused in BOTH its positions. Invisible in a
-    // battery where every other scenario draws clustered.
-    const dead = kindCostVerdict([ok("clustered"), no("area"), no("area"), ok("clustered")]);
-    expect(dead.ok, "a kind that never drew is a product fact, not weather").toBe(false);
-    expect(dead.detail, "did not name the kind").toMatch(/^area did not draw in either position/);
+    // THE FINDING: refused in BOTH positions. Invisible in a battery where every
+    // other scenario draws clustered.
+    const dead = kindCostVerdict([ok("clustered"), refused("area"), refused("area"), ok("clustered")]);
+    expect(dead.ok, "a kind the host refuses twice is a product fact").toBe(false);
+    expect(dead.detail, "did not name the kind").toMatch(/^area was REFUSED in either position/);
 
-    // NOT a failure: the intermittent stall this battery already lives with,
-    // which takes one specimen and leaves the kind's other position standing.
-    // Failing here would put a red on a timer, which `rasteriseArmVerdict`
-    // records the cost of.
-    const flaky = kindCostVerdict([ok("clustered"), no("area"), ok("area"), ok("clustered")]);
+    // THE REGRESSION: the exact shape of the false red. Both slots missed, both
+    // by the host going quiet, while other kinds drew.
+    const weather = kindCostVerdict([ok("clustered"), stalled("area"), stalled("area"), ok("clustered")]);
+    expect(weather.ok, "called the host's bad minute a broken chart kind").toBe(true);
+    expect(weather.detail, "did not say the reading is worthless").toMatch(/says nothing about the kind/);
+    expect(weather.detail, "did not say what to do about it").toMatch(/re-run it alone/);
+    expect(weather.detail).not.toMatch(/REFUSED/);
+
+    // One refusal among stalls is still a refusal — the kind never drew and at
+    // least once the host said no rather than nothing.
+    const mixed = kindCostVerdict([ok("clustered"), stalled("area"), refused("area"), ok("clustered")]);
+    expect(mixed.ok, "a refusal hidden among stalls was let through").toBe(false);
+
+    // NOT a failure: the intermittent stall that takes one specimen and leaves
+    // the kind's other position standing.
+    const flaky = kindCostVerdict([ok("clustered"), stalled("area"), ok("area"), ok("clustered")]);
     expect(flaky.ok, "went red on the intermittent stall").toBe(true);
     expect(flaky.detail).toMatch(/every kind drew at least once/);
-    expect(flaky.detail).not.toMatch(/did not draw in either position/);
+    expect(flaky.detail).not.toMatch(/REFUSED/);
 
     // Nothing attempted is a skip, not a pass: no specimen means no reading.
     const none = kindCostVerdict([]);

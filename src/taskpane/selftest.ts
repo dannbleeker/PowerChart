@@ -3189,10 +3189,21 @@ const kindCostSpread: Scenario = async (prefix) => {
     } catch (err) {
       // Per specimen, not per scenario: one kind the host will not draw must
       // not discard the readings of the seven it did.
-      drawn.push({ kind, drew: false, why: isTimeout(err) ? "the host stopped answering" : errorText(err) });
+      drawn.push({
+        kind,
+        drew: false,
+        // A HOST THAT STOPPED ANSWERING IS NOT A STATEMENT ABOUT THE CHART, and
+        // the verdict needs to know the difference. See `kindCostVerdict`.
+        stalled: isTimeout(err),
+        why: isTimeout(err) ? "the host stopped answering" : errorText(err),
+      });
     }
   }
-  trace("selftest", "chart kind cost arms", { order: KIND_COST_ORDER, drew: drawn.map((d) => d.drew) });
+  trace("selftest", "chart kind cost arms", {
+    order: KIND_COST_ORDER,
+    drew: drawn.map((d) => d.drew),
+    stalled: drawn.filter((d) => d.stalled).length,
+  });
   return kindCostVerdict(drawn);
 };
 
@@ -3201,6 +3212,8 @@ export interface KindDraw {
   kind: ChartKind;
   drew: boolean;
   why: string;
+  /** The host stopped answering, as opposed to refusing THIS chart. */
+  stalled?: boolean;
 }
 
 /**
@@ -3264,14 +3277,44 @@ export function kindCostVerdict(drawn: KindDraw[]): { ok: boolean; detail: strin
   if (!drawn.length) return { ok: false, skipped: true, detail: "no specimen was attempted" };
   const landed = drawn.filter((d) => d.drew).length;
   const kinds = [...new Set(drawn.map((d) => d.kind))];
-  const dead = kinds.filter((k) => drawn.filter((d) => d.kind === k).every((d) => !d.drew));
+  const never = (k: ChartKind) => drawn.filter((d) => d.kind === k).every((d) => !d.drew);
+  // A KIND IS ONLY "DEAD" IF THE HOST REFUSED IT, NOT IF THE HOST WENT QUIET.
+  //
+  // This rule was `never(k)` alone, and it fired a false red on its first real
+  // outing: 2026-09-05, on a 45-slide deck, `funnel` missed both slots while
+  // clustered and waterfall took both, and the verdict called it "a kind this
+  // host will not take". Re-run alone on the same deck twenty minutes later:
+  // 8 of 8 specimens landed, funnel included. The kind is fine.
+  //
+  // The arithmetic says that was predictable rather than unlucky. With eight
+  // slots in four mirrored pairs, if failures fall at random then SOME kind
+  // loses both of its slots 14% of the time on two failures, 43% on three, and
+  // 77% on four. That run had three. A red that arrives 43% of the time
+  // whenever the host has a bad minute is a red on a timer, and
+  // `rasteriseArmVerdict` records what those teach a reader to do.
+  //
+  // The discriminator is already in hand: `insertSceneIntoSlide` throwing a
+  // TIMEOUT is the host not answering, which is not a statement about the
+  // chart. A kind the host genuinely will not take refuses — it does not hang.
+  // So a kind counts as dead only when at least one of its failures was a
+  // refusal rather than a stall.
+  const dead = kinds.filter((k) => never(k) && drawn.some((d) => d.kind === k && !d.drew && !d.stalled));
+  const stalledOut = kinds.filter((k) => never(k) && !dead.includes(k));
   const why = drawn.find((d) => !d.drew)?.why ?? "";
   if (dead.length)
     return {
       ok: false,
       detail:
-        `${dead.join(", ")} did not draw in either position (${why}) — a kind this host will not take, ` +
+        `${dead.join(", ")} was REFUSED in either position (${why}) — a kind this host will not take, ` +
         "which no other scenario would show because they all draw clustered",
+    };
+  if (stalledOut.length)
+    return {
+      ok: true,
+      detail:
+        `${landed} of ${drawn.length} specimens landed; ${stalledOut.join(", ")} missed both slots, but every ` +
+        "failure was the host not answering rather than a refusal, so this says nothing about the kind — " +
+        "re-run it alone before believing it",
     };
   if (landed < drawn.length)
     return {
