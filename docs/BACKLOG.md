@@ -302,8 +302,40 @@ The constraint is a TEST now, not prose: specimen counts within 4 of each other
 and none above 10, at every box a specimen plausibly gets. It fails on the exact
 set that shipped and names it.
 
-Until it has run enough rounds, "what a shape IS costs more than how many there
-are" stays a correct summary of an unexplained effect, not a mechanism.
+**FIRST READING FROM THE CORRECTED DESIGN — rounds 400, 401, 402, and it points
+the OTHER WAY.** All three came back 19 of 19 with 8 of 8 specimens landing, and
+the priors fell exactly where the design says they should: 0, 7, 15, 24, 34, 44,
+53, 61.
+
+Each kind's own early/late pair gives its own occupancy slope, so each is
+corrected to a genuinely empty slide by its OWN climb rather than a pooled one:
+
+    kind         shapes   cost at prior 0   ms per shape   slope ms/prior-shape
+    clustered         7             6,011            859                    181
+    funnel            8             8,360          1,045                    243
+    waterfall         9             8,464            940                    201
+    line             10             9,234            923                    305
+
+**Cost rises monotonically with shape count — 6,011 to 9,234 across 7 to 10
+shapes — and per-shape cost is nearly flat, 859 to 1,045, a 1.2x spread.** So
+when kind is compared at equal occupancy with position balanced, the count
+explains the cost and the kind adds at most about a fifth. That is the opposite
+of the 13x and 2.8x inversions read off the archive, and it is what those
+inversions being occupancy and context artefacts looks like.
+
+WHAT IT DOES NOT SETTLE, and the distinction matters. It does not explain the
+16-shape against 24-shape gap (10,098ms against 3,617ms, both at a true prior of
+zero). Those are two different scenarios in two different contexts, and this
+experiment only shows that GEOMETRY — rectangles against trapezoids against
+mixed rects-and-lines against open strokes — is not what separates them. The
+gap is still open; it is now known not to be the shape kind.
+
+Held deliberately loose, because three rounds is three rounds: the correction
+uses a two-point slope per kind and those slopes range 175 to 305, every
+specimen is 7 to 10 shapes so nothing here speaks to a 103-shape chart, and
+"per shape" is not constant across scales — these tiny charts run about 900ms a
+shape against about 360 for a 24-shape chart's first batch. More rounds are
+free from here.
 
 So the gate would move from a number that is wrong in a KNOWN direction (90
 shapes ignores occupancy) to one wrong in an unknown one — time, priced by a
