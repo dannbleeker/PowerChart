@@ -26,8 +26,11 @@ refused, or a finding rather than a task.
 
 **Six of the eight closed on 2026-08-29; 11 and 12 closed on 2026-08-31; 18
 closed on 2026-09-01, 16 the same evening. 19 closed on 2026-09-03, by a round
-rather than by work. THREE are open now — two the owner's, one engineering, and
-that one is waiting on a deck rather than on work:**
+rather than by work. FOUR are open now — three the owner's, one engineering,
+and that one is waiting on a deck rather than on work. 20 was added 2026-09-05
+and is a third instance of this file's own trap: it was written up as a section
+the same day and left OFF this list, where the tie-breaker below would have
+made it invisible:**
 
 > The count here read "six" against a list of four, and then "five" against a
 > list of three. Stale both times, and this file states its own tie-breaker:
@@ -41,10 +44,13 @@ that one is waiting on a deck rather than on work:**
     5  filing this project's host measurements to the office-js tracker
    17  the deck scan's paging loop — now covered under the fake at 25
        slides; only the live-host half remains (engineering)
+   20  the own-slide offer quotes two SECONDS figures from the part of the
+       cost curve that fails out of sample — leave it, drop the numbers, or
+       gate the offer off on the web (owner). Filed 2026-09-05
 
 **The 4:3 arm is no longer on this list, and was never on it as a numbered
-item.** It closed 2026-09-05 on seven post-fix rounds against four pre-fix
-ones, p = 0.010. See the two-master entry at the end of this file.
+item.** It closed 2026-09-05 on fifteen post-fix rounds against four pre-fix
+ones, p = 0.0010. See the two-master entry at the end of this file.
 
 **3 — DECIDED, AND TWO THIRDS SHIPPED, 2026-09-04.** The question was "picture
 or native shapes for a crowded slide". The answer is "ask, and keep the picture
