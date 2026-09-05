@@ -18,6 +18,37 @@ PowerPointApi 1.4), plus polygon *outlines* — no freeform curves, and no
 images. The SVG and skill-pptx renderers additionally have filled polygons and
 patterns.
 
+## 0. Product health, measured 2026-09-06
+
+The one summary worth reading first, split on whether a build contains the
+two-master fix (`6dfaa4b`, 2026-09-04):
+
+    era / arm        rounds   all-green   scenario pass rate
+    PRE-fix  16:9       250         194                96.9%
+    PRE-fix  4:3         48          28                94.3%
+    post-fix 16:9         3           2                98.1%
+    post-fix 4:3         24          20                96.6%
+
+    crash records:  94 on PRE-fix builds,  2 on post-fix,  96 total
+
+**All-green rounds at 4:3 went from 28 of 48 to 20 of 24** — 58% to 83% — and
+the crash archive is the blunter number: ninety-four records on pre-fix builds
+against two on post-fix. The rate ratchet has come down with it and nobody
+edited it: `a big chart on a slide of its own` reads 224.5 deaths per 1000
+against a ceiling of 460, `stop a run mid-draw` 140.4 against 330. Both were
+above 320 in early September.
+
+WHAT IS THIN, and it is the honest caveat: **post-fix 16:9 is three rounds.**
+The 4:3 arm has the evidence because that is where the bug was; the healthy arm
+has barely been re-measured since the fix. A 16:9 crash on 2026-09-05 (round
+attempt on Presentation64, 448s, mid-draw on an in-place update) sits inside the
+known 4.4% background rate for that arm and is not a regression — the gate says
+so — but three rounds is three rounds.
+
+The pooled "4:3 crashes 36.1% of attempts" the rounds gate prints is a
+whole-history figure and should not be quoted as current: it is dominated by the
+155 pre-fix attempts.
+
 ## 1. Open
 
 **Everything actually open, as of 2026-09-01.** The sections below carry the

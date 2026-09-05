@@ -11472,6 +11472,22 @@ async function ungroupedFallback(
  * The counter that separates them is `where`, and it sat unread in the same
  * object for 29 rounds — which is the fault this instrument was built to cure,
  * committed against the instrument itself.
+ *
+ * IT IS NO LONGER ZERO, re-measured 2026-09-05 over the whole archive: **21 of
+ * 5,720** events, across 15 rounds. Small, but not never — and ten of the
+ * twenty-one are in the last fifteen rounds (390, 391×3, 395, 402×5), which is
+ * a cluster rather than a trickle. The `where` they came from is the surprise:
+ * sixteen are `the id read-back threw`, the exit this file describes as the one
+ * that produces nothing. It produces something about a third of the time it
+ * fires.
+ *
+ * DO NOT READ THIS AS `withParts`. They are different questions and an audit
+ * conflated them on 2026-09-05. `gotPartsList` is charts that PRODUCED a parts
+ * list here; `withParts` (`renderShapesChunked`'s churn map) is charts found to
+ * HAVE one later, on the update path, read back off the deck. The second is
+ * still **0 across 1,370 events**, so the comment above it stands. Both being
+ * true at once is the finding: the list is produced twenty-one times and read
+ * back none, so whatever is written is not what a later update looks for.
  */
 function tracePartsOutcome(
   items: Grouping[],
