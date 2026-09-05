@@ -258,20 +258,52 @@ Chart size, preceding call, scenario and slot are one variable wearing four
 names. Occupancy, batch position, draw path and in-place updates have all been
 ruled out; what is left cannot be separated by any grouping of these rounds.
 
-**THE EXPERIMENT THAT WOULD ANSWER IT** — proposed, not built, because it
-changes what every round measures:
+**THE EXPERIMENT THAT WOULD ANSWER IT — BUILT 2026-09-05 (`0461a3e`), AND ITS
+FIRST RUN BROKE IT (`afd5f5d`).** `what a chart kind costs` draws four kinds
+back to back on one slide, forwards then backwards so each appears once early
+and once late, deleting each specimen before the next. The verdict is
+deliberately about whether specimens LANDED, not about cost: a verdict that
+failed on a timing would go red on host weather, which
+`rasteriseArmVerdict` records the cost of.
 
-> One scenario that draws SEVERAL DIFFERENT CHART KINDS back to back onto the
-> same slide, from the same preceding call, recording each one's
-> `last batch settled`. Same context, same occupancy sequence, only the chart
-> differs — the mirror of the 7-shape series that made occupancy clean. Four or
-> five kinds spanning the shape-complexity range (a plain bar, an area with a
-> filled outline, something rotated, a waffle) would give the first honest
-> per-kind reading this project has ever had, at a cost of one extra slide per
-> round.
+Rounds 398 and 399 ran it and came back **19 of 19, green both times** — and
+the cost readings said the design was wrong:
 
-Until that runs, "what a shape IS costs more than how many there are" stays a
-correct summary of an unexplained effect, not a mechanism.
+    round  pos  kind        shapes  prior      ms
+      398    0  clustered        7      0    5519
+      398    1  line            10      7    9926
+      398    2  area             7     17    8093
+      398    3  pie             37     60    3688
+      398    5  area             7     74   23588
+      398    7  clustered        7     81   29235
+
+`pie` draws THIRTY-SEVEN shapes at this size. So it was multi-batch — making
+`last batch settled` its tail rather than its cost — and it drove the prior
+occupancy to 60 before the second half began, reaching 91, where a draw costs
+three to five times what it does at zero. **The palindrome balances POSITION.
+It only balances OCCUPANCY when the specimens are the same size**, and that was
+not checked. The confound this scenario exists to escape had been rebuilt
+inside it, invisibly, behind two green rounds.
+
+Corrected by measuring first. Shapes per kind across four candidate boxes:
+
+    clustered   7  7  9  9        line       10 10 10 10
+    funnel      8  8  8  8        waterfall   9  9  9  9
+    area        8 11 15 23        pie        37 37 37 37
+
+`area` is out as well, for a reason the first pick missed: its count varies
+THREE-FOLD with the box, so it cannot hold occupancy equal even against itself.
+The four kept are flat everywhere and within three shapes of one another, and
+still span four ways of making a shape — plain rectangles, filled trapezoids,
+rectangles mixed with connector lines, and open strokes. Mean prior per kind is
+now 30.5 / 30 / 29.5 / 29.
+
+The constraint is a TEST now, not prose: specimen counts within 4 of each other
+and none above 10, at every box a specimen plausibly gets. It fails on the exact
+set that shipped and names it.
+
+Until it has run enough rounds, "what a shape IS costs more than how many there
+are" stays a correct summary of an unexplained effect, not a mechanism.
 
 So the gate would move from a number that is wrong in a KNOWN direction (90
 shapes ignores occupancy) to one wrong in an unknown one — time, priced by a
