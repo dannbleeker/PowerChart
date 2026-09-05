@@ -32,34 +32,62 @@
  * bucket is wide, the archive's own noise floor is 14% IQR between rounds, and
  * a host having a bad minute can double any of this.
  *
- * WHAT THE CURVE LEAVES OUT, MEASURED 2026-09-05 OVER 4,137 TIMED BATCHES.
+ * WHAT THE CURVE LEAVES OUT, MEASURED 2026-09-05 OVER 4,188 TIMED BATCHES.
  * Occupancy is real, and the cleanest evidence for it is one chart watched
  * across its own draw: the 103-shape chart in `a big chart on a slide of its
  * own` costs 1,608ms at batch 1 and climbs monotonically to 8,293ms by batch 10
- * as its own shapes fill the slide. These four points have also drifted only
- * +10/-1/+5/-5% since they were set.
+ * as its own shapes fill the slide — ten positions, n=16 at every one, not a
+ * single reversal: 1608 2107 2882 3664 4310 5141 6081 6658 7394 8293. That is
+ * the cleanest reading in the archive, because the chart, the path and the
+ * scenario are all held constant and only the slide fills.
+ *
+ * These four constants have also held, and hold BETTER once occupancy is read
+ * correctly. Bucketing on the reported `onSlide` gives 4,278 / 5,439 / 14,553 /
+ * 16,946; bucketing on what each batch actually saw gives 3,764 / 5,650 /
+ * 14,127 / 16,946, against the coded 3,886 / 5,490 / 13,995 / 18,074 — so
+ * -3.1 / +2.9 / +0.9 / -6.2% after doubling the rounds behind them. The
+ * blank-slide anchor is the one that moves between those two readings, by 12%,
+ * which is why the correction below matters here and not only in the table.
  *
  * But `estimateInsertMs` multiplies `batchMs` by a batch COUNT, which says
- * every ten-shape batch costs the same. Comparing LIKE FOR LIKE — first batch
- * only, so ten shapes onto an empty slide in both arms — the medians run:
+ * every ten-shape batch costs the same. At a chart's first batch, held to a
+ * slide this run had genuinely drawn nothing on, the medians run:
  *
- *      11 shapes, rotated           21,094ms
- *      16 shapes                    13,688ms
- *      24 shapes                     3,780ms
- *     103 shapes                     1,608ms
+ *      16 shapes                    10,098ms   n=258
+ *      24 shapes                     3,617ms   n=1,202
+ *     103 shapes                     1,584ms   n=15
  *
- * Thirteen times, backwards to shape count. Two confounds were worth ruling
- * out and both make the gap wider rather than narrower. Batch position: a
- * 24-shape chart contributes cheap later batches a 16-shape one never reaches,
- * so the table above is batch 1 only. Draw path: chart size and target slide
- * are nearly collinear here, but held to the named-slide path alone, batch 1 of
- * a 16-shape chart is 16,497ms (n=585) against 3,694ms for a 24-shape one
- * (n=1,328) — and 16-shape charts are slow on BOTH paths (12,660ms on the
- * visible slide, n=718), so the slide is not what is expensive. What
- * a shape IS costs more than how many there are, and nothing here prices it —
- * so this understates a small ornate chart several-fold and overstates a big
- * plain one. Treated as a floor, not a forecast; see BACKLOG item 3, where
- * re-expressing the shape budget as a time threshold is ON HOLD for this reason.
+ * 2.8x between the first two, backwards to shape count, and 6.4x across the
+ * table. Confounds ruled out: batch position (a 24-shape chart contributes
+ * cheap later batches a 16-shape one never reaches, so this is batch 1 only),
+ * draw path (16-shape charts are slow on both), and in-place updates, which
+ * emit no `batch issued` line at all and so were never in the sample.
+ *
+ * READ "GENUINELY DREW NOTHING ON" LITERALLY — the first version of this table
+ * did not, and was wrong by 13x instead of 2.8x. A batch-1 line is written
+ * BEFORE the host has answered `slide.load("id")`, so it keys on the
+ * `(visible)` sentinel, and the retag empties that sentinel after every draw.
+ * All 775 such lines therefore report `onSlide 0`, and 516 of them — 66.6% —
+ * were on a slide this run had already put a median of 16 and up to 88 shapes
+ * on. The true prior is recoverable only from the NEXT batch
+ * (`batch2.onSlide` minus what batch 1 drew), which is how the table above is
+ * built. The 11-shape rotated chart that headed the first version has NO
+ * true-zero readings at all — all 45 are on occupied slides — so its 20,662ms
+ * is an occupancy number and cannot sit in this table.
+ *
+ * So: what a shape IS does cost more than how many there are, but by ~3x, not
+ * ~13x, and nothing here prices it — this understates a small ornate chart and
+ * overstates a big plain one. Treated as a floor, not a forecast; see BACKLOG
+ * item 3, where re-expressing the shape budget as a time threshold is ON HOLD.
+ *
+ * HALF THE BATCHES ARE NEVER TIMED, and not at random. `prevBatchMs` is only
+ * readable from the following batch, so every draw's LAST batch is unmeasured —
+ * 4,583 of 8,771 — and 1,869 single-batch draws contribute nothing whatever.
+ * Every one of the 4,188 readings behind these constants drew exactly ten
+ * shapes; not one is a partial tail. So no chart small enough to fit in a
+ * single batch appears here at all: the sizes drawn are 7, 9, 10, 11, 14, 16,
+ * 24 and 103, and all 1,799 draws at 7, 9 or 10 shapes are untimed —
+ * `estimateInsertMs` prices exactly those from a sample containing none.
  *
  * AND `present` MEANS TWO DIFFERENT THINGS EITHER SIDE OF THIS FILE. The curve
  * is indexed by the renderer's `onSlide`, which counts only the shapes THIS RUN

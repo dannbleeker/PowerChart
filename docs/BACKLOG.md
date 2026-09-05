@@ -78,41 +78,67 @@ definition.
 Two of the item's claims survive. Occupancy is real, and the cleanest evidence
 is one chart watched across its own draw rather than a bucket average: the
 103-shape chart in `a big chart on a slide of its own` costs 1,608ms at batch 1
-and climbs monotonically to 8,293ms by batch 10, filling the slide with its own
-shapes as it goes. The coded curve has held up too: 3,886 / 5,490 / 13,995 /
-18,074 against 4,259 / 5,455 / 14,650 / 17,121 now, a drift of +10 / -1 / +5 /
--5% after doubling the rounds behind it.
+and climbs to 8,293ms by batch 10, filling the slide with its own shapes as it
+goes. Ten positions, n=16 at every one, not a single reversal — 1608 2107 2882
+3664 4310 5141 6081 6658 7394 8293. Chart, path and scenario are all held
+constant and only the slide fills.
+
+The coded curve has held up too, and it holds up BETTER once occupancy is read
+correctly. Bucketing on the reported `onSlide` puts the four points at 4,278 /
+5,439 / 14,553 / 16,946; bucketing on what each batch actually saw puts them at
+**3,764 / 5,650 / 14,127 / 16,946**, against coded values of 3,886 / 5,490 /
+13,995 / 18,074. That is -3.1 / +2.9 / +0.9 / -6.2%, after doubling the rounds
+behind them. The correction matters most exactly where the pane quotes it: the
+blank-slide anchor moves 12% between the two readings, because 12.3% of all
+4,188 timed readings are filed under an occupancy that is not the one they saw.
 
 What breaks it is a term the model does not have. `estimateInsertMs` is
 `ceil(shapes / 10) × batchMs(present)`, which says every ten-shape batch costs
-the same. They do not. Comparing LIKE FOR LIKE — first batch only, so ten
-shapes onto an empty slide in every arm:
+the same. They do not. At a chart's first batch, held to a slide this run had
+genuinely drawn nothing on:
 
-     11 shapes, rotated    21,094ms
-     16 shapes             13,688ms
-     24 shapes              3,780ms
-    103 shapes              1,608ms
+     16 shapes    10,098ms   n=258
+     24 shapes     3,617ms   n=1,202
+    103 shapes     1,584ms   n=15
 
-**Thirteen times, at identical occupancy and identical batch position, running
-BACKWARDS to shape count.** Two confounds were worth ruling out, and both make
-the gap wider rather than narrower.
+**2.8x between the first two, backwards to shape count, and 6.4x across the
+table.** Three confounds were ruled out. *Batch position*: a 24-shape chart
+contributes cheap later batches a 16-shape one never reaches, so this is batch
+1 only. *Draw path*: size and target slide are nearly collinear here, but
+16-shape charts are slow on both. *In-place updates*: `updated only the shapes
+that changed` writes a median of 8 of 24 shapes and would have poisoned the
+cheap arm — but it emits no `batch issued` line at all, and 0 of 2,714 batch-1
+readings sit on a chart that emitted one.
 
-*Batch position.* A 24-shape chart contributes cheap later batches a 16-shape
-one never reaches. The table above is batch 1 only, which is the single reading
-every chart contributes.
+**THE FIRST VERSION OF THIS TABLE WAS WRONG BY 13x AND SAID "identical
+occupancy" WHEN IT HAD NONE.** It read 21,094 / 13,688 / 3,780 / 1,608 for 11
+rotated / 16 / 24 / 103 shapes. A batch-1 trace line is written BEFORE the host
+answers `slide.load("id")`, so it keys on the `(visible)` sentinel — and the
+retag empties that sentinel after every draw. All 775 such lines report
+`onSlide 0`, and **516 of them, 66.6%, were on a slide this run had already put
+a median of 16 and up to 88 shapes on.** The rows were not at one occupancy;
+they were at 0 / 0 / 32 / 48, in exactly the order of their costs. The true
+prior is recoverable only from the NEXT batch — `batch2.onSlide` minus what
+batch 1 drew — which is how the corrected table is built. The 11-shape rotated
+chart that headed the old table has NO true-zero readings at all (45 of 45 on
+occupied slides), so it cannot appear here; its 20,662ms is an occupancy
+number.
 
-*Draw path.* Chart size and target slide are nearly collinear in this archive —
-the visible-slide charts are 16 shapes, the named-slide ones 24 — so the first
-reading of this looked like a path effect. It is not. Held to the named path
-alone, batch 1 of a 16-shape chart is 16,497ms (n=585) against 3,694ms for a
-24-shape one (n=1,328); and a 16-shape chart is slow on BOTH paths (12,660ms on
-the visible slide, n=718). Same path, same batch, ten shapes drawn either way,
-4.5x apart.
+Found by an adversarial pass over the committed text, then reproduced
+independently before anything was edited. The correction cuts the effect from
+13x to 2.8x and it is still the wrong unit — but "wrong by 13x" was itself the
+kind of claim this file exists to stop.
 
-What a shape IS outweighs how many there are, and rotation is the dearest
-property measured — `a chart of rotated shapes` tops the table at eleven
-shapes. WHAT those 16-shape charts contain that costs 4.5x is the open
-question, and it is the term the model needs.
+**Half the batches are never timed, and not at random.** `prevBatchMs` is only
+readable from the following batch, so every draw's last batch is unmeasured
+(4,583 of 8,771) and 1,869 single-batch draws contribute nothing. All 4,188
+readings drew exactly ten shapes; not one is a partial tail. The sizes drawn
+are 7, 9, 10, 11, 14, 16, 24, 103 — and all 1,799 draws at 7, 9 or 10 shapes
+are untimed. The model prices single-batch charts from a sample containing
+none of them.
+
+WHAT those 16-shape charts contain that costs 2.8x is the open question, and it
+is the term the model needs.
 
 So the gate would move from a number that is wrong in a KNOWN direction (90
 shapes ignores occupancy) to one wrong in an unknown one (time, priced by a
